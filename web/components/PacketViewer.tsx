@@ -14,10 +14,17 @@ import {
   initialState,
   packetCategories,
   resolvePacket,
+  syncTlvControllers,
 } from "@/lib/packet-resolver";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
-import type { ControllerState, Packet, PacketRegistry } from "@/lib/types";
-
+import type {
+  ChainInstance,
+  ControllerState,
+  Field,
+  Packet,
+  PacketRegistry,
+  TlvInstance,
+} from "@/lib/types";
 import ControlsPanel from "./ControlsPanel";
 import DetailPanel from "./DetailPanel";
 import DiagramSvg from "./DiagramSvg";
@@ -26,8 +33,10 @@ import ImportExportDrawer, {
   type DrawerMode,
 } from "./ImportExportDrawer";
 import Legend from "./Legend";
+import OnboardingTour, { hasSeenTour, type TourStep } from "./OnboardingTour";
 import PresetPicker from "./PresetPicker";
 import ThemeToggle from "./ThemeToggle";
+import WorksheetButton from "./WorksheetButton";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 
@@ -50,8 +59,18 @@ export default function PacketViewer() {
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const [isWideViewport, setIsWideViewport] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
+  const controlsRef = useRef<HTMLElement | null>(null);
+
+  // Auto-launch the tour on first visit. Delay slightly so the diagram is
+  // mounted and target elements are visible.
+  useEffect(() => {
+    if (hasSeenTour()) return;
+    const id = window.setTimeout(() => setTourOpen(true), 350);
+    return () => window.clearTimeout(id);
+  }, []);
 
   // Track viewport width to gate the popover affordance. Read on mount and on
   // resize; SSR sees `false` so the markup matches the initial client render.
@@ -109,6 +128,66 @@ export default function PacketViewer() {
       setSelectedFieldId(null);
       setDrawerMode(null);
     },
+    [],
+  );
+
+  // TLV edits mutate the field's `tlv.instances` array (matching legacy
+  // behaviour where the catalog data is shared with the resolver). We
+  // re-sync TLV-driven controllers afterwards.
+  const handleTlvChange = useCallback(
+    (field: Field, next: TlvInstance[]) => {
+      if (!field.tlv) return;
+      field.tlv.instances = next;
+      setControllers((prev) => syncTlvControllers(packet, prev));
+    },
+    [packet],
+  );
+
+  const handleChainChange = useCallback(
+    (
+      field: Field,
+      next: { instances: ChainInstance[]; finalProto?: number },
+    ) => {
+      field.chainInstances = next.instances;
+      if (typeof next.finalProto === "number") {
+        field.chainFinalProto = next.finalProto;
+      }
+      // Force a re-render even though we mutated the field directly.
+      setControllers((prev) => ({ ...prev }));
+    },
+    [],
+  );
+
+  const tourSteps: TourStep[] = useMemo(
+    () => [
+      {
+        title: "Welcome to Packet View",
+        body:
+          "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
+      },
+      {
+        title: "The bit ruler",
+        body:
+          "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
+        target: () => diagramRef.current?.querySelector("svg") ?? null,
+        placement: "bottom",
+      },
+      {
+        title: "Click any field",
+        body:
+          "Cells are interactive. Click one to see its size, category, and full description in the field detail panel.",
+        target: () => diagramRef.current?.querySelector("rect") ?? null,
+        placement: "bottom",
+      },
+      {
+        title: "Drag to grow",
+        body:
+          "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
+        target: () =>
+          controlsRef.current?.querySelector('input[type="range"]') ?? null,
+        placement: "top",
+      },
+    ],
     [],
   );
 
@@ -216,7 +295,10 @@ export default function PacketViewer() {
               Visual viewer for common network packet headers.
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <WorksheetButton packet={packet} controllers={controllers} />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -321,11 +403,13 @@ export default function PacketViewer() {
             >
               Controls
             </h2>
-            <ControlsPanel
-              packet={packet}
-              controllers={controllers}
-              onChange={handleControllerChange}
-            />
+            <div ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}>
+              <ControlsPanel
+                packet={packet}
+                controllers={controllers}
+                onChange={handleControllerChange}
+              />
+            </div>
           </section>
 
           <section
@@ -346,6 +430,8 @@ export default function PacketViewer() {
               packet={packet}
               selectedFieldId={selectedFieldId}
               controllers={controllers}
+              onTlvChange={handleTlvChange}
+              onChainChange={handleChainChange}
             />
           </section>
         </div>
@@ -369,6 +455,13 @@ export default function PacketViewer() {
         onClose={() => setDrawerMode(null)}
         onImport={handleImport}
       />
+
+      {tourOpen ? (
+        <OnboardingTour
+          steps={tourSteps}
+          onClose={() => setTourOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

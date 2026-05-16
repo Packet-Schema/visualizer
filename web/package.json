@@ -12,6 +12,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@myriaddreamin/typst-ts-renderer": "^0.7.0-rc2",
+    "@myriaddreamin/typst-ts-web-compiler": "^0.7.0-rc2",
+    "@myriaddreamin/typst.ts": "^0.7.0-rc2",
     "next": "^15.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

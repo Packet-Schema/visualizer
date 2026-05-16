@@ -40,11 +40,20 @@ export type TlvCatalogField = {
   description?: string;
 };
 
+/** Hints for a TLV catalog entry that supports a variable count of fixed slots. */
+export type TlvVariableCount = {
+  key: string;
+  min: number;
+  max: number;
+  label?: string;
+};
+
 /**
  * A catalog entry describing one TLV record type (e.g. TCP option Kind=2 MSS,
  * or an IPv4 option Kind=7 Record Route). `fields` is the fixed positional
  * layout. If `variableCount` is set, the entry has a count-based extra that
- * drives the field list — `fieldsFor` is invoked instead of using `fields`.
+ * drives the field list — either `fieldsFor` (in-memory closure) or
+ * `fieldsFormula` (resolver-registry key) supplies the expanded slot list.
  */
 export type TlvCatalogEntry = {
   kind: number;
@@ -56,9 +65,11 @@ export type TlvCatalogEntry = {
   /** Defaults merged into instance.extras before computing field list. */
   defaultExtras?: Record<string, number>;
   /** Variable-count metadata (UI knob description). */
-  variableCount?: { key: string; min: number; max: number; label?: string };
-  /** Used by the resolver via a registry — see TLV_FIELDS_REGISTRY. */
+  variableCount?: TlvVariableCount;
+  /** Build-time formula token; resolved to a function via TLV_FIELDS_REGISTRY. */
   fieldsFormula?: string;
+  /** In-memory equivalent of `fieldsFormula`; checked first when present. */
+  fieldsFor?: (extras: Record<string, number>) => TlvCatalogField[];
 };
 
 /** An instance of a TLV record currently attached to a TLV field. */
@@ -75,6 +86,8 @@ export type TlvSpec = {
   bytesPerUnit?: number;
   baseControllerValue?: number;
 };
+/** Alias for compatibility with the TLV/Chain editor naming. */
+export type TlvDescriptor = TlvSpec;
 
 /** A chain-catalog entry (e.g. IPv6 extension header). */
 export type ChainCatalogEntry = {
@@ -84,6 +97,7 @@ export type ChainCatalogEntry = {
   fields: TlvCatalogField[];
 };
 
+/** A single chain block (extension header). */
 export type ChainInstance = {
   proto: number;
 };
