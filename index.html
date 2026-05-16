@@ -25,7 +25,7 @@
     <div class="site-header-inner">
       <div class="brand">
         <h1>Packet View</h1>
-        <p class="tagline">Interactive packet structure viewer. Click fields for details; drag sliders to resize variable-length parts.</p>
+        <span class="tagline">Interactive packet structure viewer — click fields, drag sliders.</span>
       </div>
       <button id="theme-toggle" class="theme-toggle" type="button"
               aria-label="Toggle color theme" title="Toggle color theme">
@@ -61,6 +61,8 @@
              placeholder="Filter presets..." aria-label="Filter presets by name">
       <button type="button" id="btn-import" class="tb-btn">Import</button>
       <button type="button" id="btn-export" class="tb-btn">Export</button>
+      <button type="button" id="btn-help" class="tb-btn tb-btn-help"
+              aria-label="Replay onboarding tour" title="Replay onboarding tour">?</button>
       <span id="summary" class="summary" aria-live="polite"></span>
     </section>
 
@@ -86,36 +88,47 @@
     </section>
 
     <div id="modal-overlay" class="modal-overlay" hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <aside class="modal drawer" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-header">
           <h2 id="modal-title">Import / Export</h2>
           <button type="button" id="modal-close" class="modal-close" aria-label="Close">&times;</button>
         </div>
         <div class="modal-row">
-          <label for="modal-mode">Mode:</label>
-          <select id="modal-mode">
-            <option value="import">Import</option>
-            <option value="export">Export</option>
-          </select>
-          <label for="modal-format">Format:</label>
-          <select id="modal-format">
-            <option value="json">JSON (round-trip)</option>
-            <option value="rfc-ascii">RFC ASCII art (export)</option>
-            <option value="aug-ascii">Augmented ASCII (import)</option>
-            <option value="worksheet">Worksheet (printable, export)</option>
-          </select>
+          <div class="modal-field">
+            <label for="modal-mode">Mode</label>
+            <select id="modal-mode">
+              <option value="import">Import</option>
+              <option value="export">Export</option>
+            </select>
+          </div>
+          <div class="modal-field">
+            <label for="modal-format">Format</label>
+            <select id="modal-format">
+              <option value="json">JSON (round-trip)</option>
+              <option value="rfc-ascii">RFC ASCII art (export)</option>
+              <option value="aug-ascii">Augmented ASCII (import)</option>
+              <option value="worksheet">Worksheet (printable, export)</option>
+            </select>
+          </div>
           <label for="modal-worksheet-answers" class="worksheet-only" hidden>
             <input type="checkbox" id="modal-worksheet-answers"> Include answers
           </label>
         </div>
-        <textarea id="modal-text" spellcheck="false" placeholder="Paste input here, or click Generate to populate from the active packet."></textarea>
+        <textarea id="modal-text" spellcheck="false" placeholder="Paste input here, or switch to Export to auto-fill from the active packet."></textarea>
         <div id="modal-status" class="modal-status" aria-live="polite" aria-atomic="true"></div>
         <div class="modal-actions">
-          <button type="button" id="modal-generate">Generate</button>
+          <button type="button" id="modal-generate" hidden>Generate</button>
           <button type="button" id="modal-apply">Apply</button>
           <button type="button" id="modal-copy">Copy</button>
         </div>
-      </div>
+      </aside>
+    </div>
+
+    <div id="field-popover" class="field-popover" role="dialog" aria-modal="false"
+         aria-label="Field detail" hidden>
+      <button type="button" class="field-popover-close" aria-label="Close popover">&times;</button>
+      <div class="field-popover-arrow" aria-hidden="true"></div>
+      <div class="field-popover-body"></div>
     </div>
 
     <footer>
