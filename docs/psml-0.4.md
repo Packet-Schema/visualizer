@@ -774,8 +774,7 @@ renderer-shaped Packet by `web/lib/psml/psml-to-renderer.ts`, which
 collapses Group nodes to subfields and promotes Repeat<Switch> bodies into
 a TLV catalog / chain catalog the editors can mutate. The same module
 exposes `rendererToPsml` for the inverse lift (used by the import/export
-drawer and the worksheet generator). The format hub itself is three
-files:
+drawer). The format hub itself is three files:
 
 - `web/lib/formats/json.ts` — `toJson(psmlPacket, env)` /
   `fromJson(text)`.
@@ -784,9 +783,6 @@ files:
   semantic rendering in 0.3).
 - `web/lib/formats/aug-ascii.ts` — `fromAad(text)` (Augmented Packet
   Header Diagrams — best-effort import).
-
-The Typst worksheet generator in `web/lib/worksheet-typst.ts` also
-takes a PSML packet.
 
 ### 0.4 behaviour per format
 
@@ -835,11 +831,6 @@ takes a PSML packet.
   (`# psml-only: encrypted block …` and `# psml-only: varint …`) and
   the importer recognises no inverse construct; round-tripping a 0.3
   packet through `.ksy` is lossy by design.
-- **Worksheet (Typst)** — an Encrypted block renders as a single blank
-  fill-in row labelled `Encrypted (N bytes — requires <contextNote>)`,
-  regardless of viewMode. Varint fields render as a single row with the
-  width-prefix bits highlighted and a hint line "QUIC varint: 1/2/4/8
-  bytes".
 
 ## Kaitai interop
 
