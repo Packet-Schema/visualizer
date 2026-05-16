@@ -1,6 +1,7 @@
 import {
   PACKETS, resolvePacket, initialState,
   CATEGORY_LABELS, DEFAULT_BYTE_ORDER, packetCategories,
+  syncTlvControllers,
 } from "./packets.js";
 import { renderPacket, CATEGORY_TO_TOKEN, tokenToCssVar } from "./renderer.js";
 import { annotateAcronyms } from "./glossary.js";
@@ -58,7 +59,7 @@ const PRESET_GROUPS = [
   { label: "Layer 2 — Link",        keys: ["ethernet", "vlan"] },
   { label: "Layer 3 — Network",     keys: ["ipv4", "ipv6", "arp", "icmp", "icmpv6"] },
   { label: "Layer 4 — Transport",   keys: ["tcp", "udp"] },
-  { label: "Application",           keys: ["dns", "tlsRecord", "quicShort"] },
+  { label: "Application",           keys: ["dns", "tlsRecord", "tlsClientHello", "quicShort"] },
 ];
 
 function init() {
@@ -262,6 +263,14 @@ function renderControls(packet) {
     els.controls.innerHTML = `<p class="muted">This packet has no variable-length controllers.</p>`;
     return;
   }
+  // A controller is "locked" by a TLV when any field has a tlv.drivesController
+  // matching this controller key AND has at least one active instance.
+  const tlvLocked = new Set();
+  for (const f of packet.fields) {
+    if (f.tlv && f.tlv.drivesController && (f.tlv.instances || []).length > 0) {
+      tlvLocked.add(f.tlv.drivesController);
+    }
+  }
   for (const field of controllers) {
     const value = state.controllers[field.controlsLength];
     const baseId = `ctrl-${field.id}`;
@@ -269,9 +278,11 @@ function renderControls(packet) {
     const numberId = `${baseId}-number`;
     const labelId = `${baseId}-label`;
     const hintId = `${baseId}-hint`;
+    const locked = tlvLocked.has(field.controlsLength);
 
     const wrap = document.createElement("div");
     wrap.className = "control";
+    if (locked) wrap.classList.add("control-locked");
 
     // Visible label is a real <label for=...> targeting the slider, with an
     // id so screen-readers can also reference it via aria-labelledby on the
@@ -303,6 +314,7 @@ function renderControls(packet) {
     slider.min = field.min ?? 0;
     slider.max = field.max ?? (2 ** field.bits - 1);
     slider.value = value;
+    if (locked) slider.disabled = true;
     if (field.description) slider.setAttribute("aria-describedby", hintId);
 
     const number = document.createElement("input");
@@ -312,6 +324,7 @@ function renderControls(packet) {
     number.max = slider.max;
     number.value = value;
     number.className = "control-number";
+    if (locked) number.disabled = true;
     number.setAttribute("aria-labelledby", labelId);
     if (field.description) number.setAttribute("aria-describedby", hintId);
 
@@ -352,6 +365,12 @@ function renderControls(packet) {
     row.appendChild(slider);
     row.appendChild(number);
     wrap.appendChild(row);
+    if (locked) {
+      const note = document.createElement("p");
+      note.className = "control-locked-note";
+      note.textContent = "Controlled by attached TLV options — edit the Options field instead.";
+      wrap.appendChild(note);
+    }
     els.controls.appendChild(wrap);
   }
 }
@@ -590,13 +609,49 @@ function renderDetail(packet) {
     return;
   }
 
+  // A click on a TLV-expanded virtual cell produces id like "options#0" — route
+  // that back to its parent options field so the editor is shown.
+  if (state.selectedFieldId.includes("#")) {
+    const [parentId, rest] = state.selectedFieldId.split("#");
+    const parent = packet.fields.find(f => f.id === parentId);
+    if (parent && parent.tlv) {
+      const blockIdx = Number(rest);
+      renderTlvDetail(packet, parent, { focusBlockIndex: blockIdx });
+      return;
+    }
+    if (parent && parent.chainCatalog) {
+      // Click on a chain extension header.
+      const blockIdx = Number((rest || "").split("#").pop());
+      renderChainDetail(packet, parent, { focusBlockIndex: blockIdx });
+      return;
+    }
+    // A virtual chain block id is "<fieldId>@chain#<idx>".
+    if (parentId.endsWith("@chain")) {
+      const realParentId = parentId.slice(0, -"@chain".length);
+      const realParent = packet.fields.find(f => f.id === realParentId);
+      if (realParent && realParent.chainCatalog) {
+        renderChainDetail(packet, realParent, { focusBlockIndex: Number(rest) });
+        return;
+      }
+    }
+  }
+
   // Subfield selection has the form "parentId:subfieldId".
   if (state.selectedFieldId.includes(":")) {
     const [parentId, subId] = state.selectedFieldId.split(":");
-    const parent = packet.fields.find(f => f.id === parentId);
-    const sub = parent && parent.subfields
+    // Subfield could belong to a TLV virtual cell whose id is "<owner>#<n>".
+    let parent = packet.fields.find(f => f.id === parentId);
+    let sub = parent && parent.subfields
       ? parent.subfields.find(s => s.id === subId)
       : null;
+    if (!parent && parentId.includes("#")) {
+      // Synthesise from the resolved layout.
+      const synth = findVirtualField(packet, parentId);
+      if (synth) {
+        parent = synth;
+        sub = synth.subfields.find((s) => s.id === subId) || null;
+      }
+    }
     if (!parent || !sub) {
       els.detail.innerHTML = `<p class="muted">Subfield not found.</p>`;
       return;
@@ -606,7 +661,7 @@ function renderDetail(packet) {
       <h3>${escapeHtml(sub.name)} <span class="subfield-hint">(subfield of ${escapeHtml(parent.name)})</span></h3>
       <dl>
         <dt>Size</dt><dd>${bits} bit${bits === 1 ? "" : "s"}</dd>
-        <dt>Parent</dt><dd>${escapeHtml(parent.name)} (${parent.bits} bits)</dd>
+        <dt>Parent</dt><dd>${escapeHtml(parent.name)}</dd>
         ${sub.description ? `<dt>Description</dt><dd>${enrichDescription(sub.description)}</dd>` : ""}
       </dl>
     `;
@@ -616,6 +671,16 @@ function renderDetail(packet) {
   const field = packet.fields.find(f => f.id === state.selectedFieldId);
   if (!field) {
     els.detail.innerHTML = `<p class="muted">Field not found.</p>`;
+    return;
+  }
+  // TLV-bearing field: show the option list editor.
+  if (field.tlv) {
+    renderTlvDetail(packet, field, {});
+    return;
+  }
+  // Chain-bearing field (e.g. IPv6 Next Header): show extension header editor.
+  if (field.chainCatalog) {
+    renderChainDetail(packet, field, {});
     return;
   }
   const bits = field.variable
@@ -641,6 +706,264 @@ function renderDetail(packet) {
       ${subfieldsHtml}
     </dl>
   `;
+}
+
+// Reconstruct a virtual TLV field descriptor by re-resolving the layout and
+// matching by id. Used when a subfield click lands on a TLV-expanded cell.
+function findVirtualField(packet, virtualId) {
+  const layout = resolvePacket(packet, state.controllers);
+  for (const cell of layout.cells) {
+    if (cell.field && cell.field.id === virtualId) return cell.field;
+  }
+  return null;
+}
+
+function renderTlvDetail(packet, field, opts) {
+  const tlv = field.tlv;
+  const instances = tlv.instances || [];
+  // Pretty-print the current option list with Remove buttons.
+  let html = `<h3>${escapeHtml(field.name)}</h3>`;
+  html += `<p class="muted small">Recursive TLV container. Add typed records below; the total length drives <code>${escapeHtml(tlv.drivesController || "")}</code>.</p>`;
+  if (field.description) {
+    html += `<p class="control-hint">${enrichDescription(field.description)}</p>`;
+  }
+  html += `<div class="tlv-list" role="list">`;
+  if (instances.length === 0) {
+    html += `<p class="muted small">No options attached yet.</p>`;
+  } else {
+    instances.forEach((inst, i) => {
+      const entry = tlv.catalog.find((c) => c.kind === inst.kind);
+      if (!entry) return;
+      const extras = { ...(entry.defaultExtras || {}), ...(inst.extras || {}) };
+      const blockFields = typeof entry.fieldsFor === "function"
+        ? entry.fieldsFor(extras)
+        : entry.fields;
+      const bits = (blockFields || []).reduce((a, f) => a + f.bits, 0);
+      const focused = opts.focusBlockIndex === i ? " tlv-row-focused" : "";
+      html += `<div class="tlv-row${focused}" role="listitem">`;
+      html += `<div class="tlv-row-head">`;
+      html += `<span class="tlv-kind-badge">kind ${entry.kind}</span> `;
+      html += `<span class="tlv-row-name">${escapeHtml(entry.name)}</span> `;
+      html += `<span class="tlv-row-bits mono">${bits} b / ${bits / 8} B</span> `;
+      html += `<button type="button" class="tlv-up" data-idx="${i}" aria-label="Move up" ${i === 0 ? "disabled" : ""}>↑</button>`;
+      html += `<button type="button" class="tlv-down" data-idx="${i}" aria-label="Move down" ${i === instances.length - 1 ? "disabled" : ""}>↓</button>`;
+      html += `<button type="button" class="tlv-remove" data-idx="${i}">Remove</button>`;
+      html += `</div>`;
+      if (entry.variableCount) {
+        const vc = entry.variableCount;
+        const cur = Number(extras[vc.key] ?? vc.min ?? 1);
+        html += `<div class="tlv-row-extras"><label>${escapeHtml(vc.label || vc.key)}: `;
+        html += `<input type="number" class="tlv-extra-count" data-idx="${i}" data-key="${escapeHtml(vc.key)}" `;
+        html += `min="${vc.min ?? 1}" max="${vc.max ?? 16}" value="${cur}"></label></div>`;
+      }
+      if (entry.description) {
+        html += `<p class="tlv-row-desc">${enrichDescription(entry.description)}</p>`;
+      }
+      html += `</div>`;
+    });
+  }
+  html += `</div>`;
+  html += `<div class="tlv-add-row">`;
+  html += `<label>Add option: <select class="tlv-add-select">`;
+  html += `<option value="">-- choose a record type --</option>`;
+  for (const c of tlv.catalog) {
+    html += `<option value="${c.kind}">${escapeHtml(c.name)} (kind ${c.kind})</option>`;
+  }
+  html += `</select></label>`;
+  html += `<button type="button" class="tlv-add-btn">Add</button>`;
+  html += `</div>`;
+  const totalBits = instances.reduce((acc, inst) => {
+    const entry = tlv.catalog.find((c) => c.kind === inst.kind);
+    if (!entry) return acc;
+    const extras = { ...(entry.defaultExtras || {}), ...(inst.extras || {}) };
+    const fs = typeof entry.fieldsFor === "function" ? entry.fieldsFor(extras) : entry.fields;
+    return acc + (fs || []).reduce((a, f) => a + f.bits, 0);
+  }, 0);
+  const padded = tlv.padToBoundary
+    ? Math.ceil(totalBits / tlv.padToBoundary) * tlv.padToBoundary
+    : totalBits;
+  html += `<p class="tlv-summary muted small">`;
+  html += `Total: <span class="mono">${totalBits} b</span>; padded to <span class="mono">${padded} b</span> (= ${padded / 8} B).`;
+  if (tlv.drivesController) {
+    html += ` Drives <code>${escapeHtml(tlv.drivesController)}</code> = <span class="mono">${state.controllers[tlv.drivesController]}</span>.`;
+  }
+  html += `</p>`;
+
+  els.detail.innerHTML = html;
+
+  // Wire up controls.
+  els.detail.querySelectorAll(".tlv-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      field.tlv.instances.splice(idx, 1);
+      syncTlvControllers(packet, state.controllers);
+      state.selectedFieldId = field.id;
+      render();
+    });
+  });
+  els.detail.querySelectorAll(".tlv-up").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      if (idx > 0) {
+        const t = field.tlv.instances[idx - 1];
+        field.tlv.instances[idx - 1] = field.tlv.instances[idx];
+        field.tlv.instances[idx] = t;
+        syncTlvControllers(packet, state.controllers);
+        state.selectedFieldId = field.id;
+        render();
+      }
+    });
+  });
+  els.detail.querySelectorAll(".tlv-down").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      if (idx < field.tlv.instances.length - 1) {
+        const t = field.tlv.instances[idx + 1];
+        field.tlv.instances[idx + 1] = field.tlv.instances[idx];
+        field.tlv.instances[idx] = t;
+        syncTlvControllers(packet, state.controllers);
+        state.selectedFieldId = field.id;
+        render();
+      }
+    });
+  });
+  els.detail.querySelectorAll(".tlv-extra-count").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const idx = Number(inp.dataset.idx);
+      const key = inp.dataset.key;
+      const inst = field.tlv.instances[idx];
+      if (!inst) return;
+      const v = Math.max(Number(inp.min) || 1, Math.min(Number(inp.max) || 16, Number(inp.value) || 1));
+      inst.extras = { ...(inst.extras || {}), [key]: v };
+      syncTlvControllers(packet, state.controllers);
+      state.selectedFieldId = field.id;
+      render();
+    });
+  });
+  const addBtn = els.detail.querySelector(".tlv-add-btn");
+  const addSel = els.detail.querySelector(".tlv-add-select");
+  if (addBtn && addSel) {
+    addBtn.addEventListener("click", () => {
+      const kind = Number(addSel.value);
+      if (!Number.isFinite(kind)) return;
+      const entry = field.tlv.catalog.find((c) => c.kind === kind);
+      if (!entry) return;
+      const inst = { kind };
+      if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
+      field.tlv.instances.push(inst);
+      syncTlvControllers(packet, state.controllers);
+      state.selectedFieldId = field.id;
+      render();
+    });
+  }
+}
+
+function renderChainDetail(packet, field, opts) {
+  const instances = field.chainInstances || (field.chainInstances = []);
+  let html = `<h3>${escapeHtml(field.name)} — chain</h3>`;
+  html += `<p class="muted small">Attach IPv6 extension headers in order. The final Next Header is the upper-layer protocol.</p>`;
+  if (field.description) {
+    html += `<p class="control-hint">${enrichDescription(field.description)}</p>`;
+  }
+  html += `<div class="tlv-list">`;
+  if (instances.length === 0) {
+    html += `<p class="muted small">No extension headers attached.</p>`;
+  } else {
+    instances.forEach((inst, i) => {
+      const entry = field.chainCatalog.find((c) => c.proto === inst.proto);
+      if (!entry) return;
+      const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
+      const focused = opts.focusBlockIndex === i ? " tlv-row-focused" : "";
+      html += `<div class="tlv-row${focused}">`;
+      html += `<div class="tlv-row-head">`;
+      html += `<span class="tlv-kind-badge">proto ${entry.proto}</span> `;
+      html += `<span class="tlv-row-name">${escapeHtml(entry.name)}</span> `;
+      html += `<span class="tlv-row-bits mono">${bits} b / ${bits / 8} B</span> `;
+      html += `<button type="button" class="chain-up" data-idx="${i}" aria-label="Move up" ${i === 0 ? "disabled" : ""}>↑</button>`;
+      html += `<button type="button" class="chain-down" data-idx="${i}" aria-label="Move down" ${i === instances.length - 1 ? "disabled" : ""}>↓</button>`;
+      html += `<button type="button" class="chain-remove" data-idx="${i}">Remove</button>`;
+      html += `</div>`;
+      if (entry.description) {
+        html += `<p class="tlv-row-desc">${enrichDescription(entry.description)}</p>`;
+      }
+      html += `</div>`;
+    });
+  }
+  html += `</div>`;
+  html += `<div class="tlv-add-row">`;
+  html += `<label>Add extension header: <select class="chain-add-select">`;
+  html += `<option value="">-- choose an extension header --</option>`;
+  for (const c of field.chainCatalog) {
+    html += `<option value="${c.proto}">${escapeHtml(c.name)} (proto ${c.proto})</option>`;
+  }
+  html += `</select></label>`;
+  html += `<button type="button" class="chain-add-btn">Add</button>`;
+  html += `</div>`;
+  html += `<div class="tlv-add-row">`;
+  html += `<label>Final upper-layer protocol: <select class="chain-final-select">`;
+  const finals = [
+    { v: 6, name: "TCP" }, { v: 17, name: "UDP" }, { v: 58, name: "ICMPv6" },
+    { v: 50, name: "ESP" }, { v: 132, name: "SCTP" }, { v: 59, name: "No Next Header" },
+  ];
+  for (const f of finals) {
+    const sel = field.chainFinalProto === f.v ? " selected" : "";
+    html += `<option value="${f.v}"${sel}>${f.name} (${f.v})</option>`;
+  }
+  html += `</select></label></div>`;
+
+  els.detail.innerHTML = html;
+
+  els.detail.querySelectorAll(".chain-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      field.chainInstances.splice(idx, 1);
+      state.selectedFieldId = field.id;
+      render();
+    });
+  });
+  els.detail.querySelectorAll(".chain-up").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      if (idx > 0) {
+        const t = field.chainInstances[idx - 1];
+        field.chainInstances[idx - 1] = field.chainInstances[idx];
+        field.chainInstances[idx] = t;
+        state.selectedFieldId = field.id;
+        render();
+      }
+    });
+  });
+  els.detail.querySelectorAll(".chain-down").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      if (idx < field.chainInstances.length - 1) {
+        const t = field.chainInstances[idx + 1];
+        field.chainInstances[idx + 1] = field.chainInstances[idx];
+        field.chainInstances[idx] = t;
+        state.selectedFieldId = field.id;
+        render();
+      }
+    });
+  });
+  const addBtn = els.detail.querySelector(".chain-add-btn");
+  const addSel = els.detail.querySelector(".chain-add-select");
+  if (addBtn && addSel) {
+    addBtn.addEventListener("click", () => {
+      const proto = Number(addSel.value);
+      if (!Number.isFinite(proto)) return;
+      field.chainInstances.push({ proto });
+      state.selectedFieldId = field.id;
+      render();
+    });
+  }
+  const finalSel = els.detail.querySelector(".chain-final-select");
+  if (finalSel) {
+    finalSel.addEventListener("change", () => {
+      field.chainFinalProto = Number(finalSel.value);
+      state.selectedFieldId = field.id;
+      render();
+    });
+  }
 }
 
 // Format a field description for the detail panel:
