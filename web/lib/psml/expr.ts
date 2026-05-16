@@ -23,6 +23,16 @@ export const cond = (test: Expr, t: Expr, f: Expr): Expr => ({
   t,
   f,
 });
+export const peek = (bits: number, offset?: Expr): Expr =>
+  offset === undefined ? { kind: "peek", bits } : { kind: "peek", bits, offset };
+
+/**
+ * Build the synthetic env key under which a `peek` expression looks up its
+ * value at offline-eval time. Format: `__peek__<byteOffset>__<bits>`.
+ */
+export function peekEnvKey(offset: number, bits: number): string {
+  return `__peek__${offset}__${bits}`;
+}
 
 export class MissingRefError extends Error {
   constructor(public readonly field: string) {
@@ -79,6 +89,12 @@ export function evalExpr(expr: Expr, env: PacketEnv): number {
       const t = evalExpr(expr.test, env);
       return t !== 0 ? evalExpr(expr.t, env) : evalExpr(expr.f, env);
     }
+    case "peek": {
+      const offset = expr.offset === undefined ? 0 : evalExpr(expr.offset, env);
+      const key = peekEnvKey(offset, expr.bits);
+      const v = env.get(key);
+      return v ?? 0;
+    }
     default: {
       // Exhaustiveness: never type narrows away every legal kind.
       const _exhaustive: never = expr;
@@ -111,6 +127,9 @@ function walk(expr: Expr, out: string[]): void {
       walk(expr.test, out);
       walk(expr.t, out);
       walk(expr.f, out);
+      return;
+    case "peek":
+      if (expr.offset !== undefined) walk(expr.offset, out);
       return;
   }
 }

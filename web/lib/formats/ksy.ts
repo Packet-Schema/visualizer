@@ -796,6 +796,10 @@ function exprToString(e: Expr): string {
       return `(${exprToString(e.a)} ${e.op} ${exprToString(e.b)})`;
     case "cond":
       return `(${exprToString(e.test)} ? ${exprToString(e.t)} : ${exprToString(e.f)})`;
+    case "peek":
+      return e.offset === undefined
+        ? `peek(${e.bits})`
+        : `peek(${e.bits}, ${exprToString(e.offset)})`;
   }
 }
 

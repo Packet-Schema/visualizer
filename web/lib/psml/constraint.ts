@@ -49,6 +49,7 @@ function solveFor(
   }
   if (expr.kind === "lit") return null;
   if (expr.kind === "cond") return null;
+  if (expr.kind === "peek") return null;
   // expr.kind === 'op'
   const aHas = containsRef(expr.a, targetRef);
   const bHas = containsRef(expr.b, targetRef);
@@ -79,6 +80,9 @@ function containsRef(expr: Expr, target: string): boolean {
       containsRef(expr.t, target) ||
       containsRef(expr.f, target)
     );
+  if (expr.kind === "peek") {
+    return expr.offset !== undefined && containsRef(expr.offset, target);
+  }
   return containsRef(expr.a, target) || containsRef(expr.b, target);
 }
 

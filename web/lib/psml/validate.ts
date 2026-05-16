@@ -13,6 +13,7 @@ import type {
   Expr,
   Field,
   Group,
+  Optional,
   Packet,
   Repeat,
   Struct,
@@ -54,6 +55,19 @@ export function isValidExpr(expr: unknown): expr is Expr {
       const c = expr as { test?: unknown; t?: unknown; f?: unknown };
       return isValidExpr(c.test) && isValidExpr(c.t) && isValidExpr(c.f);
     }
+    case "peek": {
+      const p = expr as { bits?: unknown; offset?: unknown };
+      if (
+        typeof p.bits !== "number" ||
+        !Number.isInteger(p.bits) ||
+        p.bits < 1 ||
+        p.bits > 64
+      ) {
+        return false;
+      }
+      if (p.offset !== undefined && !isValidExpr(p.offset)) return false;
+      return true;
+    }
     default:
       return false;
   }
@@ -90,6 +104,8 @@ function validateType(type: Type, ctx: string): void {
       }
       return;
     }
+    case "berLength":
+      return;
     default: {
       const bad = (type as { kind: string }).kind;
       throw new Error(`${ctx}: unknown type kind "${bad}".`);
@@ -108,6 +124,25 @@ function validateField(field: Field, ctx: string): void {
     throw new Error(`${ctx}: field "${field.id}" is missing a type.`);
   }
   validateType(field.type, `${ctx}/${field.id}`);
+  if (field.byteOrder !== undefined && field.byteOrder !== "BE" && field.byteOrder !== "LE") {
+    throw new Error(
+      `${ctx}: field "${field.id}" byteOrder must be 'BE' or 'LE', got ${String(field.byteOrder)}.`,
+    );
+  }
+}
+
+function validateOptional(o: Optional, ctx: string): void {
+  const sub = `${ctx}/${o.id}`;
+  if (typeof o.id !== "string" || o.id.length === 0) {
+    throw new Error(`${ctx}: optional is missing an id.`);
+  }
+  if (!isValidExpr(o.when)) {
+    throw new Error(`${sub}: optional 'when' expression is malformed.`);
+  }
+  if (!o.field || typeof o.field !== "object") {
+    throw new Error(`${sub}: optional is missing inner field.`);
+  }
+  validateField(o.field, sub);
 }
 
 function validateGroup(g: Group, ctx: string): void {
@@ -188,6 +223,9 @@ function collectIdsFromContainer(c: Container, into: Set<string>): void {
     case "encrypted":
       collectFieldIds(c.plaintext, into);
       return;
+    case "optional":
+      into.add(c.field.id);
+      return;
   }
 }
 
@@ -242,6 +280,9 @@ function validateContainer(c: Container, ctx: string): void {
       return;
     case "encrypted":
       validateEncrypted(c, ctx);
+      return;
+    case "optional":
+      validateOptional(c, ctx);
       return;
     default: {
       const bad = (c as { kind: string }).kind;

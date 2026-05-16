@@ -82,6 +82,7 @@ function emitField(
       cell.encryptedContextNote = nf.encryptedContextNote;
     }
     if (nf.headerProtected) cell.headerProtected = true;
+    if (nf.byteOrder !== undefined) cell.byteOrder = nf.byteOrder;
     cells.push(cell);
     remaining -= take;
     bitPos += take;

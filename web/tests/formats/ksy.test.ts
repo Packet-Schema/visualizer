@@ -1187,6 +1187,41 @@ describe("toKsy — exporter", () => {
     expect(yamlParse(yaml).seq[0].size).toBe("(f ? 1 : 2)");
   });
 
+  it("bytes with peek size stringifies (with and without offset)", () => {
+    // No offset.
+    const yaml1 = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "data",
+          name: "Data",
+          type: {
+            kind: "bytes",
+            n: { kind: "peek", bits: 8 },
+          },
+        },
+      ],
+    });
+    expect(yamlParse(yaml1).seq[0].size).toBe("peek(8)");
+    // With an offset expression.
+    const yaml2 = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "data",
+          name: "Data",
+          type: {
+            kind: "bytes",
+            n: { kind: "peek", bits: 16, offset: { kind: "lit", value: 4 } },
+          },
+        },
+      ],
+    });
+    expect(yamlParse(yaml2).seq[0].size).toBe("peek(16, 4)");
+  });
+
   it("odd int widths fall back to b<bits> with a comment", () => {
     const yaml = toKsy({
       name: "T",

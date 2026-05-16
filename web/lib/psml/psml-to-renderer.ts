@@ -67,6 +67,8 @@ function typeBits(type: PsmlField["type"]): number {
       }
     case "varint":
       return 0;
+    case "berLength":
+      return 8;
   }
 }
 

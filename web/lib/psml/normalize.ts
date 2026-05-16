@@ -22,6 +22,7 @@ import type {
   Group,
   Normalized,
   NormalizedField,
+  Optional,
   Packet,
   PacketEnv,
   Repeat,
@@ -30,6 +31,11 @@ import type {
   Type,
   ViewMode,
 } from "./types";
+
+/** Env-key convention for BER length width override (in bits). */
+export function berLenEnvKey(fieldId: string): string {
+  return `__berLen__${fieldId}`;
+}
 
 function isField(c: Container): c is Field {
   // A Field has a `type` property; Repeat/Switch/Group/Encrypted all have a
@@ -61,6 +67,15 @@ export function typeBits(type: Type, env: PacketEnv, fieldId?: string): number {
       }
       return 0;
     }
+    case "berLength": {
+      // Dynamic width. Default = 8 bits (short form). Override via
+      // env key `__berLen__<fieldId>` for the long-form cases.
+      if (fieldId !== undefined) {
+        const v = env.get(berLenEnvKey(fieldId));
+        if (v !== undefined) return v;
+      }
+      return 8;
+    }
   }
 }
 
@@ -83,6 +98,12 @@ function seedDefaults(containers: Container[], env: PacketEnv): void {
       // semantic mode (when those fields are emitted) and in wire mode (when
       // wireBits is absent and we fall back to summing plaintext bits).
       seedDefaults(c.plaintext.fields, env);
+    } else if (c.kind === "optional") {
+      // Seed the inner field's default so subsequent expressions can see it
+      // (the field may still be skipped if `when` is falsy).
+      if (c.field.defaultValue !== undefined && !env.has(c.field.id)) {
+        env.set(c.field.id, c.field.defaultValue);
+      }
     }
     // Repeat/Switch: skipped intentionally; defaults inside them are seeded
     // when (and if) the element struct is expanded.
@@ -123,6 +144,7 @@ function emit(
     doc: field.doc,
     ...extra,
   };
+  if (field.byteOrder !== undefined) nf.byteOrder = field.byteOrder;
   // Apply Encrypted-parent tagging in semantic mode. We use the innermost
   // frame for parentId/contextNote (matches the nearest-encrypted ancestor),
   // but headerProtected matches if ANY ancestor lists the source field id.
@@ -163,7 +185,17 @@ function walkContainer(c: Container, path: string, state: WalkState): void {
       walkEncrypted(c, path, state);
       return;
     }
+    case "optional": {
+      walkOptional(c, path, state);
+      return;
+    }
   }
+}
+
+function walkOptional(o: Optional, path: string, state: WalkState): void {
+  const present = evalExpr(o.when, state.env);
+  if (present === 0) return;
+  emit(state, o.field, `${path}/${o.id}`);
 }
 
 function walkGroup(g: Group, path: string, state: WalkState): void {

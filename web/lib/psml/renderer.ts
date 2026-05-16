@@ -180,6 +180,13 @@ export type Cell = {
   encryptedParentId?: string;
   encryptedContextNote?: string;
   headerProtected?: boolean;
+  /**
+   * PSML 0.4 per-field endianness override. When present, this individual
+   * field renders with the given byte order regardless of the packet's
+   * default. Renderers may show an indicator (e.g. "LE") next to mixed-
+   * endian fields.
+   */
+  byteOrder?: "BE" | "LE";
 };
 
 export type ResolvedLayout = {

@@ -66,7 +66,15 @@ export type TypeVarint = {
 export const VARINT_ENCODINGS = ["quic", "protobuf", "cbor"] as const;
 export type VarintEncoding = (typeof VARINT_ENCODINGS)[number];
 
-export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum | TypeVarint;
+/**
+ * BER (ASN.1 X.690) length type. Width is dynamic — short form is one byte,
+ * long form prefixes the byte count. Like Varint, the on-wire bit count is
+ * not statically known; consumers may supply a concrete bit count via env
+ * keyed by `__berLen__<fieldId>`. Default is 8 bits (short form).
+ */
+export type TypeBerLength = { kind: "berLength" };
+
+export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum | TypeVarint | TypeBerLength;
 
 /* ------------------------------------------------------------------ *
  * Expressions
@@ -78,8 +86,15 @@ export type ExprLit = { kind: "lit"; value: number };
 export type ExprRef = { kind: "ref"; field: string };
 export type ExprOp = { kind: "op"; op: BinOp; a: Expr; b: Expr };
 export type ExprCond = { kind: "cond"; test: Expr; t: Expr; f: Expr };
+/**
+ * Peek `bits` bits from the unparsed payload at the given (byte) `offset`
+ * relative to the start of the current packet. Offline (design-time) eval
+ * reads the value from a synthetic env key
+ * `__peek__<offset>__<bits>` (offset defaults to 0); returns 0 when missing.
+ */
+export type ExprPeek = { kind: "peek"; bits: number; offset?: Expr };
 
-export type Expr = ExprLit | ExprRef | ExprOp | ExprCond;
+export type Expr = ExprLit | ExprRef | ExprOp | ExprCond | ExprPeek;
 
 /* ------------------------------------------------------------------ *
  * Schema nodes
@@ -95,6 +110,13 @@ export type Field = {
   category?: CategoryToken;
   /** Optional default value for normalization/UI; consumed by the resolver. */
   defaultValue?: number;
+  /**
+   * Per-field endianness override. When present, propagates onto the
+   * NormalizedField and the renderer Cell so individual fields in a
+   * mixed-endian packet can be displayed correctly. When absent the packet's
+   * `byteOrder` (or renderer default) applies.
+   */
+  byteOrder?: "BE" | "LE";
 };
 
 /** A named struct of ordered fields. */
@@ -165,8 +187,22 @@ export type Encrypted = {
   doc?: string;
 };
 
+/**
+ * Optional container — conditionally emit an inner Field based on the
+ * truthiness of `when` (evaluated against the current env). When `when`
+ * evaluates to 0 (falsy), nothing is emitted.
+ */
+export type Optional = {
+  kind: "optional";
+  id: string;
+  name?: string;
+  when: Expr;
+  field: Field;
+  doc?: string;
+};
+
 /** Any node that may appear in a Packet body or Struct field list. */
-export type Container = Field | Repeat | Switch | Group | Encrypted;
+export type Container = Field | Repeat | Switch | Group | Encrypted | Optional;
 
 /* ------------------------------------------------------------------ *
  * Constraints
@@ -241,6 +277,8 @@ export type NormalizedField = {
    * protection layer).
    */
   headerProtected?: boolean;
+  /** Per-field endianness override (propagated from Field.byteOrder). */
+  byteOrder?: "BE" | "LE";
 };
 
 export type Normalized = {
