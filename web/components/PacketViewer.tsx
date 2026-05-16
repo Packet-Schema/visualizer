@@ -25,6 +25,7 @@ import type {
   PacketRegistry,
   TlvInstance,
 } from "@/lib/psml/runtime-types";
+import type { ViewMode } from "@/lib/psml/types";
 import ControlsPanel from "./ControlsPanel";
 import DependencyOverlay from "./DependencyOverlay";
 import DetailPanel from "./DetailPanel";
@@ -70,6 +71,10 @@ export default function PacketViewer() {
   // this flag, the wide-viewport effect would keep clobbering their choice.
   const hexStripUserSetRef = useRef(false);
   const [dependenciesVisible, setDependenciesVisible] = useState(false);
+  // Wire vs. semantic ('Decrypted') view. Phase 2C will populate the runtime
+  // resolver with encrypted blocks; for now the toggle threads state through
+  // and HybridDiagram decorates any cell that already carries the flags.
+  const [viewMode, setViewMode] = useState<ViewMode>("wire");
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
@@ -232,8 +237,8 @@ export default function PacketViewer() {
   );
 
   const layout = useMemo(
-    () => resolvePacket(packet, controllers),
-    [packet, controllers],
+    () => resolvePacket(packet, controllers, { viewMode }),
+    [packet, controllers, viewMode],
   );
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
@@ -384,6 +389,19 @@ export default function PacketViewer() {
               }
             >
               Dependencies
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() =>
+                setViewMode((v) => (v === "semantic" ? "wire" : "semantic"))
+              }
+              pressed={viewMode === "semantic"}
+              ariaLabel={
+                viewMode === "semantic"
+                  ? "Switch to wire view (collapse encrypted payloads)"
+                  : "Switch to decrypted view (expand encrypted payloads)"
+              }
+            >
+              Decrypted view
             </ToolbarButton>
           </div>
           <div
