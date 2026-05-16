@@ -41,7 +41,6 @@ import Legend from "./Legend";
 import OnboardingTour, { hasSeenTour, type TourStep } from "./OnboardingTour";
 import PresetPicker from "./PresetPicker";
 import ThemeToggle from "./ThemeToggle";
-import WorksheetButton from "./WorksheetButton";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 
@@ -385,7 +384,6 @@ export default function PacketViewer() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <WorksheetButton packet={packet} controllers={controllers} />
             <ThemeToggle />
           </div>
         </div>
