@@ -7,16 +7,9 @@ Interactive packet diagrams for teaching and learning network protocols.
 Packet View renders the headers of common network protocols as live, clickable
 SVG diagrams. Pick a protocol from the picker, hover or click any field for an
 inline explanation, drag the variable-length sliders to see how IHL or Data
-Offset reshape the header, and export the result as JSON, RFC-style ASCII art,
-or a printable classroom worksheet. Everything runs in the browser from static
-files — no build step, no server-side code, no tracking.
-
-## For teachers
-
-- One-click **worksheet export**: opens a printable HTML page with the diagram
-  and a numbered fill-in table. Add `?answers=1` to the URL of the worksheet
-  tab to flip it into an answer key for grading.
-- Print CSS is tuned for A4 / Letter with `@page { margin: 1cm }`.
+Offset reshape the header, and export the result as JSON or RFC-style ASCII
+art. Everything runs in the browser from static files — no build step, no
+server-side code, no tracking.
 
 ## For learners
 

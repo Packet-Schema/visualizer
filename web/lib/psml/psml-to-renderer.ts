@@ -331,7 +331,7 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
 /* ------------------------------------------------------------------ *
  * renderer → PSML
  *
- * Used by ImportExportDrawer and WorksheetButton to round-trip a renderer
+ * Used by ImportExportDrawer to round-trip a renderer
  * packet back into a PSML Packet for the format hub. The mapping is faithful
  * but lossy: subfield Groups round-trip, TLV/chain catalogs round-trip as
  * Repeat<Switch>, plain fields round-trip as Field. Constraints and

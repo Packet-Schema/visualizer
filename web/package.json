@@ -13,9 +13,6 @@
     "test:format": "vitest run tests/formats"
   },
   "dependencies": {
-    "@myriaddreamin/typst-ts-renderer": "^0.7.0-rc2",
-    "@myriaddreamin/typst-ts-web-compiler": "^0.7.0-rc2",
-    "@myriaddreamin/typst.ts": "^0.7.0-rc2",
     "motion": "^12.38.0",
     "next": "^15.0.3",
     "react": "^19.0.0",
