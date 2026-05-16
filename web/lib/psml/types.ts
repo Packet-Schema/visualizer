@@ -47,7 +47,26 @@ export type TypeEnum = {
   variants: Record<number, string>;
 };
 
-export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum;
+/**
+ * Variable-length integer encoded per a well-known scheme.
+ *
+ * The on-wire bit width is not statically known — it is determined by reading
+ * a prefix from the value bytes (QUIC: 2-bit length prefix → 1/2/4/8 bytes;
+ * protobuf: continuation-bit per byte; CBOR: initial-byte additional-info).
+ * Layout consumers may supply a concrete bit count via an env override keyed
+ * by the field id, otherwise the field is treated as zero-width at design
+ * time.
+ */
+export type TypeVarint = {
+  kind: "varint";
+  encoding: "quic" | "protobuf" | "cbor";
+};
+
+/** The set of varint encodings PSML 0.3 supports. */
+export const VARINT_ENCODINGS = ["quic", "protobuf", "cbor"] as const;
+export type VarintEncoding = (typeof VARINT_ENCODINGS)[number];
+
+export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum | TypeVarint;
 
 /* ------------------------------------------------------------------ *
  * Expressions
@@ -117,8 +136,37 @@ export type Group = {
   children: Container[];
 };
 
+/**
+ * Encrypted container — an opaque blob on the wire whose internal structure
+ * is only knowable once decryption keys are applied (e.g. QUIC packet payload,
+ * TLS 1.3 handshake records).
+ *
+ * Normalize/layout produce one of two shapes depending on `viewMode`:
+ *   * `'wire'`     — emit a single virtual field of `wireBits` (or the sum of
+ *                    plaintext field bits) tagged `encrypted: true`.
+ *   * `'semantic'` — recurse into `plaintext.fields`; each emitted field
+ *                    carries `encryptedParentId` and the context note, and
+ *                    fields whose id is listed in `headerProtected` get
+ *                    `headerProtected: true`.
+ */
+export type Encrypted = {
+  kind: "encrypted";
+  id: string;
+  name?: string;
+  /** Substructure that exists when 'decrypted'. */
+  plaintext: Struct;
+  /** Bit width of the encrypted blob on the wire (when known). */
+  wireBits?: Expr;
+  /** Plain-English note about key/context (e.g. 'TLS 1.3 handshake keys'). */
+  contextNote: string;
+  /** Field ids INSIDE plaintext that are header-protected (XOR-encrypted in QUIC). */
+  headerProtected?: string[];
+  category?: CategoryToken;
+  doc?: string;
+};
+
 /** Any node that may appear in a Packet body or Struct field list. */
-export type Container = Field | Repeat | Switch | Group;
+export type Container = Field | Repeat | Switch | Group | Encrypted;
 
 /* ------------------------------------------------------------------ *
  * Constraints
@@ -174,6 +222,25 @@ export type NormalizedField = {
   repeatIndex?: number;
   /** When the producer is a Switch, the chosen case key. */
   switchCase?: string;
+  /**
+   * Wire-mode only: this is the virtual placeholder for an Encrypted blob.
+   * Renderer should display it as opaque.
+   */
+  encrypted?: boolean;
+  /**
+   * Semantic-mode only: id of the Encrypted container this plaintext field
+   * was emitted from. Renderer can decorate to indicate "this only exists
+   * after decryption".
+   */
+  encryptedParentId?: string;
+  /** Plain-English context note copied from the Encrypted container. */
+  encryptedContextNote?: string;
+  /**
+   * Semantic-mode only: true when this field is named in the parent
+   * Encrypted's `headerProtected` list (XOR-encrypted in QUIC's header
+   * protection layer).
+   */
+  headerProtected?: boolean;
 };
 
 export type Normalized = {
@@ -183,3 +250,13 @@ export type Normalized = {
 
 /** Runtime state — maps field id → current numeric value. */
 export type PacketEnv = Map<string, number>;
+
+/**
+ * View-mode toggle for normalize/layout.
+ *
+ *   * `'wire'`     — show the packet as it appears on the wire (encrypted
+ *                    blobs collapse to one opaque field).
+ *   * `'semantic'` — show plaintext structure (encrypted blobs expand;
+ *                    each interior field is tagged with its parent).
+ */
+export type ViewMode = "wire" | "semantic";

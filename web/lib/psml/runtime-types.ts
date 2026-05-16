@@ -171,6 +171,16 @@ export type Cell = {
   fieldStartOffset: number;
   fieldEndOffset: number;
   subCells?: SubCell[];
+  /**
+   * PSML 0.3 encryption-decoration flags, propagated from NormalizedField.
+   * Renderers may use these to display lock icons, dashed borders, or a
+   * tooltip with `encryptedContextNote`. All optional and ignored by code
+   * that predates PSML 0.3.
+   */
+  encrypted?: boolean;
+  encryptedParentId?: string;
+  encryptedContextNote?: string;
+  headerProtected?: boolean;
 };
 
 export type ResolvedLayout = {
