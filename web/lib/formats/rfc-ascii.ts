@@ -34,8 +34,13 @@ export function toAscii(packet: PsmlPacket, env?: PacketEnv): string {
   lines.push(separator(rowBits));
 
   for (const r of rowIndices) {
+    // The `?? []` and `length === 0` guards are defensive; rowIndices is
+    // populated from the same Map we read here, so every key always has a
+    // non-empty array. Keeping the guards for safety, ignored for coverage.
+    /* v8 ignore start */
     const row = (rowsMap.get(r) ?? []).slice().sort((a, b) => a.startBit - b.startBit);
     if (row.length === 0) continue;
+    /* v8 ignore stop */
     const expanded: RowCellLike[] = row.map((c) => ({
       startBit: c.startBit,
       endBit: c.endBit,
@@ -89,6 +94,10 @@ function fieldLine(cells: RowCellLike[], rowWidth: number): string {
     out += " ".repeat(left) + label + " ".repeat(right) + "|";
   }
   const expected = 1 + 2 * rowWidth;
+  // Defensive pad-out — cell widths sum to exactly `expected` so this branch
+  // is unreachable in normal renders. Ignored for coverage.
+  /* v8 ignore start */
   if (out.length < expected) out += " ".repeat(expected - out.length);
+  /* v8 ignore stop */
   return out;
 }
