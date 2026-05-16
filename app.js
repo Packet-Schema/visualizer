@@ -1269,11 +1269,6 @@ function getSubfieldCells(parentId) {
   );
 }
 
-function cssEscape(s) {
-  if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(s);
-  return String(s).replace(/[^a-zA-Z0-9_\-]/g, "\\$&");
-}
-
 function setRovingTabindex(group, focused) {
   for (const el of group) {
     el.setAttribute("tabindex", el === focused ? "0" : "-1");
