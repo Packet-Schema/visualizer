@@ -33,6 +33,7 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
 import type {
   Container,
+  Encrypted,
   Expr,
   Field,
   Packet,
@@ -705,6 +706,23 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       const first = c.cases[firstKey];
       return first.fields.flatMap((ch) => containerToKsy(ch, ctx));
     }
+    case "encrypted": {
+      // Kaitai has no encrypted concept. Emit a single byte placeholder so the
+      // .ksy still parses, and record a psml-only comment naming the context.
+      // The plaintext substructure is intentionally dropped — emitting it
+      // would imply the decrypted shape is also on-wire, which is misleading.
+      const e = c as Encrypted;
+      ctx.psmlOnly.push(
+        `encrypted block "${e.id}" (${e.contextNote}) skipped — Kaitai has no encrypted primitive`,
+      );
+      return [
+        {
+          id: toKsyId(e.id),
+          size: 0,
+          doc: `psml-only: encrypted block (${e.contextNote})`,
+        },
+      ];
+    }
     /* v8 ignore start */ // exhaustiveness guard: every Container kind is handled above
     default:
       return [];
@@ -745,6 +763,16 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
       ctx.psmlOnly.push(
         `Field "${f.id}" enum variants embedded as comment (not registered in enums:)`,
       );
+      break;
+    }
+    case "varint": {
+      // Kaitai has no varint primitive — fall back to a u1 placeholder and
+      // surface the encoding in the psml-only header so the reader knows
+      // they need to hand-roll a custom type.
+      ctx.psmlOnly.push(
+        `Field "${f.id}" varint (${f.type.encoding}) lowered to u1 placeholder`,
+      );
+      entry.type = "u1";
       break;
     }
   }

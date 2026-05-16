@@ -7,7 +7,7 @@ import { toAscii } from "../../lib/formats/rfc-ascii";
 import { initialEnv, normalize } from "../../lib/psml/normalize";
 import { GENERATED_PRESETS } from "../../lib/psml/presets.generated";
 import { MANUAL_PRESETS } from "../../lib/psml/presets";
-import type { Expr, Packet, PacketEnv } from "../../lib/psml/types";
+import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psml/types";
 
 const ALL_PRESETS: Record<string, Packet> = {
   ...MANUAL_PRESETS,
@@ -179,6 +179,195 @@ describe("toAscii — UDP layout (sanity)", () => {
     const lines = text.split("\n");
     // 3 header lines + 2 field lines + 2 separators = 7 lines (each row = 2)
     expect(lines.length).toBe(3 + 4);
+  });
+});
+
+describe("toAscii — PSML 0.3 Encrypted container", () => {
+  const enc: Encrypted = {
+    kind: "encrypted",
+    id: "enc",
+    name: "Protected Payload",
+    plaintext: {
+      id: "p",
+      fields: [
+        { id: "pn", name: "Packet Number", type: { kind: "bits", n: 32 } },
+        { id: "body", name: "Body", type: { kind: "bits", n: 32 } },
+      ],
+    },
+    wireBits: { kind: "lit", value: 64 },
+    contextNote: "TLS 1.3 keys",
+    headerProtected: ["pn"],
+  };
+  const pkt: Packet = { name: "Q", rowBits: 32, body: [enc] };
+
+  it("wire mode (default): renders a single ~Encrypted Payload~ row of wireBits width", () => {
+    const text = toAscii(pkt);
+    // The cell name should be the dedicated marker, NOT the user-set name.
+    expect(text).toContain("~Encrypte");
+    expect(text).not.toContain("Protected Payload");
+    // The plaintext field labels must not appear in wire mode.
+    expect(text).not.toContain("Packet Number");
+    // No `>>>` indent in wire mode.
+    expect(text).not.toMatch(/^>>> /m);
+  });
+
+  it("semantic mode: expands plaintext fields and prefixes them with >>>", () => {
+    const text = toAscii(pkt, undefined, { viewMode: "semantic" });
+    expect(text).toContain("Packet Number");
+    expect(text).toContain("Body");
+    // Each plaintext row should be indented with the semantic marker.
+    const lines = text.split("\n");
+    const fieldLines = lines.filter((l) => l.includes("|"));
+    expect(fieldLines.some((l) => l.startsWith(">>> "))).toBe(true);
+    // Wire-mode marker is NOT present in semantic.
+    expect(text).not.toContain("~Encrypte");
+  });
+
+  it("wire-mode and semantic-mode outputs differ for a packet with an encrypted block", () => {
+    const wire = toAscii(pkt);
+    const semantic = toAscii(pkt, undefined, { viewMode: "semantic" });
+    expect(wire).not.toBe(semantic);
+  });
+
+  it("wireBits absent: falls back to summing plaintext bits", () => {
+    const enc2: Encrypted = { ...enc, wireBits: undefined };
+    const pkt2: Packet = { name: "Q2", rowBits: 32, body: [enc2] };
+    const text = toAscii(pkt2);
+    // 32 + 32 = 64 bits → 2 rows. Header is 3 lines; each row adds 2 lines.
+    expect(text.split("\n").length).toBe(3 + 4);
+  });
+});
+
+describe("toAscii — PSML 0.3 Varint type", () => {
+  it("auto-seeds worst-case width (64 bits for QUIC) when env omits it", () => {
+    const pkt: Packet = {
+      name: "V",
+      rowBits: 32,
+      body: [
+        { id: "vlen", name: "VLen", type: { kind: "varint", encoding: "quic" } },
+      ],
+    };
+    const text = toAscii(pkt);
+    // 64 bits → 2 full 32-bit rows. Header trio + 4 lines for two rows.
+    const lines = text.split("\n");
+    expect(lines.length).toBe(3 + 4);
+    // The field name should be annotated with the (varint) marker.
+    expect(text).toContain("varint");
+  });
+
+  it("worst-case widths differ by encoding: protobuf=80, cbor=72, quic=64", () => {
+    const pkt = (encoding: "quic" | "protobuf" | "cbor"): Packet => ({
+      name: "V",
+      rowBits: 8,
+      body: [{ id: "v", name: "V", type: { kind: "varint", encoding } }],
+    });
+    // Each row covers 8 bits → row count = bits / 8.
+    const rowsOf = (text: string) =>
+      text.split("\n").slice(3).filter((_, i) => i % 2 === 0).length;
+    expect(rowsOf(toAscii(pkt("quic")))).toBe(64 / 8);
+    expect(rowsOf(toAscii(pkt("protobuf")))).toBe(80 / 8);
+    expect(rowsOf(toAscii(pkt("cbor")))).toBe(72 / 8);
+  });
+
+  it("env override wins over worst-case fallback", () => {
+    const pkt: Packet = {
+      name: "V",
+      rowBits: 8,
+      body: [{ id: "v", name: "V", type: { kind: "varint", encoding: "quic" } }],
+    };
+    const env: PacketEnv = new Map([["v", 16]]);
+    const text = toAscii(pkt, env);
+    // 16 bits → 2 rows.
+    const rows = text.split("\n").slice(3).filter((_, i) => i % 2 === 0).length;
+    expect(rows).toBe(2);
+  });
+
+  it("finds varints reachable via Group/Repeat/Switch/Encrypted in collectVarintIds", () => {
+    // Build a packet where a varint hides under each container kind so the
+    // recursive collector + encoding lookup exercise every branch.
+    const pkt: Packet = {
+      name: "DeepV",
+      rowBits: 8,
+      body: [
+        {
+          kind: "group",
+          id: "g",
+          children: [
+            { id: "vg", name: "VG", type: { kind: "varint", encoding: "quic" } },
+          ],
+        },
+        {
+          kind: "repeat",
+          id: "rep",
+          element: {
+            id: "elem",
+            fields: [
+              { id: "vr", name: "VR", type: { kind: "varint", encoding: "protobuf" } },
+            ],
+          },
+          count: { kind: "lit", value: 0 },
+        },
+        {
+          kind: "switch",
+          id: "sw",
+          on: { kind: "lit", value: 1 },
+          cases: {
+            "1": {
+              id: "s1",
+              fields: [
+                { id: "vs", name: "VS", type: { kind: "varint", encoding: "cbor" } },
+              ],
+            },
+          },
+          default: {
+            id: "sd",
+            fields: [
+              { id: "vd", name: "VD", type: { kind: "varint", encoding: "quic" } },
+            ],
+          },
+        },
+        {
+          kind: "encrypted",
+          id: "enc",
+          plaintext: {
+            id: "ep",
+            fields: [
+              { id: "ve", name: "VE", type: { kind: "varint", encoding: "quic" } },
+            ],
+          },
+          contextNote: "k",
+        },
+      ],
+    };
+    // Should not throw and should render varint labels.
+    const text = toAscii(pkt);
+    expect(text).toContain("varint");
+  });
+
+  it("collectVarintIds traverses Switch.default branch when no cases match", () => {
+    // Empty cases map; default branch must still be walked.
+    const pkt: Packet = {
+      name: "SD",
+      rowBits: 8,
+      body: [
+        {
+          kind: "switch",
+          id: "sw",
+          on: { kind: "lit", value: 1 },
+          cases: {},
+          default: {
+            id: "sd",
+            fields: [
+              { id: "vd", name: "VD", type: { kind: "varint", encoding: "quic" } },
+            ],
+          },
+        },
+      ],
+    };
+    // No throw; render produces a varint cell.
+    const env: PacketEnv = new Map([["vd", 8]]);
+    const text = toAscii(pkt, env);
+    expect(text).toContain("varint");
   });
 });
 

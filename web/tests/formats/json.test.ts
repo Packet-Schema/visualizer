@@ -182,6 +182,114 @@ describe("fromJson — edge cases", () => {
   });
 });
 
+describe("toJson / fromJson — PSML 0.3 Varint Type", () => {
+  it("round-trips a varint-typed field with all three encodings", () => {
+    for (const encoding of ["quic", "protobuf", "cbor"] as const) {
+      const pkt: Packet = {
+        name: "VarintPkt",
+        rowBits: 32,
+        body: [
+          { id: "len", name: "Length", type: { kind: "varint", encoding } },
+        ],
+      };
+      const text = toJson(pkt);
+      const { packet: re } = fromJson(text);
+      // Pass-through preserves the type exactly.
+      const f = re.body[0] as { type: { kind: string; encoding: string } };
+      expect(f.type.kind).toBe("varint");
+      expect(f.type.encoding).toBe(encoding);
+    }
+  });
+});
+
+describe("toJson / fromJson — PSML 0.3 Encrypted Container", () => {
+  it("round-trips an encrypted container with plaintext Struct, wireBits, headerProtected, contextNote", () => {
+    const pkt: Packet = {
+      name: "QuicShort",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "payload",
+          name: "Protected Payload",
+          plaintext: {
+            id: "plain",
+            fields: [
+              { id: "pn", name: "Packet Number", type: { kind: "bits", n: 32 } },
+              { id: "frame_type", name: "Frame Type", type: { kind: "bits", n: 8 } },
+            ],
+          },
+          wireBits: { kind: "lit", value: 128 },
+          contextNote: "TLS 1.3 handshake keys",
+          headerProtected: ["pn"],
+        },
+      ],
+    };
+    const text = toJson(pkt);
+    const { packet: re } = fromJson(text);
+    const enc = re.body[0] as Record<string, unknown> & {
+      plaintext: { fields: Array<{ id: string }> };
+    };
+    expect(enc.kind).toBe("encrypted");
+    expect(enc.id).toBe("payload");
+    expect(enc.name).toBe("Protected Payload");
+    expect(enc.contextNote).toBe("TLS 1.3 handshake keys");
+    expect(enc.headerProtected).toEqual(["pn"]);
+    expect(enc.wireBits).toEqual({ kind: "lit", value: 128 });
+    expect(enc.plaintext.fields.map((f) => f.id)).toEqual(["pn", "frame_type"]);
+  });
+
+  it("round-trips an encrypted container without optional wireBits/headerProtected", () => {
+    const pkt: Packet = {
+      name: "MinimalEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "blob",
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+          contextNote: "external key",
+        },
+      ],
+    };
+    const text1 = toJson(pkt);
+    const { packet: re } = fromJson(text1);
+    const text2 = toJson(re);
+    expect(text2).toBe(text1);
+  });
+
+  it("nested Encrypted (inside a Group) round-trips its full tree", () => {
+    const pkt: Packet = {
+      name: "Nested",
+      rowBits: 32,
+      body: [
+        {
+          kind: "group",
+          id: "outer",
+          children: [
+            { id: "hdr", name: "Header", type: { kind: "bits", n: 8 } },
+            {
+              kind: "encrypted",
+              id: "body",
+              plaintext: {
+                id: "p",
+                fields: [{ id: "secret", name: "Secret", type: { kind: "bits", n: 64 } }],
+              },
+              contextNote: "session key",
+            },
+          ],
+        },
+      ],
+    };
+    const text1 = toJson(pkt);
+    const text2 = toJson(fromJson(text1).packet);
+    expect(text2).toBe(text1);
+  });
+});
+
 describe("fromJson — error paths", () => {
   it("throws on invalid JSON", () => {
     expect(() => fromJson("{not-json")).toThrow(/Invalid JSON/);
