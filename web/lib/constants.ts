@@ -33,8 +33,11 @@ export const DEFAULT_BYTE_ORDER =
 export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [
   { label: "Layer 2 — Link", keys: ["ethernet", "vlan", "arp"] },
   { label: "Layer 3 — Network", keys: ["ipv4", "ipv6", "icmp", "icmpv6"] },
-  { label: "Layer 4 — Transport", keys: ["tcp", "udp", "quicShort"] },
-  { label: "Layer 7 — Application", keys: ["dns", "tlsRecord", "tlsClientHello"] },
+  { label: "Layer 4 — Transport", keys: ["tcp", "udp", "quicShort", "quicLong"] },
+  {
+    label: "Layer 7 — Application",
+    keys: ["dns", "tlsRecord", "tlsClientHello", "tlsClientHelloFull"],
+  },
 ];
 
 export const THEME_STORAGE_KEY = "packet-view-theme";
