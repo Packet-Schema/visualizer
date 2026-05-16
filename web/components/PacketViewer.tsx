@@ -27,8 +27,9 @@ import type {
 } from "@/lib/types";
 import ControlsPanel from "./ControlsPanel";
 import DetailPanel from "./DetailPanel";
-import DiagramSvg from "./DiagramSvg";
+import DiagramRuler from "./DiagramRuler";
 import FieldPopover from "./FieldPopover";
+import HybridDiagram from "./HybridDiagram";
 import ImportExportDrawer, {
   type DrawerMode,
 } from "./ImportExportDrawer";
@@ -99,19 +100,13 @@ export default function PacketViewer() {
     setControllers((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  // Everything in the hybrid renderer is an HTMLElement, so anchorRect is a
+  // straight getBoundingClientRect() — no SVG branching required.
   const handleFieldClick = useCallback(
-    (fieldId: string, elem?: Element | null) => {
+    (fieldId: string, elem: HTMLElement | null) => {
       setSelectedFieldId(fieldId);
-      if (isWideViewport && elem && elem instanceof HTMLElement) {
+      if (isWideViewport && elem) {
         setPopoverAnchor(elem.getBoundingClientRect());
-      } else if (isWideViewport && elem) {
-        // SVG <g> elements expose getBoundingClientRect via SVGGraphicsElement.
-        const anyElem = elem as unknown as { getBoundingClientRect?: () => DOMRect };
-        if (typeof anyElem.getBoundingClientRect === "function") {
-          setPopoverAnchor(anyElem.getBoundingClientRect());
-        } else {
-          setPopoverAnchor(null);
-        }
       } else {
         setPopoverAnchor(null);
       }
@@ -169,14 +164,14 @@ export default function PacketViewer() {
         title: "The bit ruler",
         body:
           "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
-        target: () => diagramRef.current?.querySelector("svg") ?? null,
+        target: () => diagramRef.current?.querySelector(".diagram-ruler") ?? null,
         placement: "bottom",
       },
       {
         title: "Click any field",
         body:
           "Cells are interactive. Click one to see its size, category, and full description in the field detail panel.",
-        target: () => diagramRef.current?.querySelector("rect") ?? null,
+        target: () => diagramRef.current?.querySelector(".field-cell") ?? null,
         placement: "bottom",
       },
       {
@@ -217,9 +212,10 @@ export default function PacketViewer() {
       const isSubfieldCell = target.classList.contains("subfield-cell");
       if (!isFieldCell && !isSubfieldCell) return;
 
+      // All cells are HTMLElements in the hybrid renderer.
       const cells = Array.from(
-        root.querySelectorAll<SVGGElement>(
-          isSubfieldCell ? "g.subfield-cell" : "g.field-cell",
+        root.querySelectorAll<HTMLElement>(
+          isSubfieldCell ? ".subfield-cell" : ".field-cell",
         ),
       );
       // Subfields navigate within their parent only.
@@ -231,10 +227,10 @@ export default function PacketViewer() {
           )
         : cells;
 
-      const idx = group.indexOf(target as SVGGElement);
+      const idx = group.indexOf(target as HTMLElement);
       if (idx === -1) return;
 
-      let next: SVGGElement | null = null;
+      let next: HTMLElement | null = null;
       switch (e.key) {
         case "ArrowRight":
           next = group[Math.min(group.length - 1, idx + 1)] ?? null;
@@ -245,12 +241,12 @@ export default function PacketViewer() {
         case "ArrowDown":
           next = isSubfieldCell
             ? null
-            : findRowNeighbor(group, target as SVGGElement, +1);
+            : findRowNeighbor(group, target as HTMLElement, +1);
           break;
         case "ArrowUp":
           next = isSubfieldCell
             ? null
-            : findRowNeighbor(group, target as SVGGElement, -1);
+            : findRowNeighbor(group, target as HTMLElement, -1);
           break;
         case "Home":
           next = group[0] ?? null;
@@ -358,7 +354,7 @@ export default function PacketViewer() {
           <div
             id="diagram"
             ref={diagramRef}
-            className="rounded-[10px] border p-3.5 overflow-x-auto"
+            className="diagram-shell rounded-[10px] border p-3.5 overflow-x-auto"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
@@ -366,23 +362,15 @@ export default function PacketViewer() {
             }}
             onKeyDown={handleDiagramKeyDown}
           >
-            <DiagramSvg
+            <DiagramRuler rowBits={packet.rowBits} />
+            <HybridDiagram
               packet={packet}
               layout={layout}
               selectedFieldId={selectedFieldId}
-              onFieldClick={(field) => {
-                const elem = diagramRef.current?.querySelector(
-                  `g.field-cell[data-field-id="${cssEscape(field.id)}"]`,
-                );
-                handleFieldClick(field.id, elem);
-              }}
-              onSubfieldClick={(parentField, subfield) => {
-                const id = `${parentField.id}:${subfield.id}`;
-                const elem = diagramRef.current?.querySelector(
-                  `g.subfield-cell[data-field-id="${cssEscape(id)}"]`,
-                );
-                handleFieldClick(id, elem);
-              }}
+              onFieldClick={(field, elem) => handleFieldClick(field.id, elem)}
+              onSubfieldClick={(parentField, subfield, elem) =>
+                handleFieldClick(`${parentField.id}:${subfield.id}`, elem)
+              }
             />
           </div>
           <Legend categories={categories} />
@@ -469,10 +457,10 @@ export default function PacketViewer() {
 // findRowNeighbor: prefer a cell on the adjacent row whose bit range overlaps
 // the currently focused cell, falling back to direct list neighbors.
 function findRowNeighbor(
-  cells: SVGGElement[],
-  current: SVGGElement,
+  cells: HTMLElement[],
+  current: HTMLElement,
   direction: number,
-): SVGGElement | null {
+): HTMLElement | null {
   const curRow = Number(current.dataset.row);
   if (Number.isNaN(curRow)) {
     const idx = cells.indexOf(current);
@@ -489,14 +477,6 @@ function findRowNeighbor(
     return !(en < curStart || s > curEnd);
   });
   return overlap ?? sameRow[0] ?? null;
-}
-
-// Minimal CSS.escape() polyfill for attribute selector building.
-function cssEscape(s: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(s);
-  }
-  return s.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
 }
 
 function ToolbarButton({

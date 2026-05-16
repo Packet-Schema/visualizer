@@ -94,6 +94,34 @@ export default function FieldPopover({
     };
   }, [onDismiss]);
 
+  // Spring entry via Motion One. Lazy-import so SSR + bundle stay small.
+  // Respects prefers-reduced-motion.
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { animate } = await import("motion");
+        if (cancelled || !ref.current) return;
+        animate(
+          ref.current,
+          { opacity: [0, 1], scale: [0.96, 1] },
+          { duration: 0.22, ease: [0.32, 0.72, 0, 1] },
+        );
+      } catch {
+        // ignore — popover is still visible without the bounce
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const resolved = resolve(packet, controllers, selectedFieldId);
   if (!resolved) return null;
 

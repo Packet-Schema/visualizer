@@ -209,16 +209,54 @@ export default function ImportExportDrawer({
     }
   }, [text]);
 
+  // Spring-slide the drawer + fade the backdrop on open via Motion One.
+  // Lazy-imported so SSR stays untouched. We respect prefers-reduced-motion.
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { animate } = await import("motion");
+        if (cancelled) return;
+        if (drawerRef.current) {
+          animate(
+            drawerRef.current,
+            { x: [20, 0], opacity: [0, 1] },
+            { duration: 0.24, ease: [0.32, 0.72, 0, 1] },
+          );
+        }
+        if (backdropRef.current) {
+          animate(
+            backdropRef.current,
+            { opacity: [0, 1] },
+            { duration: 0.18, ease: "easeOut" },
+          );
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <div
+      ref={backdropRef}
       role="presentation"
       className="fixed inset-0 z-[100] flex"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      style={{ background: "rgba(15, 18, 32, 0.45)" }}
+      style={{ background: "oklch(18% 0.03 270 / 0.45)" }}
     >
       <div className="flex-1" aria-hidden="true" />
       {/* Width: full-width below 900px, 40% at >= 900px (per spec). */}
