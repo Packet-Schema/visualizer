@@ -40,9 +40,14 @@ const themeBootstrap = `
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
+    // `suppressHydrationWarning` only suppresses the immediate-children attr
+    // diff — the pre-paint script writes `data-theme` before React hydrates,
+    // so the server-rendered html element legitimately differs from the
+    // post-script DOM. React's docs sanction this exact pattern.
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
