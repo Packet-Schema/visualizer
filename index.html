@@ -57,6 +57,8 @@
     <section class="toolbar" aria-label="Packet selector">
       <label for="packet-selector">Packet:</label>
       <select id="packet-selector"></select>
+      <input type="search" id="packet-filter" class="packet-filter"
+             placeholder="Filter presets..." aria-label="Filter presets by name">
       <button type="button" id="btn-import" class="tb-btn">Import</button>
       <button type="button" id="btn-export" class="tb-btn">Export</button>
       <span id="summary" class="summary" aria-live="polite"></span>
@@ -96,7 +98,11 @@
             <option value="json">JSON (round-trip)</option>
             <option value="rfc-ascii">RFC ASCII art (export)</option>
             <option value="aug-ascii">Augmented ASCII (import)</option>
+            <option value="worksheet">Worksheet (printable, export)</option>
           </select>
+          <label for="modal-worksheet-answers" class="worksheet-only" hidden>
+            <input type="checkbox" id="modal-worksheet-answers"> Include answers
+          </label>
         </div>
         <textarea id="modal-text" spellcheck="false" placeholder="Paste input here, or click Generate to populate from the active packet."></textarea>
         <div id="modal-status" class="modal-status"></div>
