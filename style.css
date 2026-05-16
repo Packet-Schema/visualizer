@@ -800,6 +800,145 @@ footer {
   border-color: #2a3260;
 }
 
+/* ---- TLV editor (recursive sub-records inside Options) ---- */
+
+.control-locked input { opacity: 0.6; cursor: not-allowed; }
+.control-locked-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+.tlv-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.tlv-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: var(--bg-subtle);
+}
+
+.tlv-row-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 120, 255, 0.18);
+}
+
+.tlv-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.tlv-kind-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.tlv-row-name { font-weight: 600; }
+
+.tlv-row-bits {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.tlv-row-extras {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.tlv-row-extras input {
+  width: 60px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-family: var(--font-mono);
+}
+
+.tlv-row-desc {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.tlv-row button {
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tlv-row button:hover:not([disabled]) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tlv-row button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tlv-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 6px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.tlv-add-row select {
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.tlv-add-row button {
+  padding: 4px 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.tlv-add-row button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tlv-summary {
+  margin: 6px 0 0;
+}
+
 /* ---- RFC links inside the detail panel description ---- */
 .rfc-link {
   color: var(--accent);

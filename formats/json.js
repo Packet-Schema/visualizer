@@ -120,7 +120,64 @@ function serializeField(field) {
     if (field.min !== undefined) out.min = field.min;
     if (field.max !== undefined) out.max = field.max;
   }
+  if (field.subfields && field.subfields.length > 0) {
+    out.subfields = field.subfields.map((sf) => ({
+      id: sf.id,
+      name: sf.name,
+      bits: sf.bits,
+      ...(sf.description ? { description: sf.description } : {}),
+    }));
+  }
+  if (field.tlv) {
+    out.tlv = serializeTlv(field.tlv);
+  }
+  if (field.chainCatalog) {
+    out.chainCatalog = field.chainCatalog.map((c) => ({
+      proto: c.proto,
+      name: c.name,
+      ...(c.description ? { description: c.description } : {}),
+      fields: c.fields.map((f) => ({ id: f.id, name: f.name, bits: f.bits })),
+    }));
+    out.chainInstances = (field.chainInstances || []).map((inst) => ({ proto: inst.proto }));
+    if (typeof field.chainFinalProto === "number") {
+      out.chainFinalProto = field.chainFinalProto;
+    }
+  }
   return out;
+}
+
+// Serialise a TLV descriptor. Catalog entries are serialised statically using
+// a snapshot of their default fields (we don't transport the dynamic
+// fieldsFor() closure — instead we record `variableCount` so a deserialiser
+// can re-render at a different count). Instances carry their kind + extras.
+function serializeTlv(tlv) {
+  return {
+    catalog: tlv.catalog.map((c) => {
+      const out = {
+        kind: c.kind,
+        name: c.name,
+        ...(c.description ? { description: c.description } : {}),
+      };
+      const sampleExtras = c.defaultExtras || {};
+      const fields = typeof c.fieldsFor === "function"
+        ? c.fieldsFor(sampleExtras)
+        : c.fields;
+      out.fields = (fields || []).map((f) => ({
+        id: f.id, name: f.name, bits: f.bits,
+      }));
+      if (c.defaultExtras) out.defaultExtras = { ...c.defaultExtras };
+      if (c.variableCount) out.variableCount = { ...c.variableCount };
+      return out;
+    }),
+    instances: (tlv.instances || []).map((inst) => ({
+      kind: inst.kind,
+      ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+    })),
+    ...(tlv.padToBoundary ? { padToBoundary: tlv.padToBoundary } : {}),
+    ...(tlv.drivesController ? { drivesController: tlv.drivesController } : {}),
+    ...(tlv.bytesPerUnit ? { bytesPerUnit: tlv.bytesPerUnit } : {}),
+    ...(tlv.baseControllerValue !== undefined ? { baseControllerValue: tlv.baseControllerValue } : {}),
+  };
 }
 
 function deserializeField(raw) {
@@ -153,7 +210,79 @@ function deserializeField(raw) {
     if (raw.min !== undefined) f.min = Number(raw.min);
     if (raw.max !== undefined) f.max = Number(raw.max);
   }
+  if (Array.isArray(raw.subfields)) {
+    f.subfields = raw.subfields.map((sf) => ({
+      id: String(sf.id),
+      name: String(sf.name),
+      bits: Number(sf.bits),
+      ...(sf.description ? { description: String(sf.description) } : {}),
+    }));
+  }
+  if (raw.tlv && typeof raw.tlv === "object") {
+    f.tlv = deserializeTlv(raw.tlv);
+  }
+  if (Array.isArray(raw.chainCatalog)) {
+    f.chainCatalog = raw.chainCatalog.map((c) => ({
+      proto: Number(c.proto),
+      name: String(c.name || `proto ${c.proto}`),
+      ...(c.description ? { description: String(c.description) } : {}),
+      fields: (c.fields || []).map((cf) => ({
+        id: String(cf.id), name: String(cf.name), bits: Number(cf.bits),
+      })),
+    }));
+    f.chainInstances = Array.isArray(raw.chainInstances)
+      ? raw.chainInstances.map((inst) => ({ proto: Number(inst.proto) }))
+      : [];
+    if (typeof raw.chainFinalProto === "number") {
+      f.chainFinalProto = raw.chainFinalProto;
+    }
+  }
   return f;
+}
+
+function deserializeTlv(raw) {
+  const catalog = (raw.catalog || []).map((c) => {
+    const entry = {
+      kind: Number(c.kind),
+      name: String(c.name || `kind ${c.kind}`),
+      ...(c.description ? { description: String(c.description) } : {}),
+      fields: (c.fields || []).map((cf) => ({
+        id: String(cf.id), name: String(cf.name), bits: Number(cf.bits),
+      })),
+    };
+    if (c.defaultExtras) entry.defaultExtras = { ...c.defaultExtras };
+    if (c.variableCount) {
+      entry.variableCount = { ...c.variableCount };
+      // Rebuild a fieldsFor() that scales the named slot field count linearly.
+      // It mimics the runtime catalog entries: [type, length, pointer, ...N slots].
+      // Heuristic: any field id matching /^addr\d+$|^ts\d+$|^slot\d+$/ in the
+      // baseline is treated as the per-slot template; we reproduce it N times.
+      const baseline = entry.fields;
+      const baseCount = c.defaultExtras?.count ?? 1;
+      const fixedPrefix = baseline.slice(0, baseline.length - baseCount);
+      const template = baseline[baseline.length - 1] || { id: "slot", name: "Slot", bits: 32 };
+      entry.fieldsFor = ({ count }) => [
+        ...fixedPrefix.map((f) => ({ ...f })),
+        ...Array.from({ length: count }, (_, i) => ({
+          id: template.id.replace(/\d+$/, "") + i,
+          name: template.name.replace(/\d+/, String(i + 1)),
+          bits: template.bits,
+        })),
+      ];
+    }
+    return entry;
+  });
+  return {
+    catalog,
+    instances: (raw.instances || []).map((inst) => ({
+      kind: Number(inst.kind),
+      ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+    })),
+    ...(raw.padToBoundary ? { padToBoundary: Number(raw.padToBoundary) } : {}),
+    ...(raw.drivesController ? { drivesController: String(raw.drivesController) } : {}),
+    ...(raw.bytesPerUnit ? { bytesPerUnit: Number(raw.bytesPerUnit) } : {}),
+    ...(raw.baseControllerValue !== undefined ? { baseControllerValue: Number(raw.baseControllerValue) } : {}),
+  };
 }
 
 // Try to infer linear (scale, offset, min) from a runtime toBits().
