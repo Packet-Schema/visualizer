@@ -1,0 +1,285 @@
+"use client";
+
+import type { CSSProperties } from "react";
+
+import type { Cell, Field, Packet, ResolvedLayout, SubCell, SubField } from "@/lib/types";
+import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
+
+type Props = {
+  packet: Packet;
+  layout: ResolvedLayout;
+  selectedFieldId: string | null;
+  onFieldClick: (field: Field, element: HTMLElement) => void;
+  onSubfieldClick: (
+    parentField: Field,
+    subfield: SubField,
+    element: HTMLElement,
+  ) => void;
+};
+
+function resolveFieldColor(field: Field): string {
+  if (field.category && CATEGORY_TO_TOKEN[field.category]) {
+    return tokenToCssVar(CATEGORY_TO_TOKEN[field.category]);
+  }
+  return tokenToCssVar(field.color);
+}
+
+function formatBitsLabel(bits: number, field: Field): string {
+  if (field.variable) return `${bits} bits (var)`;
+  const bytes = bits / 8;
+  return Number.isInteger(bytes)
+    ? `${bits} bits / ${bytes}B`
+    : `${bits} bits`;
+}
+
+/**
+ * HybridDiagram replaces the SVG renderer with an HTML CSS Grid that produces
+ * one row per layout row. Each row owns its own `<div role="row">` with the
+ * grid template `repeat(rowBits, 1fr)`. Cells use `grid-column: span K` which
+ * makes width transitions (IHL slider drag etc.) animate cleanly without
+ * re-render churn.
+ *
+ * Subfield cells nest inside their parent cell using a child grid whose
+ * column count matches the parent's bit span.
+ */
+export default function HybridDiagram({
+  packet,
+  layout,
+  selectedFieldId,
+  onFieldClick,
+  onSubfieldClick,
+}: Props) {
+  const rowBits = packet.rowBits;
+  const rowsTotal = layout.cells.length
+    ? Math.max(...layout.cells.map((c) => c.row)) + 1
+    : 0;
+
+  // Group cells by row for clean grid wrapping.
+  const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
+  for (const cell of layout.cells) rows[cell.row].push(cell);
+
+  const rowStyle: CSSProperties = {
+    gridTemplateColumns: `repeat(${rowBits}, minmax(0, 1fr))`,
+  };
+
+  // Roving tabindex bookkeeping: only the first cell gets tabindex=0 at
+  // mount. PacketViewer's keyboard handler rotates it as focus moves.
+  let cellGlobalIndex = 0;
+
+  return (
+    <div
+      role="grid"
+      aria-label={`${packet.name} diagram`}
+      aria-rowcount={rowsTotal}
+      aria-colcount={rowBits}
+      className="hybrid-diagram"
+    >
+      {rows.map((rowCells, rowIdx) => (
+        <div
+          key={`row-${rowIdx}`}
+          role="row"
+          aria-rowindex={rowIdx + 1}
+          className={`hybrid-row${rowIdx % 2 === 0 ? " hybrid-row-even" : " hybrid-row-odd"}`}
+          style={rowStyle}
+        >
+          {rowCells.map((cell) => {
+            const tabIndex = cellGlobalIndex === 0 ? 0 : -1;
+            cellGlobalIndex += 1;
+            return (
+              <FieldCell
+                key={`cell-${cell.field.id}-${cell.segmentIndex}`}
+                cell={cell}
+                selectedFieldId={selectedFieldId}
+                onFieldClick={onFieldClick}
+                onSubfieldClick={onSubfieldClick}
+                tabIndex={tabIndex}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type FieldCellProps = {
+  cell: Cell;
+  selectedFieldId: string | null;
+  onFieldClick: (field: Field, element: HTMLElement) => void;
+  onSubfieldClick: (
+    parentField: Field,
+    subfield: SubField,
+    element: HTMLElement,
+  ) => void;
+  tabIndex: number;
+};
+
+function FieldCell({
+  cell,
+  selectedFieldId,
+  onFieldClick,
+  onSubfieldClick,
+  tabIndex,
+}: FieldCellProps) {
+  const isSelected = cell.field.id === selectedFieldId;
+  const span = cell.endBit - cell.startBit + 1;
+  const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
+  const variableNote = cell.field.variable ? ", variable-length" : "";
+  const fill = resolveFieldColor(cell.field);
+
+  // CSS custom properties drive the cell's column span (animatable) and
+  // category fill color. The span class also hands `--cell-span` to CSS in
+  // case a downstream rule needs it.
+  const style: CSSProperties = {
+    gridColumn: `span ${span}`,
+    ["--cell-fill" as string]: fill,
+    ["--cell-span" as string]: String(span),
+  };
+
+  const className = [
+    "cell field-cell",
+    isSelected ? "selected" : "",
+    cell.field.variable ? "variable" : "",
+    cell.isFirst ? "" : "continuation",
+    hasSubfields ? "has-subfields" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const displayName = cell.field.variable
+    ? `~${cell.field.name}`
+    : cell.field.name;
+
+  // We use a `<div role="button">` rather than a native `<button>` because
+  // interactive nested content (subfield clickable spans) is invalid inside
+  // <button>. Full keyboard semantics are preserved manually.
+  return (
+    <div
+      role="gridcell"
+      className={className}
+      tabIndex={tabIndex}
+      aria-label={`${cell.field.name}, ${cell.bitsTotal} bits${variableNote}${isSelected ? ", selected" : ""}`}
+      aria-selected={isSelected}
+      data-field-id={cell.field.id}
+      data-row={cell.row}
+      data-start-bit={cell.startBit}
+      data-end-bit={cell.endBit}
+      data-segment-index={cell.segmentIndex}
+      data-category={cell.field.category ?? ""}
+      style={style}
+      onClick={(e) => onFieldClick(cell.field, e.currentTarget)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onFieldClick(cell.field, e.currentTarget);
+        }
+      }}
+    >
+      <span className="cell-body">
+        {cell.isFirst ? (
+          <>
+            <span className="cell-name" title={displayName}>
+              {displayName}
+            </span>
+            <span className="cell-sublabel">
+              {formatBitsLabel(cell.bitsTotal, cell.field)}
+            </span>
+          </>
+        ) : (
+          <span className="cell-continuation" title={cell.field.name}>
+            {`… ${displayName} (cont.)`}
+          </span>
+        )}
+      </span>
+
+      {hasSubfields ? (
+        <SubfieldRow
+          parent={cell.field}
+          parentStartBit={cell.startBit}
+          parentSpan={span}
+          subCells={cell.subCells!}
+          selectedFieldId={selectedFieldId}
+          onSubfieldClick={onSubfieldClick}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+type SubfieldRowProps = {
+  parent: Field;
+  parentStartBit: number;
+  parentSpan: number;
+  subCells: SubCell[];
+  selectedFieldId: string | null;
+  onSubfieldClick: (
+    parentField: Field,
+    subfield: SubField,
+    element: HTMLElement,
+  ) => void;
+};
+
+function SubfieldRow({
+  parent,
+  parentStartBit,
+  parentSpan,
+  subCells,
+  selectedFieldId,
+  onSubfieldClick,
+}: SubfieldRowProps) {
+  // Nested grid: parentSpan columns wide so subfield positions track the
+  // parent geometry exactly.
+  const style: CSSProperties = {
+    gridTemplateColumns: `repeat(${parentSpan}, minmax(0, 1fr))`,
+  };
+  return (
+    <span className="cell-subgrid" style={style} aria-hidden="false">
+      {subCells.map((sub) => {
+        const subSpan = sub.endBit - sub.startBit + 1;
+        const startCol = sub.startBit - parentStartBit + 1;
+        const isSubSelected = selectedFieldId === sub.id;
+        const subStyle: CSSProperties = {
+          gridColumn: `${startCol} / span ${subSpan}`,
+        };
+        return (
+          <span
+            key={`sub-${sub.id}`}
+            role="button"
+            tabIndex={-1}
+            // .subfield-cell class kept so PacketViewer's roving keydown
+            // handler can target it via querySelectorAll.
+            className={`subfield-cell${isSubSelected ? " selected" : ""}${sub.isFirst ? "" : " continuation"}`}
+            aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
+            data-field-id={`${parent.id}:${sub.subfield.id}`}
+            data-parent-field-id={parent.id}
+            data-row={String(sub.startBit)}
+            data-start-bit={sub.startBit}
+            data-end-bit={sub.endBit}
+            style={subStyle}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSubfieldClick(parent, sub.subfield, e.currentTarget);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                onSubfieldClick(
+                  parent,
+                  sub.subfield,
+                  e.currentTarget as HTMLElement,
+                );
+              }
+            }}
+          >
+            {sub.isFirst ? (
+              <span className="subfield-name" title={sub.subfield.name}>
+                {sub.subfield.name}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
