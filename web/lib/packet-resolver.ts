@@ -480,6 +480,49 @@ function computeSegmentCount(startPos: number, bits: number, rowBits: number): n
   return count;
 }
 
+/**
+ * Resolve a TLV catalog entry's effective field list for a given instance.
+ * Mirrors the legacy `fieldsFor(extras) ?? entry.fields` pattern.
+ */
+export function resolveTlvFields(
+  entry: TlvCatalogEntry,
+  inst: TlvInstance,
+): TlvCatalogField[] {
+  const extras = { ...(entry.defaultExtras || {}), ...(inst.extras || {}) };
+  if (typeof entry.fieldsFor === "function") {
+    return entry.fieldsFor(extras) || [];
+  }
+  return entry.fields || [];
+}
+
+/** Total bit width of one TLV record. */
+export function tlvRecordBits(
+  entry: TlvCatalogEntry,
+  inst: TlvInstance,
+): number {
+  return resolveTlvFields(entry, inst).reduce((acc, f) => acc + f.bits, 0);
+}
+
+/** Total bit width of all instances + optional padding. */
+export function tlvTotalBits(
+  field: Field,
+): { totalBits: number; paddedBits: number } {
+  if (!field.tlv) return { totalBits: 0, paddedBits: 0 };
+  const { catalog, instances, padToBoundary } = field.tlv;
+  const byKind = new Map(catalog.map((c) => [c.kind, c]));
+  let total = 0;
+  for (const inst of instances) {
+    const entry = byKind.get(inst.kind);
+    if (!entry) continue;
+    total += tlvRecordBits(entry, inst);
+  }
+  const padded =
+    padToBoundary && padToBoundary > 0 && total % padToBoundary !== 0
+      ? total + (padToBoundary - (total % padToBoundary))
+      : total;
+  return { totalBits: total, paddedBits: padded };
+}
+
 /** Categories present in the packet, in first-appearance order. */
 export function packetCategories(packet: Packet): string[] {
   const seen = new Set<string>();

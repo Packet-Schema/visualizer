@@ -2,7 +2,17 @@
 
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { enrichDescriptionHtml } from "@/lib/enrich";
-import type { CategoryToken, ControllerState, Packet } from "@/lib/types";
+import type {
+  CategoryToken,
+  ChainInstance,
+  ControllerState,
+  Field,
+  Packet,
+  TlvInstance,
+} from "@/lib/types";
+
+import ChainEditor from "./ChainEditor";
+import TlvEditor from "./TlvEditor";
 
 function EnrichedText({ text }: { text: string }) {
   return (
@@ -17,12 +27,19 @@ type Props = {
   packet: Packet;
   selectedFieldId: string | null;
   controllers: ControllerState;
+  onTlvChange?: (field: Field, next: TlvInstance[]) => void;
+  onChainChange?: (
+    field: Field,
+    next: { instances: ChainInstance[]; finalProto?: number },
+  ) => void;
 };
 
 export default function DetailPanel({
   packet,
   selectedFieldId,
   controllers,
+  onTlvChange,
+  onChainChange,
 }: Props) {
   if (!selectedFieldId) {
     return (
@@ -80,11 +97,41 @@ export default function DetailPanel({
     );
   }
 
+  // TLV editor.
+  if (field.tlv && onTlvChange) {
+    return (
+      <TlvEditor
+        field={field}
+        controllers={controllers}
+        onChange={(next) => onTlvChange(field, next)}
+      />
+    );
+  }
+
+  // IPv6 chain editor.
+  if (field.chainCatalog && onChainChange) {
+    return (
+      <ChainEditor
+        field={field}
+        onChange={(next) => onChainChange(field, next)}
+      />
+    );
+  }
+
   const bits =
     field.variable && field.toBits && field.lengthFrom
       ? field.toBits(controllers[field.lengthFrom] ?? 0)
       : (field.bits ?? 0);
   const sizeStr = `${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}`;
+
+  // Length controller note: when a TLV editor is driving this controller,
+  // the slider in ControlsPanel is read-only-ish (still editable, but the
+  // synced value will reset on next TLV edit). We surface that here.
+  const drivenByTlv = field.controlsLength
+    ? packet.fields.some(
+        (f) => f.tlv && f.tlv.drivesController === field.controlsLength,
+      )
+    : false;
 
   const rows: Array<[string, React.ReactNode] | null> = [
     [
@@ -125,6 +172,14 @@ export default function DetailPanel({
               {controllers[field.controlsLength]}
             </span>
             )
+            {drivenByTlv ? (
+              <em
+                className="not-italic ml-2 text-[11px]"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                — synced from TLV editor
+              </em>
+            ) : null}
           </span>,
         ]
       : null,
