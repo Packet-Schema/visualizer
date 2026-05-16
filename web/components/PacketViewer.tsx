@@ -9,13 +9,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import { PRESETS } from "@/lib/presets.generated";
+import { PRESETS } from "@/lib/psml/runtime-presets";
 import {
   initialState,
   packetCategories,
   resolvePacket,
   syncTlvControllers,
-} from "@/lib/packet-resolver";
+} from "@/lib/psml/runtime-resolver";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import type {
   ChainInstance,
@@ -24,7 +24,7 @@ import type {
   Packet,
   PacketRegistry,
   TlvInstance,
-} from "@/lib/types";
+} from "@/lib/psml/runtime-types";
 import ControlsPanel from "./ControlsPanel";
 import DependencyOverlay from "./DependencyOverlay";
 import DetailPanel from "./DetailPanel";

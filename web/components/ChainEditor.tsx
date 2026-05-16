@@ -11,7 +11,7 @@ import type {
   ChainCatalogEntry,
   ChainInstance,
   Field,
-} from "@/lib/types";
+} from "@/lib/psml/runtime-types";
 
 const FINAL_PROTOS: Array<{ v: number; name: string }> = [
   { v: 6, name: "TCP" },

@@ -1,4 +1,5 @@
-// Hand-written v2 presets demonstrating every primitive in the new model.
+// PSML 0.2 — Packet Schema Markup Language.
+// Hand-written PSML presets demonstrating every primitive in the schema.
 //
 // IPv4 — variable-length Options expressed as a Repeat over a Switch on the
 //        option Type byte, plus a Constraint linking IHL ⇔ headerBytes.
@@ -8,7 +9,7 @@
 // Ethernet — pure fixed layout.
 //
 // The remaining 9 presets live in presets.generated.ts and are produced
-// mechanically from the v1 schema by scripts/migrate-v1-to-v2.ts.
+// mechanically from the runtime schema by scripts/migrate-v1-to-psml.ts.
 
 import { lit, op, ref } from "./expr";
 import type { Container, Packet, Struct } from "./types";
@@ -94,68 +95,61 @@ export const ipv4: Packet = {
   byteOrder: "BE",
   description: "IPv4 header (RFC 791) — IHL drives the Options length.",
   body: [
-    { id: "version", name: "Version", type: bits(4), category: "type", color: "blue", defaultValue: 4 },
+    { id: "version", name: "Version", type: bits(4), category: "type", defaultValue: 4 },
     {
       id: "ihl",
       name: "IHL",
       type: bits(4),
       category: "length",
-      color: "indigo",
       defaultValue: 5,
     },
-    { id: "dscp", name: "DSCP", type: bits(6), category: "type", color: "orange" },
-    { id: "ecn", name: "ECN", type: bits(2), category: "flags", color: "amber" },
+    { id: "dscp", name: "DSCP", type: bits(6), category: "type" },
+    { id: "ecn", name: "ECN", type: bits(2), category: "flags" },
     {
       id: "totalLength",
       name: "Total Length",
       type: int(16),
       category: "length",
-      color: "teal",
     },
     {
       id: "identification",
       name: "Identification",
       type: int(16),
       category: "identifier",
-      color: "blue",
     },
     // Flags is laid out flat (3 bits) — v2 expands subfields via Group/nested
     // Field but the renderer cares about absolute bit offsets, so a sibling
     // group of 1-bit fields produces identical totals.
     group("flagsBits", [
-      { id: "flags_reserved", name: "R", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_df", name: "DF", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_mf", name: "MF", type: bits(1), category: "flags", color: "rose" },
+      { id: "flags_reserved", name: "R", type: bits(1), category: "flags" },
+      { id: "flags_df", name: "DF", type: bits(1), category: "flags" },
+      { id: "flags_mf", name: "MF", type: bits(1), category: "flags" },
     ]),
     {
       id: "fragOffset",
       name: "Fragment Offset",
       type: bits(13),
       category: "identifier",
-      color: "green",
     },
-    { id: "ttl", name: "TTL", type: int(8), category: "identifier", color: "amber" },
-    { id: "protocol", name: "Protocol", type: int(8), category: "type", color: "teal" },
+    { id: "ttl", name: "TTL", type: int(8), category: "identifier" },
+    { id: "protocol", name: "Protocol", type: int(8), category: "type" },
     {
       id: "headerChecksum",
       name: "Header Checksum",
       type: int(16),
       category: "checksum",
-      color: "orange",
     },
     {
       id: "srcAddr",
       name: "Source Address",
       type: int(32),
       category: "addressing",
-      color: "blue",
     },
     {
       id: "dstAddr",
       name: "Destination Address",
       type: int(32),
       category: "addressing",
-      color: "violet",
     },
     // Options — a Repeat over a Switch on the option Type byte. count is
     // derived from the env key `ipv4OptionsCount`, mirroring v1's behaviour
@@ -165,7 +159,6 @@ export const ipv4: Packet = {
       id: "options",
       name: "Options",
       category: "variable",
-      color: "amber",
       element: struct("optionRecord", [
         {
           kind: "switch",
@@ -229,56 +222,51 @@ export const tcp: Packet = {
   byteOrder: "BE",
   description: "TCP header (RFC 9293).",
   body: [
-    { id: "srcPort", name: "Source Port", type: int(16), category: "addressing", color: "blue" },
+    { id: "srcPort", name: "Source Port", type: int(16), category: "addressing" },
     {
       id: "dstPort",
       name: "Destination Port",
       type: int(16),
       category: "addressing",
-      color: "violet",
     },
-    { id: "seqNum", name: "Sequence Number", type: int(32), category: "identifier", color: "teal" },
+    { id: "seqNum", name: "Sequence Number", type: int(32), category: "identifier" },
     {
       id: "ackNum",
       name: "Acknowledgment Number",
       type: int(32),
       category: "identifier",
-      color: "green",
     },
     {
       id: "dataOffset",
       name: "Data Offset",
       type: bits(4),
       category: "length",
-      color: "indigo",
       defaultValue: 5,
     },
-    { id: "reserved", name: "Rsvd", type: bits(4), category: "reserved", color: "slate" },
+    { id: "reserved", name: "Rsvd", type: bits(4), category: "reserved" },
     group("flagsBits", [
-      { id: "flags_cwr", name: "CWR", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_ece", name: "ECE", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_urg", name: "URG", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_ack", name: "ACK", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_psh", name: "PSH", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_rst", name: "RST", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_syn", name: "SYN", type: bits(1), category: "flags", color: "rose" },
-      { id: "flags_fin", name: "FIN", type: bits(1), category: "flags", color: "rose" },
+      { id: "flags_cwr", name: "CWR", type: bits(1), category: "flags" },
+      { id: "flags_ece", name: "ECE", type: bits(1), category: "flags" },
+      { id: "flags_urg", name: "URG", type: bits(1), category: "flags" },
+      { id: "flags_ack", name: "ACK", type: bits(1), category: "flags" },
+      { id: "flags_psh", name: "PSH", type: bits(1), category: "flags" },
+      { id: "flags_rst", name: "RST", type: bits(1), category: "flags" },
+      { id: "flags_syn", name: "SYN", type: bits(1), category: "flags" },
+      { id: "flags_fin", name: "FIN", type: bits(1), category: "flags" },
     ]),
-    { id: "window", name: "Window", type: int(16), category: "flags", color: "amber" },
-    { id: "checksum", name: "Checksum", type: int(16), category: "checksum", color: "orange" },
+    { id: "window", name: "Window", type: int(16), category: "flags" },
+    { id: "checksum", name: "Checksum", type: int(16), category: "checksum" },
     {
       id: "urgent",
       name: "Urgent Pointer",
       type: int(16),
       category: "identifier",
-      color: "orange",
     },
     {
       kind: "repeat",
       id: "options",
       name: "Options",
       category: "variable",
-      color: "amber",
       element: struct("optionRecord", [
         {
           kind: "switch",
@@ -309,16 +297,15 @@ export const udp: Packet = {
   byteOrder: "BE",
   description: "UDP header (RFC 768) — fixed 8 bytes.",
   body: [
-    { id: "srcPort", name: "Source Port", type: int(16), category: "addressing", color: "blue" },
+    { id: "srcPort", name: "Source Port", type: int(16), category: "addressing" },
     {
       id: "dstPort",
       name: "Destination Port",
       type: int(16),
       category: "addressing",
-      color: "violet",
     },
-    { id: "length", name: "Length", type: int(16), category: "length", color: "teal" },
-    { id: "checksum", name: "Checksum", type: int(16), category: "checksum", color: "orange" },
+    { id: "length", name: "Length", type: int(16), category: "length" },
+    { id: "checksum", name: "Checksum", type: int(16), category: "checksum" },
   ],
 };
 
@@ -337,10 +324,9 @@ export const ethernet: Packet = {
       name: "Destination MAC",
       type: bits(48),
       category: "addressing",
-      color: "violet",
     },
-    { id: "srcMac", name: "Source MAC", type: bits(48), category: "addressing", color: "blue" },
-    { id: "etherType", name: "EtherType", type: int(16), category: "type", color: "teal" },
+    { id: "srcMac", name: "Source MAC", type: bits(48), category: "addressing" },
+    { id: "etherType", name: "EtherType", type: int(16), category: "type" },
   ],
 };
 

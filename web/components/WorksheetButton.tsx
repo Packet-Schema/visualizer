@@ -5,7 +5,8 @@
 
 import { useState } from "react";
 
-import type { ControllerState, Packet } from "@/lib/types";
+import type { ControllerState, Packet } from "@/lib/psml/runtime-types";
+import { runtimeToPsml } from "@/lib/psml/runtime-to-psml";
 
 type Props = {
   packet: Packet;
@@ -27,7 +28,10 @@ export default function WorksheetButton({
     try {
       // Lazy import keeps the WASM bundle out of the initial page chunk.
       const { generateWorksheetPdf } = await import("@/lib/worksheet-typst");
-      const blob = await generateWorksheetPdf(packet, controllers, { answers });
+      // The worksheet generator speaks PSML; lower the runtime packet on the
+      // way out and translate the controller state into a PacketEnv map.
+      const env = new Map<string, number>(Object.entries(controllers));
+      const blob = await generateWorksheetPdf(runtimeToPsml(packet), env, { answers });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener");
       // Revoke shortly after open; the new tab has already taken ownership.

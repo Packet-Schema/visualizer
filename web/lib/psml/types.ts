@@ -1,23 +1,31 @@
-// Packet View v2 data model.
+// PSML 0.2 — Packet Schema Markup Language.
+// Type definitions for the PSML wire format: a unified recursive packet
+// schema with three composition primitives (Repeat, Switch, Group), typed
+// fields, and bidirectional equality constraints.
 //
-// Unified recursive schema replacing the half-rigid v1 Field/Tlv/Chain/SubField
-// model. Three primitive composition rules:
-//   * Repeat   — N copies of an element struct, where N is an expression
-//                evaluated against the current packet state.
-//   * Switch   — pick one of several variant structs based on a discriminator
-//                expression.
-//   * Group    — flat ordering glue when you simply need to splice nodes.
-//
-// Everything else is either a Field (a leaf with a Type) or a top-level
-// Constraint expressing a bidirectional equality between two expressions.
-//
-// The v1 model lives untouched in ../types.ts; v2 deliberately does not import
-// from v1 so a Wave B cut-over can swap files cleanly.
+// PSML carries semantic intent only — the renderer maps `category` to a CSS
+// variable. There is no presentational `color` token in this schema; use
+// `web/lib/render-tokens.ts` for the category → CSS-var mapping.
 
-import type { CategoryToken, ColorToken } from "../types";
+/* ------------------------------------------------------------------ *
+ * Categories
+ * ------------------------------------------------------------------ */
 
-// Re-export category/color tokens so consumers can stay on v2 alone.
-export type { CategoryToken, ColorToken } from "../types";
+/**
+ * Semantic role of a field. The renderer maps this to a CSS variable; the
+ * mapping is renderer-side intent (`web/lib/render-tokens.ts`), never
+ * encoded in the schema.
+ */
+export type CategoryToken =
+  | "addressing"
+  | "identifier"
+  | "length"
+  | "type"
+  | "flags"
+  | "reserved"
+  | "checksum"
+  | "variable"
+  | "payload-marker";
 
 /* ------------------------------------------------------------------ *
  * Types
@@ -66,7 +74,6 @@ export type Field = {
   type: Type;
   doc?: string;
   category?: CategoryToken;
-  color?: ColorToken;
   /** Optional default value for normalization/UI; consumed by the resolver. */
   defaultValue?: number;
 };
@@ -88,7 +95,6 @@ export type Repeat = {
    *  or `'eos'` meaning "consume the rest of the parent". */
   count: Expr | "eos" | { until: Expr };
   category?: CategoryToken;
-  color?: ColorToken;
   doc?: string;
 };
 
@@ -144,8 +150,14 @@ export type Packet = {
   description?: string;
 };
 
+/** Convenience aliases used by callers that prefer Psml-prefixed names. */
+export type PsmlPacket = Packet;
+export type PsmlField = Field;
+export type PsmlExpr = Expr;
+export type PsmlType = Type;
+
 /* ------------------------------------------------------------------ *
- * Normalized output (the shape v1's cell-layout consumes)
+ * Normalized output (the shape the renderer's cell-layout consumes)
  * ------------------------------------------------------------------ */
 
 export type NormalizedField = {
@@ -157,7 +169,6 @@ export type NormalizedField = {
    *  produced this field. Useful for grouping in the renderer. */
   originalContainerPath: string;
   category?: CategoryToken;
-  color?: ColorToken;
   doc?: string;
   /** When the producer is a Repeat, the zero-based copy index. */
   repeatIndex?: number;
