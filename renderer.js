@@ -141,6 +141,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
   // siblings. See app.js#initDiagramKeyboardNav.
   let rovingTopAssigned = false;
   const selectedTopCellIndex = layout.cells.findIndex(c => c.field.id === selectedFieldId);
+  // Track per-field segment counter so each cell gets a stable id like
+  // "cell-<fieldId>-<segmentIndex>" suitable for interactive diffing.
+  const segCounters = new Map();
   for (let i = 0; i < layout.cells.length; i++) {
     const cell = layout.cells[i];
     const x = PADDING_X + cell.startBit * BIT_WIDTH;
@@ -152,6 +155,10 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
     const group = createGroup();
     group.classList.add("field-cell");
     if (isSelected) group.classList.add("selected");
+    const segIdx = segCounters.get(cell.field.id) || 0;
+    segCounters.set(cell.field.id, segIdx + 1);
+    const cellId = `cell-${cell.field.id}-${segIdx}`;
+    group.dataset.cellId = cellId;
     group.dataset.fieldId = cell.field.id;
     group.dataset.row = String(cell.row);
     group.dataset.startBit = String(cell.startBit);
@@ -249,11 +256,11 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
 
     if (onFieldClick) {
       group.style.cursor = "pointer";
-      group.addEventListener("click", () => onFieldClick(cell.field));
+      group.addEventListener("click", (e) => onFieldClick(cell.field, e));
       group.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onFieldClick(cell.field);
+          onFieldClick(cell.field, e);
         }
       });
     }
@@ -305,9 +312,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
           height: subH,
           rx: 3,
           ry: 3,
-          fill: "#ffffff",
+          fill: "var(--bg-elevated)",
           "fill-opacity": isSubSelected ? 0.95 : 0.78,
-          stroke: isSubSelected ? "#222" : "#445",
+          stroke: isSubSelected ? "var(--field-stroke-selected)" : "var(--field-stroke)",
           "stroke-width": isSubSelected ? 1.6 : 0.8,
         });
         subGroup.appendChild(subRect);
@@ -320,7 +327,7 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
             "text-anchor": "middle",
             "font-size": 9,
             "font-weight": 600,
-            fill: "#222",
+            fill: "var(--field-label)",
             "pointer-events": "none",
           });
           subLabel.textContent = truncateToFit(sub.subfield.name, sw - 4, 5);
@@ -331,13 +338,13 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
           subGroup.style.cursor = "pointer";
           subGroup.addEventListener("click", (e) => {
             e.stopPropagation();
-            onSubfieldClick(cell.field, sub.subfield);
+            onSubfieldClick(cell.field, sub.subfield, e);
           });
           subGroup.addEventListener("keydown", (e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               e.stopPropagation();
-              onSubfieldClick(cell.field, sub.subfield);
+              onSubfieldClick(cell.field, sub.subfield, e);
             }
           });
         }
@@ -399,4 +406,96 @@ function truncateToFit(text, maxPx, pxPerChar = 6.5) {
   if (text.length <= max) return text;
   if (max <= 1) return "…";
   return text.slice(0, max - 1) + "…";
+}
+
+// Interactive slider update path: mutates x/width on existing top-level
+// `.field-cell` rectangles whose cellId matches the new layout's cellId.
+// When the structural shape stays the same (same set of cellIds, same row
+// count) we can avoid a full rebuild and let CSS transition the width change.
+// Returns true if the update could be applied in-place; false if the caller
+// should fall back to a full re-render.
+export function interactiveUpdate(svg, packet, layout) {
+  if (!svg) return false;
+  const rowBits = packet.rowBits;
+
+  const expectedRows = layout.cells.length
+    ? Math.max(...layout.cells.map(c => c.row)) + 1
+    : 0;
+  // Bail if the SVG was rendered for a different packet (very rough check).
+  const existingCells = Array.from(svg.querySelectorAll("g.field-cell"));
+  const existingIds = new Set(existingCells.map(g => g.dataset.cellId));
+  // Build map of new cells by id.
+  const segCounters = new Map();
+  const newCells = layout.cells.map(cell => {
+    const segIdx = segCounters.get(cell.field.id) || 0;
+    segCounters.set(cell.field.id, segIdx + 1);
+    return { ...cell, cellId: `cell-${cell.field.id}-${segIdx}` };
+  });
+  const newIds = new Set(newCells.map(c => c.cellId));
+
+  // If the set of ids is identical, we can perform an in-place width/x update
+  // for every cell with CSS-driven animation. If subfields are present, fall
+  // back to full rebuild (their layout is more complex).
+  const hasSubfields = layout.cells.some(c => c.subCells && c.subCells.length);
+  if (hasSubfields) return false;
+
+  let identical = existingIds.size === newIds.size;
+  if (identical) {
+    for (const id of newIds) {
+      if (!existingIds.has(id)) { identical = false; break; }
+    }
+  }
+  if (!identical) return false;
+
+  // Need to update the SVG height in case row count changed (rare but
+  // possible with very large IHL values).
+  const gridY0 = PADDING_TOP + RULER_HEIGHT;
+  const height = gridY0 + expectedRows * ROW_HEIGHT + PADDING_BOTTOM;
+  svg.setAttribute("height", height);
+  const innerWidth = rowBits * BIT_WIDTH;
+  const width = innerWidth + PADDING_X * 2;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  const cellById = new Map(existingCells.map(g => [g.dataset.cellId, g]));
+  for (const cell of newCells) {
+    const g = cellById.get(cell.cellId);
+    if (!g) continue;
+    const x = PADDING_X + cell.startBit * BIT_WIDTH;
+    const y = gridY0 + cell.row * ROW_HEIGHT;
+    const w = (cell.endBit - cell.startBit + 1) * BIT_WIDTH;
+    const h = ROW_HEIGHT;
+    g.dataset.row = String(cell.row);
+    g.dataset.startBit = String(cell.startBit);
+    g.dataset.endBit = String(cell.endBit);
+    // Update each child element's geometry.
+    for (const child of g.children) {
+      const tag = child.tagName.toLowerCase();
+      if (tag === "rect") {
+        child.setAttribute("x", x + 1);
+        child.setAttribute("y", y + 4);
+        child.setAttribute("width", w - 2);
+        child.setAttribute("height", h - 8);
+      } else if (tag === "text") {
+        // Recompute center based on label/sublabel hint via class.
+        const isCont = child.classList.contains("field-continuation");
+        const isSub = child.classList.contains("field-sublabel");
+        child.setAttribute("x", x + w / 2);
+        if (isCont) {
+          child.setAttribute("y", y + h / 2 + 3);
+          const contName = cell.field.variable ? `~${cell.field.name}` : cell.field.name;
+          child.textContent = truncateToFit(`… ${contName} (cont.)`, w - 10);
+        } else if (isSub) {
+          child.setAttribute("y", y + h / 2 + 12);
+          child.textContent = formatBitsLabel(cell.bitsTotal, cell.field);
+        } else {
+          child.setAttribute("y", y + h / 2 - 2);
+          const displayName = cell.field.variable
+            ? `~${cell.field.name}`
+            : cell.field.name;
+          child.textContent = truncateToFit(displayName, w - 10);
+        }
+      }
+    }
+  }
+  return true;
 }
