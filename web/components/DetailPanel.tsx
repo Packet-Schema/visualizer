@@ -9,7 +9,7 @@ import type {
   Field,
   Packet,
   TlvInstance,
-} from "@/lib/types";
+} from "@/lib/psml/runtime-types";
 
 import ChainEditor from "./ChainEditor";
 import TlvEditor from "./TlvEditor";

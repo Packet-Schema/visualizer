@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from "react";
 
-import type { Field, Packet } from "@/lib/types";
+import type { Field, Packet } from "@/lib/psml/runtime-types";
 
 type Props = {
   packet: Packet;

@@ -1,21 +1,16 @@
-// Worksheet PDF generator (Typst.ts).
+// PSML 0.2 — worksheet PDF generator (Typst.ts).
 //
-// Compiles `data/worksheet.typ` with the resolved packet data passed via
-// `sys.inputs`. Uses the `$typst` snippet API; we lazy-import the WASM
-// modules so they don't bloat the initial bundle.
+// Compiles `data/worksheet.typ` against a PSML Packet via `sys.inputs`. Uses
+// the `$typst` snippet API with a lazy WASM import so the Typst runtime is
+// only fetched when the user clicks the worksheet button.
 //
-// Browser-only: `@myriaddreamin/typst.ts` ships WASM that fetches assets
-// from a CDN at runtime. Node-side smoke tests will catch the helper's
-// signature and Typst template parse but cannot actually run the WASM
-// renderer headlessly without additional plumbing.
+// Browser-only.
 
-import type { ControllerState, Packet } from "./types";
-import { resolvePacket } from "./packet-resolver";
+import type { PacketEnv, Packet as PsmlPacket } from "./psml/types";
+import { resolveLayout } from "./psml/layout";
 import { WORKSHEET_TYPST_SOURCE } from "./worksheet-template";
 
-export type WorksheetOpts = {
-  answers?: boolean;
-};
+export type WorksheetOpts = { answers?: boolean };
 
 type FieldSummary = {
   id: string;
@@ -30,10 +25,10 @@ type FieldSummary = {
  * Exposed for tests.
  */
 export function buildWorksheetPayload(
-  packet: Packet,
-  controllers: ControllerState,
+  packet: PsmlPacket,
+  env?: PacketEnv,
 ): { name: string; description: string; fields: FieldSummary[] } {
-  const layout = resolvePacket(packet, controllers);
+  const layout = resolveLayout(packet, { env });
   const cellsByFieldId = new Map<string, typeof layout.cells>();
   for (const cell of layout.cells) {
     if (!cellsByFieldId.has(cell.field.id)) cellsByFieldId.set(cell.field.id, []);
@@ -42,19 +37,19 @@ export function buildWorksheetPayload(
 
   const fields: FieldSummary[] = [];
   let bitOffset = 0;
-  for (const field of packet.fields) {
-    const cells = cellsByFieldId.get(field.id);
-    if (!cells || cells.length === 0) continue;
-    const bits = cells.reduce(
-      (acc, c) => acc + (c.endBit - c.startBit + 1),
-      0,
-    );
+  // Collapse cells back to one entry per field id, in first-appearance order.
+  const seen = new Set<string>();
+  for (const cell of layout.cells) {
+    if (seen.has(cell.field.id)) continue;
+    seen.add(cell.field.id);
+    const cells = cellsByFieldId.get(cell.field.id) ?? [];
+    const bits = cells.reduce((acc, c) => acc + (c.endBit - c.startBit + 1), 0);
     fields.push({
-      id: field.id,
-      name: field.name,
+      id: cell.field.id,
+      name: cell.field.name,
       bits,
       offset: bitOffset,
-      description: field.description || "",
+      description: cell.field.description || "",
     });
     bitOffset += bits;
   }
@@ -67,14 +62,13 @@ export function buildWorksheetPayload(
 }
 
 /**
- * Generate a PDF Blob for the current packet. Lazy-loads `@myriaddreamin/typst.ts`
- * so the WASM bundle is only fetched when the user clicks the worksheet button.
- *
- * Browser-only — throws if `typeof window` is undefined.
+ * Generate a PDF Blob for the current packet. Lazy-loads
+ * `@myriaddreamin/typst.ts` so the WASM bundle stays out of the initial
+ * chunk. Browser-only — throws if `typeof window` is undefined.
  */
 export async function generateWorksheetPdf(
-  packet: Packet,
-  controllers: ControllerState,
+  packet: PsmlPacket,
+  env: PacketEnv,
   opts: WorksheetOpts = {},
 ): Promise<Blob> {
   if (typeof window === "undefined") {
@@ -82,9 +76,8 @@ export async function generateWorksheetPdf(
       "generateWorksheetPdf: WASM-backed compilation requires a browser environment.",
     );
   }
-  const payload = buildWorksheetPayload(packet, controllers);
+  const payload = buildWorksheetPayload(packet, env);
 
-  // Dynamically import; keeps the WASM bundle out of the initial chunk.
   const mod = await import("@myriaddreamin/typst.ts");
   const $typst = mod.$typst;
 
@@ -99,8 +92,6 @@ export async function generateWorksheetPdf(
   if (!bytes || bytes.byteLength === 0) {
     throw new Error("generateWorksheetPdf: Typst returned an empty PDF.");
   }
-  // Copy the bytes into a plain ArrayBuffer slice so we don't keep WASM
-  // memory pinned via the returned view.
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
   return new Blob([copy.buffer], { type: "application/pdf" });

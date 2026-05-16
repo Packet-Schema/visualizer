@@ -1,3 +1,4 @@
+// PSML 0.2 — Packet Schema Markup Language.
 // Simple bidirectional equality-constraint solver.
 //
 // Each Constraint expresses `lhs == rhs` where exactly one side reduces to a

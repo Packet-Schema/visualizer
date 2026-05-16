@@ -1,10 +1,9 @@
-// Port of resolvePacket / initialState / validatePacket from the legacy
-// packets.js to TypeScript. Algorithm is unchanged: deterministic bit-by-bit
-// layout that produces row-segmented cells with subfields positioned in the
-// lower half of their parent.
+// PSML 0.2 — runtime layout resolver.
 //
-// Wave 2A adds TLV expansion (TCP / IPv4 options, TLS extensions) and IPv6
-// extension-header chain expansion, ported verbatim from packets.js.
+// Bit-by-bit cell-layout algorithm that produces row-segmented cells with
+// subfields positioned in the lower half of their parent. Used by every
+// renderer component. Also handles TLV expansion (TCP/IPv4 options, TLS
+// extensions) and IPv6 extension-header chain expansion.
 
 import type {
   Cell,
@@ -20,7 +19,7 @@ import type {
   TlvCatalogEntry,
   TlvCatalogField,
   TlvInstance,
-} from "./types";
+} from "./runtime-types";
 
 /**
  * Registry of variable-length `toBits` functions, keyed by a `formula` token

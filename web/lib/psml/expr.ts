@@ -1,4 +1,6 @@
-// Pure expression evaluator for the v2 model.
+// PSML 0.2 — Packet Schema Markup Language.
+// Pure expression evaluator. No `eval`, no `Function` — every operation is a
+// deliberate switch case.
 //
 // No `eval`, no `Function`-constructor — every operation is a deliberate
 // switch case. Refs are looked up in a `Map<string, number>` environment;

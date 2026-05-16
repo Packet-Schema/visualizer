@@ -49,6 +49,24 @@ Twelve built-in presets, grouped by OSI layer:
 - **Layer 4 — Transport**: TCP, UDP
 - **Application**: DNS, TLS Record Layer, QUIC short header (1-RTT)
 
+## PSML 0.2
+
+PSML — Packet Schema Markup Language — is the canonical wire format
+behind every Packet View import, export, and built-in preset.
+
+- Three composition primitives: **Repeat** (N copies of a struct),
+  **Switch** (variant struct by discriminator), **Group** (splice glue).
+- Pure expressions (`lit`, `ref`, `op`, `cond`) drive variable-length
+  layout — no JavaScript closures cross the wire.
+- Bidirectional **constraints** propagate user edits in either
+  direction (e.g. `IHL × 4 == headerBytes`).
+- **Semantic, not presentational**: fields carry a `category`; the
+  renderer maps category to a CSS variable in `web/lib/render-tokens.ts`.
+- N+M format hub: every format converts to/from PSML, not pairwise.
+
+Spec: [`docs/psml-0.2.md`](./docs/psml-0.2.md).
+JSON Schema: [`schemas/psml.schema.json`](./schemas/psml.schema.json).
+
 ## Roadmap
 
 - TLV / option expansion inside variable-length fields (TCP Options, IPv4

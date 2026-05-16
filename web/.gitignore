@@ -35,4 +35,4 @@ yarn-error.log*
 *.tsbuildinfo
 
 # generated presets (rebuilt before each build)
-/lib/presets.generated.ts
+/lib/psml/runtime-presets.ts

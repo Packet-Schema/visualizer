@@ -1,18 +1,17 @@
-import type { CategoryToken, ColorToken } from "./types";
+// PSML 0.2 — runtime constants.
+//
+// Category labels, byte-order copy, preset grouping, theme storage key. The
+// category → CSS variable mapping lives in `./render-tokens.ts` (renderer
+// intent, not schema metadata). This file re-exports the common items so
+// existing component imports stay one-stop.
 
-// Semantic category -> color token. When a field has a `category`, the
-// renderer prefers the category's token over the legacy per-field `color`.
-export const CATEGORY_TO_TOKEN: Record<CategoryToken, ColorToken> = {
-  addressing: "blue",
-  identifier: "indigo",
-  length: "teal",
-  type: "green",
-  flags: "rose",
-  reserved: "slate",
-  checksum: "orange",
-  variable: "amber",
-  "payload-marker": "violet",
-};
+import type { CategoryToken } from "./psml/runtime-types";
+
+export {
+  CATEGORY_TO_TOKEN,
+  tokenToCssVar,
+  type ColorToken,
+} from "./render-tokens";
 
 // Human-readable labels for the semantic categories used in the legend.
 export const CATEGORY_LABELS: Record<CategoryToken, string> = {
@@ -29,25 +28,6 @@ export const CATEGORY_LABELS: Record<CategoryToken, string> = {
 
 export const DEFAULT_BYTE_ORDER =
   "Network byte order (big-endian, MSB-first).";
-
-const KNOWN_TOKENS = new Set<ColorToken>([
-  "blue",
-  "indigo",
-  "violet",
-  "teal",
-  "green",
-  "amber",
-  "orange",
-  "rose",
-  "slate",
-]);
-
-/** Resolve a color token to its CSS variable; unknown strings pass through. */
-export function tokenToCssVar(token: string | null | undefined): string {
-  if (!token) return "var(--field-slate)";
-  if (KNOWN_TOKENS.has(token as ColorToken)) return `var(--field-${token})`;
-  return token;
-}
 
 // Curriculum-ordered grouping of presets by OSI layer.
 export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [

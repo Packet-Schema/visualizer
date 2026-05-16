@@ -1,8 +1,8 @@
 "use client";
 
-import { PRESETS } from "@/lib/presets.generated";
+import { PRESETS } from "@/lib/psml/runtime-presets";
 import { PRESET_GROUPS } from "@/lib/constants";
-import type { PacketRegistry } from "@/lib/types";
+import type { PacketRegistry } from "@/lib/psml/runtime-types";
 
 type Props = {
   value: string;
