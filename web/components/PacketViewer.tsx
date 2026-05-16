@@ -48,6 +48,7 @@ import type {
 } from "@/lib/psml/renderer";
 import type {
   Container as PsmlContainer,
+  Field as PsmlField,
   PsmlPacket,
   ViewMode,
 } from "@/lib/psml/types";
@@ -862,10 +863,11 @@ function StudioPanel({
       </h2>
       <Toolbar
         dispatch={dispatch}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        showJsonPane={showJsonPane}
-        onToggleJsonPane={onToggleJsonPane}
+        insertPath={[state.packet.body.length]}
+        historyLength={state.history.length}
+        futureLength={state.future.length}
+        jsonOpen={showJsonPane}
+        onToggleJson={onToggleJsonPane}
         onSaveAs={(name: string) => {
           // Toolbar may submit name directly; otherwise it calls onSaveAs()
           // with an empty string and the parent opens a dialog. We route both
@@ -883,24 +885,34 @@ function StudioPanel({
           <li key={containerId(node, i)}>
             {isLeafField(node) ? (
               <FieldRow
-                field={node as Field}
+                field={node as PsmlField}
                 path={[i]}
-                packet={state.packet}
                 dispatch={dispatch}
+                siblingFieldIds={state.packet.body
+                  .filter(isLeafField)
+                  .map((n) => (n as PsmlField).id)}
               />
             ) : (
               <ContainerRow
                 container={node as PsmlContainer}
                 path={[i]}
-                packet={state.packet}
                 dispatch={dispatch}
+                siblingFieldIds={state.packet.body
+                  .filter(isLeafField)
+                  .map((n) => (n as PsmlField).id)}
               />
             )}
           </li>
         ))}
       </ol>
       <div className="mt-4">
-        <ConstraintEditor packet={state.packet} dispatch={dispatch} />
+        <ConstraintEditor
+          constraints={state.packet.constraints ?? []}
+          fieldIds={state.packet.body
+            .filter(isLeafField)
+            .map((n) => (n as PsmlField).id)}
+          dispatch={dispatch}
+        />
       </div>
       {showJsonPane ? (
         <div className="mt-4">
