@@ -20,6 +20,18 @@ import type {
   TlvCatalogField,
   TlvInstance,
 } from "./runtime-types";
+import type { ViewMode } from "./types";
+
+/**
+ * Options bag for {@link resolvePacket}. Currently only `viewMode` is read,
+ * and it is forward-plumbing for Phase 2C — the runtime path doesn't yet
+ * synthesise encrypted-blob virtual fields, so the option is accepted but
+ * ignored. The signature exists so the UI layer can wire its toggle without
+ * a second refactor when 2C lands.
+ */
+export type ResolvePacketOptions = {
+  viewMode?: ViewMode;
+};
 
 /**
  * Registry of variable-length `toBits` functions, keyed by a `formula` token
@@ -319,6 +331,8 @@ export function syncTlvControllers(
 export function resolvePacket(
   packet: Packet,
   state: ControllerState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _options: ResolvePacketOptions = {},
 ): ResolvedLayout {
   validatePacket(packet);
 

@@ -132,6 +132,14 @@ function FieldCell({
   const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
   const variableNote = cell.field.variable ? ", variable-length" : "";
   const fill = resolveFieldColor(cell.field);
+  // Encryption-decoration props are written to the rendered cell on PSML 0.3
+  // packets. Wire mode collapses to one `encrypted` block; semantic mode emits
+  // child fields tagged with `encryptedParentId`. `headerProtected` is a
+  // semantic-mode-only flag for QUIC's XOR'd packet-number bits.
+  const isEncryptedBlock = cell.encrypted === true;
+  const isEncryptedChild = !!cell.encryptedParentId;
+  const isHeaderProtected = cell.headerProtected === true;
+  const encryptionTitle = cell.encryptedContextNote ?? undefined;
 
   // CSS custom properties drive the cell's column span (animatable) and
   // category fill color. The span class also hands `--cell-span` to CSS in
@@ -148,6 +156,8 @@ function FieldCell({
     cell.field.variable ? "variable" : "",
     cell.isFirst ? "" : "continuation",
     hasSubfields ? "has-subfields" : "",
+    isEncryptedBlock ? "encrypted-block" : "",
+    isEncryptedChild ? "encrypted-child" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -164,7 +174,7 @@ function FieldCell({
       role="gridcell"
       className={className}
       tabIndex={tabIndex}
-      aria-label={`${cell.field.name}, ${cell.bitsTotal} bits${variableNote}${isSelected ? ", selected" : ""}`}
+      aria-label={`${cell.field.name}, ${cell.bitsTotal} bits${variableNote}${isSelected ? ", selected" : ""}${isEncryptedBlock || isEncryptedChild ? ", encrypted" : ""}${isHeaderProtected ? ", header-protected" : ""}`}
       aria-selected={isSelected}
       data-field-id={cell.field.id}
       data-row={cell.row}
@@ -172,6 +182,10 @@ function FieldCell({
       data-end-bit={cell.endBit}
       data-segment-index={cell.segmentIndex}
       data-category={cell.field.category ?? ""}
+      {...(isEncryptedBlock ? { "data-encrypted": "true" } : {})}
+      {...(isEncryptedChild ? { "data-encrypted-child": "true" } : {})}
+      {...(isHeaderProtected ? { "data-header-protected": "true" } : {})}
+      title={encryptionTitle}
       style={style}
       onClick={(e) => onFieldClick(cell.field, e.currentTarget)}
       onKeyDown={(e) => {
@@ -204,6 +218,30 @@ function FieldCell({
         )}
       </span>
 
+      {isEncryptedBlock && cell.isFirst ? (
+        <LockIcon
+          size={14}
+          className="field-lock-icon field-lock-icon--block"
+          ariaHidden
+        />
+      ) : null}
+      {isEncryptedChild && cell.isFirst ? (
+        <LockIcon
+          size={10}
+          className="field-lock-icon field-lock-icon--child"
+          ariaHidden
+        />
+      ) : null}
+      {isHeaderProtected && cell.isFirst ? (
+        <span
+          className="field-hp-badge"
+          aria-label="header-protected"
+          title="Header-protected (XOR-masked under the encryption key)"
+        >
+          HP
+        </span>
+      ) : null}
+
       {hasSubfields ? (
         <SubfieldRow
           parent={cell.field}
@@ -216,6 +254,41 @@ function FieldCell({
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Inline lock SVG used to decorate encrypted cells. Two sizes:
+ *   * 14px — wire-mode opaque block (visible against the stripe pattern)
+ *   * 10px — semantic-mode child field (subtle corner badge)
+ * Decorative-only; the parent cell already carries an accessible label.
+ */
+function LockIcon({
+  size,
+  className,
+  ariaHidden,
+}: {
+  size: number;
+  className?: string;
+  ariaHidden?: boolean;
+}) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden={ariaHidden ? "true" : undefined}
+      focusable="false"
+    >
+      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+    </svg>
   );
 }
 
