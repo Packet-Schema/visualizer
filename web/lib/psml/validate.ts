@@ -1,0 +1,272 @@
+// PSML 0.3 — schema validator for the on-disk Container tree.
+//
+// `runtime-resolver.ts` carries the equivalent `validatePacket` for the
+// renderer's runtime shape (subfield bit sums, TLV catalog non-empty, etc.).
+// This module is the schema-side counterpart: it walks the PSML Container
+// tree before normalize/layout and enforces invariants that the new 0.3
+// primitives bring in (Varint encoding allow-list, Encrypted plaintext
+// shape), as well as the basics shared with every PSML packet.
+
+import type {
+  Container,
+  Encrypted,
+  Expr,
+  Field,
+  Group,
+  Packet,
+  Repeat,
+  Struct,
+  Switch,
+  Type,
+} from "./types";
+import { VARINT_ENCODINGS } from "./types";
+
+function isField(c: Container): c is Field {
+  return !("kind" in c) || c.kind === "field";
+}
+
+/**
+ * Shape-check an Expr — purely structural (no env evaluation). Catches typos
+ * like a missing operand or an unknown operator slipping past TypeScript when
+ * the schema comes in from JSON.
+ */
+export function isValidExpr(expr: unknown): expr is Expr {
+  if (typeof expr !== "object" || expr === null) return false;
+  const e = expr as { kind?: unknown };
+  switch (e.kind) {
+    case "lit": {
+      const v = (expr as { value?: unknown }).value;
+      return typeof v === "number" && Number.isFinite(v);
+    }
+    case "ref":
+      return typeof (expr as { field?: unknown }).field === "string";
+    case "op": {
+      const o = expr as { op?: unknown; a?: unknown; b?: unknown };
+      const ops = ["+", "-", "*", "/", "%", "<<", ">>"];
+      return (
+        typeof o.op === "string" &&
+        ops.includes(o.op) &&
+        isValidExpr(o.a) &&
+        isValidExpr(o.b)
+      );
+    }
+    case "cond": {
+      const c = expr as { test?: unknown; t?: unknown; f?: unknown };
+      return isValidExpr(c.test) && isValidExpr(c.t) && isValidExpr(c.f);
+    }
+    default:
+      return false;
+  }
+}
+
+function validateType(type: Type, ctx: string): void {
+  switch (type.kind) {
+    case "int":
+      if (!Number.isInteger(type.bits) || type.bits <= 0) {
+        throw new Error(`${ctx}: int type must have positive integer bits, got ${type.bits}.`);
+      }
+      return;
+    case "bits":
+      if (!Number.isInteger(type.n) || type.n <= 0) {
+        throw new Error(`${ctx}: bits type must have positive integer n, got ${type.n}.`);
+      }
+      return;
+    case "bytes":
+      if (!isValidExpr(type.n)) {
+        throw new Error(`${ctx}: bytes type has malformed length expression.`);
+      }
+      return;
+    case "enum":
+      if (!Number.isInteger(type.bits) || type.bits <= 0) {
+        throw new Error(`${ctx}: enum type must have positive integer bits, got ${type.bits}.`);
+      }
+      return;
+    case "varint": {
+      const enc = (type as { encoding: unknown }).encoding;
+      if (typeof enc !== "string" || !(VARINT_ENCODINGS as readonly string[]).includes(enc)) {
+        throw new Error(
+          `${ctx}: varint encoding must be one of ${VARINT_ENCODINGS.join(", ")}, got ${String(enc)}.`,
+        );
+      }
+      return;
+    }
+    default: {
+      const bad = (type as { kind: string }).kind;
+      throw new Error(`${ctx}: unknown type kind "${bad}".`);
+    }
+  }
+}
+
+function validateField(field: Field, ctx: string): void {
+  if (typeof field.id !== "string" || field.id.length === 0) {
+    throw new Error(`${ctx}: field is missing an id.`);
+  }
+  if (typeof field.name !== "string") {
+    throw new Error(`${ctx}: field "${field.id}" is missing a name.`);
+  }
+  if (!field.type) {
+    throw new Error(`${ctx}: field "${field.id}" is missing a type.`);
+  }
+  validateType(field.type, `${ctx}/${field.id}`);
+}
+
+function validateGroup(g: Group, ctx: string): void {
+  if (!Array.isArray(g.children)) {
+    throw new Error(`${ctx}: group "${g.id}" must have a children array.`);
+  }
+  const sub = `${ctx}/${g.id}`;
+  for (const child of g.children) validateContainer(child, sub);
+}
+
+function validateRepeat(r: Repeat, ctx: string): void {
+  const sub = `${ctx}/${r.id}`;
+  if (!r.element || typeof r.element !== "object") {
+    throw new Error(`${sub}: repeat is missing element struct.`);
+  }
+  validateStruct(r.element, sub);
+  if (r.count === "eos") return;
+  if (typeof r.count === "object" && r.count !== null && "until" in r.count) {
+    if (!isValidExpr(r.count.until)) {
+      throw new Error(`${sub}: repeat 'until' predicate is malformed.`);
+    }
+    return;
+  }
+  if (!isValidExpr(r.count)) {
+    throw new Error(`${sub}: repeat count is malformed.`);
+  }
+}
+
+function validateSwitch(s: Switch, ctx: string): void {
+  const sub = `${ctx}/${s.id}`;
+  if (!isValidExpr(s.on)) {
+    throw new Error(`${sub}: switch 'on' expression is malformed.`);
+  }
+  if (!s.cases || typeof s.cases !== "object") {
+    throw new Error(`${sub}: switch is missing 'cases' map.`);
+  }
+  for (const [k, v] of Object.entries(s.cases)) {
+    validateStruct(v, `${sub}[${k}]`);
+  }
+  if (s.default) validateStruct(s.default, `${sub}[default]`);
+}
+
+function validateStruct(s: Struct, ctx: string): void {
+  if (typeof s.id !== "string" || s.id.length === 0) {
+    throw new Error(`${ctx}: struct is missing an id.`);
+  }
+  if (!Array.isArray(s.fields)) {
+    throw new Error(`${ctx}: struct "${s.id}" must have a fields array.`);
+  }
+  for (const child of s.fields) validateContainer(child, `${ctx}/${s.id}`);
+}
+
+/**
+ * Recursively collect every Field id reachable inside a Struct, descending
+ * through Group / Repeat / Switch / Encrypted so `headerProtected` references
+ * can resolve fields that live behind compound primitives.
+ */
+function collectFieldIds(struct: Struct, into: Set<string>): void {
+  for (const child of struct.fields) collectIdsFromContainer(child, into);
+}
+
+function collectIdsFromContainer(c: Container, into: Set<string>): void {
+  if (isField(c)) {
+    into.add(c.id);
+    return;
+  }
+  switch (c.kind) {
+    case "group":
+      for (const child of c.children) collectIdsFromContainer(child, into);
+      return;
+    case "repeat":
+      collectFieldIds(c.element, into);
+      return;
+    case "switch":
+      for (const v of Object.values(c.cases)) collectFieldIds(v, into);
+      if (c.default) collectFieldIds(c.default, into);
+      return;
+    case "encrypted":
+      collectFieldIds(c.plaintext, into);
+      return;
+  }
+}
+
+function validateEncrypted(e: Encrypted, ctx: string): void {
+  const sub = `${ctx}/${e.id}`;
+  if (typeof e.contextNote !== "string" || e.contextNote.length === 0) {
+    throw new Error(`${sub}: encrypted container must have a non-empty contextNote.`);
+  }
+  if (!e.plaintext || typeof e.plaintext !== "object") {
+    throw new Error(`${sub}: encrypted container is missing plaintext struct.`);
+  }
+  if (!Array.isArray(e.plaintext.fields) || e.plaintext.fields.length === 0) {
+    throw new Error(`${sub}: encrypted plaintext must be a Struct with at least one field.`);
+  }
+  validateStruct(e.plaintext, sub);
+  if (e.wireBits !== undefined && !isValidExpr(e.wireBits)) {
+    throw new Error(`${sub}: encrypted wireBits is malformed.`);
+  }
+  if (e.headerProtected !== undefined) {
+    if (!Array.isArray(e.headerProtected)) {
+      throw new Error(`${sub}: encrypted headerProtected must be an array.`);
+    }
+    const ids = new Set<string>();
+    collectFieldIds(e.plaintext, ids);
+    for (const id of e.headerProtected) {
+      if (typeof id !== "string") {
+        throw new Error(`${sub}: encrypted headerProtected ids must be strings.`);
+      }
+      if (!ids.has(id)) {
+        throw new Error(
+          `${sub}: encrypted headerProtected id "${id}" does not name a field inside plaintext.`,
+        );
+      }
+    }
+  }
+}
+
+function validateContainer(c: Container, ctx: string): void {
+  if (isField(c)) {
+    validateField(c, ctx);
+    return;
+  }
+  switch (c.kind) {
+    case "group":
+      validateGroup(c, ctx);
+      return;
+    case "repeat":
+      validateRepeat(c, ctx);
+      return;
+    case "switch":
+      validateSwitch(c, ctx);
+      return;
+    case "encrypted":
+      validateEncrypted(c, ctx);
+      return;
+    default: {
+      const bad = (c as { kind: string }).kind;
+      throw new Error(`${ctx}: unknown container kind "${bad}".`);
+    }
+  }
+}
+
+/**
+ * Validate a PSML Packet's Container tree. Throws on the first violation
+ * with a slash-joined context path so the failing node is locatable.
+ */
+export function validatePsmlPacket(packet: Packet): void {
+  if (typeof packet.name !== "string" || packet.name.length === 0) {
+    throw new Error("validatePsmlPacket: packet is missing a name.");
+  }
+  if (!Number.isInteger(packet.rowBits) || packet.rowBits <= 0) {
+    throw new Error(
+      `validatePsmlPacket: packet "${packet.name}" rowBits must be a positive integer.`,
+    );
+  }
+  if (!Array.isArray(packet.body)) {
+    throw new Error(
+      `validatePsmlPacket: packet "${packet.name}" body must be an array.`,
+    );
+  }
+  for (const c of packet.body) validateContainer(c, packet.name);
+}

@@ -7,13 +7,19 @@
 // matching the v1 cell-layout output (so existing format renderers stay
 // surface-level — they only need to know how to read cells).
 
-import type { PacketEnv, Packet as PsmlPacket } from "./types";
+import type { NormalizedField, PacketEnv, Packet as PsmlPacket, ViewMode } from "./types";
 import { initialEnv, normalize } from "./normalize";
 import type { Cell, Field as RuntimeField, ResolvedLayout } from "./runtime-types";
 
 export type LayoutOptions = {
   /** Environment overlay merged on top of preset defaults. */
   env?: PacketEnv;
+  /**
+   * Wire vs. semantic view of any Encrypted containers in the schema.
+   * Defaults to `'wire'`. See `web/lib/psml/normalize.ts` for the full
+   * contract.
+   */
+  viewMode?: ViewMode;
 };
 
 /** Compute a renderer-shaped layout for a PSML packet. */
@@ -22,7 +28,8 @@ export function resolveLayout(
   options: LayoutOptions = {},
 ): ResolvedLayout {
   const env: PacketEnv = new Map(options.env ?? initialEnv(packet));
-  const norm = normalize(packet, env);
+  const viewMode: ViewMode = options.viewMode ?? "wire";
+  const norm = normalize(packet, env, { viewMode });
   const cells: Cell[] = [];
   let bitPos = 0;
   for (const nf of norm.fields) {
@@ -33,18 +40,19 @@ export function resolveLayout(
       ...(nf.category ? { category: nf.category } : {}),
       ...(nf.doc ? { description: nf.doc } : {}),
     };
-    bitPos = emitField(synthetic, nf.bits, bitPos, packet.rowBits, cells);
+    bitPos = emitField(synthetic, nf, bitPos, packet.rowBits, cells);
   }
   return { cells, totalBits: norm.totalBits };
 }
 
 function emitField(
   field: RuntimeField,
-  bits: number,
+  nf: NormalizedField,
   bitPos: number,
   rowBits: number,
   cells: Cell[],
 ): number {
+  const bits = nf.bits;
   if (bits === 0) return bitPos;
   let remaining = bits;
   let segmentIndex = 0;
@@ -53,7 +61,7 @@ function emitField(
     const row = Math.floor(bitPos / rowBits);
     const colInRow = bitPos % rowBits;
     const take = Math.min(remaining, rowBits - colInRow);
-    cells.push({
+    const cell: Cell = {
       field,
       bitsTotal: bits,
       row,
@@ -65,7 +73,16 @@ function emitField(
       isLast: remaining === take,
       fieldStartOffset: bits - remaining,
       fieldEndOffset: bits - remaining + take - 1,
-    });
+    };
+    if (nf.encrypted) cell.encrypted = true;
+    if (nf.encryptedParentId !== undefined) {
+      cell.encryptedParentId = nf.encryptedParentId;
+    }
+    if (nf.encryptedContextNote !== undefined) {
+      cell.encryptedContextNote = nf.encryptedContextNote;
+    }
+    if (nf.headerProtected) cell.headerProtected = true;
+    cells.push(cell);
     remaining -= take;
     bitPos += take;
     segmentIndex++;
