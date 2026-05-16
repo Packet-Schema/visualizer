@@ -32,9 +32,10 @@ files — no build step, no server-side code, no tracking.
   and Augmented ASCII Diagrams / AAD (import) so you can paste a draft from an
   Internet-Draft or hand-written sketch and see it rendered immediately.
 - Imports Kaitai Struct (.ksy) files for ~200+ existing formats.
-- **PSML 0.3** — adds a `varint` Type and `encrypted` Container so QUIC
-  and TLS 1.3 can be modelled at full fidelity (RFC 9000 §16
-  variable-length integers, header-protected fields, encrypted payloads).
+- **PSML 0.4** — Optional fields, BER/DER length, lookahead Switch via
+  peek expressions, per-field byteOrder for mixed-endian formats, on
+  top of 0.3's `varint` Type and `encrypted` Container (QUIC and
+  TLS 1.3 modelling at full fidelity).
 - **Two-layer view** — toggle "Decrypted view" in the toolbar to switch
   between the on-the-wire byte stream and the post-decryption semantic
   structure. Same schema, two diagrams.
@@ -58,26 +59,31 @@ Twelve built-in presets, grouped by OSI layer:
 - **Layer 4 — Transport**: TCP, UDP
 - **Application**: DNS, TLS Record Layer, QUIC short header (1-RTT)
 
-## PSML 0.3
+## PSML 0.4
 
 PSML — Packet Schema Markup Language — is the canonical wire format
 behind every Packet View import, export, and built-in preset.
 
-- Three composition primitives: **Repeat** (N copies of a struct),
-  **Switch** (variant struct by discriminator), **Group** (splice glue),
-  plus the 0.3 **Encrypted** container for opaque-on-the-wire payloads.
-- Pure expressions (`lit`, `ref`, `op`, `cond`) drive variable-length
-  layout — no JavaScript closures cross the wire.
+- Composition primitives: **Repeat** (N copies of a struct), **Switch**
+  (variant struct by discriminator), **Group** (splice glue), the 0.3
+  **Encrypted** container for opaque-on-the-wire payloads, and the 0.4
+  **Optional** container for predicate-gated fields.
+- Pure expressions (`lit`, `ref`, `op`, `cond`, and 0.4's `peek`) drive
+  variable-length layout — no JavaScript closures cross the wire.
 - Bidirectional **constraints** propagate user edits in either
   direction (e.g. `IHL × 4 == headerBytes`).
 - **Semantic, not presentational**: fields carry a `category`; the
   renderer maps category to a CSS variable in `web/lib/render-tokens.ts`.
 - N+M format hub: every format converts to/from PSML, not pairwise.
-- 0.3 additions: a `varint` Type (QUIC / protobuf / CBOR self-describing
-  integers) and an `encrypted` Container with a `viewMode` toggle
-  (`'wire'` vs `'semantic'`) on `normalize` / `resolveLayout`.
+- 0.4 additions: **Optional fields, BER/DER length, lookahead Switch
+  via peek expressions, per-field byteOrder for mixed-endian formats**
+  (PCIe-style wrappers around foreign-endian payloads).
+- 0.3 additions (kept): a `varint` Type (QUIC / protobuf / CBOR
+  self-describing integers) and an `encrypted` Container with a
+  `viewMode` toggle (`'wire'` vs `'semantic'`) on `normalize` /
+  `resolveLayout`.
 
-Spec: [`docs/psml-0.3.md`](./docs/psml-0.3.md).
+Spec: [`docs/psml-0.4.md`](./docs/psml-0.4.md).
 JSON Schema: [`schemas/psml.schema.json`](./schemas/psml.schema.json).
 
 ## Tests
@@ -94,9 +100,15 @@ CI runs lint + build + coverage on every push and pull request.
 
 ## Roadmap
 
+- Beyond 0.4: **layered packets** (an outer packet whose payload is
+  itself a typed PSML packet — Ethernet/IP/TCP/TLS as one composed
+  diagram instead of four siblings), and **type unions on byte-prefix
+  discriminators** (a richer Switch that dispatches on a contents-match
+  rather than a single integer value, for magic-byte-style framing).
 - TLV / option expansion inside variable-length fields (TCP Options, IPv4
-  Options, TLS extensions).
-- More presets: SCTP, GRE, VXLAN, HTTP/2 frame, BGP UPDATE.
+  Options, TLS extensions) — partially unlocked by 0.4's peek expression.
+- More presets: SCTP, GRE, VXLAN, HTTP/2 frame, BGP UPDATE, X.509
+  certificate, full PCIe TLP header.
 - In-page custom packet editor backed by the existing JSON schema.
 
 ## License
