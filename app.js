@@ -1,6 +1,8 @@
 import { PACKETS, resolvePacket, initialState } from "./packets.js";
 import { renderPacket } from "./renderer.js";
 
+const THEME_STORAGE_KEY = "packet-view-theme";
+
 const state = {
   packetKey: "ipv4",
   controllers: {},        // controller key -> numeric value
@@ -14,6 +16,7 @@ const els = {
   controls: document.getElementById("controls"),
   detail: document.getElementById("detail"),
   summary: document.getElementById("summary"),
+  themeToggle: document.getElementById("theme-toggle"),
 };
 
 function init() {
@@ -32,8 +35,51 @@ function init() {
     render();
   });
 
+  initThemeToggle();
+
   state.controllers = initialState(PACKETS[state.packetKey]);
   render();
+}
+
+function initThemeToggle() {
+  if (!els.themeToggle) return;
+
+  const updateButtonState = () => {
+    const current = document.documentElement.getAttribute("data-theme") || "light";
+    els.themeToggle.setAttribute("aria-pressed", current === "dark" ? "true" : "false");
+    els.themeToggle.setAttribute(
+      "aria-label",
+      current === "dark" ? "Switch to light theme" : "Switch to dark theme"
+    );
+  };
+
+  updateButtonState();
+
+  els.themeToggle.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") || "light";
+    const next = current === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch (e) {
+      // ignore — storage may be disabled
+    }
+    updateButtonState();
+  });
+
+  // If the user has not explicitly set a preference, follow OS changes.
+  if (window.matchMedia) {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const listener = (e) => {
+      let stored = null;
+      try { stored = localStorage.getItem(THEME_STORAGE_KEY); } catch (_) {}
+      if (stored) return;
+      document.documentElement.setAttribute("data-theme", e.matches ? "dark" : "light");
+      updateButtonState();
+    };
+    if (mql.addEventListener) mql.addEventListener("change", listener);
+    else if (mql.addListener) mql.addListener(listener);
+  }
 }
 
 function render() {
@@ -94,6 +140,7 @@ function renderControls(packet) {
     slider.min = field.min ?? 0;
     slider.max = field.max ?? (2 ** field.bits - 1);
     slider.value = value;
+    slider.setAttribute("aria-label", `${field.name} value`);
 
     const number = document.createElement("input");
     number.type = "number";
@@ -101,6 +148,7 @@ function renderControls(packet) {
     number.max = slider.max;
     number.value = value;
     number.className = "control-number";
+    number.setAttribute("aria-label", `${field.name} numeric input`);
 
     const apply = (v) => {
       const clamped = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(v)));
@@ -136,9 +184,9 @@ function renderDetail(packet) {
   els.detail.innerHTML = `
     <h3>${escapeHtml(field.name)}</h3>
     <dl>
-      <dt>Size</dt><dd>${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}${field.variable ? " <em>(variable)</em>" : ""}</dd>
+      <dt>Size</dt><dd><span class="mono">${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}</span>${field.variable ? " <em>(variable)</em>" : ""}</dd>
       ${field.variable ? `<dt>Driven by</dt><dd><code>${escapeHtml(field.lengthFrom)}</code></dd>` : ""}
-      ${field.controlsLength ? `<dt>Controls</dt><dd><code>${escapeHtml(field.controlsLength)}</code> (current: ${state.controllers[field.controlsLength]})</dd>` : ""}
+      ${field.controlsLength ? `<dt>Controls</dt><dd><code>${escapeHtml(field.controlsLength)}</code> (current: <span class="mono">${state.controllers[field.controlsLength]}</span>)</dd>` : ""}
       ${field.description ? `<dt>Description</dt><dd>${escapeHtml(field.description)}</dd>` : ""}
     </dl>
   `;
