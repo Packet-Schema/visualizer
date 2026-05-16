@@ -4,8 +4,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
+  type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
@@ -18,6 +20,24 @@ import {
 } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
+import {
+  editReducer,
+  makeInitialState,
+  type EditAction,
+  type EditState,
+} from "@/lib/psml/edit-reducer";
+import {
+  loadCustomPresets,
+  saveCustomPreset,
+  deleteCustomPreset,
+} from "@/lib/psml/custom-presets";
+import {
+  Toolbar,
+  FieldRow,
+  ContainerRow,
+  ConstraintEditor,
+  JsonPane,
+} from "@/components/CustomPacketStudio";
 import type {
   ChainInstance,
   ControllerState,
@@ -26,7 +46,11 @@ import type {
   PacketRegistry,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { ViewMode } from "@/lib/psml/types";
+import type {
+  Container as PsmlContainer,
+  PsmlPacket,
+  ViewMode,
+} from "@/lib/psml/types";
 import ControlsPanel from "./ControlsPanel";
 import DependencyOverlay from "./DependencyOverlay";
 import DetailPanel from "./DetailPanel";
@@ -66,15 +90,40 @@ export default function PacketViewer() {
     return out;
   });
 
+  // Custom Packet Studio — user-saved presets pulled out of localStorage.
+  // Keyed `custom:<name>`; PresetPicker renders these under a 'My presets'
+  // optgroup.
+  const [customPresets, setCustomPresets] = useState<
+    Record<string, PsmlPacket>
+  >({});
+  // Lowered renderer mirror of the active custom preset, if any.
+  const customRenderer: Packet | null = useMemo(() => {
+    const cp = customPresets[packetKey];
+    return cp ? psmlToRenderer(cp) : null;
+  }, [customPresets, packetKey]);
+
   // Renderer mirror — the shape the UI editors / detail panels consume.
   const packet: Packet =
     renderedPresets[packetKey] ??
     importedPackets[packetKey] ??
+    customRenderer ??
     renderedPresets[DEFAULT_PACKET_KEY];
 
   const [controllers, setControllers] = useState<ControllerState>(() =>
     initialState(psmlToRenderer(PRESETS[DEFAULT_PACKET_KEY])),
   );
+
+  // Custom Packet Studio reducer. Seeded from the default preset; we
+  // reseed via 'replace-packet' on preset switch so history doesn't span
+  // unrelated packets.
+  const [studioState, dispatch] = useReducer(
+    editReducer,
+    PRESETS[DEFAULT_PACKET_KEY],
+    makeInitialState,
+  );
+  const [editMode, setEditMode] = useState(false);
+  const [showJsonPane, setShowJsonPane] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const [isWideViewport, setIsWideViewport] = useState(false);
@@ -94,6 +143,58 @@ export default function PacketViewer() {
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
+
+  // Pull user-saved presets from localStorage on mount. Refreshed after
+  // save/delete so the picker stays in sync.
+  useEffect(() => {
+    setCustomPresets(loadCustomPresets());
+  }, []);
+
+  // The active PSML packet for the studio reducer. Prefers built-in PSML,
+  // then a custom preset, then a lifted version of the imported renderer
+  // packet (lossy but acceptable as a starting point for editing).
+  const activePsmlPacket: PsmlPacket = useMemo(() => {
+    return (
+      PRESETS[packetKey] ??
+      customPresets[packetKey] ??
+      (importedPackets[packetKey]
+        ? rendererToPsml(importedPackets[packetKey])
+        : PRESETS[DEFAULT_PACKET_KEY])
+    );
+  }, [packetKey, customPresets, importedPackets]);
+
+  // When the user changes preset, reseed the reducer so undo doesn't span
+  // unrelated packets.
+  useEffect(() => {
+    dispatch({ type: "replace-packet", packet: activePsmlPacket });
+  }, [activePsmlPacket]);
+
+  // Keyboard shortcuts while editing. Skip when focus is on an input/textarea
+  // so the browser's native text-undo still works inside FieldRow inputs.
+  useEffect(() => {
+    if (!editMode) return;
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        dispatch({ type: "undo" });
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        dispatch({ type: "redo" });
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editMode]);
 
   // Auto-launch the tour on first visit. Delay slightly so the diagram is
   // mounted and target elements are visible.
@@ -219,6 +320,51 @@ export default function PacketViewer() {
     [],
   );
 
+  // Save the in-progress edit as a user-owned preset. The `custom:<name>`
+  // key namespace keeps user-saved presets separate from built-ins and
+  // imports so the picker can group them cleanly.
+  const handleSaveAsPreset = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const key = `custom:${trimmed}`;
+      const packetToSave: PsmlPacket = {
+        ...studioState.packet,
+        name: studioState.packet.name || trimmed,
+      };
+      saveCustomPreset(key, packetToSave);
+      setCustomPresets(loadCustomPresets());
+      setPacketKey(key);
+      setControllers(initialState(psmlToRenderer(packetToSave)));
+      setSelectedFieldId(null);
+      setShowSaveDialog(false);
+      setEditMode(false);
+    },
+    [studioState.packet],
+  );
+
+  // Drop in-progress edits and revert the reducer to the active preset.
+  const handleDiscardEdits = useCallback(() => {
+    dispatch({ type: "replace-packet", packet: activePsmlPacket });
+    setEditMode(false);
+    setShowJsonPane(false);
+  }, [activePsmlPacket]);
+
+  // Delete the currently selected custom preset (toolbar shortcut). Wrapped
+  // in a confirm dialog because there's no undo for this in localStorage.
+  const handleDeleteCustomPreset = useCallback(() => {
+    if (!packetKey.startsWith("custom:")) return;
+    if (typeof window !== "undefined") {
+      const label = customPresets[packetKey]?.name ?? packetKey;
+      const ok = window.confirm(`Delete custom preset “${label}”?`);
+      if (!ok) return;
+    }
+    deleteCustomPreset(packetKey);
+    setCustomPresets(loadCustomPresets());
+    setPacketKey(DEFAULT_PACKET_KEY);
+    setEditMode(false);
+  }, [packetKey, customPresets]);
+
   const tourSteps: TourStep[] = useMemo(
     () => [
       {
@@ -274,14 +420,27 @@ export default function PacketViewer() {
       const off = env.get("dataOffset") ?? 5;
       env.set("tcpOptionsCount", Math.max(0, off - 5));
     }
-    const psml = PRESETS[packetKey] ?? null;
+    // In edit mode the studio's packet is the source of truth so the diagram
+    // reflects in-progress edits live.
+    if (editMode) {
+      return resolveLayout(studioState.packet, { env, viewMode });
+    }
+    const psml = PRESETS[packetKey] ?? customPresets[packetKey] ?? null;
     if (psml) {
       return resolveLayout(psml, { env, viewMode });
     }
     // Imported packet — lift renderer → PSML, then resolve.
     const lifted = rendererToPsml(packet);
     return resolveLayout(lifted, { env, viewMode });
-  }, [packet, packetKey, controllers, viewMode]);
+  }, [
+    packet,
+    packetKey,
+    controllers,
+    viewMode,
+    editMode,
+    studioState.packet,
+    customPresets,
+  ]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
@@ -402,6 +561,7 @@ export default function PacketViewer() {
             value={packetKey}
             onChange={handlePacketChange}
             imported={importedPackets}
+            customPresets={customPresets}
           />
           <div className="flex items-center gap-1.5 ml-2">
             <ToolbarButton onClick={() => setDrawerMode("import")}>
@@ -444,6 +604,21 @@ export default function PacketViewer() {
             >
               Decrypted view
             </ToolbarButton>
+            <ToolbarButton
+              onClick={() => setEditMode((v) => !v)}
+              pressed={editMode}
+              ariaLabel={editMode ? "Exit edit mode" : "Enter edit mode"}
+            >
+              ✏️ Edit packet
+            </ToolbarButton>
+            {packetKey.startsWith("custom:") ? (
+              <ToolbarButton
+                onClick={handleDeleteCustomPreset}
+                ariaLabel="Delete this custom preset"
+              >
+                Delete preset
+              </ToolbarButton>
+            ) : null}
           </div>
           <div
             className="ml-auto text-[13px] font-mono tabular-nums"
@@ -514,6 +689,17 @@ export default function PacketViewer() {
           </div>
           <Legend categories={categories} />
         </div>
+
+        {editMode ? (
+          <StudioPanel
+            state={studioState}
+            dispatch={dispatch}
+            showJsonPane={showJsonPane}
+            onToggleJsonPane={() => setShowJsonPane((v) => !v)}
+            onSaveAs={() => setShowSaveDialog(true)}
+            onDiscard={handleDiscardEdits}
+          />
+        ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
           <section
@@ -589,6 +775,14 @@ export default function PacketViewer() {
           onClose={() => setTourOpen(false)}
         />
       ) : null}
+
+      {showSaveDialog ? (
+        <SavePresetDialog
+          defaultName={studioState.packet.name}
+          onCancel={() => setShowSaveDialog(false)}
+          onSubmit={handleSaveAsPreset}
+        />
+      ) : null}
     </div>
   );
 }
@@ -627,6 +821,187 @@ function findRowNeighbor(
     return !(en < curStart || s > curEnd);
   });
   return overlap ?? sameRow[0] ?? null;
+}
+
+// StudioPanel — the in-edit-mode editor surface. Renders the Toolbar at the
+// top, a flat walk of `state.packet.body[]` as FieldRow / ContainerRow
+// instances, the ConstraintEditor, and an optional JsonPane. The diagram
+// lives above this panel and re-resolves layout from state.packet, so
+// every dispatch produces a live update without prop drilling.
+function StudioPanel({
+  state,
+  dispatch,
+  showJsonPane,
+  onToggleJsonPane,
+  onSaveAs,
+  onDiscard,
+}: {
+  state: EditState;
+  dispatch: Dispatch<EditAction>;
+  showJsonPane: boolean;
+  onToggleJsonPane: () => void;
+  onSaveAs: () => void;
+  onDiscard: () => void;
+}) {
+  const canUndo = state.history.length > 0;
+  const canRedo = state.future.length > 0;
+  return (
+    <section
+      className="rounded-[10px] border px-4 py-3.5 mt-4"
+      style={{
+        background: "var(--bg-elevated)",
+        borderColor: "var(--border)",
+        boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
+      }}
+    >
+      <h2
+        className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
+        style={{ color: "var(--fg-muted)" }}
+      >
+        Custom Packet Studio
+      </h2>
+      <Toolbar
+        dispatch={dispatch}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        showJsonPane={showJsonPane}
+        onToggleJsonPane={onToggleJsonPane}
+        onSaveAs={(name: string) => {
+          // Toolbar may submit name directly; otherwise it calls onSaveAs()
+          // with an empty string and the parent opens a dialog. We route both
+          // through the parent so the dialog stays the single name source.
+          if (name && name.trim()) {
+            // Defer to parent's onSaveAs which opens the dialog; we ignore
+            // the inline name to keep a single naming UX.
+          }
+          onSaveAs();
+        }}
+        onDiscard={onDiscard}
+      />
+      <ol className="mt-3 flex flex-col gap-2 list-none p-0">
+        {state.packet.body.map((node: PsmlContainer, i: number) => (
+          <li key={containerId(node, i)}>
+            {isLeafField(node) ? (
+              <FieldRow
+                field={node as Field}
+                path={[i]}
+                packet={state.packet}
+                dispatch={dispatch}
+              />
+            ) : (
+              <ContainerRow
+                container={node as PsmlContainer}
+                path={[i]}
+                packet={state.packet}
+                dispatch={dispatch}
+              />
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="mt-4">
+        <ConstraintEditor packet={state.packet} dispatch={dispatch} />
+      </div>
+      {showJsonPane ? (
+        <div className="mt-4">
+          <JsonPane packet={state.packet} dispatch={dispatch} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+// isLeafField: a PSML Container with no `kind` (or kind === 'field') is a
+// leaf Field — everything else (struct/group/repeat/switch/encrypted) is a
+// container row.
+function isLeafField(node: PsmlContainer): boolean {
+  const k = (node as { kind?: string }).kind;
+  return !k || k === "field";
+}
+
+function containerId(node: PsmlContainer, fallback: number): string {
+  const id = (node as { id?: string }).id;
+  return id ?? `node-${fallback}`;
+}
+
+// SavePresetDialog — minimal modal for naming a custom preset. Native
+// HTMLDialogElement is overkill here; a fixed-position overlay keeps the
+// markup portable for the smoke test.
+function SavePresetDialog({
+  defaultName,
+  onCancel,
+  onSubmit,
+}: {
+  defaultName: string;
+  onCancel: () => void;
+  onSubmit: (name: string) => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.45)" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Save as my preset"
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit(name);
+        }}
+        className="rounded-[10px] border p-4 min-w-[320px]"
+        style={{
+          background: "var(--bg-elevated)",
+          borderColor: "var(--border-strong)",
+          color: "var(--fg)",
+        }}
+      >
+        <h3 className="m-0 mb-3 text-sm font-bold">Save as my preset</h3>
+        <label className="flex flex-col gap-1 text-sm">
+          <span>Preset name</span>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="text-sm px-2.5 py-1.5 rounded-md border"
+            style={{
+              borderColor: "var(--border-strong)",
+              background: "var(--bg)",
+              color: "var(--fg)",
+            }}
+            autoFocus
+          />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={{
+              background: "var(--bg-elevated)",
+              color: "var(--fg)",
+              borderColor: "var(--border-strong)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={{
+              background: "var(--accent)",
+              color: "var(--accent-fg)",
+              borderColor: "var(--accent)",
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function ToolbarButton({
