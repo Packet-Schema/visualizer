@@ -3,25 +3,66 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>Packet View — Interactive Packet Structure Viewer</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Apply theme before first paint to avoid flash.
+    (function () {
+      try {
+        var stored = localStorage.getItem("packet-view-theme");
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = stored || (prefersDark ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    })();
+  </script>
 </head>
 <body>
-  <header>
-    <h1>Packet View</h1>
-    <p class="tagline">Interactive packet structure viewer. Click fields for details; drag sliders to resize variable-length parts.</p>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand">
+        <h1>Packet View</h1>
+        <p class="tagline">Interactive packet structure viewer. Click fields for details; drag sliders to resize variable-length parts.</p>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button"
+              aria-label="Toggle color theme" title="Toggle color theme">
+        <svg class="theme-icon icon-sun" xmlns="http://www.w3.org/2000/svg"
+             width="20" height="20" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2"></path>
+          <path d="M12 20v2"></path>
+          <path d="m4.93 4.93 1.41 1.41"></path>
+          <path d="m17.66 17.66 1.41 1.41"></path>
+          <path d="M2 12h2"></path>
+          <path d="M20 12h2"></path>
+          <path d="m6.34 17.66-1.41 1.41"></path>
+          <path d="m19.07 4.93-1.41 1.41"></path>
+        </svg>
+        <svg class="theme-icon icon-moon" xmlns="http://www.w3.org/2000/svg"
+             width="20" height="20" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <main>
-    <section class="toolbar">
+    <section class="toolbar" aria-label="Packet selector">
       <label for="packet-selector">Packet:</label>
       <select id="packet-selector"></select>
-      <span id="summary" class="summary"></span>
+      <span id="summary" class="summary" aria-live="polite"></span>
     </section>
 
     <p id="packet-description" class="description"></p>
 
-    <section class="diagram-wrap">
+    <section class="diagram-wrap" aria-label="Packet diagram">
       <div id="diagram"></div>
     </section>
 

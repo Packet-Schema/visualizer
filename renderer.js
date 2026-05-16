@@ -9,6 +9,18 @@ const PADDING_X = 12;
 const PADDING_TOP = 8;
 const PADDING_BOTTOM = 12;
 
+// Known color tokens map to CSS custom properties. Unknown values are passed
+// through unchanged (so legacy hex still works).
+const KNOWN_TOKENS = new Set([
+  "blue", "indigo", "violet", "teal", "green", "amber", "orange", "rose", "slate",
+]);
+
+function resolveFieldColor(color) {
+  if (!color) return "var(--field-slate)";
+  if (KNOWN_TOKENS.has(color)) return `var(--field-${color})`;
+  return color;
+}
+
 export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) {
   const rowBits = packet.rowBits;
   const rows = layout.cells.length
@@ -23,10 +35,13 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `${packet.name} diagram`);
   svg.classList.add("packet-svg");
 
   // Bit ruler
   const ruler = createGroup(`translate(${PADDING_X}, ${PADDING_TOP})`);
+  ruler.classList.add("bit-ruler");
   for (let b = 0; b <= rowBits; b++) {
     const x = b * BIT_WIDTH;
     const major = b % 8 === 0;
@@ -34,9 +49,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
       x1: x, x2: x,
       y1: RULER_HEIGHT - (major ? 10 : 6),
       y2: RULER_HEIGHT,
-      stroke: "#888",
       "stroke-width": major ? 1.2 : 0.6,
     });
+    tick.classList.add(major ? "ruler-tick-major" : "ruler-tick-minor");
     ruler.appendChild(tick);
     if (b < rowBits && b % 4 === 0) {
       const label = createSvg("text", {
@@ -44,8 +59,8 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
         y: RULER_HEIGHT - 12,
         "text-anchor": "middle",
         "font-size": 10,
-        fill: "#666",
       });
+      label.classList.add("ruler-label");
       label.textContent = b;
       ruler.appendChild(label);
     }
@@ -56,8 +71,8 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
     y: RULER_HEIGHT - 12,
     "text-anchor": "end",
     "font-size": 10,
-    fill: "#666",
   });
+  lastLabel.classList.add("ruler-label");
   lastLabel.textContent = rowBits - 1;
   ruler.appendChild(lastLabel);
   svg.appendChild(ruler);
@@ -72,8 +87,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
       y,
       width: innerWidth,
       height: ROW_HEIGHT,
-      fill: r % 2 === 0 ? "#fafbff" : "#ffffff",
     });
+    band.classList.add("row-band");
+    band.classList.add(r % 2 === 0 ? "row-band-even" : "row-band-odd");
     svg.appendChild(band);
 
     // vertical bit guides
@@ -82,9 +98,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
       const major = b % 8 === 0;
       const guide = createSvg("line", {
         x1: x, x2: x, y1: y, y2: y + ROW_HEIGHT,
-        stroke: major ? "#d0d4e0" : "#eef0f6",
         "stroke-width": 1,
       });
+      guide.classList.add(major ? "grid-guide-major" : "grid-guide-minor");
       svg.appendChild(guide);
     }
   }
@@ -101,6 +117,12 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
     group.classList.add("field-cell");
     if (isSelected) group.classList.add("selected");
     group.dataset.fieldId = cell.field.id;
+    group.setAttribute("tabindex", "0");
+    group.setAttribute("role", "button");
+    group.setAttribute("aria-label",
+      `${cell.field.name}, ${cell.bitsTotal} bits${isSelected ? ", selected" : ""}`);
+
+    const fillColor = resolveFieldColor(cell.field.color);
 
     const rect = createSvg("rect", {
       x: x + 1,
@@ -109,11 +131,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
       height: h - 8,
       rx: 6,
       ry: 6,
-      fill: cell.field.color || "#cccccc",
-      "fill-opacity": isSelected ? 0.9 : 0.7,
-      stroke: isSelected ? "#222" : "#445",
-      "stroke-width": isSelected ? 2 : 1,
+      fill: fillColor,
     });
+    rect.classList.add("field-rect");
     group.appendChild(rect);
 
     // Variable-length stripe indicator
@@ -138,9 +158,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
         "text-anchor": "middle",
         "font-size": 12,
         "font-weight": 600,
-        fill: "#222",
         "pointer-events": "none",
       });
+      label.classList.add("field-label");
       label.textContent = truncateToFit(cell.field.name, w - 10);
       group.appendChild(label);
 
@@ -149,9 +169,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
         y: y + h / 2 + 12,
         "text-anchor": "middle",
         "font-size": 10,
-        fill: "#334",
         "pointer-events": "none",
       });
+      sub.classList.add("field-sublabel");
       sub.textContent = formatBitsLabel(cell.bitsTotal, cell.field);
       group.appendChild(sub);
     } else {
@@ -162,9 +182,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
         "text-anchor": "middle",
         "font-size": 10,
         "font-style": "italic",
-        fill: "#556",
         "pointer-events": "none",
       });
+      cont.classList.add("field-continuation");
       cont.textContent = `… ${cell.field.name} (cont.)`;
       cont.textContent = truncateToFit(cont.textContent, w - 10);
       group.appendChild(cont);
@@ -173,6 +193,12 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
     if (onFieldClick) {
       group.style.cursor = "pointer";
       group.addEventListener("click", () => onFieldClick(cell.field));
+      group.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onFieldClick(cell.field);
+        }
+      });
     }
 
     svg.appendChild(group);
@@ -183,7 +209,7 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
   defs.innerHTML = `
     <pattern id="variable-stripes" patternUnits="userSpaceOnUse"
              width="8" height="8" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="8" stroke="#222" stroke-width="1" stroke-opacity="0.15"/>
+      <line x1="0" y1="0" x2="0" y2="8" class="variable-stripe-line" stroke-width="1"/>
     </pattern>
   `;
   svg.insertBefore(defs, svg.firstChild);
