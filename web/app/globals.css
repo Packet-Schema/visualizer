@@ -755,31 +755,20 @@ input.pv-slider::-moz-range-thumb {
 
 /* ==========================================================================
    Hex byte strip (B3)
-
-   Mounted directly beneath HybridDiagram. Each byte is a small monospace
-   button coloured to match its owning field. PacketViewer mirrors the active
-   field id to a `data-highlighted-field` attribute on the diagram root; the
-   selectors below light up the matching diagram cell and hex byte at once.
    ========================================================================== */
 
 .hex-strip {
   width: 100%;
-  /* Allow the horizontal byte row to wrap rather than overflow; the strip is
-   * meant to sit underneath the diagram at the same width. */
   contain: layout style;
 }
 
-.hex-strip-row {
-  /* min-width:0 on flex items keeps long strips wrapping cleanly. */
-  min-width: 0;
-}
+.hex-strip-row { min-width: 0; }
 
 .hex-byte {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 28x22 keeps two hex digits readable without dwarfing the diagram. */
   min-width: 28px;
   height: 22px;
   padding: 0 4px;
@@ -793,8 +782,6 @@ input.pv-slider::-moz-range-thumb {
   font-weight: 600;
   cursor: pointer;
   appearance: none;
-  /* Keep the gradient or flat fill we set inline showing through, and
-   * darken the digits a touch via a translucent overlay on hover. */
   transition:
     border-color var(--pv-fast) var(--pv-ease),
     box-shadow var(--pv-fast) var(--pv-ease),
@@ -816,8 +803,6 @@ input.pv-slider::-moz-range-thumb {
 }
 
 .hex-byte-text {
-  /* Add a subtle white overlay so the text remains legible over saturated
-   * backgrounds (especially the dark theme's amber/orange). */
   background: oklch(99% 0 0 / 0.55);
   padding: 0 3px;
   border-radius: 3px;
@@ -834,27 +819,17 @@ input.pv-slider::-moz-range-thumb {
   color: oklch(96% 0.012 270);
 }
 
-/* ---- bidirectional highlight ----
- *
- * PacketViewer sets `data-highlighted-field="<id>"` on the diagram-shell when
- * either a diagram cell or a hex byte is hovered. The matching elements on
- * either side get a strong outline so the relationship is obvious.
- */
+/* ---- bidirectional highlight (B3 hex strip ⇄ B4 dependency overlay share this) ---- */
 
 .diagram-shell[data-highlighted-field] .cell.field-cell,
 .diagram-shell[data-highlighted-field] .subfield-cell,
 .diagram-shell[data-highlighted-field] .hex-byte {
-  /* Dim non-matching elements slightly to make the matched ones pop. */
   filter: saturate(0.55) brightness(0.96);
   opacity: 0.78;
   transition:
     filter var(--pv-fast) var(--pv-ease),
     opacity var(--pv-fast) var(--pv-ease);
 }
-
-/* The active match. CSS can't compare two attribute values, so PacketViewer
- * tags matched nodes with `.hex-match` via a small imperative effect on
- * hover. The styling rules themselves stay declarative. */
 
 .diagram-shell .cell.field-cell.hex-match,
 .diagram-shell .subfield-cell.hex-match,
@@ -868,9 +843,29 @@ input.pv-slider::-moz-range-thumb {
   z-index: 3;
 }
 
-/* Hide the strip in print mode so the worksheet PDF stays clean. */
+/* ==========================================================================
+   Dependency overlay (B4)
+   ========================================================================== */
+
+.dependency-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+
+.diagram-shell .dep-endpoint-source,
+.diagram-shell .dep-endpoint-target {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  transition: outline-color 120ms, box-shadow 120ms;
+}
+
 @media print {
-  .hex-strip {
+  .hex-strip,
+  .dependency-overlay {
     display: none !important;
   }
 }
