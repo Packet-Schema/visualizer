@@ -1,0 +1,1236 @@
+// PSML Kaitai Struct (.ksy) bridge tests — file-fixture round-trip plus
+// targeted tests for every type-mapping branch in the importer (u1..u8,
+// s1..s8, b1..bN, str/strz, contents, switch-on, repeat expr/until/eos,
+// if, enums, doc/doc-ref, nested types, instances, float fallback, error
+// paths).
+
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+import { parse as yamlParse } from "yaml";
+
+import { fromKsy, toKsy } from "../../lib/formats/ksy";
+import { initialEnv, normalize } from "../../lib/psml/normalize";
+
+const here = path.resolve(__dirname, "../..");
+const KSY_DIR = path.join(here, "data", "ksy-examples");
+const ipv4MinText = readFileSync(path.join(KSY_DIR, "ipv4_min.ksy"), "utf8");
+const bmpHeaderText = readFileSync(path.join(KSY_DIR, "bmp_header.ksy"), "utf8");
+
+describe("fromKsy — file fixtures", () => {
+  it("ipv4_min.ksy: totalBits=160, warnings ≤ 2, expected ids present", () => {
+    const { packet, warnings } = fromKsy(ipv4MinText);
+    expect(warnings.length).toBeLessThanOrEqual(2);
+    const env = initialEnv(packet);
+    env.set("ihl", 0);
+    env.set("options_present", 0);
+    expect(normalize(packet, env).totalBits).toBe(160);
+    const ids = packet.body.map((c) => (c as { id: string }).id);
+    for (const expected of [
+      "version",
+      "ihl",
+      "dscp",
+      "ecn",
+      "total_length",
+      "src_addr",
+      "dst_addr",
+    ]) {
+      expect(ids).toContain(expected);
+    }
+  });
+
+  it("bmp_header.ksy: warnings = 0, file_header type is grouped", () => {
+    const { packet, warnings } = fromKsy(bmpHeaderText);
+    expect(warnings).toEqual([]);
+    expect(packet.byteOrder).toBe("LE");
+    const fileHdr = packet.body[0] as {
+      kind: string;
+      id: string;
+      children: unknown[];
+    };
+    expect(fileHdr.kind).toBe("group");
+    expect(fileHdr.id).toBe("file_hdr");
+    expect(fileHdr.children.length).toBeGreaterThan(0);
+  });
+
+  it("round-trip: toKsy(fromKsy(x)) re-parses as YAML", () => {
+    for (const text of [ipv4MinText, bmpHeaderText]) {
+      const { packet } = fromKsy(text);
+      const exported = toKsy(packet);
+      expect(typeof exported).toBe("string");
+      expect(exported.length).toBeGreaterThan(0);
+      const reparsed = yamlParse(exported);
+      expect(reparsed).toBeTypeOf("object");
+      expect(reparsed.meta).toBeDefined();
+    }
+  });
+});
+
+describe("fromKsy — integer type mapping", () => {
+  it("u1/u2/u4/u8 unsigned ints", () => {
+    const text = `
+meta: { id: t, endian: be }
+seq:
+  - { id: a, type: u1 }
+  - { id: b, type: u2 }
+  - { id: c, type: u4 }
+  - { id: d, type: u8 }
+`;
+    const { packet, warnings } = fromKsy(text);
+    expect(warnings).toEqual([]);
+    const types = packet.body.map(
+      (c) => (c as { type: { kind: string; bits: number; signed?: boolean } }).type,
+    );
+    expect(types[0]).toEqual({ kind: "int", bits: 8 });
+    expect(types[1]).toEqual({ kind: "int", bits: 16 });
+    expect(types[2]).toEqual({ kind: "int", bits: 32 });
+    expect(types[3]).toEqual({ kind: "int", bits: 64 });
+  });
+
+  it("s1/s2/s4/s8 signed ints", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: a, type: s1 }
+  - { id: b, type: s2 }
+  - { id: c, type: s4 }
+  - { id: d, type: s8 }
+`;
+    const { packet } = fromKsy(text);
+    for (const c of packet.body) {
+      const t = (c as { type: { kind: string; signed?: boolean } }).type;
+      expect(t.kind).toBe("int");
+      expect(t.signed).toBe(true);
+    }
+  });
+
+  it("b1..b64 raw bit fields", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: one, type: b1 }
+  - { id: thirteen, type: b13 }
+  - { id: sixtyfour, type: b64 }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { type: { n: number } }).type.n).toBe(1);
+    expect((packet.body[1] as { type: { n: number } }).type.n).toBe(13);
+    expect((packet.body[2] as { type: { n: number } }).type.n).toBe(64);
+  });
+
+  it("explicit endian suffix is accepted on int/bit types", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: a, type: u4le }
+  - { id: b, type: b16be }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { type: { bits: number } }).type.bits).toBe(32);
+    expect((packet.body[1] as { type: { n: number } }).type.n).toBe(16);
+  });
+
+  it("float types lower to raw bits with a warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: f, type: f4 }
+  - { id: d, type: f8 }
+`;
+    const { packet, warnings } = fromKsy(text);
+    expect(warnings.some((w) => /float type/.test(w))).toBe(true);
+    expect((packet.body[0] as { type: { n: number } }).type.n).toBe(32);
+    expect((packet.body[1] as { type: { n: number } }).type.n).toBe(64);
+  });
+});
+
+describe("fromKsy — string and byte buffers", () => {
+  it("str + size becomes bytes type", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: name, type: str, size: 8, encoding: ascii }
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[0] as { type: { kind: string; n: { kind: string; value: number } } }).type;
+    expect(t.kind).toBe("bytes");
+    expect(t.n.value).toBe(8);
+  });
+
+  it("strz + size-eos uses a 0-byte placeholder and warns", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: rest, type: strz, size-eos: true }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /size-eos/.test(w))).toBe(true);
+  });
+
+  it("strz without size warns and uses 0", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: strz }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /without size/.test(w))).toBe(true);
+  });
+
+  it("bare size becomes raw bytes", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: chunk, size: 16 }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { type: { kind: string } }).type.kind).toBe("bytes");
+  });
+
+  it("size: <ref> becomes a bytes with ref expression", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: hdrLen, type: u1 }
+  - { id: data, size: hdrLen }
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[1] as { type: { n: { kind: string; field: string } } }).type;
+    expect(t.n.kind).toBe("ref");
+    expect(t.n.field).toBe("hdrLen");
+  });
+
+  it("complex size expression warns", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: data, size: "len * 4" }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /Complex size/.test(w))).toBe(true);
+  });
+
+  it("size-eos without a type warns and emits placeholder", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: rest, size-eos: true }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /size-eos used as 0-byte placeholder/.test(w))).toBe(true);
+  });
+
+  it("contents (magic bytes) becomes a fixed-size bytes type", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: magic, contents: "BM" }
+  - { id: arr, contents: [0x42, 0x4D] }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { type: { n: { value: number } } }).type.n.value).toBe(2);
+    expect((packet.body[1] as { type: { n: { value: number } } }).type.n.value).toBe(2);
+  });
+});
+
+describe("fromKsy — repeat / if / enum / nested types / instances", () => {
+  it("repeat: expr resolves to a Repeat with literal count", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: words, type: u2, repeat: expr, repeat-expr: 3 }
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as { kind: string; count: { kind: string; value: number } };
+    expect(c.kind).toBe("repeat");
+    expect(c.count.value).toBe(3);
+  });
+
+  it("repeat: expr with a string identifier becomes a ref", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: items, type: u1, repeat: expr, repeat-expr: count }
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as { count: { kind: string; field: string } };
+    expect(c.count.field).toBe("count");
+  });
+
+  it("repeat: expr with an unparseable expression warns and falls back", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: items, type: u1, repeat: expr, repeat-expr: "_root.size + 1" }
+`;
+    const { packet, warnings } = fromKsy(text);
+    expect(warnings.some((w) => /repeat-expr/.test(w))).toBe(true);
+    const c = packet.body[0] as { count: { field: string } };
+    expect(c.count.field).toBe("items_count");
+  });
+
+  it("repeat: expr with a numeric-string value parses as a literal", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: items, type: u1, repeat: expr, repeat-expr: "5" }
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as { count: { kind: string; value: number } };
+    expect(c.count.value).toBe(5);
+  });
+
+  it("repeat: expr with a non-string non-number value falls back", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: items, type: u1, repeat: expr, repeat-expr: null }
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as { count: { field: string } };
+    expect(c.count.field).toBe("items_count");
+  });
+
+  it("repeat: until warns and uses an env-driven count", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: items, type: u1, repeat: until, "repeat-until": "_ == 0" }
+`;
+    const { packet, warnings } = fromKsy(text);
+    expect(warnings.some((w) => /repeat: until/.test(w))).toBe(true);
+    const c = packet.body[0] as { count: { until: { field: string } } };
+    expect(c.count.until.field).toBe("items_until");
+  });
+
+  it("repeat: eos resolves to 'eos'", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: rest, type: u1, repeat: eos }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { count: string }).count).toBe("eos");
+  });
+
+  it("if: <ref> wraps in a Switch with present/absent/default branches", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: opt, type: u1, if: present }
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as {
+      kind: string;
+      cases: Record<string, unknown>;
+      default: unknown;
+    };
+    expect(c.kind).toBe("switch");
+    expect(c.cases["1"]).toBeDefined();
+    expect(c.cases["0"]).toBeDefined();
+    expect(c.default).toBeDefined();
+  });
+
+  it("if: <complex expr> warns and falls back to env ref", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: opt, type: u1, if: "ihl > 5" }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /if-expression/.test(w))).toBe(true);
+  });
+
+  it("type: switch-on resolves to a Switch container", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: payload
+    type:
+      switch-on: kind
+      cases:
+        '1': u2
+        '2': u4
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as {
+      kind: string;
+      on: { field: string };
+      cases: Record<string, unknown>;
+    };
+    expect(c.kind).toBe("switch");
+    expect(c.on.field).toBe("kind");
+    expect(c.cases["1"]).toBeDefined();
+    expect(c.cases["2"]).toBeDefined();
+  });
+
+  it("switch-on with no cases mapping resolves to an empty Switch container", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: payload
+    type:
+      switch-on: kind
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as { kind: string; cases: Record<string, unknown> };
+    expect(c.kind).toBe("switch");
+    expect(c.cases).toEqual({});
+  });
+
+  it("switch-on with a non-string `switch-on` value is dropped", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: payload
+    type:
+      switch-on: 42
+      cases: {}
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /switch-on/.test(w))).toBe(true);
+  });
+
+  it("switch-on with a non-ref expression is dropped with a warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: payload
+    type:
+      switch-on: "some.thing"
+      cases:
+        '1': u1
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /switch-on/.test(w))).toBe(true);
+  });
+
+  it("switch-on case with an unresolvable type variant is silently dropped", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: payload
+    type:
+      switch-on: kind
+      cases:
+        '1': nonexistent_type
+`;
+    const { packet } = fromKsy(text);
+    const c = packet.body[0] as { cases: Record<string, unknown> };
+    // case "1" was dropped because nonexistent_type can't resolve
+    expect(c.cases["1"]).toBeUndefined();
+  });
+
+  it("switch-on case with a non-string variant warns", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: payload
+    type:
+      switch-on: kind
+      cases:
+        '1': { id: nested }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /non-string variant/.test(w))).toBe(true);
+  });
+
+  it("user-defined types become Group containers", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: hdr, type: header }
+types:
+  header:
+    seq:
+      - { id: a, type: u1 }
+      - { id: b, type: u2 }
+`;
+    const { packet } = fromKsy(text);
+    const g = packet.body[0] as { kind: string; children: unknown[] };
+    expect(g.kind).toBe("group");
+    expect(g.children).toHaveLength(2);
+  });
+
+  it("nested user-type with its own types/enums merges into the child registry", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: hdr, type: outer }
+types:
+  outer:
+    seq:
+      - { id: inner_val, type: inner }
+      - { id: tag, type: u1, enum: nested_kinds }
+    types:
+      inner:
+        seq:
+          - { id: leaf, type: u1 }
+    enums:
+      nested_kinds:
+        1: alpha
+`;
+    const { packet, warnings } = fromKsy(text);
+    expect(warnings).toEqual([]);
+    // Outer group contains an "inner" sub-group with one leaf field, plus the
+    // enum-typed tag.
+    const outer = packet.body[0] as { kind: string; children: Array<{ kind?: string; type?: { kind: string } }> };
+    expect(outer.kind).toBe("group");
+    expect(outer.children).toHaveLength(2);
+    expect(outer.children[0].kind).toBe("group");
+    expect(outer.children[1].type?.kind).toBe("enum");
+  });
+
+  it("nested user-type with its own instances warns", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: hdr, type: header }
+types:
+  header:
+    seq:
+      - { id: a, type: u1 }
+    instances:
+      computed:
+        value: 1
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /Kaitai computed instance/.test(w))).toBe(true);
+  });
+
+  it("top-level instances warn", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: a, type: u1 }
+instances:
+  thing:
+    value: 1
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /Kaitai computed instance/.test(w))).toBe(true);
+  });
+
+  it("enum on int → TypeEnum", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: kind, type: u1, enum: kinds }
+enums:
+  kinds:
+    1: alpha
+    2: beta
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[0] as {
+      type: { kind: string; bits: number; variants: Record<number, string> };
+    }).type;
+    expect(t.kind).toBe("enum");
+    expect(t.bits).toBe(8);
+    expect(t.variants).toEqual({ 1: "alpha", 2: "beta" });
+  });
+
+  it("enum on bN → TypeEnum carrying bit count", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: nibble, type: b4, enum: kinds }
+enums:
+  kinds: { 0: zero, 1: one }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { type: { bits: number } }).type.bits).toBe(4);
+  });
+
+  it("unknown enum name warns and keeps the int type", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: u1, enum: missing }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /unknown enum/.test(w))).toBe(true);
+  });
+
+  it("enum entries with object values pick up the `id` key", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: kind, type: u1, enum: k }
+enums:
+  k:
+    1: { id: alpha, doc: 'first' }
+    2: beta
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    expect(t.variants[1]).toBe("alpha");
+    expect(t.variants[2]).toBe("beta");
+  });
+
+  it("non-mapping enum value is ignored with a warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: kind, type: u1, enum: bad }
+enums:
+  bad: not-a-mapping
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /Enum "bad"/.test(w))).toBe(true);
+  });
+
+  it("enum applied to a bytes-typed field is silently a no-op", () => {
+    // A `str + size` becomes bytes; the enum lookup should be skipped, not
+    // crash, and not warn (since the enum exists).
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: str, size: 4, enum: kinds }
+enums:
+  kinds: { 1: alpha }
+`;
+    const { packet, warnings } = fromKsy(text);
+    expect(warnings).toEqual([]);
+    expect((packet.body[0] as { type: { kind: string } }).type.kind).toBe("bytes");
+  });
+
+  it("non-mapping user type is ignored with a warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: hdr, type: bad }
+types:
+  bad: "not-a-mapping"
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /Type "bad"/.test(w))).toBe(true);
+  });
+});
+
+describe("fromKsy — meta fields, doc, doc-ref", () => {
+  it("meta.id falls back to 'kaitai_packet' when missing", () => {
+    const { packet } = fromKsy(`meta: {}\nseq: []`);
+    expect(packet.name).toBe("kaitai_packet");
+  });
+
+  it("meta.title overrides id", () => {
+    const { packet } = fromKsy(`meta: { id: foo, title: "Foo Format" }\nseq: []`);
+    expect(packet.name).toBe("Foo Format");
+  });
+
+  it("unknown meta.endian warns", () => {
+    const { warnings } = fromKsy(`meta: { id: t, endian: weird }\nseq: []`);
+    expect(warnings.some((w) => /Unknown meta.endian/.test(w))).toBe(true);
+  });
+
+  it("doc and doc-ref combine into the packet description", () => {
+    const text = `
+meta: { id: t }
+doc: "A test packet"
+doc-ref:
+  - "https://example.com/spec"
+seq: []
+`;
+    const { packet } = fromKsy(text);
+    expect(packet.description).toContain("A test packet");
+    expect(packet.description).toContain("See: https://example.com/spec");
+  });
+
+  it("doc-ref as a single string also surfaces", () => {
+    const { packet } = fromKsy(`meta: { id: t }\ndoc-ref: "https://example.com"\nseq: []`);
+    expect(packet.description).toContain("https://example.com");
+  });
+
+  it("field-level doc and doc-ref combine", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - id: x
+    type: u1
+    doc: "field x"
+    doc-ref: "RFC 9999"
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { doc: string }).doc).toContain("field x");
+    expect((packet.body[0] as { doc: string }).doc).toContain("See: RFC 9999");
+  });
+
+  it("anonymous seq entries get fallback ids", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { type: u1 }
+`;
+    const { packet } = fromKsy(text);
+    expect((packet.body[0] as { id: string }).id).toBe("f0");
+  });
+});
+
+describe("fromKsy — defensive parser paths", () => {
+  it("works when meta is entirely missing", () => {
+    const { packet } = fromKsy("seq:\n  - { id: a, type: u1 }\n");
+    expect(packet.name).toBe("kaitai_packet");
+  });
+
+  it("works when seq is missing", () => {
+    const { packet } = fromKsy("meta: { id: t }\n");
+    expect(packet.body).toEqual([]);
+  });
+
+  it("user-defined type with no seq becomes an empty Group", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: blob, type: empty }
+types:
+  empty: { doc: 'placeholder' }
+`;
+    const { packet } = fromKsy(text);
+    const g = packet.body[0] as { kind: string; children: unknown[] };
+    expect(g.children).toEqual([]);
+  });
+
+  it("anonymous float entry uses '?' in the warning message", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { type: f4 }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /float type/.test(w))).toBe(true);
+  });
+
+  it("anonymous str-with-size-eos entry uses '?' in the warning message", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { type: str, size-eos: true }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /str with size-eos/.test(w))).toBe(true);
+  });
+
+  it("anonymous strz with no size triggers the placeholder warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { type: strz }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /without size/.test(w))).toBe(true);
+  });
+
+  it("anonymous size-eos with no type triggers the placeholder warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { size-eos: true }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /size-eos used as 0-byte placeholder/.test(w))).toBe(true);
+  });
+
+  it("seq entry with no id at all uses fallback fN id and warns about untyped", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { type: weird }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /could not resolve type/.test(w))).toBe(true);
+  });
+
+  it("bN where N>64 falls through to bytes/null path", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: huge, type: b128 }
+`;
+    const { warnings } = fromKsy(text);
+    // No bit match → drops with warning
+    expect(warnings.some((w) => /could not resolve type/.test(w))).toBe(true);
+  });
+
+  it("enum object value missing `id` is dropped", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: u1, enum: m }
+enums:
+  m:
+    1: { doc: 'no id key here' }
+    2: alpha
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    expect(t.variants[1]).toBeUndefined();
+    expect(t.variants[2]).toBe("alpha");
+  });
+
+  it("enum object value with a non-string `id` is dropped", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: u1, enum: m }
+enums:
+  m:
+    1: { id: 99 }
+    2: alpha
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    expect(t.variants[1]).toBeUndefined();
+    expect(t.variants[2]).toBe("alpha");
+  });
+
+  it("enum with non-integer key names is filtered", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: u1, enum: m }
+enums:
+  m:
+    1: alpha
+    bogus: ignored
+`;
+    const { packet } = fromKsy(text);
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    expect(t.variants[1]).toBe("alpha");
+    // Non-integer key not present
+    expect(Object.keys(t.variants)).toEqual(["1"]);
+  });
+
+  it("doc-ref array with non-string entries skips them", () => {
+    const text = `
+meta: { id: t }
+doc-ref:
+  - "good"
+  - 12345
+seq: []
+`;
+    const { packet } = fromKsy(text);
+    expect(packet.description).toContain("See: good");
+  });
+
+  it("size with a non-number, non-string falls through to null type", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, size: true }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /could not resolve type/.test(w))).toBe(true);
+  });
+
+  it("contents that resolves to length 0 also drops the entry", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, contents: [] }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /could not resolve type/.test(w))).toBe(true);
+  });
+
+  it("contents that is neither string nor array is treated as zero-length", () => {
+    // YAML parses `42` as a number — magicByteLength's defensive false branch.
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, contents: 42 }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /could not resolve type/.test(w))).toBe(true);
+  });
+});
+
+describe("fromKsy — error and edge paths", () => {
+  it("throws on invalid YAML", () => {
+    expect(() => fromKsy("- :\n - bad: [")).toThrow(/Invalid YAML/);
+  });
+
+  it("throws when the root is not a mapping", () => {
+    expect(() => fromKsy("- a\n- b")).toThrow(/must be a mapping/);
+  });
+
+  it("warns about unsupported seq keys", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: u1, process: 'xor(0xff)', valid: 1 }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /process/.test(w))).toBe(true);
+    expect(warnings.some((w) => /valid/.test(w))).toBe(true);
+  });
+
+  it("drops unrecognised type with a warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - { id: x, type: zigzag }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /could not resolve type/.test(w))).toBe(true);
+  });
+
+  it("non-mapping seq entry is skipped with a warning", () => {
+    const text = `
+meta: { id: t }
+seq:
+  - "not a mapping"
+  - { id: x, type: u1 }
+`;
+    const { warnings } = fromKsy(text);
+    expect(warnings.some((w) => /not a mapping/.test(w))).toBe(true);
+  });
+});
+
+describe("toKsy — exporter", () => {
+  it("emits meta and seq for a simple packet", () => {
+    const yaml = toKsy({
+      name: "Test",
+      rowBits: 32,
+      byteOrder: "BE",
+      body: [
+        { id: "a", name: "A", type: { kind: "int", bits: 16 } },
+        { id: "b", name: "B", type: { kind: "int", bits: 8, signed: true } },
+        { id: "c", name: "C", type: { kind: "bits", n: 4 } },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.meta.id).toBe("test");
+    expect(obj.meta.endian).toBe("be");
+    expect(obj.seq[0]).toEqual({ id: "a", type: "u2" });
+    expect(obj.seq[1]).toEqual({ id: "b", type: "s1" });
+    expect(obj.seq[2]).toEqual({ id: "c", type: "b4" });
+  });
+
+  it("LE endian is preserved", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      byteOrder: "LE",
+      body: [{ id: "a", name: "A", type: { kind: "int", bits: 16 } }],
+    });
+    expect(yamlParse(yaml).meta.endian).toBe("le");
+  });
+
+  it("emits packet doc when description is set", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [],
+      description: "hello world",
+    });
+    expect(yamlParse(yaml).doc).toBe("hello world");
+  });
+
+  it("groups splice their children inline", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "group",
+          id: "g",
+          children: [
+            { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+            { id: "b", name: "B", type: { kind: "int", bits: 8 } },
+          ],
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a", "b"]);
+  });
+
+  it("repeat with a single field hoists it as the entry's type", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "repeat",
+          id: "items",
+          element: {
+            id: "item",
+            fields: [{ id: "x", name: "X", type: { kind: "int", bits: 8 } }],
+          },
+          count: { kind: "lit", value: 3 },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].repeat).toBe("expr");
+    expect(obj.seq[0]["repeat-expr"]).toBe("3");
+    expect(obj.seq[0].id).toBe("items");
+  });
+
+  it("repeat with a single non-field child synthesises a user type", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "repeat",
+          id: "items",
+          element: {
+            id: "i",
+            fields: [
+              {
+                kind: "group",
+                id: "inner",
+                children: [
+                  { id: "x", name: "X", type: { kind: "int", bits: 8 } },
+                ],
+              },
+            ],
+          },
+          count: "eos",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].type).toBe("items_elem");
+    expect(obj.types.items_elem).toBeDefined();
+  });
+
+  it("repeat with multi-field element materialises a synthetic user type", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "repeat",
+          id: "rec",
+          element: {
+            id: "r",
+            fields: [
+              { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+              { id: "b", name: "B", type: { kind: "int", bits: 8 } },
+            ],
+          },
+          count: "eos",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].type).toBe("rec_elem");
+    expect(obj.seq[0].repeat).toBe("eos");
+    expect(obj.types.rec_elem).toBeDefined();
+  });
+
+  it("repeat-until is preserved", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "repeat",
+          id: "items",
+          element: {
+            id: "i",
+            fields: [{ id: "x", name: "X", type: { kind: "int", bits: 8 } }],
+          },
+          count: { until: { kind: "ref", field: "done" } },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].repeat).toBe("until");
+    expect(obj.seq[0]["repeat-until"]).toBe("done");
+  });
+
+  it("switch lowers to its first case as a comment", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "switch",
+          id: "by",
+          on: { kind: "ref", field: "k" },
+          cases: {
+            "1": {
+              id: "c1",
+              fields: [{ id: "x", name: "X", type: { kind: "int", bits: 8 } }],
+            },
+          },
+        },
+      ],
+    });
+    expect(yaml).toMatch(/# psml-only:.*Switch "by"/);
+  });
+
+  it("switch with no cases is silently skipped", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          kind: "switch",
+          id: "empty",
+          on: { kind: "ref", field: "k" },
+          cases: {},
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq).toEqual([]);
+  });
+
+  it("category, constraints, and enum hints surface as psml-only comments", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "x",
+          name: "X",
+          type: { kind: "int", bits: 8 },
+          category: "addressing",
+        },
+        {
+          id: "e",
+          name: "E",
+          type: { kind: "enum", bits: 8, variants: { 0: "z" } },
+        },
+      ],
+      constraints: [
+        {
+          lhs: { kind: "ref", field: "a" },
+          rhs: { kind: "ref", field: "b" },
+        },
+      ],
+    });
+    expect(yaml).toMatch(/# psml-only:.*category "addressing" dropped/);
+    expect(yaml).toMatch(/# psml-only:.*PSML constraint/);
+    expect(yaml).toMatch(/# psml-only:.*enum variants/);
+  });
+
+  it("bytes with literal size emits `size: N`", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "blob",
+          name: "Blob",
+          type: { kind: "bytes", n: { kind: "lit", value: 16 } },
+        },
+      ],
+    });
+    expect(yamlParse(yaml).seq[0].size).toBe(16);
+  });
+
+  it("bytes with ref size emits `size: <name>`", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "data",
+          name: "Data",
+          type: { kind: "bytes", n: { kind: "ref", field: "len" } },
+        },
+      ],
+    });
+    expect(yamlParse(yaml).seq[0].size).toBe("len");
+  });
+
+  it("bytes with expression size emits the stringified expression", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "data",
+          name: "Data",
+          type: {
+            kind: "bytes",
+            n: {
+              kind: "op",
+              op: "*",
+              a: { kind: "ref", field: "len" },
+              b: { kind: "lit", value: 4 },
+            },
+          },
+        },
+      ],
+    });
+    expect(yamlParse(yaml).seq[0].size).toBe("(len * 4)");
+  });
+
+  it("bytes with cond size also stringifies", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "data",
+          name: "Data",
+          type: {
+            kind: "bytes",
+            n: {
+              kind: "cond",
+              test: { kind: "ref", field: "f" },
+              t: { kind: "lit", value: 1 },
+              f: { kind: "lit", value: 2 },
+            },
+          },
+        },
+      ],
+    });
+    expect(yamlParse(yaml).seq[0].size).toBe("(f ? 1 : 2)");
+  });
+
+  it("odd int widths fall back to b<bits> with a comment", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        { id: "x", name: "X", type: { kind: "int", bits: 17 } },
+      ],
+    });
+    expect(yaml).toMatch(/odd int width 17/);
+    expect(yamlParse(yaml).seq[0].type).toBe("b17");
+  });
+
+  it("enum with non-power-of-two bits falls back to b<bits>", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        {
+          id: "e",
+          name: "E",
+          type: { kind: "enum", bits: 24, variants: {} },
+        },
+      ],
+    });
+    expect(yamlParse(yaml).seq[0].type).toBe("b24");
+  });
+
+  it("doc on a field is preserved", () => {
+    const yaml = toKsy({
+      name: "T",
+      rowBits: 32,
+      body: [
+        { id: "x", name: "X", type: { kind: "int", bits: 8 }, doc: "hello" },
+      ],
+    });
+    expect(yamlParse(yaml).seq[0].doc).toBe("hello");
+  });
+
+  it("toKsy accepts a packet with no name (defaults id to 'packet')", () => {
+    const yaml = toKsy({
+      name: "",
+      rowBits: 32,
+      body: [{ id: "x", name: "X", type: { kind: "int", bits: 8 } }],
+    });
+    expect(yamlParse(yaml).meta.id).toBe("packet");
+  });
+});

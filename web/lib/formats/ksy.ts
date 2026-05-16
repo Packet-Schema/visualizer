@@ -478,7 +478,9 @@ function sizeToExpr(size: unknown, ctx: WalkCtx): Expr | null {
 function magicByteLength(contents: unknown): number {
   if (typeof contents === "string") return contents.length;
   if (Array.isArray(contents)) return contents.length;
+  /* v8 ignore start */ // defensive: kaitai `contents` is always a string or byte-array
   return 0;
+  /* v8 ignore stop */
 }
 
 function wrapInRepeat(
@@ -703,8 +705,10 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       const first = c.cases[firstKey];
       return first.fields.flatMap((ch) => containerToKsy(ch, ctx));
     }
+    /* v8 ignore start */ // exhaustiveness guard: every Container kind is handled above
     default:
       return [];
+    /* v8 ignore stop */
   }
 }
 

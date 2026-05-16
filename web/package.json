@@ -10,7 +10,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "smoke:ksy": "tsx scripts/smoke-ksy.ts"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:format": "vitest run tests/formats"
   },
   "dependencies": {
     "@myriaddreamin/typst-ts-renderer": "^0.7.0-rc2",
@@ -28,11 +31,13 @@
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
+    "@vitest/coverage-v8": "^4.1.6",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.0.3",
     "postcss": "^8.5.1",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.6"
   }
 }

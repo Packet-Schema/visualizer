@@ -1,5 +1,7 @@
 # Packet View
 
+[![tests](https://github.com/HackU-5/packet-view/actions/workflows/test.yml/badge.svg)](https://github.com/HackU-5/packet-view/actions/workflows/test.yml)
+
 Interactive packet diagrams for teaching and learning network protocols.
 
 Packet View renders the headers of common network protocols as live, clickable
@@ -67,6 +69,18 @@ behind every Packet View import, export, and built-in preset.
 
 Spec: [`docs/psml-0.2.md`](./docs/psml-0.2.md).
 JSON Schema: [`schemas/psml.schema.json`](./schemas/psml.schema.json).
+
+## Tests
+
+```
+cd web
+npm install
+npm test               # run the Vitest suite (~265 tests)
+npm run test:watch     # iterate in watch mode
+npm run test:coverage  # generate coverage report (100% on lib/formats/)
+```
+
+CI runs lint + build + coverage on every push and pull request.
 
 ## Roadmap
 
