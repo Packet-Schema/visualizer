@@ -3,21 +3,30 @@
 import { PRESETS } from "@/lib/psml/presets";
 import { PRESET_GROUPS } from "@/lib/constants";
 import type { PacketRegistry } from "@/lib/psml/renderer";
+import type { PsmlPacket } from "@/lib/psml/types";
 
 type Props = {
   value: string;
   onChange: (key: string) => void;
   /** Runtime registry of imported packets, keyed e.g. as "imported:<name>". */
   imported?: PacketRegistry;
+  /** User-saved presets from localStorage; keyed e.g. as "custom:<name>". */
+  customPresets?: Record<string, PsmlPacket>;
 };
 
-export default function PresetPicker({ value, onChange, imported }: Props) {
+export default function PresetPicker({
+  value,
+  onChange,
+  imported,
+  customPresets,
+}: Props) {
   const assigned = new Set<string>();
   for (const group of PRESET_GROUPS) {
     for (const k of group.keys) assigned.add(k);
   }
   const otherKeys = Object.keys(PRESETS).filter((k) => !assigned.has(k));
   const importedEntries = imported ? Object.entries(imported) : [];
+  const customEntries = customPresets ? Object.entries(customPresets) : [];
 
   return (
     <label className="flex items-center gap-2 text-sm font-semibold">
@@ -50,6 +59,18 @@ export default function PresetPicker({ value, onChange, imported }: Props) {
             {otherKeys.map((key) => (
               <option key={key} value={key}>
                 {PRESETS[key].name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {/* My presets — slotted between Built-in and Imported per the
+            Round 7 spec so user-owned packets feel first-class without
+            displacing built-ins. */}
+        {customEntries.length > 0 ? (
+          <optgroup label="My presets">
+            {customEntries.map(([key, pkt]) => (
+              <option key={key} value={key}>
+                {pkt.name}
               </option>
             ))}
           </optgroup>
