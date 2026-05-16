@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Packet View — palette & theme tokens.
+   Mirrors the legacy style.css; light mode is the default, dark mode is
+   opted-in via [data-theme="dark"] on <html>. Tailwind v4 picks up these
+   CSS variables via @theme so they can be used as utility colors.
+   ========================================================================== */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  /* Surfaces & text */
+  --bg: #f4f6fb;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #eef0f6;
+  --bg-header: linear-gradient(135deg, #2a3260 0%, #1a2148 100%);
+  --header-fg: #ffffff;
+  --header-fg-muted: rgba(255, 255, 255, 0.78);
+
+  --fg: #1c2030;
+  --fg-muted: #555c6e;
+  --fg-faint: #8089a0;
+
+  --border: #d6dae5;
+  --border-strong: #b8bfd0;
+  --focus-ring: #4f78ff;
+
+  --accent: #4f78ff;
+  --accent-fg: #ffffff;
+
+  /* Diagram surface */
+  --row-band-even: #f8faff;
+  --row-band-odd: #ffffff;
+  --grid-major: #d0d4e0;
+  --grid-minor: #eef0f6;
+  --ruler-tick: #8a90a3;
+  --ruler-label: #5a6178;
+  --field-stroke: #4a5168;
+  --field-stroke-selected: #1c2030;
+  --field-label: #1c2030;
+  --field-sublabel: #252a3e;
+  --field-continuation: #555c6e;
+  --field-fill-opacity: 0.78;
+  --field-fill-opacity-hover: 0.95;
+  --variable-stripe: rgba(20, 25, 50, 0.18);
+
+  /* Curated field palette (light mode). */
+  --field-blue: #6c8eef;
+  --field-indigo: #8a6cef;
+  --field-violet: #b06cef;
+  --field-teal: #4dc8c0;
+  --field-green: #69c97a;
+  --field-amber: #efc56c;
+  --field-orange: #ef8a6c;
+  --field-rose: #ef6c8a;
+  --field-slate: #a0a8bd;
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0f1220;
+  --bg-elevated: #181c2e;
+  --bg-subtle: #232842;
+  --bg-header: linear-gradient(135deg, #1a1f3d 0%, #0c1028 100%);
+  --header-fg: #f1f3fb;
+  --header-fg-muted: rgba(241, 243, 251, 0.7);
+
+  --fg: #e6e9f4;
+  --fg-muted: #a4abc2;
+  --fg-faint: #757d96;
+
+  --border: #2a3050;
+  --border-strong: #3b4368;
+  --focus-ring: #7c9aff;
+
+  --accent: #7c9aff;
+  --accent-fg: #0f1220;
+
+  --row-band-even: #1b2036;
+  --row-band-odd: #181c2e;
+  --grid-major: #353c5e;
+  --grid-minor: #252a44;
+  --ruler-tick: #6c739a;
+  --ruler-label: #aab1cc;
+  --field-stroke: #20253c;
+  --field-stroke-selected: #f1f3fb;
+  --field-label: #0d1022;
+  --field-sublabel: #1a1f3d;
+  --field-continuation: #c8cee0;
+  --field-fill-opacity: 0.85;
+  --field-fill-opacity-hover: 1;
+  --variable-stripe: rgba(255, 255, 255, 0.22);
+
+  --field-blue: #7da5ff;
+  --field-indigo: #a48cff;
+  --field-violet: #c98cff;
+  --field-teal: #5fdcd2;
+  --field-green: #7adf8b;
+  --field-amber: #f5d27a;
+  --field-orange: #ff9e7a;
+  --field-rose: #ff7e9a;
+  --field-slate: #b3bbd1;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+}
+
+/* ---- base ---- */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- diagram styling: drives the SVG produced by DiagramSvg.tsx ---- */
+
+.row-band-even {
+  fill: var(--row-band-even);
+}
+.row-band-odd {
+  fill: var(--row-band-odd);
+}
+.grid-guide-major {
+  stroke: var(--grid-major);
+}
+.grid-guide-minor {
+  stroke: var(--grid-minor);
+}
+.ruler-tick-major {
+  stroke: var(--ruler-tick);
+}
+.ruler-tick-minor {
+  stroke: var(--ruler-tick);
+  opacity: 0.65;
+}
+.ruler-label {
+  fill: var(--ruler-label);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.field-rect {
+  fill-opacity: var(--field-fill-opacity);
+  stroke: var(--field-stroke);
+  stroke-width: 1;
+  transition:
+    fill-opacity 120ms ease,
+    stroke 120ms ease,
+    stroke-width 120ms ease,
+    x 140ms ease,
+    width 140ms ease;
+}
+
+.field-cell:hover .field-rect {
+  fill-opacity: var(--field-fill-opacity-hover);
+  stroke: var(--field-stroke-selected);
+}
+
+.field-cell.selected .field-rect {
+  fill-opacity: var(--field-fill-opacity-hover);
+  stroke: var(--field-stroke-selected);
+  stroke-width: 2;
+}
+
+.field-cell:focus {
+  outline: none;
+}
+
+.field-cell:focus-visible .field-rect {
+  stroke: var(--focus-ring);
+  stroke-width: 2.5;
+}
+
+.field-label {
+  fill: var(--field-label);
+}
+.field-sublabel {
+  fill: var(--field-sublabel);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.field-continuation {
+  fill: var(--field-continuation);
+}
+
+.variable-stripe-line {
+  stroke: var(--variable-stripe);
+}
+
+.subfield-cell rect {
+  transition:
+    fill-opacity 120ms ease,
+    stroke 120ms ease;
+}
+
+.subfield-cell:hover rect {
+  fill-opacity: 1;
+  stroke: var(--field-stroke-selected);
+  stroke-width: 1.4;
+}
+
+.subfield-cell.selected rect {
+  fill-opacity: 1;
+  stroke: var(--field-stroke-selected);
+  stroke-width: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
