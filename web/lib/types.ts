@@ -32,6 +32,62 @@ export type SubField = {
   description?: string;
 };
 
+/** A single field inside a TLV catalog entry's positional layout. */
+export type TlvCatalogField = {
+  id: string;
+  name: string;
+  bits: number;
+  description?: string;
+};
+
+/**
+ * A catalog entry describing one TLV record type (e.g. TCP option Kind=2 MSS,
+ * or an IPv4 option Kind=7 Record Route). `fields` is the fixed positional
+ * layout. If `variableCount` is set, the entry has a count-based extra that
+ * drives the field list — `fieldsFor` is invoked instead of using `fields`.
+ */
+export type TlvCatalogEntry = {
+  kind: number;
+  name: string;
+  /** Optional fixed bit-width when `fields` is omitted (e.g. EOL/NOP). */
+  bits?: number;
+  description?: string;
+  fields?: TlvCatalogField[];
+  /** Defaults merged into instance.extras before computing field list. */
+  defaultExtras?: Record<string, number>;
+  /** Variable-count metadata (UI knob description). */
+  variableCount?: { key: string; min: number; max: number; label?: string };
+  /** Used by the resolver via a registry — see TLV_FIELDS_REGISTRY. */
+  fieldsFormula?: string;
+};
+
+/** An instance of a TLV record currently attached to a TLV field. */
+export type TlvInstance = {
+  kind: number;
+  extras?: Record<string, number>;
+};
+
+export type TlvSpec = {
+  catalog: TlvCatalogEntry[];
+  instances: TlvInstance[];
+  padToBoundary?: number;
+  drivesController?: string;
+  bytesPerUnit?: number;
+  baseControllerValue?: number;
+};
+
+/** A chain-catalog entry (e.g. IPv6 extension header). */
+export type ChainCatalogEntry = {
+  proto: number;
+  name: string;
+  description?: string;
+  fields: TlvCatalogField[];
+};
+
+export type ChainInstance = {
+  proto: number;
+};
+
 export type Field = {
   id: string;
   name: string;
@@ -49,12 +105,21 @@ export type Field = {
   /** Variable-length flag. When true, `lengthFrom` + `toBits` are required. */
   variable?: boolean;
   lengthFrom?: string;
+  /** Build-time formula token; resolved to a function via TO_BITS_REGISTRY. */
+  formula?: string;
   /**
    * Computes the bit width for a variable field given the current value of the
    * controller it references. Re-attached at build time via the resolver registry.
    */
   toBits?: (controlValue: number) => number;
   subfields?: SubField[];
+  /** TLV container metadata (e.g. TCP/IPv4 options, TLS extensions). */
+  tlv?: TlvSpec;
+  /** Chain container metadata (e.g. IPv6 Next Header). */
+  chainCatalog?: ChainCatalogEntry[];
+  chainInstances?: ChainInstance[];
+  /** Final next-header value when no extension headers are attached. */
+  chainFinalProto?: number;
 };
 
 export type Packet = {
@@ -102,3 +167,31 @@ export type ControllerState = Record<string, number>;
 
 /** Preset registry keyed by short identifier (e.g. "ipv4", "tcp"). */
 export type PacketRegistry = Record<string, Packet>;
+
+/** A resolved TLV block (one rendered record within a TLV field). */
+export type TlvBlock = {
+  kind: number | null;
+  name: string;
+  bits: number;
+  fields: TlvCatalogField[];
+  extras: Record<string, number>;
+  description?: string;
+  variableCount?: TlvCatalogEntry["variableCount"] | null;
+  isPadding?: boolean;
+};
+
+export type ResolvedTlv = {
+  totalBits: number;
+  blocks: TlvBlock[];
+};
+
+/** A resolved chain block (one IPv6 extension header instance). */
+export type ChainBlock = {
+  chainOwnerFieldId: string;
+  chainIndex: number;
+  proto: number;
+  name: string;
+  bits: number;
+  fields: TlvCatalogField[];
+  description?: string;
+};

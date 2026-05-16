@@ -36,6 +36,72 @@ function asArr(v: JsValue, ctx: string): JsValue[] {
   return v;
 }
 
+function validateTlvCatalogEntry(key: string, fieldId: string, idx: number, v: JsValue): void {
+  const e = asObj(v, `presets.${key}.${fieldId}.tlv.catalog[${idx}]`);
+  if (typeof e.kind !== "number") {
+    throw new Error(
+      `build-presets: preset "${key}" field "${fieldId}" tlv catalog[${idx}] missing numeric kind`,
+    );
+  }
+  if (typeof e.name !== "string") {
+    throw new Error(
+      `build-presets: preset "${key}" field "${fieldId}" tlv catalog[${idx}] missing name`,
+    );
+  }
+  if (e.fields !== undefined) {
+    const f = asArr(e.fields, `presets.${key}.${fieldId}.tlv.catalog[${idx}].fields`);
+    for (let i = 0; i < f.length; i++) {
+      const sf = asObj(f[i], `presets.${key}.${fieldId}.tlv.catalog[${idx}].fields[${i}]`);
+      if (typeof sf.id !== "string" || typeof sf.name !== "string" || typeof sf.bits !== "number") {
+        throw new Error(
+          `build-presets: preset "${key}" field "${fieldId}" tlv catalog[${idx}].fields[${i}] needs id/name/bits`,
+        );
+      }
+    }
+  } else if (typeof e.fieldsFormula !== "string") {
+    throw new Error(
+      `build-presets: preset "${key}" field "${fieldId}" tlv catalog[${idx}] needs either fields or fieldsFormula`,
+    );
+  }
+}
+
+function validateTlv(key: string, fieldId: string, v: JsValue): void {
+  const t = asObj(v, `presets.${key}.${fieldId}.tlv`);
+  const catalog = asArr(t.catalog, `presets.${key}.${fieldId}.tlv.catalog`);
+  if (catalog.length === 0) {
+    throw new Error(
+      `build-presets: preset "${key}" field "${fieldId}" tlv catalog is empty`,
+    );
+  }
+  for (let i = 0; i < catalog.length; i++) {
+    validateTlvCatalogEntry(key, fieldId, i, catalog[i]);
+  }
+  if (t.instances !== undefined) {
+    asArr(t.instances, `presets.${key}.${fieldId}.tlv.instances`);
+  }
+}
+
+function validateChain(key: string, fieldId: string, v: JsValue): void {
+  const cat = asArr(v, `presets.${key}.${fieldId}.chainCatalog`);
+  for (let i = 0; i < cat.length; i++) {
+    const e = asObj(cat[i], `presets.${key}.${fieldId}.chainCatalog[${i}]`);
+    if (typeof e.proto !== "number" || typeof e.name !== "string") {
+      throw new Error(
+        `build-presets: preset "${key}" field "${fieldId}" chainCatalog[${i}] needs proto/name`,
+      );
+    }
+    const f = asArr(e.fields, `presets.${key}.${fieldId}.chainCatalog[${i}].fields`);
+    for (let j = 0; j < f.length; j++) {
+      const sf = asObj(f[j], `presets.${key}.${fieldId}.chainCatalog[${i}].fields[${j}]`);
+      if (typeof sf.id !== "string" || typeof sf.name !== "string" || typeof sf.bits !== "number") {
+        throw new Error(
+          `build-presets: preset "${key}" field "${fieldId}" chainCatalog[${i}].fields[${j}] needs id/name/bits`,
+        );
+      }
+    }
+  }
+}
+
 function validatePreset(key: string, v: JsValue): void {
   const p = asObj(v, `presets.${key}`);
   if (typeof p.name !== "string") {
@@ -52,16 +118,41 @@ function validatePreset(key: string, v: JsValue): void {
         `build-presets: preset "${key}" field[${i}] missing id/name`,
       );
     }
+    const fieldId = String(f.id);
     if (f.variable === true) {
       if (typeof f.lengthFrom !== "string" || typeof f.formula !== "string") {
         throw new Error(
-          `build-presets: preset "${key}" variable field "${String(f.id)}" must have lengthFrom and formula`,
+          `build-presets: preset "${key}" variable field "${fieldId}" must have lengthFrom and formula`,
         );
       }
     } else if (typeof f.bits !== "number") {
       throw new Error(
-        `build-presets: preset "${key}" field "${String(f.id)}" missing bits`,
+        `build-presets: preset "${key}" field "${fieldId}" missing bits`,
       );
+    }
+    if (f.subfields !== undefined) {
+      const sfs = asArr(f.subfields, `presets.${key}.fields[${i}].subfields`);
+      let sum = 0;
+      for (let j = 0; j < sfs.length; j++) {
+        const sf = asObj(sfs[j], `presets.${key}.fields[${i}].subfields[${j}]`);
+        if (typeof sf.id !== "string" || typeof sf.name !== "string" || typeof sf.bits !== "number") {
+          throw new Error(
+            `build-presets: preset "${key}" field "${fieldId}".subfields[${j}] needs id/name/bits`,
+          );
+        }
+        sum += sf.bits;
+      }
+      if (typeof f.bits === "number" && sum !== f.bits) {
+        throw new Error(
+          `build-presets: preset "${key}" field "${fieldId}" subfields sum to ${sum} but parent declares ${f.bits} bits`,
+        );
+      }
+    }
+    if (f.tlv !== undefined) {
+      validateTlv(key, fieldId, f.tlv);
+    }
+    if (f.chainCatalog !== undefined) {
+      validateChain(key, fieldId, f.chainCatalog);
     }
   }
 }
