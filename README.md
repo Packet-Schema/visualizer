@@ -32,6 +32,12 @@ files — no build step, no server-side code, no tracking.
   and Augmented ASCII Diagrams / AAD (import) so you can paste a draft from an
   Internet-Draft or hand-written sketch and see it rendered immediately.
 - Imports Kaitai Struct (.ksy) files for ~200+ existing formats.
+- **PSML 0.3** — adds a `varint` Type and `encrypted` Container so QUIC
+  and TLS 1.3 can be modelled at full fidelity (RFC 9000 §16
+  variable-length integers, header-protected fields, encrypted payloads).
+- **Two-layer view** — toggle "Decrypted view" in the toolbar to switch
+  between the on-the-wire byte stream and the post-decryption semantic
+  structure. Same schema, two diagrams.
 
 ## Run locally
 
@@ -52,13 +58,14 @@ Twelve built-in presets, grouped by OSI layer:
 - **Layer 4 — Transport**: TCP, UDP
 - **Application**: DNS, TLS Record Layer, QUIC short header (1-RTT)
 
-## PSML 0.2
+## PSML 0.3
 
 PSML — Packet Schema Markup Language — is the canonical wire format
 behind every Packet View import, export, and built-in preset.
 
 - Three composition primitives: **Repeat** (N copies of a struct),
-  **Switch** (variant struct by discriminator), **Group** (splice glue).
+  **Switch** (variant struct by discriminator), **Group** (splice glue),
+  plus the 0.3 **Encrypted** container for opaque-on-the-wire payloads.
 - Pure expressions (`lit`, `ref`, `op`, `cond`) drive variable-length
   layout — no JavaScript closures cross the wire.
 - Bidirectional **constraints** propagate user edits in either
@@ -66,8 +73,11 @@ behind every Packet View import, export, and built-in preset.
 - **Semantic, not presentational**: fields carry a `category`; the
   renderer maps category to a CSS variable in `web/lib/render-tokens.ts`.
 - N+M format hub: every format converts to/from PSML, not pairwise.
+- 0.3 additions: a `varint` Type (QUIC / protobuf / CBOR self-describing
+  integers) and an `encrypted` Container with a `viewMode` toggle
+  (`'wire'` vs `'semantic'`) on `normalize` / `resolveLayout`.
 
-Spec: [`docs/psml-0.2.md`](./docs/psml-0.2.md).
+Spec: [`docs/psml-0.3.md`](./docs/psml-0.3.md).
 JSON Schema: [`schemas/psml.schema.json`](./schemas/psml.schema.json).
 
 ## Tests

@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://packet-view.dev/schemas/psml.schema.json",
-  "title": "PSML 0.2 Packet",
-  "description": "JSON serialization of a PSML 0.2 (Packet Schema Markup Language) packet. PSML carries semantic intent only — `color` is intentionally absent from the wire shape; the renderer maps `category` to a CSS variable.",
+  "title": "PSML 0.3 Packet",
+  "description": "JSON serialization of a PSML 0.3 (Packet Schema Markup Language) packet. PSML carries semantic intent only — `color` is intentionally absent from the wire shape; the renderer maps `category` to a CSS variable. 0.3 adds the `varint` Type and `encrypted` Container.",
   "type": "object",
   "required": ["format", "version", "name", "rowBits", "body"],
   "additionalProperties": true,
   "properties": {
     "format": { "const": "psml" },
-    "version": { "const": "0.2" },
+    "version": { "enum": ["0.2", "0.3"] },
     "name": { "type": "string", "minLength": 1 },
     "rowBits": { "type": "integer", "minimum": 1 },
     "byteOrder": { "type": "string" },
@@ -83,6 +83,14 @@
                 "^[0-9]+$": { "type": "string" }
               }
             }
+          }
+        },
+        {
+          "required": ["kind", "encoding"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "varint" },
+            "encoding": { "enum": ["quic", "protobuf", "cbor"] }
           }
         }
       ]
@@ -215,12 +223,32 @@
         }
       }
     },
+    "Encrypted": {
+      "type": "object",
+      "required": ["kind", "id", "plaintext", "contextNote"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "encrypted" },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "plaintext": { "$ref": "#/$defs/Struct" },
+        "wireBits": { "$ref": "#/$defs/Expr" },
+        "contextNote": { "type": "string", "minLength": 1 },
+        "headerProtected": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "category": { "$ref": "#/$defs/Category" },
+        "doc": { "type": "string" }
+      }
+    },
     "Container": {
       "oneOf": [
         { "$ref": "#/$defs/Field" },
         { "$ref": "#/$defs/Group" },
         { "$ref": "#/$defs/Repeat" },
-        { "$ref": "#/$defs/Switch" }
+        { "$ref": "#/$defs/Switch" },
+        { "$ref": "#/$defs/Encrypted" }
       ]
     },
     "Constraint": {
