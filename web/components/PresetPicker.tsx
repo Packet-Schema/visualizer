@@ -2,18 +2,22 @@
 
 import { PRESETS } from "@/lib/presets.generated";
 import { PRESET_GROUPS } from "@/lib/constants";
+import type { PacketRegistry } from "@/lib/types";
 
 type Props = {
   value: string;
   onChange: (key: string) => void;
+  /** Runtime registry of imported packets, keyed e.g. as "imported:<name>". */
+  imported?: PacketRegistry;
 };
 
-export default function PresetPicker({ value, onChange }: Props) {
+export default function PresetPicker({ value, onChange, imported }: Props) {
   const assigned = new Set<string>();
   for (const group of PRESET_GROUPS) {
     for (const k of group.keys) assigned.add(k);
   }
   const otherKeys = Object.keys(PRESETS).filter((k) => !assigned.has(k));
+  const importedEntries = imported ? Object.entries(imported) : [];
 
   return (
     <label className="flex items-center gap-2 text-sm font-semibold">
@@ -46,6 +50,15 @@ export default function PresetPicker({ value, onChange }: Props) {
             {otherKeys.map((key) => (
               <option key={key} value={key}>
                 {PRESETS[key].name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {importedEntries.length > 0 ? (
+          <optgroup label="Imported">
+            {importedEntries.map(([key, pkt]) => (
+              <option key={key} value={key}>
+                {pkt.name}
               </option>
             ))}
           </optgroup>
