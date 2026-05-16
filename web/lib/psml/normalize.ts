@@ -45,6 +45,11 @@ function isField(c: Container): c is Field {
  * the env keyed by the owning field's id, otherwise 0 is returned (the
  * renderer treats the slot as design-time-empty).
  */
+/** Synthetic env key prefix for a BER length width override. */
+export function berLenEnvKey(fieldId: string): string {
+  return `__berLen__${fieldId}`;
+}
+
 export function typeBits(type: Type, env: PacketEnv, fieldId?: string): number {
   switch (type.kind) {
     case "int":
@@ -62,10 +67,11 @@ export function typeBits(type: Type, env: PacketEnv, fieldId?: string): number {
       return 0;
     }
     case "berLength": {
-      // PSML 0.4 — width is dynamic; consult env override keyed by field id,
-      // otherwise default to 1 byte (8 bits) — the shortest legal BER length.
+      // PSML 0.4 — width is dynamic; consult env override under the namespaced
+      // key `__berLen__<fieldId>` so the bare fieldId stays available for other
+      // uses (e.g. ref expressions). Default to 1 byte (8 bits).
       if (fieldId !== undefined) {
-        const v = env.get(fieldId);
+        const v = env.get(berLenEnvKey(fieldId));
         if (v !== undefined) return v;
       }
       return 8;
