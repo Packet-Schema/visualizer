@@ -61,6 +61,15 @@ export function typeBits(type: Type, env: PacketEnv, fieldId?: string): number {
       }
       return 0;
     }
+    case "berLength": {
+      // PSML 0.4 — width is dynamic; consult env override keyed by field id,
+      // otherwise default to 1 byte (8 bits) — the shortest legal BER length.
+      if (fieldId !== undefined) {
+        const v = env.get(fieldId);
+        if (v !== undefined) return v;
+      }
+      return 8;
+    }
   }
 }
 
@@ -83,6 +92,12 @@ function seedDefaults(containers: Container[], env: PacketEnv): void {
       // semantic mode (when those fields are emitted) and in wire mode (when
       // wireBits is absent and we fall back to summing plaintext bits).
       seedDefaults(c.plaintext.fields, env);
+    } else if (c.kind === "optional") {
+      // Seed the wrapped field's default so the inner field can be emitted
+      // with a sensible value when `when` evaluates truthy.
+      if (c.field.defaultValue !== undefined && !env.has(c.field.id)) {
+        env.set(c.field.id, c.field.defaultValue);
+      }
     }
     // Repeat/Switch: skipped intentionally; defaults inside them are seeded
     // when (and if) the element struct is expanded.
@@ -137,6 +152,7 @@ function emit(
       }
     }
   }
+  if (field.byteOrder) nf.byteOrder = field.byteOrder;
   state.out.push(nf);
   state.offset += bits;
 }
@@ -161,6 +177,21 @@ function walkContainer(c: Container, path: string, state: WalkState): void {
     }
     case "encrypted": {
       walkEncrypted(c, path, state);
+      return;
+    }
+    case "optional": {
+      // PSML 0.4 — emit inner field iff `when` evaluates truthy in env. A
+      // missing ref in the predicate is treated as "absent" (the safer
+      // documentation-time default), matching the rfc-ascii adapter.
+      let test = 0;
+      try {
+        test = evalExpr(c.when, state.env);
+      } catch {
+        test = 0;
+      }
+      if (test !== 0) {
+        emit(state, c.field, path);
+      }
       return;
     }
   }

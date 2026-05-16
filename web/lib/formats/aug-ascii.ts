@@ -13,6 +13,12 @@
 //
 // Variable-length and conditional constructs surface as warnings; this
 // initial implementation models them as fixed 0-bit placeholders.
+//
+// PSML 0.4 primitives (Optional / berLength / peek / per-field byteOrder)
+// cannot be expressed in AAD source text — the format describes a fixed
+// ASCII diagram. The importer therefore never produces them; the exporter
+// pathway is not implemented (AAD is read-only). Callers that need to round-
+// trip 0.4 schemas through this module should use the JSON format instead.
 
 import type {
   CategoryToken,

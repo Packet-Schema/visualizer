@@ -19,11 +19,13 @@
 //     the rendered name with a ` (varint)` suffix so the diagram makes the
 //     variable-length nature obvious.
 
+import { evalExpr } from "../psml/expr";
 import { resolveLayout } from "../psml/layout";
 import type {
   Container,
   Encrypted,
   Field,
+  Optional,
   PacketEnv,
   Packet as PsmlPacket,
   ViewMode,
@@ -69,7 +71,9 @@ export function toAscii(
   // so the renderer has a concrete bit count to lay out.
   const localEnv: PacketEnv = new Map(env ?? []);
   const varintEncodings = new Map<string, string>();
-  collectVarints(packet.body, varintEncodings);
+  const berLengthFieldIds = new Set<string>();
+  const absentOptionals: Optional[] = [];
+  collectPsml04(packet.body, varintEncodings, berLengthFieldIds, absentOptionals, localEnv);
   for (const [id, encoding] of varintEncodings) {
     if (!localEnv.has(id)) {
       localEnv.set(id, VARINT_WORST_CASE_BITS[encoding]);
@@ -94,12 +98,21 @@ export function toAscii(
   lines.push(separator(rowBits));
 
   // Decorate field names for display. Encrypted-wire-mode fields use a
-  // dedicated `~Encrypted Payload~` label so they stand out, and any field
-  // emitted from a varint Type gets a trailing `(varint)` marker.
+  // dedicated `~Encrypted Payload~` label so they stand out; varint fields
+  // get a `(varint)` marker; PSML 0.4 berLength fields use a `BER len`
+  // label; per-field `byteOrder: 'LE'` appends a `[LE]` suffix.
   const displayName = (cell: Cell): string => {
     if (cell.encrypted) return "~Encrypted Payload~";
-    if (varintEncodings.has(cell.field.id)) return `${cell.field.name} (varint)`;
-    return cell.field.name;
+    let name: string;
+    if (berLengthFieldIds.has(cell.field.id)) {
+      name = "BER len";
+    } else if (varintEncodings.has(cell.field.id)) {
+      name = `${cell.field.name} (varint)`;
+    } else {
+      name = cell.field.name;
+    }
+    if (cell.byteOrder === "LE") name += " [LE]";
+    return name;
   };
 
   for (const r of rowIndices) {
@@ -129,35 +142,77 @@ export function toAscii(
     lines.push(indent + separator(rowWidth));
   }
 
+  // PSML 0.4 — render any Optional whose `when` evaluates falsy as a single
+  // `~ (Optional <fieldName>) ~` placeholder row so the reader sees the slot
+  // exists in the schema even when it's absent on this wire.
+  for (const opt of absentOptionals) {
+    lines.push(`~ (Optional ${opt.field.name}) ~`);
+  }
+
   return lines.join("\n");
 }
 
 /**
- * Walk the container tree and record every varint Field as `id → encoding`.
+ * Walk the container tree and record:
+ *   * every varint Field as `id → encoding` (for worst-case width seeding);
+ *   * every berLength Field id (so the renderer can show a `BER len` label);
+ *   * every Optional whose `when` evaluates falsy in the supplied env (so the
+ *     renderer can emit a placeholder row for the absent slot).
+ *
  * Recurses through every compound primitive: Group children, Repeat element
- * fields, every Switch case (including default), and Encrypted plaintext.
+ * fields, every Switch case (including default), Encrypted plaintext, and
+ * the inner field of present Optionals.
  */
-function collectVarints(containers: Container[], out: Map<string, string>): void {
+function collectPsml04(
+  containers: Container[],
+  varints: Map<string, string>,
+  berIds: Set<string>,
+  absent: Optional[],
+  env: PacketEnv,
+): void {
   for (const c of containers) {
     if (!("kind" in c) || c.kind === "field") {
       const f = c as Field;
-      if (f.type.kind === "varint") out.set(f.id, f.type.encoding);
+      if (f.type.kind === "varint") varints.set(f.id, f.type.encoding);
+      if (f.type.kind === "berLength") berIds.add(f.id);
       continue;
     }
     switch (c.kind) {
       case "group":
-        collectVarints(c.children, out);
+        collectPsml04(c.children, varints, berIds, absent, env);
         break;
       case "repeat":
-        collectVarints(c.element.fields, out);
+        collectPsml04(c.element.fields, varints, berIds, absent, env);
         break;
       case "switch":
-        for (const v of Object.values(c.cases)) collectVarints(v.fields, out);
-        if (c.default) collectVarints(c.default.fields, out);
+        for (const v of Object.values(c.cases)) {
+          collectPsml04(v.fields, varints, berIds, absent, env);
+        }
+        if (c.default) collectPsml04(c.default.fields, varints, berIds, absent, env);
         break;
       case "encrypted":
-        collectVarints((c as Encrypted).plaintext.fields, out);
+        collectPsml04((c as Encrypted).plaintext.fields, varints, berIds, absent, env);
         break;
+      case "optional": {
+        // Evaluate `when` against the (already seeded) env. Refs that don't
+        // resolve are treated as "absent" — the placeholder row is the safer
+        // default for a documentation diagram.
+        let present = false;
+        try {
+          present = evalExpr(c.when, env) !== 0;
+        } catch {
+          present = false;
+        }
+        if (present) {
+          // The inner field will lay out normally; recurse so any berLength /
+          // varint inside it (if we ever nest) still seeds correctly.
+          if (c.field.type.kind === "varint") varints.set(c.field.id, c.field.type.encoding);
+          if (c.field.type.kind === "berLength") berIds.add(c.field.id);
+        } else {
+          absent.push(c);
+        }
+        break;
+      }
     }
   }
 }

@@ -66,7 +66,18 @@ export type TypeVarint = {
 export const VARINT_ENCODINGS = ["quic", "protobuf", "cbor"] as const;
 export type VarintEncoding = (typeof VARINT_ENCODINGS)[number];
 
-export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum | TypeVarint;
+/**
+ * BER length — variable-length DER/BER definite-length encoding.
+ *
+ * On-wire bit width is dynamic (1 byte for lengths <128, otherwise N+1 bytes).
+ * Layout consumers may supply a concrete bit count via the env keyed by the
+ * owning field's id, otherwise the field is treated as a 1-byte default.
+ *
+ * PSML 0.4 primitive — paired with `Optional` and `peek`. See issue #67.
+ */
+export type TypeBerLength = { kind: "berLength" };
+
+export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum | TypeVarint | TypeBerLength;
 
 /* ------------------------------------------------------------------ *
  * Expressions
@@ -79,7 +90,16 @@ export type ExprRef = { kind: "ref"; field: string };
 export type ExprOp = { kind: "op"; op: BinOp; a: Expr; b: Expr };
 export type ExprCond = { kind: "cond"; test: Expr; t: Expr; f: Expr };
 
-export type Expr = ExprLit | ExprRef | ExprOp | ExprCond;
+/**
+ * Peek — read N bits from the byte stream at an offset relative to the
+ * current cursor without consuming them. Used by Switch to dispatch on
+ * lookahead bytes (e.g. TLS extension type before the length field). The
+ * layout adapter evaluates a peek by reading a synthetic env key, falling
+ * back to 0 when absent. PSML 0.4 primitive — see issue #67.
+ */
+export type ExprPeek = { kind: "peek"; bits: number; offset?: Expr };
+
+export type Expr = ExprLit | ExprRef | ExprOp | ExprCond | ExprPeek;
 
 /* ------------------------------------------------------------------ *
  * Schema nodes
@@ -95,6 +115,23 @@ export type Field = {
   category?: CategoryToken;
   /** Optional default value for normalization/UI; consumed by the resolver. */
   defaultValue?: number;
+  /**
+   * Per-field byte order override. When set, the field's bytes are interpreted
+   * in this order regardless of the enclosing Packet's byteOrder. PSML 0.4
+   * primitive — used to model mixed-endian protocols (e.g. PCIe TLPs).
+   */
+  byteOrder?: "BE" | "LE";
+};
+
+/**
+ * Optional container — emits `field` iff the `when` expression evaluates
+ * truthy in the current env. PSML 0.4 primitive — see issue #67.
+ */
+export type Optional = {
+  kind: "optional";
+  id?: string;
+  when: Expr;
+  field: Field;
 };
 
 /** A named struct of ordered fields. */
@@ -166,7 +203,7 @@ export type Encrypted = {
 };
 
 /** Any node that may appear in a Packet body or Struct field list. */
-export type Container = Field | Repeat | Switch | Group | Encrypted;
+export type Container = Field | Repeat | Switch | Group | Encrypted | Optional;
 
 /* ------------------------------------------------------------------ *
  * Constraints
@@ -241,6 +278,8 @@ export type NormalizedField = {
    * protection layer).
    */
   headerProtected?: boolean;
+  /** Per-field byte order override (PSML 0.4) — propagated from Field.byteOrder. */
+  byteOrder?: "BE" | "LE";
 };
 
 export type Normalized = {

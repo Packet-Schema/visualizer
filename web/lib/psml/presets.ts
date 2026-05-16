@@ -953,6 +953,182 @@ export const tlsClientHelloFull: Packet = {
 };
 
 /* ------------------------------------------------------------------ *
+ * PSML 0.4 demo presets — exercise the four new primitives.
+ *
+ * Each preset is small and focused on demonstrating a single primitive in
+ * isolation so the format adapters have a stable fixture to render and
+ * round-trip. The on-the-wire totals are documented in
+ * `tests/fixtures/preset-bit-sizes.ts`.
+ * ------------------------------------------------------------------ */
+
+/**
+ * HTTP/2 frame header (RFC 9113 §4.1) — a 9-byte fixed prefix followed by a
+ * variable-length payload whose byte count is given by the Length field.
+ * Demonstrates a chained length-prefix: `payload` reads `length * 8` bits.
+ * The bidirectional constraint `payloadBits == length * 8` keeps the two in
+ * sync when the user edits either side.
+ */
+export const http2FrameHeader: Packet = {
+  name: "HTTP/2 Frame Header",
+  rowBits: 32,
+  byteOrder: "BE",
+  description:
+    "HTTP/2 frame header (RFC 9113 §4.1). 9-byte fixed prefix (Length:24 + Type:8 + Flags:8 + R:1 + Stream Identifier:31) followed by a length-prefixed payload.",
+  body: [
+    { id: "length", name: "Length", type: bits(24), category: "length", defaultValue: 0 },
+    { id: "type", name: "Type", type: bits(8), category: "type" },
+    { id: "flags", name: "Flags", type: bits(8), category: "flags" },
+    { id: "r", name: "R", type: bits(1), category: "reserved" },
+    {
+      id: "streamId",
+      name: "Stream Identifier",
+      type: bits(31),
+      category: "identifier",
+    },
+    {
+      id: "payload",
+      name: "Payload",
+      type: { kind: "bytes", n: ref("length") },
+      category: "payload-marker",
+      doc: "Frame payload — length bytes. [RFC 9113 §4.1]",
+    },
+  ],
+  constraints: [
+    {
+      lhs: op("*", ref("length"), lit(8)),
+      rhs: ref("payloadBits"),
+      doc: "Length counts bytes; payloadBits = length × 8.",
+    },
+  ],
+};
+
+/**
+ * TLS extensions block (RFC 8446 §4.2) — a Repeat over a Switch dispatched
+ * on a peek(16) of the extension_type word. Demonstrates the PSML 0.4 peek
+ * lookahead Expr: the discriminator is read without consuming the bytes so
+ * each case can re-read the same 16-bit type as its own first field.
+ */
+const tlsExtensionPeekCases: Record<string, Struct> = {
+  // server_name (SNI) — RFC 6066 §3.
+  "0": struct("sniExt", [
+    { id: "extensionType", name: "extension_type=0", type: bits(16), category: "type" },
+    { id: "serverNameListLength", name: "server_name_list length", type: bits(16), category: "length" },
+    {
+      id: "serverNameList",
+      name: "server_name_list",
+      type: { kind: "bytes", n: ref("serverNameListLength") },
+      category: "addressing",
+    },
+  ]),
+  // ALPN — RFC 7301 §3.
+  "16": struct("alpnExt", [
+    { id: "extensionType", name: "extension_type=16", type: bits(16), category: "type" },
+    {
+      id: "protocolNameListLength",
+      name: "protocol_name_list length",
+      type: bits(16),
+      category: "length",
+    },
+    {
+      id: "alpnProtocols",
+      name: "alpn_protocols",
+      type: { kind: "bytes", n: ref("protocolNameListLength") },
+      category: "type",
+    },
+  ]),
+  // supported_versions — RFC 8446 §4.2.1.
+  "43": struct("supportedVersionsExt", [
+    { id: "extensionType", name: "extension_type=43", type: bits(16), category: "type" },
+    {
+      id: "supportedVersionsLength",
+      name: "SupportedVersions length",
+      type: bits(8),
+      category: "length",
+    },
+    {
+      id: "versions",
+      name: "versions",
+      type: { kind: "bytes", n: ref("supportedVersionsLength") },
+      category: "type",
+    },
+  ]),
+  // key_share — RFC 8446 §4.2.8.
+  "51": struct("keyShareExt", [
+    { id: "extensionType", name: "extension_type=51", type: bits(16), category: "type" },
+    {
+      id: "clientSharesLength",
+      name: "client_shares length",
+      type: bits(16),
+      category: "length",
+    },
+    {
+      id: "keyShareEntry",
+      name: "KeyShareEntry",
+      type: { kind: "bytes", n: ref("clientSharesLength") },
+      category: "identifier",
+    },
+  ]),
+};
+
+export const tlsExtensionsBlock: Packet = {
+  name: "TLS Extensions Block",
+  rowBits: 32,
+  byteOrder: "BE",
+  description:
+    "TLS 1.3 extensions block (RFC 8446 §4.2) modeled as a Repeat<Switch> where the Switch discriminator is a peek(16) of the extension_type word. The peek is non-consuming so each case re-reads the same 16-bit field as its first member. Demonstrates the PSML 0.4 lookahead Switch.",
+  body: [
+    {
+      kind: "repeat",
+      id: "extensions",
+      name: "Extensions",
+      category: "variable",
+      element: struct("extensionRecord", [
+        {
+          kind: "switch",
+          id: "byPeekedType",
+          on: { kind: "peek", bits: 16 },
+          cases: tlsExtensionPeekCases,
+        },
+      ]),
+      count: ref("tlsExtensionsBlock_extensions_count"),
+    },
+  ],
+};
+
+/**
+ * PCIe TLP fragment (synthetic) — illustrative only; not a real PCIe TLP.
+ * Demonstrates per-field byteOrder by mixing a BE-tagged 32-bit address with
+ * an LE-tagged 16-bit length, plus a default-endian tag byte for contrast.
+ */
+export const pcieTlpFragment: Packet = {
+  name: "PCIe TLP Fragment (Illustrative)",
+  rowBits: 32,
+  byteOrder: "BE",
+  description:
+    "Illustrative — not a real PCIe TLP. Demonstrates PSML 0.4 per-field byteOrder by mixing a BE 32-bit address with an LE 16-bit length field in the same packet. Use this preset only as a fixture for the byteOrder badge.",
+  body: [
+    { id: "fmtType", name: "Fmt/Type", type: bits(8), category: "type" },
+    {
+      id: "address",
+      name: "Address (BE)",
+      type: { kind: "int", bits: 32 },
+      byteOrder: "BE",
+      category: "addressing",
+      doc: "32-bit address field — explicitly BE for documentation purposes.",
+    },
+    {
+      id: "length",
+      name: "Length (LE)",
+      type: { kind: "int", bits: 16 },
+      byteOrder: "LE",
+      category: "length",
+      doc: "16-bit length field — LE on the wire despite the BE packet default.",
+    },
+    { id: "tail", name: "Tail", type: bits(8), category: "reserved" },
+  ],
+};
+
+/* ------------------------------------------------------------------ *
  * Registry — unified PSML presets
  * ------------------------------------------------------------------ */
 
@@ -970,6 +1146,9 @@ const MANUAL_PRESETS: Record<string, Packet> = {
   quicShort,
   quicLong,
   tlsClientHelloFull,
+  http2FrameHeader,
+  tlsExtensionsBlock,
+  pcieTlpFragment,
 };
 
 /** The single unified PSML registry consumed by the renderer and every format. */
