@@ -29,6 +29,7 @@ files — no build step, no server-side code, no tracking.
 - **Import / Export** modal supports JSON (round-trip), RFC ASCII art (export),
   and Augmented ASCII Diagrams / AAD (import) so you can paste a draft from an
   Internet-Draft or hand-written sketch and see it rendered immediately.
+- Imports Kaitai Struct (.ksy) files for ~200+ existing formats.
 
 ## Run locally
 

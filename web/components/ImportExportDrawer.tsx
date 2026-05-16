@@ -10,13 +10,14 @@ import {
 
 import { fromAad } from "@/lib/formats/aug-ascii";
 import { fromJson, toJson } from "@/lib/formats/json";
+import { fromKsy, toKsy } from "@/lib/formats/ksy";
 import { toAscii } from "@/lib/formats/rfc-ascii";
 import { psmlToRuntime } from "@/lib/psml/runtime-from-psml";
 import { runtimeToPsml } from "@/lib/psml/runtime-to-psml";
 import type { ControllerState, Packet } from "@/lib/psml/runtime-types";
 
 export type DrawerMode = "import" | "export";
-export type FormatKey = "json" | "rfc-ascii" | "aug-ascii";
+export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
 
 type Props = {
   open: boolean;
@@ -36,6 +37,7 @@ const FORMAT_LABELS: Record<FormatKey, string> = {
   json: "JSON",
   "rfc-ascii": "RFC ASCII",
   "aug-ascii": "AAD (Augmented ASCII)",
+  ksy: "Kaitai (.ksy)",
 };
 
 const FOCUSABLE_SELECTOR = [
@@ -68,8 +70,8 @@ export default function ImportExportDrawer({
   const availableFormats: FormatKey[] = useMemo(
     () =>
       currentMode === "import"
-        ? ["json", "aug-ascii"]
-        : ["json", "rfc-ascii"],
+        ? ["json", "aug-ascii", "ksy"]
+        : ["json", "rfc-ascii", "ksy"],
     [currentMode],
   );
 
@@ -104,6 +106,8 @@ export default function ImportExportDrawer({
         setText(toJson(psml, env));
       } else if (format === "rfc-ascii") {
         setText(toAscii(psml, env));
+      } else if (format === "ksy") {
+        setText(toKsy(psml));
       }
       setStatus(null);
     } catch (e) {
@@ -192,6 +196,18 @@ export default function ImportExportDrawer({
         if (warnings.length) {
           setStatus({
             msg: `Imported with warnings: ${warnings.join("; ")}`,
+            kind: "warn",
+          });
+        } else {
+          setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
+        }
+      } else if (format === "ksy") {
+        const { packet: psml, warnings } = fromKsy(text);
+        const runtime = psmlToRuntime(psml);
+        onImport(runtime, {});
+        if (warnings.length) {
+          setStatus({
+            msg: `Imported "${psml.name}" with ${warnings.length} warning(s): ${warnings.join("; ")}`,
             kind: "warn",
           });
         } else {
