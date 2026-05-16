@@ -1,6 +1,12 @@
 // Expected totalBits for every PSML preset under its initial state. The
 // runtime resolver and the PSML layout adapter must both produce these
 // numbers; they are also the canonical "default" sizes the README documents.
+//
+// `EXPECTED_TOTAL_BITS` covers presets that exist in BOTH the runtime
+// registry and the PSML registry (parity-tested). `EXPECTED_TOTAL_BITS_PSML`
+// extends that with PSML-only presets introduced in PSML 0.3 (Phase 2C),
+// which use primitives — Encrypted containers, Varint — that have no
+// runtime equivalent.
 
 export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   ipv4: 160,
@@ -14,8 +20,30 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   arp: 224,
   tlsRecord: 40,
   tlsClientHello: 648,
-  quicShort: 80,
+  quicShort: 208,
   vlan: 144,
 };
 
+/**
+ * PSML-only presets added in Phase 2C. Wire-mode totalBits — the on-the-wire
+ * encoding with every Encrypted container collapsed to its `wireBits` (or
+ * to the sum of its plaintext bit widths when `wireBits` is absent).
+ */
+export const EXPECTED_TOTAL_BITS_PSML_ONLY: Record<string, number> = {
+  quicLong: 320,
+  tlsClientHelloFull: 1032,
+};
+
+/**
+ * Semantic-mode totalBits — Encrypted containers expand to their plaintext
+ * substructure. Used to assert that toggling viewMode actually changes the
+ * layout (the renderer's "Decrypted view" toggle relies on this).
+ */
+export const EXPECTED_TOTAL_BITS_SEMANTIC: Record<string, number> = {
+  quicShort: 216,
+  quicLong: 328,
+  tlsClientHelloFull: 1080,
+};
+
 export const PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS);
+export const PSML_ONLY_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSML_ONLY);
