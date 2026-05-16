@@ -97,6 +97,10 @@ function render() {
       state.selectedFieldId = field.id;
       render();
     },
+    onSubfieldClick: (parentField, subfield) => {
+      state.selectedFieldId = `${parentField.id}:${subfield.id}`;
+      render();
+    },
   });
   els.diagram.appendChild(svg);
 
@@ -172,6 +176,30 @@ function renderDetail(packet) {
     els.detail.innerHTML = `<p class="muted">Click a field in the diagram to see its details.</p>`;
     return;
   }
+
+  // Subfield selection has the form "parentId:subfieldId".
+  if (state.selectedFieldId.includes(":")) {
+    const [parentId, subId] = state.selectedFieldId.split(":");
+    const parent = packet.fields.find(f => f.id === parentId);
+    const sub = parent && parent.subfields
+      ? parent.subfields.find(s => s.id === subId)
+      : null;
+    if (!parent || !sub) {
+      els.detail.innerHTML = `<p class="muted">Subfield not found.</p>`;
+      return;
+    }
+    const bits = sub.bits;
+    els.detail.innerHTML = `
+      <h3>${escapeHtml(sub.name)} <span class="subfield-hint">(subfield of ${escapeHtml(parent.name)})</span></h3>
+      <dl>
+        <dt>Size</dt><dd>${bits} bit${bits === 1 ? "" : "s"}</dd>
+        <dt>Parent</dt><dd>${escapeHtml(parent.name)} (${parent.bits} bits)</dd>
+        ${sub.description ? `<dt>Description</dt><dd>${escapeHtml(sub.description)}</dd>` : ""}
+      </dl>
+    `;
+    return;
+  }
+
   const field = packet.fields.find(f => f.id === state.selectedFieldId);
   if (!field) {
     els.detail.innerHTML = `<p class="muted">Field not found.</p>`;
@@ -181,6 +209,10 @@ function renderDetail(packet) {
     ? field.toBits(state.controllers[field.lengthFrom])
     : field.bits;
 
+  const subfieldsHtml = field.subfields
+    ? `<dt>Subfields</dt><dd>${field.subfields.map(s => `<code>${escapeHtml(s.name)}</code> (${s.bits}b)`).join(" ")}</dd>`
+    : "";
+
   els.detail.innerHTML = `
     <h3>${escapeHtml(field.name)}</h3>
     <dl>
@@ -188,6 +220,7 @@ function renderDetail(packet) {
       ${field.variable ? `<dt>Driven by</dt><dd><code>${escapeHtml(field.lengthFrom)}</code></dd>` : ""}
       ${field.controlsLength ? `<dt>Controls</dt><dd><code>${escapeHtml(field.controlsLength)}</code> (current: <span class="mono">${state.controllers[field.controlsLength]}</span>)</dd>` : ""}
       ${field.description ? `<dt>Description</dt><dd>${escapeHtml(field.description)}</dd>` : ""}
+      ${subfieldsHtml}
     </dl>
   `;
 }

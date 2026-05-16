@@ -6,6 +6,11 @@
 //   - `controlsLength` declares this field as a "length controller" in the state
 //      under the given key. Its current numeric value drives variable fields that
 //      reference the same key.
+//   - `subfields: [{ id, name, bits, description? }, ...]` declares positional
+//      sub-bit fields inside the parent. Sum of subfield.bits MUST equal the
+//      parent's bits (validated by validatePacket / resolvePacket). Subfields are
+//      laid out left-to-right within the parent's bit range. Use the synthetic
+//      id `parent.id + ":" + subfield.id` to address a subfield from the UI.
 //
 // Variable-length fields reference a controller via `lengthFrom`: a function
 // (controllerValue) => bits. This keeps the model declarative but flexible.
@@ -36,7 +41,15 @@ export const PACKETS = {
       { id: "identification", name: "Identification", bits: 16, color: "blue",
         description: "Used for fragment reassembly." },
       { id: "flags", name: "Flags", bits: 3, color: "rose",
-        description: "Control flags: Reserved, DF (Don't Fragment), MF (More Fragments)." },
+        description: "Control flags: Reserved, DF (Don't Fragment), MF (More Fragments).",
+        subfields: [
+          { id: "reserved", name: "R", bits: 1,
+            description: "Reserved. Must be zero (RFC 791); also called the 'evil bit' (RFC 3514, April Fools)." },
+          { id: "df", name: "DF", bits: 1,
+            description: "Don't Fragment. If set, the datagram must not be fragmented; if it cannot fit, it is dropped (and an ICMP error is returned)." },
+          { id: "mf", name: "MF", bits: 1,
+            description: "More Fragments. Set on every fragment except the last; cleared on unfragmented datagrams." },
+        ] },
       { id: "fragOffset", name: "Fragment Offset", bits: 13, color: "green",
         description: "Position of this fragment in the original datagram." },
       { id: "ttl", name: "TTL", bits: 8, color: "amber",
@@ -71,7 +84,26 @@ export const PACKETS = {
         controlsLength: "tcpDataOffset", defaultValue: 5, min: 5, max: 15 },
       { id: "reserved", name: "Rsvd", bits: 4, color: "slate",
         description: "Reserved bits." },
-      { id: "flags", name: "Flags (CWR ECE URG ACK PSH RST SYN FIN)", bits: 8, color: "rose" },
+      { id: "flags", name: "Flags", bits: 8, color: "rose",
+        description: "TCP control bits: CWR, ECE, URG, ACK, PSH, RST, SYN, FIN.",
+        subfields: [
+          { id: "cwr", name: "CWR", bits: 1,
+            description: "Congestion Window Reduced (RFC 3168). Sender reduced its congestion window in response to ECE." },
+          { id: "ece", name: "ECE", bits: 1,
+            description: "ECN-Echo (RFC 3168). Indicates ECN-capable transport / echoes a received Congestion Experienced mark." },
+          { id: "urg", name: "URG", bits: 1,
+            description: "Urgent Pointer field is significant. Rarely used in practice." },
+          { id: "ack", name: "ACK", bits: 1,
+            description: "Acknowledgment Number field is significant. Set on all packets after the initial SYN." },
+          { id: "psh", name: "PSH", bits: 1,
+            description: "Push function. Receiver should pass buffered data to the application without waiting for more." },
+          { id: "rst", name: "RST", bits: 1,
+            description: "Reset the connection. Sent on protocol errors or to refuse a connection." },
+          { id: "syn", name: "SYN", bits: 1,
+            description: "Synchronize sequence numbers. Set on the first packet of each direction during connection setup." },
+          { id: "fin", name: "FIN", bits: 1,
+            description: "No more data from sender. Used to gracefully close the connection." },
+        ] },
       { id: "window", name: "Window", bits: 16, color: "amber" },
       { id: "checksum", name: "Checksum", bits: 16, color: "orange" },
       { id: "urgent", name: "Urgent Pointer", bits: 16, color: "orange" },
@@ -95,6 +127,44 @@ export const PACKETS = {
     ],
   },
 
+  dns: {
+    name: "DNS Header",
+    rowBits: 16,
+    description: "Domain Name System message header (RFC 1035). 12 bytes; the Flags field encodes QR/Opcode/AA/TC/RD/RA/Z/RCODE.",
+    fields: [
+      { id: "id", name: "Identification", bits: 16, color: "blue",
+        description: "Identifier copied to the corresponding reply, used to match queries and responses." },
+      { id: "flags", name: "Flags", bits: 16, color: "rose",
+        description: "Control flags: QR, Opcode, AA, TC, RD, RA, Z, RCODE.",
+        subfields: [
+          { id: "qr", name: "QR", bits: 1,
+            description: "Query/Response. 0 = query, 1 = response." },
+          { id: "opcode", name: "Opcode", bits: 4,
+            description: "Kind of query: 0=QUERY, 1=IQUERY (obsolete), 2=STATUS, 4=NOTIFY, 5=UPDATE." },
+          { id: "aa", name: "AA", bits: 1,
+            description: "Authoritative Answer. Set in responses from an authoritative server for the queried name." },
+          { id: "tc", name: "TC", bits: 1,
+            description: "TrunCation. Message was truncated due to transport size limits (typically UDP)." },
+          { id: "rd", name: "RD", bits: 1,
+            description: "Recursion Desired. Client asks the server to pursue the query recursively." },
+          { id: "ra", name: "RA", bits: 1,
+            description: "Recursion Available. Server signals whether it supports recursive queries." },
+          { id: "z", name: "Z", bits: 3,
+            description: "Reserved for future use; must be zero in queries and responses (parts later reused by DNSSEC AD/CD)." },
+          { id: "rcode", name: "RCODE", bits: 4,
+            description: "Response code: 0=NOERROR, 1=FORMERR, 2=SERVFAIL, 3=NXDOMAIN, 4=NOTIMP, 5=REFUSED." },
+        ] },
+      { id: "qdcount", name: "QDCOUNT", bits: 16, color: "teal",
+        description: "Number of entries in the Question section." },
+      { id: "ancount", name: "ANCOUNT", bits: 16, color: "green",
+        description: "Number of resource records in the Answer section." },
+      { id: "nscount", name: "NSCOUNT", bits: 16, color: "amber",
+        description: "Number of name-server resource records in the Authority section." },
+      { id: "arcount", name: "ARCOUNT", bits: 16, color: "orange",
+        description: "Number of resource records in the Additional section." },
+    ],
+  },
+
   ethernet: {
     name: "Ethernet II Frame Header",
     rowBits: 32,
@@ -108,8 +178,39 @@ export const PACKETS = {
   },
 };
 
+// Validate a packet definition. Currently checks that subfield bit sums match
+// their parent's bit width. Throws a clear error on mismatch.
+export function validatePacket(packet) {
+  for (const field of packet.fields) {
+    if (!field.subfields) continue;
+    if (field.variable) {
+      throw new Error(
+        `Packet "${packet.name}": field "${field.id}" is variable-length and cannot have subfields.`
+      );
+    }
+    const sum = field.subfields.reduce((acc, sf) => acc + sf.bits, 0);
+    if (sum !== field.bits) {
+      throw new Error(
+        `Packet "${packet.name}": subfields of "${field.id}" sum to ${sum} bits ` +
+        `but parent declares ${field.bits} bits.`
+      );
+    }
+    for (const sf of field.subfields) {
+      if (!Number.isInteger(sf.bits) || sf.bits <= 0) {
+        throw new Error(
+          `Packet "${packet.name}": subfield "${field.id}.${sf.id}" must have positive integer bits, got ${sf.bits}.`
+        );
+      }
+    }
+  }
+}
+
 // Resolve a packet definition + controller state into laid-out cells.
+// Cells with subfields get a `subCells` array, each entry positioned within
+// the parent cell's segment using bit offsets (relative to the parent's start).
 export function resolvePacket(packet, state) {
+  validatePacket(packet);
+
   const cells = [];
   let bitPos = 0;
 
@@ -126,12 +227,16 @@ export function resolvePacket(packet, state) {
     let remaining = bits;
     let segmentIndex = 0;
     const totalSegments = computeSegmentCount(bitPos, bits, packet.rowBits);
+    // Track absolute bit position of the parent's start so we can compute
+    // each subfield's offset relative to the parent.
+    const parentStartBitPos = bitPos;
+    const parentSegments = [];
 
     while (remaining > 0) {
       const row = Math.floor(bitPos / packet.rowBits);
       const colInRow = bitPos % packet.rowBits;
       const take = Math.min(remaining, packet.rowBits - colInRow);
-      cells.push({
+      const cell = {
         field,
         bitsTotal: bits,
         row,
@@ -141,10 +246,47 @@ export function resolvePacket(packet, state) {
         totalSegments,
         isFirst: segmentIndex === 0,
         isLast: remaining === take,
-      });
+        // Bit offset (relative to the start of the field) covered by this cell.
+        fieldStartOffset: bits - remaining,
+        fieldEndOffset: bits - remaining + take - 1,
+      };
+      cells.push(cell);
+      parentSegments.push(cell);
       remaining -= take;
       bitPos += take;
       segmentIndex++;
+    }
+
+    // Distribute subfields across the parent's segments.
+    if (field.subfields && field.subfields.length > 0) {
+      let sfOffset = 0;
+      for (const sf of field.subfields) {
+        const sfStart = sfOffset;
+        const sfEnd = sfOffset + sf.bits - 1;
+        for (const seg of parentSegments) {
+          // Intersect [sfStart, sfEnd] with [seg.fieldStartOffset, seg.fieldEndOffset]
+          const lo = Math.max(sfStart, seg.fieldStartOffset);
+          const hi = Math.min(sfEnd, seg.fieldEndOffset);
+          if (lo > hi) continue;
+          // Map into segment-local bit columns (within seg.startBit..seg.endBit).
+          const colStart = seg.startBit + (lo - seg.fieldStartOffset);
+          const colEnd = seg.startBit + (hi - seg.fieldStartOffset);
+          if (!seg.subCells) seg.subCells = [];
+          seg.subCells.push({
+            parentField: field,
+            subfield: sf,
+            // Synthetic id used by the renderer for data-field-id and click routing.
+            id: `${field.id}:${sf.id}`,
+            startBit: colStart,
+            endBit: colEnd,
+            // Whether this is the first/last segment of the subfield (for label placement).
+            isFirst: lo === sfStart,
+            isLast: hi === sfEnd,
+            bitsTotal: sf.bits,
+          });
+        }
+        sfOffset += sf.bits;
+      }
     }
   }
   return { cells, totalBits: bitPos };

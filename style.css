@@ -356,6 +356,28 @@ main {
   stroke: var(--variable-stripe);
 }
 
+.subfield-cell rect {
+  transition: fill-opacity var(--transition-fast), stroke var(--transition-fast);
+}
+
+.subfield-cell:hover rect {
+  fill-opacity: 1;
+  stroke: var(--field-stroke-selected);
+  stroke-width: 1.4;
+}
+
+.subfield-cell.selected rect {
+  fill-opacity: 1;
+  stroke: var(--field-stroke-selected);
+  stroke-width: 1.6;
+}
+
+.subfield-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
 /* ----- panels ----- */
 .panels {
   display: grid;

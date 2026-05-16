@@ -21,7 +21,7 @@ function resolveFieldColor(color) {
   return color;
 }
 
-export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) {
+export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, onSubfieldClick }) {
   const rowBits = packet.rowBits;
   const rows = layout.cells.length
     ? Math.max(...layout.cells.map(c => c.row)) + 1
@@ -202,6 +202,79 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick }) 
     }
 
     svg.appendChild(group);
+
+    // Subfield sub-cells rendered on top of the parent.
+    if (cell.subCells && cell.subCells.length > 0) {
+      for (const sub of cell.subCells) {
+        const sx = PADDING_X + sub.startBit * BIT_WIDTH;
+        const sw = (sub.endBit - sub.startBit + 1) * BIT_WIDTH;
+        // Lay subfield rect in the lower portion of the parent so the parent
+        // label remains visible at the top.
+        const subTop = y + h * 0.55;
+        const subH = h * 0.32;
+
+        const isSubSelected = selectedFieldId === sub.id;
+
+        const subGroup = createGroup();
+        subGroup.classList.add("subfield-cell");
+        if (isSubSelected) subGroup.classList.add("selected");
+        subGroup.dataset.fieldId = sub.id;
+        subGroup.dataset.parentFieldId = cell.field.id;
+        subGroup.dataset.subfieldId = sub.subfield.id;
+
+        const subRect = createSvg("rect", {
+          x: sx + 1,
+          y: subTop,
+          width: sw - 2,
+          height: subH,
+          rx: 3,
+          ry: 3,
+          fill: "#ffffff",
+          "fill-opacity": isSubSelected ? 0.95 : 0.78,
+          stroke: isSubSelected ? "#222" : "#445",
+          "stroke-width": isSubSelected ? 1.6 : 0.8,
+        });
+        subGroup.appendChild(subRect);
+
+        if (sub.isFirst) {
+          const labelY = subTop + subH / 2 + 3;
+          const subLabel = createSvg("text", {
+            x: sx + sw / 2,
+            y: labelY,
+            "text-anchor": "middle",
+            "font-size": 9,
+            "font-weight": 600,
+            fill: "#222",
+            "pointer-events": "none",
+          });
+          subLabel.textContent = truncateToFit(sub.subfield.name, sw - 4, 5);
+          subGroup.appendChild(subLabel);
+        }
+
+        if (onSubfieldClick) {
+          subGroup.style.cursor = "pointer";
+          subGroup.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onSubfieldClick(cell.field, sub.subfield);
+          });
+        }
+
+        svg.appendChild(subGroup);
+      }
+
+      // Move parent label upward so subfield labels do not collide.
+      // The parent label was already placed; nudge with a translate on the
+      // existing text nodes via CSS class would be heavier — instead, we
+      // adjust label positions by tweaking when isFirst (above) used cell.h/2.
+      // Simpler: reposition the parent's name/sub texts by replacing them.
+      // We do that by walking the group's children added in the parent block.
+      const labels = group.querySelectorAll("text");
+      labels.forEach((t, i) => {
+        // Push each text upward into the upper half of the parent.
+        const cy = parseFloat(t.getAttribute("y"));
+        t.setAttribute("y", String(cy - h * 0.18));
+      });
+    }
   }
 
   // Defs (stripes for variable-length)
@@ -237,9 +310,9 @@ function formatBitsLabel(bits, field) {
   return field.variable ? `${bits} bits (var)` : `${bits} bits${Number.isInteger(bytes) ? ` / ${byteStr}` : ""}`;
 }
 
-function truncateToFit(text, maxPx) {
-  // Rough: ~6.5 px per char at font-size 12
-  const max = Math.max(2, Math.floor(maxPx / 6.5));
+function truncateToFit(text, maxPx, pxPerChar = 6.5) {
+  // Rough: ~6.5 px per char at font-size 12; smaller for smaller fonts.
+  const max = Math.max(2, Math.floor(maxPx / pxPerChar));
   if (text.length <= max) return text;
   if (max <= 1) return "…";
   return text.slice(0, max - 1) + "…";
