@@ -12,6 +12,13 @@ import { fromAad } from "@/lib/formats/aug-ascii";
 import { fromJson, toJson } from "@/lib/formats/json";
 import { fromKsy, toKsy } from "@/lib/formats/ksy";
 import { toAscii } from "@/lib/formats/rfc-ascii";
+import {
+  downloadBlob,
+  extensionToFormat,
+  formatToExtension,
+  readFileAsText,
+  slugify,
+} from "@/lib/preset-file-io";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import type { ControllerState, Packet } from "@/lib/psml/renderer";
 
@@ -220,6 +227,49 @@ export default function ImportExportDrawer({
     }
   }, [format, text, onImport]);
 
+  const handleDownload = useCallback(() => {
+    try {
+      const ext = formatToExtension(format);
+      const filename = `${slugify(packet.name)}.${ext}`;
+      const mime = format === "json" ? "application/json" : "text/plain";
+      downloadBlob(filename, mime, text);
+      setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
+    } catch (e) {
+      setStatus({ msg: `Download failed: ${(e as Error).message}`, kind: "error" });
+    }
+  }, [format, packet.name, text]);
+
+  // Shared file ingestion used by both the file picker and DnD. Reads the
+  // file as text, drops it into the textarea, and snaps the format selector
+  // to whatever the extension implies.
+  const handleFileSelected = useCallback(async (file: File) => {
+    try {
+      const content = await readFileAsText(file);
+      setText(content);
+      const detected = extensionToFormat(file.name);
+      if (detected && availableFormats.includes(detected)) {
+        setFormat(detected);
+      }
+      setStatus({ msg: `Loaded ${file.name}.`, kind: "ok" });
+    } catch (e) {
+      setStatus({ msg: `Upload failed: ${(e as Error).message}`, kind: "error" });
+    }
+  }, [availableFormats]);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) void handleFileSelected(file);
+      // Reset so picking the same file twice still fires onChange.
+      e.target.value = "";
+    },
+    [handleFileSelected],
+  );
+
   const handleCopy = useCallback(async () => {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
@@ -310,11 +360,16 @@ export default function ImportExportDrawer({
           status={status}
           availableFormats={availableFormats}
           textareaRef={textareaRef}
+          fileInputRef={fileInputRef}
           onModeChange={handleModeChange}
           onFormatChange={setFormat}
           onTextChange={setText}
           onApply={handleApply}
           onCopy={handleCopy}
+          onDownload={handleDownload}
+          onUploadClick={handleUploadClick}
+          onFileInputChange={handleFileInputChange}
+          onFileDropped={handleFileSelected}
           onClose={onClose}
         />
       </aside>
@@ -329,11 +384,16 @@ type InnerProps = {
   status: Status;
   availableFormats: FormatKey[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   onModeChange: (mode: DrawerMode) => void;
   onFormatChange: (fmt: FormatKey) => void;
   onTextChange: (txt: string) => void;
   onApply: () => void;
   onCopy: () => void;
+  onDownload: () => void;
+  onUploadClick: () => void;
+  onFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileDropped: (file: File) => void;
   onClose: () => void;
 };
 
@@ -344,13 +404,39 @@ function DrawerInner({
   status,
   availableFormats,
   textareaRef,
+  fileInputRef,
   onModeChange,
   onFormatChange,
   onTextChange,
   onApply,
   onCopy,
+  onDownload,
+  onUploadClick,
+  onFileInputChange,
+  onFileDropped,
   onClose,
 }: InnerProps) {
+  const [dragActive, setDragActive] = useState(false);
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  }, []);
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (file) onFileDropped(file);
+    },
+    [onFileDropped],
+  );
   return (
     <>
       <header
@@ -414,23 +500,62 @@ function DrawerInner({
       </div>
 
       <div className="flex-1 min-h-0 px-4 pb-2 flex flex-col gap-2">
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => onTextChange(e.target.value)}
-          spellCheck={false}
-          placeholder={
-            currentMode === "import"
-              ? "Paste packet definition here, then click Apply."
-              : ""
-          }
-          className="flex-1 min-h-[200px] resize-none text-xs font-mono rounded-md border p-2"
+        {currentMode === "import" ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onUploadClick}
+              className="text-xs px-2 py-1 rounded-md border"
+              style={{
+                background: "transparent",
+                color: "var(--fg)",
+                borderColor: "var(--border-strong)",
+              }}
+            >
+              Upload file
+            </button>
+            <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+              or drop a file on the textarea
+            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,.psml.json,.txt,.ksy,.aad"
+              onChange={onFileInputChange}
+              style={{ display: "none" }}
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+          </div>
+        ) : null}
+        <div
+          className={`flex-1 min-h-[200px] flex rounded-md ${dragActive ? "drawer-drop-active" : ""}`}
+          onDragOver={currentMode === "import" ? handleDragOver : undefined}
+          onDragLeave={currentMode === "import" ? handleDragLeave : undefined}
+          onDrop={currentMode === "import" ? handleDrop : undefined}
           style={{
-            background: "var(--bg-subtle)",
-            color: "var(--fg)",
-            borderColor: "var(--border)",
+            outline: dragActive ? "2px dashed var(--accent)" : "none",
+            outlineOffset: "-2px",
           }}
-        />
+        >
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => onTextChange(e.target.value)}
+            spellCheck={false}
+            placeholder={
+              currentMode === "import"
+                ? "Paste packet definition here, then click Apply."
+                : ""
+            }
+            className="flex-1 min-h-[200px] resize-none text-xs font-mono rounded-md border p-2"
+            style={{
+              background: "var(--bg-subtle)",
+              color: "var(--fg)",
+              borderColor: "var(--border)",
+            }}
+          />
+        </div>
         <div
           className="text-xs min-h-[1.25rem]"
           role="status"
@@ -480,18 +605,32 @@ function DrawerInner({
             Apply
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={onCopy}
-            className="text-sm px-3 py-1.5 rounded-md border font-semibold"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-fg)",
-              borderColor: "var(--accent)",
-            }}
-          >
-            Copy
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onCopy}
+              className="text-sm px-3 py-1.5 rounded-md border font-semibold"
+              style={{
+                background: "transparent",
+                color: "var(--fg)",
+                borderColor: "var(--border-strong)",
+              }}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={onDownload}
+              className="text-sm px-3 py-1.5 rounded-md border font-semibold"
+              style={{
+                background: "var(--accent)",
+                color: "var(--accent-fg)",
+                borderColor: "var(--accent)",
+              }}
+            >
+              Download
+            </button>
+          </>
         )}
       </footer>
     </>
