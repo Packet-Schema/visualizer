@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "smoke:ksy": "tsx scripts/smoke-ksy.ts"
   },
   "dependencies": {
     "@myriaddreamin/typst-ts-renderer": "^0.7.0-rc2",
@@ -18,7 +19,8 @@
     "motion": "^12.38.0",
     "next": "^15.0.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
