@@ -343,3 +343,87 @@ describe("fromJson — error paths", () => {
     ).toThrow(/missing array `body`/);
   });
 });
+
+// PSML 0.4 — round-trip the four new primitives through the JSON serializer.
+// Each test builds a minimal packet that contains exactly one primitive and
+// asserts byte-identical canonical text after one round-trip.
+describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
+  it("Optional container", () => {
+    const pkt: Packet = {
+      name: "Opt",
+      rowBits: 8,
+      body: [
+        {
+          kind: "optional",
+          id: "maybeFlag",
+          when: { kind: "ref", field: "present" },
+          field: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
+        },
+      ],
+    };
+    const env: PacketEnv = new Map([["present", 1]]);
+    const text1 = toJson(pkt, env);
+    const round = fromJson(text1);
+    expect(toJson(round.packet, round.env)).toBe(text1);
+    // Optional structure survives unchanged.
+    const obj = JSON.parse(text1);
+    expect(obj.body[0]).toMatchObject({ kind: "optional", when: { kind: "ref", field: "present" } });
+  });
+
+  it("berLength Type", () => {
+    const pkt: Packet = {
+      name: "Ber",
+      rowBits: 8,
+      body: [{ id: "len", name: "BER", type: { kind: "berLength" }, category: "length" }],
+    };
+    const text1 = toJson(pkt);
+    expect(toJson(fromJson(text1).packet, fromJson(text1).env)).toBe(text1);
+    expect(JSON.parse(text1).body[0].type).toEqual({ kind: "berLength" });
+  });
+
+  it("peek Expr (as a Switch discriminator)", () => {
+    const pkt: Packet = {
+      name: "Peek",
+      rowBits: 16,
+      body: [
+        {
+          kind: "switch",
+          id: "byPeek",
+          on: { kind: "peek", bits: 16 },
+          cases: {
+            "1": { id: "one", fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }] },
+          },
+        },
+      ],
+    };
+    const text1 = toJson(pkt);
+    expect(toJson(fromJson(text1).packet, fromJson(text1).env)).toBe(text1);
+    const obj = JSON.parse(text1);
+    expect(obj.body[0].on).toEqual({ kind: "peek", bits: 16 });
+  });
+
+  it("per-field byteOrder", () => {
+    const pkt: Packet = {
+      name: "BO",
+      rowBits: 16,
+      body: [
+        { id: "a", name: "A", type: { kind: "int", bits: 16 }, byteOrder: "LE" },
+      ],
+    };
+    const text1 = toJson(pkt);
+    expect(toJson(fromJson(text1).packet, fromJson(text1).env)).toBe(text1);
+    expect(JSON.parse(text1).body[0].byteOrder).toBe("LE");
+  });
+});
+
+describe("toJson / fromJson — PSML 0.4 demo presets round-trip", () => {
+  for (const key of ["http2FrameHeader", "tlsExtensionsBlock", "pcieTlpFragment"]) {
+    it(`${key}: byte-identical after one round-trip`, () => {
+      const pkt = ALL_PRESETS[key];
+      const env = initialEnv(pkt);
+      const t1 = toJson(pkt, env);
+      const round = fromJson(t1);
+      expect(toJson(round.packet, round.env)).toBe(t1);
+    });
+  }
+});

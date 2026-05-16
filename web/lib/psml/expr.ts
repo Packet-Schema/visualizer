@@ -79,6 +79,17 @@ export function evalExpr(expr: Expr, env: PacketEnv): number {
       const t = evalExpr(expr.test, env);
       return t !== 0 ? evalExpr(expr.t, env) : evalExpr(expr.f, env);
     }
+    case "peek": {
+      // PSML 0.4 — read a lookahead value from a synthetic env key. The
+      // adapter that handles a peek call (e.g. a Switch on a peek expression)
+      // is expected to seed `__peek__<offset>__<bits>` (or just
+      // `__peek__<bits>` when offset is 0/absent). Falls back to 0 so layout
+      // can still proceed with the default Switch case.
+      const offsetVal = expr.offset !== undefined ? evalExpr(expr.offset, env) : 0;
+      const key = `__peek__${offsetVal}__${expr.bits}`;
+      const v = env.get(key);
+      return v ?? 0;
+    }
     default: {
       // Exhaustiveness: never type narrows away every legal kind.
       const _exhaustive: never = expr;
@@ -111,6 +122,9 @@ function walk(expr: Expr, out: string[]): void {
       walk(expr.test, out);
       walk(expr.t, out);
       walk(expr.f, out);
+      return;
+    case "peek":
+      if (expr.offset !== undefined) walk(expr.offset, out);
       return;
   }
 }

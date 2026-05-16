@@ -23,7 +23,15 @@
 //   * `Encrypted` container — `{ kind: 'encrypted', id, plaintext: Struct,
 //     contextNote, wireBits?, headerProtected? }`. The Struct inside is the
 //     recursive on-wire format unchanged (so its children round-trip too).
-// Both are passed through `body: r.body as Packet["body"]` — structural
+// PSML 0.4 adds four more shapes that likewise flow through this serializer
+// untouched — every PSML primitive is a tagged JSON object so structural
+// JSON encoding is sufficient:
+//   * `Optional` container — `{ kind: 'optional', when: Expr, field: Field }`.
+//   * `berLength` Type     — `{ kind: 'berLength' }` on a Field's type slot.
+//   * `peek` Expr          — `{ kind: 'peek', bits: number, offset?: Expr }`
+//                            (typically used as a Switch's `on` discriminator).
+//   * Per-field byteOrder  — `byteOrder: 'BE' | 'LE'` on a Field (additive).
+// All are passed through `body: r.body as Packet["body"]`; structural
 // validation lives in `lib/psml/validate.ts` and runs downstream.
 //
 // Color is intentionally not part of the wire shape — PSML carries

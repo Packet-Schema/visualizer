@@ -180,6 +180,7 @@ type KsySeqEntry = {
   doc?: string;
   "doc-ref"?: string | string[];
   if?: string;
+  endian?: "be" | "le";
   repeat?: "expr" | "until" | "eos";
   "repeat-expr"?: unknown;
   "repeat-until"?: string;
@@ -698,6 +699,16 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       return [entry];
     }
     case "switch": {
+      // PSML 0.4 — if the discriminator is a peek() expression, surface that
+      // as a psml-only comment alongside the (still-lowered) Switch so the
+      // .ksy reader knows the dispatch happens on a lookahead rather than a
+      // declared sibling field. Kaitai's switch-on requires a previously
+      // declared field, so we keep the existing "first case only" lowering.
+      if (c.on.kind === "peek") {
+        ctx.psmlOnly.push(
+          `Switch "${c.id}" dispatches on peek(bits=${c.on.bits}) — lookahead not modelled in Kaitai`,
+        );
+      }
       ctx.psmlOnly.push(
         `Switch "${c.id}" lowered to first case only (Kaitai switch-on type requires uniform field shapes).`,
       );
@@ -705,6 +716,20 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       if (!firstKey) return [];
       const first = c.cases[firstKey];
       return first.fields.flatMap((ch) => containerToKsy(ch, ctx));
+    }
+    case "optional": {
+      // PSML 0.4 Optional — emit `if:` if the predicate is a simple ref
+      // (Kaitai accepts a name), otherwise drop to a psml-only comment.
+      const inner = fieldToKsy(c.field, ctx);
+      const ifExpr = exprToKaitaiIf(c.when);
+      if (ifExpr) {
+        inner.if = ifExpr;
+      } else {
+        ctx.psmlOnly.push(
+          `optional "${c.id ?? c.field.id}" predicate ${exprToString(c.when)} not expressible in Kaitai — left unconditional`,
+        );
+      }
+      return [inner];
     }
     case "encrypted": {
       // Kaitai has no encrypted concept. Emit a single byte placeholder so the
@@ -775,9 +800,51 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
       entry.type = "u1";
       break;
     }
+    case "berLength": {
+      // PSML 0.4 — Kaitai has no BER-length primitive. Emit a u1 placeholder
+      // and surface a psml-only comment so the reader knows to hand-roll
+      // the proper BER definite-length decoder.
+      ctx.psmlOnly.push(
+        `Field "${f.id}" berLength lowered to u1 placeholder`,
+      );
+      entry.type = "u1";
+      break;
+    }
   }
   if (f.doc) entry.doc = f.doc;
+  // PSML 0.4 per-field byteOrder → Kaitai per-field `endian:`.
+  if (f.byteOrder === "BE") entry.endian = "be";
+  else if (f.byteOrder === "LE") entry.endian = "le";
   return entry;
+}
+
+/**
+ * Translate a PSML Expr to a Kaitai `if:` clause string. Returns null when
+ * the expression contains a `peek` (Kaitai cannot model lookahead) so the
+ * caller can fall back to a psml-only comment.
+ */
+function exprToKaitaiIf(e: Expr): string | null {
+  switch (e.kind) {
+    case "lit":
+      return String(e.value);
+    case "ref":
+      return e.field;
+    case "op": {
+      const a = exprToKaitaiIf(e.a);
+      const b = exprToKaitaiIf(e.b);
+      if (a === null || b === null) return null;
+      return `(${a} ${e.op} ${b})`;
+    }
+    case "cond": {
+      const t = exprToKaitaiIf(e.test);
+      const tt = exprToKaitaiIf(e.t);
+      const ff = exprToKaitaiIf(e.f);
+      if (t === null || tt === null || ff === null) return null;
+      return `(${t} ? ${tt} : ${ff})`;
+    }
+    case "peek":
+      return null;
+  }
 }
 
 function exprToKsySize(e: Expr): number | string {
@@ -796,6 +863,8 @@ function exprToString(e: Expr): string {
       return `(${exprToString(e.a)} ${e.op} ${exprToString(e.b)})`;
     case "cond":
       return `(${exprToString(e.test)} ? ${exprToString(e.t)} : ${exprToString(e.f)})`;
+    case "peek":
+      return `peek(${e.bits}${e.offset !== undefined ? `, ${exprToString(e.offset)}` : ""})`;
   }
 }
 
