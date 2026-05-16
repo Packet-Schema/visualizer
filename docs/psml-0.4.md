@@ -1,4 +1,4 @@
-# PSML 0.3 — Packet Schema Markup Language
+# PSML 0.4 — Packet Schema Markup Language
 
 PSML is a small declarative schema for describing the bit-level layout of
 network protocol headers. A PSML packet is a tree of typed fields and
@@ -8,18 +8,31 @@ constraints. PSML is the canonical wire format for Packet View — every
 import / export format converts to or from PSML, and the renderer consumes
 PSML via a thin runtime adapter.
 
-This document describes PSML 0.3. The JSON serialization is normative;
+This document describes PSML 0.4. The JSON serialization is normative;
 the in-memory TypeScript shape lives at
 `web/lib/psml/types.ts` and the JSON Schema at
 `schemas/psml.schema.json`.
 
-> **What's new in 0.3.** A `varint` Type for self-describing
-> variable-length integers (QUIC / protobuf / CBOR), an `encrypted`
-> Container for opaque-on-the-wire payloads whose plaintext shape is
-> known once keys are applied, and a `viewMode` parameter (`'wire'` vs
-> `'semantic'`) on `normalize` / `resolveLayout` to toggle between the
-> two presentations. These additions are upward-compatible with 0.2:
-> existing presets parse and render unchanged.
+> **What's new in 0.4.** Four additive primitives push PSML past
+> fixed-shape protocols and into the "real wire" zone:
+> an `optional` Container (a field that exists only when a predicate
+> evaluates truthy — TLS extensions, IPv6 next-header options); a
+> `berLength` Type for ASN.1 BER/DER short- and long-form length
+> octets (X.509, SNMP, LDAP); a `peek` Expression that reads N bits
+> from a forthcoming offset *without consuming them*, which lets
+> `Switch` discriminate on a field that hasn't been parsed yet
+> (TLS extension type, framed protocols); and a per-field
+> `byteOrder` override so a single packet can mix endiannesses
+> (PCIe TLP headers are BE wrapping LE payloads). These additions
+> are upward-compatible with 0.2 and 0.3 — existing presets parse and
+> render unchanged.
+
+> **What's new in 0.3** (kept for reference). A `varint` Type for
+> self-describing variable-length integers (QUIC / protobuf / CBOR),
+> an `encrypted` Container for opaque-on-the-wire payloads whose
+> plaintext shape is known once keys are applied, and a `viewMode`
+> parameter (`'wire'` vs `'semantic'`) on `normalize` / `resolveLayout`
+> to toggle between the two presentations.
 
 ## Design principles
 
@@ -46,6 +59,7 @@ the in-memory TypeScript shape lives at
 | `bytes` | `{ kind: "bytes", n: Expr }` | `evalExpr(n) * 8` |
 | `enum` | `{ kind: "enum", bits, variants: { [n]: label } }` | fixed |
 | `varint` *(0.3)* | `{ kind: "varint", encoding: "quic" \| "protobuf" \| "cbor" }` | runtime (see below) |
+| `berLength` *(0.4)* | `{ kind: "berLength" }` | runtime (1 / 2 / 3 / 5 / 9 bytes — see below) |
 
 `int` is conventionally network-byte-order; the explicit per-packet
 `byteOrder` field documents the protocol's policy.
@@ -91,6 +105,65 @@ bits of the (header-protected) first byte and ranges 1–4 bytes. A
 hard-coding a width — the runtime supplies the actual width once header
 protection is peeled.
 
+### BER/DER length (0.4)
+
+A `berLength` Type describes an ASN.1 BER/DER length octet sequence as
+specified in ITU-T X.690 §8.1.3. Like `varint`, the on-wire bit width is
+data-dependent:
+
+| First-byte form | Meaning | Total bytes |
+| --- | --- | --- |
+| `0x00..0x7F` | short form: low 7 bits *are* the length | 1 |
+| `0x81` + 1 byte | long form, 1 follow-on byte (length 0..255) | 2 |
+| `0x82` + 2 bytes | long form, 2 follow-on bytes (length 0..65535) | 3 |
+| `0x84` + 4 bytes | long form, 4 follow-on bytes | 5 |
+| `0x88` + 8 bytes | long form, 8 follow-on bytes | 9 |
+| `0x80` | indefinite form (BER only; terminated by end-of-contents) | 1 + content |
+
+Because the width is data-dependent, `normalize` and `resolveLayout`
+treat a `berLength` field as 8 bits (the short form, the minimum) unless
+the env supplies an override keyed by the field id, in which case the
+override is the concrete bit count for that instance. This matches the
+`varint` convention.
+
+JSON form:
+
+```json
+{ "id": "sigLen", "name": "Signature Length",
+  "type": { "kind": "berLength" },
+  "category": "length" }
+```
+
+#### Worked example: X.509 SEQUENCE
+
+An X.509 `Certificate` is a top-level `SEQUENCE` whose body fits in a
+TLV — tag, length, value. The length is BER/DER-encoded. A real-world
+2048-bit RSA cert weighs in around 1200 bytes, so its outer length is
+the long-form `0x82 0xNN 0xNN` (3 bytes).
+
+```ts
+const x509Outer: Packet = {
+  name: "X.509 Certificate (outer TLV)",
+  rowBits: 8,
+  byteOrder: "BE",
+  body: [
+    { id: "tag", name: "Tag=SEQUENCE (0x30)",
+      type: int(8), category: "type", defaultValue: 0x30 },
+    { id: "len", name: "Length",
+      type: { kind: "berLength" }, category: "length" },
+    { id: "value", name: "TBSCertificate + sig",
+      type: { kind: "bytes", n: ref("len") }, category: "payload-marker" },
+  ],
+};
+```
+
+In design-time view the `len` field renders as a single byte (short
+form). With `env: { len: 24 }` it stretches to three bytes (long form,
+2 follow-on bytes), and the constraint `value.n == len` keeps the
+value-bytes slot in sync. The same Type also covers SNMP SMI OIDs,
+LDAP message lengths, and any other place ASN.1 BER hides in a wire
+format.
+
 ## Expressions
 
 Pure, side-effect-free integer expressions. Operators: `+ - * / % << >>`
@@ -101,17 +174,76 @@ type Expr =
   | { kind: "lit"; value: number }
   | { kind: "ref"; field: string }              // env lookup
   | { kind: "op"; op: BinOp; a: Expr; b: Expr }
-  | { kind: "cond"; test: Expr; t: Expr; f: Expr };
+  | { kind: "cond"; test: Expr; t: Expr; f: Expr }
+  | { kind: "peek"; bits: number; offset?: Expr }; // 0.4 — lookahead
 ```
 
 `ref` resolves against the packet env (`Map<string, number>`). Missing
 refs throw `MissingRefError`; the constraint solver and normalizer
 translate that into safe default behaviour where appropriate.
 
+### Peek expression (0.4)
+
+`peek` reads `bits` bits starting at byte `offset` (default `0`)
+**without consuming them**. It exists so a `Switch` can dispatch on a
+discriminator that lives *inside* one of the cases — the canonical
+example is a TLS extension block, where the variant of each element is
+selected by reading the first 16 bits of that element (the extension
+type) before the element itself begins.
+
+Evaluation reads from a synthetic env key
+`__peek__<offset>__<bits>` (filled in by the importer or the runtime
+when wire bytes are available). If the key is absent, `peek` evaluates
+to `0` — this keeps design-time layout reproducible: every case in the
+Switch is reachable from the editor, and a captured packet picks one.
+
+`bits` must be between 1 and 64 inclusive; `offset` (if provided) is a
+full `Expr`, so the offset itself can depend on earlier fields.
+
+#### Worked example: TLS extension type dispatch
+
+A TLS 1.2/1.3 ClientHello carries a length-prefixed sequence of
+`(type:16, length:16, body:length-bytes)` extension records. Each
+record's variant is selected by the *type* — but the type is the
+extension's first 16 bits, so a plain `Switch on ref(...)` can't see
+it. With `peek` the dispatch becomes natural:
+
+```ts
+{
+  kind: "repeat",
+  id: "extensions",
+  name: "Extensions",
+  category: "variable",
+  count: { until: ref("__exts_eos__") },        // or "eos"
+  element: struct("extRec", [
+    { kind: "switch",
+      id: "extByType",
+      on: { kind: "peek", bits: 16, offset: lit(0) },
+      cases: {
+        "0":  struct("sni",                /* server_name */          [ ... ]),
+        "43": struct("supported_versions",                            [ ... ]),
+        "10": struct("supported_groups",                              [ ... ]),
+        "51": struct("key_share",                                     [ ... ]),
+      },
+      default: struct("unknown_ext", [
+        { id: "type",   name: "Type",   type: int(16), category: "type"   },
+        { id: "length", name: "Length", type: int(16), category: "length" },
+        { id: "data",   name: "Data",   type: { kind: "bytes", n: ref("length") },
+          category: "payload-marker" },
+      ]),
+    },
+  ]),
+}
+```
+
+Each variant struct (e.g. `sni`) starts with its own concrete
+`type:16` and `length:16` fields — the `peek` only chose the variant;
+the cells themselves consume bytes the normal way.
+
 ## Containers
 
 ```ts
-type Container = Field | Repeat | Switch | Group | Encrypted;
+type Container = Field | Repeat | Switch | Group | Encrypted | Optional;
 ```
 
 - **`Field`** — a leaf with a `Type` and optional `category`, `doc`,
@@ -128,6 +260,65 @@ type Container = Field | Repeat | Switch | Group | Encrypted;
   and matching against the case key (stringified). Optional `default`.
 - **`Encrypted`** *(0.3)* — an opaque blob on the wire whose interior
   fields are knowable only after decryption. See below.
+- **`Optional`** *(0.4)* — a single child `Field` that exists when a
+  predicate `Expr` evaluates truthy. See below.
+
+### Optional (0.4)
+
+```ts
+type Optional = {
+  kind: "optional";
+  when: Expr;
+  field: Field;
+};
+```
+
+When `eval(when, env)` is truthy, normalize emits the inner `field` as
+if it were a sibling. When falsy, the optional is *erased* — it
+contributes 0 bits to the wire layout and no row to the diagram. The
+renderer surfaces a faint placeholder slot (a "~ Optional ~" row) in
+RFC-ASCII output so readers can see where the conditional lives.
+
+JSON form:
+
+```json
+{
+  "kind": "optional",
+  "when": { "kind": "ref", "field": "has_payload" },
+  "field": {
+    "id": "payload",
+    "name": "Payload",
+    "type": { "kind": "bytes", "n": { "kind": "ref", "field": "payloadLen" } },
+    "category": "payload-marker"
+  }
+}
+```
+
+Typst dict authoring form:
+
+```
+(kind: "optional",
+ when: (kind: "ref", field: "has_payload"),
+ field: (id: "payload", name: "Payload",
+         type: (kind: "bytes", n: (kind: "ref", field: "payloadLen")),
+         category: "payload-marker"))
+```
+
+Three idiomatic `when` shapes cover most real-world uses:
+
+- `when: lit(1)` — the field is always present (a no-op Optional;
+  useful as a structural placeholder while editing a preset).
+- `when: lit(0)` — the field is never present at design time (useful
+  for "exists only when the parser sees a magic byte").
+- `when: ref("flag")` — the common case: gate the field on a boolean
+  flag that appears earlier in the packet. The IPv6 `Hop-by-Hop`
+  options chain, the TCP `Urgent Pointer` (present iff URG=1), and
+  the GRE optional `Checksum` / `Key` / `Sequence Number` fields all
+  fit this shape.
+
+The `when` Expr can be any of the four (now five, with `peek`) `Expr`
+kinds — including `op` (e.g. `flag != 0`) and `cond` (e.g. tri-state
+gating).
 
 ### Encrypted (0.3)
 
@@ -293,9 +484,71 @@ arithmetic. The canonical example is `IHL × 4 = headerBytes`.
 | `category` | Optional semantic tag (drives renderer color via `web/lib/render-tokens.ts`). |
 | `doc` | Free-form description. RFC references like `RFC 791` get auto-linked by the runtime enrichment pass. |
 | `defaultValue` | Seeded into the env on initial layout. |
+| `byteOrder` *(0.4)* | Optional `"BE"` \| `"LE"` override for **this field only**, taking precedence over the packet-level `byteOrder`. |
 
 Doc-refs follow the convention `[RFC 9293 §4.1]` — anything that matches
 `RFC \d+` is replaced by an anchor at runtime.
+
+### Per-field byteOrder (0.4)
+
+Most protocols are byte-order-homogeneous: IPv4, TCP, and TLS are all
+big-endian; USB, MS-RPC, and almost all PCI-family formats are
+little-endian. For these, the packet-level `byteOrder` is enough.
+
+A small but important set of protocols mix endiannesses inside a single
+packet. The canonical example is PCI Express: a TLP (Transaction Layer
+Packet) header is **big-endian** (per the PCIe spec's byte numbering),
+while many of the addresses and capability registers it points at are
+**little-endian** when read by the host. ATA / NVMe command structures,
+some Bluetooth HCI events, and bridged USB-over-network formats are
+in the same family.
+
+PSML 0.4 adds an optional `byteOrder` field on `Field` itself. When
+present, it overrides the packet-level `byteOrder` for that one cell.
+The renderer surfaces the override with a small `[LE]` (or `[BE]`)
+suffix on the cell label, so a reader scanning the diagram can see at
+a glance "this register is the odd one out".
+
+#### When to use it
+
+- The protocol spec is itself mixed (PCIe TLP header big-endian wrapper
+  around a little-endian address payload).
+- The packet is a bridge / encapsulation between two protocol families
+  with different conventions (e.g. a network packet carrying a
+  little-endian memory-mapped IO register dump).
+- A single struct embeds a foreign-endian sub-field — for example, a
+  big-endian outer frame whose `timestamp` field is documented as
+  little-endian for compatibility with an older tool.
+
+If the entire packet is one consistent endianness, use the
+packet-level `byteOrder` only; don't sprinkle per-field overrides.
+
+#### Example: PCIe TLP fragment (illustrative)
+
+```ts
+const pcieTlpFragment: Packet = {
+  name: "PCIe TLP Header fragment (illustrative)",
+  rowBits: 32,
+  byteOrder: "BE",
+  body: [
+    { id: "fmt_type", name: "Fmt/Type",
+      type: bits(8), category: "type" },
+    { id: "tc", name: "TC", type: bits(3), category: "flags" },
+    { id: "flags", name: "Flags", type: bits(13), category: "flags" },
+    { id: "length", name: "Length",
+      type: bits(10), category: "length" },
+    // Address payload is little-endian in the host's view.
+    { id: "address", name: "Address",
+      type: int(32), category: "addressing",
+      byteOrder: "LE" },
+  ],
+};
+```
+
+In the resolved layout, every cell except `address` honours the
+packet-level BE. `address` is laid out LE; the renderer marks the cell
+`Address [LE]`. This is illustrative — a real PCIe TLP has more fields
+and stricter alignment, but the byte-order pattern is exactly this.
 
 ## Packet
 
@@ -317,7 +570,7 @@ The on-disk JSON wraps the `Packet` shape with a discriminator:
 ```json
 {
   "format": "psml",
-  "version": "0.3",
+  "version": "0.4",
   "name": "...",
   "rowBits": 32,
   "byteOrder": "BE",
@@ -328,9 +581,11 @@ The on-disk JSON wraps the `Packet` shape with a discriminator:
 }
 ```
 
-Both `"0.2"` and `"0.3"` are accepted by the JSON Schema validator; the
-0.3 additions (`varint` Type, `encrypted` Container) are simply new
-`oneOf` branches and a 0.2 document continues to validate.
+`"0.2"`, `"0.3"`, and `"0.4"` are all accepted by the JSON Schema
+validator; each version's additions are new `oneOf` branches, so a
+0.2 or 0.3 document continues to validate unchanged. 0.4-only
+documents (those that use `optional`, `berLength`, `peek`, or a
+per-field `byteOrder`) must declare `"version": "0.4"`.
 
 The full schema lives at `schemas/psml.schema.json`.
 
@@ -532,6 +787,33 @@ files:
 
 The Typst worksheet generator in `web/lib/worksheet-typst.ts` also
 takes a PSML packet.
+
+### 0.4 behaviour per format
+
+- **JSON** — every 0.4 primitive (`optional` Container, `berLength`
+  Type, `peek` Expression, per-field `byteOrder`) round-trips
+  losslessly. All four are tagged objects (or, in `byteOrder`'s case,
+  a plain string property on `Field`), so the standard JSON encoder
+  handles them once the in-memory types are extended. The `version`
+  field bumps to `"0.4"` when any 0.4-only primitive is emitted.
+- **RFC ASCII** — renders Optional as a faint `~ Optional ~` row when
+  the predicate is falsy and inline as the inner field when truthy;
+  prints `BER len` with a tilde-bordered placeholder cell whose width
+  reflects the env override (or 1 byte fallback); leaves `peek` *no
+  visible artefact* (it's a dispatch helper, not a wire field); and
+  appends `[LE]` (or `[BE]`) to any field carrying a per-field
+  byteOrder override.
+- **Augmented ASCII (AAD)** — *cannot* express any 0.4 primitive. The
+  importer warns when it would have to invent one (e.g. a TLS
+  extensions block in AAD source becomes a single opaque `bytes`
+  field with a warning); the exporter has no inverse.
+- **Kaitai (.ksy)** — Optional becomes `if: <kaitai-expr>` when the
+  predicate is expressible (a single ref or simple comparison), else
+  a `# psml-only: optional …` comment. `berLength` is emitted as a
+  `u1` placeholder plus a `# psml-only: berLength` comment. `peek` is
+  emitted as a comment only — Kaitai has no lookahead expression.
+  Per-field `byteOrder` round-trips cleanly as the per-field
+  `endian: be | le` attribute.
 
 ### 0.3 behaviour per format
 
