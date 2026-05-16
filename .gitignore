@@ -4,3 +4,6 @@
 !.dev.vars.example
 .env*
 !.env.example
+
+# Local Claude Code worktrees / state — never commit.
+.claude/

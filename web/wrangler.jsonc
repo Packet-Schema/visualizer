@@ -7,10 +7,8 @@
     "enabled": true
   },
   "assets": {
-    // Next.js static export goes here. The Cloudflare build container
-    // produces it via `cd web && npm install && npm run build` (set in
-    // the dashboard's Build command).
-    "directory": "./web/out",
+    // Next.js static export (`next build` with output: 'export' writes here).
+    "directory": "./out",
     "not_found_handling": "404-page"
   }
 }
