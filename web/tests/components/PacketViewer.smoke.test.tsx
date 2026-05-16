@@ -52,11 +52,11 @@ describe("PacketViewer (smoke)", () => {
     const baseline = initial.packet.body.length;
     const next = editReducer(initial, {
       type: "add-field",
-      at: [],
+      at: [baseline],
       field: {
         id: "smoke-field",
         name: "Smoke",
-        type: { kind: "Int", bits: 8 },
+        type: { kind: "int", bits: 8 },
       },
     });
     expect(next.packet.body.length).toBe(baseline + 1);
