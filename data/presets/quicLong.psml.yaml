@@ -1,0 +1,249 @@
+# yaml-language-server: $schema=../../schemas/psml.schema.json
+name: QUIC Long Header
+rowBits: 32
+byteOrder: BE
+description: QUIC v1 long-header packet (RFC 9000 §17.2). Header Form=1; the Long Packet Type 2-bit field selects Initial / 0-RTT / Handshake / Retry tail layout via a Switch. Followed by an Encrypted Payload.
+body:
+  - id: headerForm
+    name: Header Form (1=Long)
+    type:
+      kind: bits
+      n: 1
+    category: type
+    defaultValue: 1
+    doc: 1 = long header (Initial / 0-RTT / Handshake / Retry). [RFC 9000 §17.2]
+  - id: fixedBit
+    name: Fixed Bit
+    type:
+      kind: bits
+      n: 1
+    category: reserved
+    defaultValue: 1
+    doc: Must be 1 in QUIC v1. [RFC 9000 §17.2]
+  - id: longPacketType
+    name: Long Packet Type
+    type:
+      kind: bits
+      n: 2
+    category: type
+    defaultValue: 0
+    doc: 0=Initial, 1=0-RTT, 2=Handshake, 3=Retry. [RFC 9000 §17.2]
+  - id: typeSpecificBits
+    name: Type-Specific Bits
+    type:
+      kind: bits
+      n: 4
+    category: flags
+    doc: "Lower 4 bits — meaning depends on Long Packet Type (e.g. Initial: reserved + PN length). [RFC 9000 §17.2]"
+  - id: version
+    name: Version
+    type:
+      kind: int
+      bits: 32
+    category: type
+    doc: QUIC version (e.g. 0x00000001 for v1). [RFC 9000 §15]
+  - id: dcidLength
+    name: DCID Length
+    type:
+      kind: bits
+      n: 8
+    category: length
+    defaultValue: 8
+    doc: Length in bytes of the Destination Connection ID. 0–20. [RFC 9000 §17.2]
+  - id: dcid
+    name: Destination Connection ID
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: dcidLength
+    category: addressing
+    doc: Destination Connection ID — `dcidLength` bytes. [RFC 9000 §17.2]
+  - id: scidLength
+    name: SCID Length
+    type:
+      kind: bits
+      n: 8
+    category: length
+    defaultValue: 8
+    doc: Length in bytes of the Source Connection ID. 0–20. [RFC 9000 §17.2]
+  - id: scid
+    name: Source Connection ID
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: scidLength
+    category: addressing
+    doc: Source Connection ID — `scidLength` bytes. [RFC 9000 §17.2]
+  - kind: switch
+    id: longTail
+    name: Type-Specific Tail
+    on:
+      kind: ref
+      field: longPacketType
+    cases:
+      "0": &a1
+        id: longInitial
+        fields:
+          - id: tokenLength
+            name: Token Length
+            type:
+              kind: varint
+              encoding: quic
+            category: length
+            doc: Variable-length token length prefix (QUIC varint). [RFC 9000 §17.2.2]
+          - id: token
+            name: Token
+            type:
+              kind: bytes
+              n:
+                kind: lit
+                value: 0
+            category: variable
+            doc: Server-chosen retry/NEW_TOKEN token. Default 0 bytes for an unsolicited Initial. [RFC 9000 §17.2.2]
+          - id: length
+            name: Length
+            type:
+              kind: varint
+              encoding: quic
+            category: length
+            doc: QUIC varint length of the rest of the packet (PN + payload). [RFC 9000 §17.2]
+          - kind: encrypted
+            id: pnArea
+            name: Header-protected PN
+            contextNote: QUIC header protection (RFC 9001 §5.4) masks the Packet Number bytes with an XOR derived from the AEAD sample under the header-protection key.
+            headerProtected:
+              - packetNumber
+            wireBits:
+              kind: lit
+              value: 8
+            category: identifier
+            plaintext:
+              id: pnPlaintext
+              fields:
+                - id: packetNumber
+                  name: Packet Number
+                  type:
+                    kind: bits
+                    n: 8
+                  category: identifier
+                  doc: Truncated packet number — header-protected. 1–4 bytes per pnLen, modeled here as 1 byte. [RFC 9000 §17.1]
+      "1": *a1
+      "2":
+        id: longHandshake
+        fields:
+          - id: length
+            name: Length
+            type:
+              kind: varint
+              encoding: quic
+            category: length
+            doc: QUIC varint length of (PN + payload). [RFC 9000 §17.2.4]
+          - kind: encrypted
+            id: pnArea
+            name: Header-protected PN
+            contextNote: QUIC header protection (RFC 9001 §5.4) masks the Packet Number bytes with an XOR derived from the AEAD sample under the header-protection key.
+            headerProtected:
+              - packetNumber
+            wireBits:
+              kind: lit
+              value: 8
+            category: identifier
+            plaintext:
+              id: pnPlaintext
+              fields:
+                - id: packetNumber
+                  name: Packet Number
+                  type:
+                    kind: bits
+                    n: 8
+                  category: identifier
+                  doc: Truncated packet number — header-protected. 1–4 bytes per pnLen, modeled here as 1 byte. [RFC 9000 §17.1]
+      "3":
+        id: longRetry
+        fields:
+          - id: retryToken
+            name: Retry Token
+            type:
+              kind: bytes
+              n:
+                kind: lit
+                value: 0
+            category: variable
+            doc: Server-issued retry token; consumes the rest of the packet up to the integrity tag. Default 0 bytes. [RFC 9000 §17.2.5]
+          - id: retryIntegrityTag
+            name: Retry Integrity Tag
+            type:
+              kind: bytes
+              n:
+                kind: lit
+                value: 16
+            category: checksum
+            doc: 128-bit integrity tag covering the Retry Pseudo-Packet. [RFC 9001 §5.8]
+    default: *a1
+    doc: Per-type tail fields selected by Long Packet Type.
+  - kind: encrypted
+    id: payload
+    name: Encrypted Payload
+    contextNote: AEAD-protected QUIC frames — requires Initial / 0-RTT / Handshake / 1-RTT keys depending on packet type.
+    wireBits:
+      kind: lit
+      value: 128
+    category: payload-marker
+    plaintext:
+      id: frames
+      fields:
+        - id: frameType
+          name: Frame Type
+          type:
+            kind: bits
+            n: 8
+          category: type
+          defaultValue: 8
+        - kind: switch
+          id: frameByType
+          on:
+            kind: ref
+            field: frameType
+          cases:
+            "2":
+              id: ackFrame
+              fields:
+                - id: ack_body
+                  name: ACK Ranges
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: ACK frame ranges (RFC 9000 §19.3). 16-byte placeholder.
+            "6":
+              id: cryptoFrame
+              fields:
+                - id: crypto_body
+                  name: CRYPTO Data
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: CRYPTO frame data (RFC 9000 §19.6). 16-byte placeholder.
+            "8":
+              id: streamFrame
+              fields:
+                - id: stream_body
+                  name: Stream Data
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: STREAM frame payload (RFC 9000 §19.8). 16-byte placeholder.
+          default:
+            id: frameDefault
+            fields:
+              - id: frame_body
+                name: Frame Payload
+                type:
+                  kind: bits
+                  n: 128
+                category: payload-marker
+                doc: Unknown frame type — placeholder body.

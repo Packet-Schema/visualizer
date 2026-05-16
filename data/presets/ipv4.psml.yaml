@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=../../schemas/psml.schema.json
+name: IPv4 Header
+rowBits: 32
+byteOrder: BE
+description: IPv4 header (RFC 791) — IHL drives the Options length.
+
+# Catalog of IPv4 Option variants reused by the Options repeat below.
+_ipv4_option_variants: &ipv4_option_variants
+  "0":
+    id: eol
+    fields:
+      - { id: type, name: "Type=0", type: { kind: bits, n: 8 }, category: type }
+  "1":
+    id: nop
+    fields:
+      - { id: type, name: "Type=1", type: { kind: bits, n: 8 }, category: type }
+  "7":
+    id: recordRoute
+    fields:
+      - { id: type, name: "Type=7", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=15", type: { kind: bits, n: 8 }, category: length }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
+      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: addr2, name: "Addr 3", type: { kind: int, bits: 32 }, category: addressing }
+  "131":
+    id: looseSourceRoute
+    fields:
+      - { id: type, name: "Type=131", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
+      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+  "137":
+    id: strictSourceRoute
+    fields:
+      - { id: type, name: "Type=137", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
+      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+  "68":
+    id: timestamp
+    fields:
+      - { id: type, name: "Type=68", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=12", type: { kind: bits, n: 8 }, category: length }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
+      - { id: oflwflg, name: "Oflw/Flg", type: { kind: bits, n: 8 }, category: flags }
+      - { id: ts0, name: "TS 1", type: { kind: int, bits: 32 }, category: identifier }
+      - { id: ts1, name: "TS 2", type: { kind: int, bits: 32 }, category: identifier }
+
+body:
+  - { id: version, name: Version, type: { kind: bits, n: 4 }, category: type, defaultValue: 4 }
+  - { id: ihl, name: IHL, type: { kind: bits, n: 4 }, category: length, defaultValue: 5 }
+  - { id: dscp, name: DSCP, type: { kind: bits, n: 6 }, category: type }
+  - { id: ecn, name: ECN, type: { kind: bits, n: 2 }, category: flags }
+  - { id: totalLength, name: Total Length, type: { kind: int, bits: 16 }, category: length }
+  - { id: identification, name: Identification, type: { kind: int, bits: 16 }, category: identifier }
+  - kind: group
+    id: flagsBits
+    children:
+      - { id: flags_reserved, name: R, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_df, name: DF, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_mf, name: MF, type: { kind: bits, n: 1 }, category: flags }
+  - { id: fragOffset, name: Fragment Offset, type: { kind: bits, n: 13 }, category: identifier }
+  - { id: ttl, name: TTL, type: { kind: int, bits: 8 }, category: identifier }
+  - { id: protocol, name: Protocol, type: { kind: int, bits: 8 }, category: type }
+  - { id: headerChecksum, name: Header Checksum, type: { kind: int, bits: 16 }, category: checksum }
+  - { id: srcAddr, name: Source Address, type: { kind: int, bits: 32 }, category: addressing }
+  - { id: dstAddr, name: Destination Address, type: { kind: int, bits: 32 }, category: addressing }
+  - kind: repeat
+    id: options
+    name: Options
+    category: variable
+    element:
+      id: optionRecord
+      fields:
+        - kind: switch
+          id: byType
+          on: { kind: ref, field: optType }
+          cases: *ipv4_option_variants
+    count: { kind: ref, field: ipv4OptionsCount }
+
+constraints:
+  - lhs:
+      kind: op
+      op: "*"
+      a: { kind: ref, field: ihl }
+      b: { kind: lit, value: 4 }
+    rhs: { kind: ref, field: headerBytes }
+    doc: IHL counts 32-bit words; total header bytes = IHL × 4.
