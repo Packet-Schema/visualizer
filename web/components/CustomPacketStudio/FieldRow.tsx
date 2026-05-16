@@ -54,6 +54,11 @@ function setTypeKind(prev: Type, kind: TypeKind): Type {
       return { kind: "varint", encoding: "quic" };
     case "enum":
       return { kind: "enum", bits: typeBits(prev) || 8, variants: {} };
+    case "berLength":
+      return { kind: "berLength" };
+    default:
+      // Future Type variants land here until the editor learns them.
+      return prev;
   }
 }
 
