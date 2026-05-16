@@ -1,7 +1,17 @@
 "use client";
 
 import { CATEGORY_LABELS } from "@/lib/constants";
+import { enrichDescriptionHtml } from "@/lib/enrich";
 import type { CategoryToken, ControllerState, Packet } from "@/lib/types";
+
+function EnrichedText({ text }: { text: string }) {
+  return (
+    <span
+      className="enriched-text"
+      dangerouslySetInnerHTML={{ __html: enrichDescriptionHtml(text) }}
+    />
+  );
+}
 
 type Props = {
   packet: Packet;
@@ -52,7 +62,9 @@ export default function DetailPanel({
           rows={[
             ["Size", `${sub.bits} bit${sub.bits === 1 ? "" : "s"}`],
             ["Parent", parent.name],
-            sub.description ? ["Description", sub.description] : null,
+            sub.description
+              ? ["Description", <EnrichedText key="desc" text={sub.description} />]
+              : null,
           ]}
         />
       </div>
@@ -116,7 +128,9 @@ export default function DetailPanel({
           </span>,
         ]
       : null,
-    field.description ? ["Description", field.description] : null,
+    field.description
+      ? ["Description", <EnrichedText key="desc" text={field.description} />]
+      : null,
     field.subfields && field.subfields.length > 0
       ? [
           "Subfields",

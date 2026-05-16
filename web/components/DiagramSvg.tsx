@@ -206,8 +206,15 @@ export default function DiagramSvg({
         key={`cell-${cell.field.id}-${cell.segmentIndex}`}
         className={`field-cell${isSelected ? " selected" : ""}`}
         role="button"
-        tabIndex={0}
+        // Roving tabindex: only the first field cell gets `tabindex=0` at
+        // mount; PacketViewer's keydown handler updates these as focus moves.
+        tabIndex={i === 0 ? 0 : -1}
         aria-label={`${cell.field.name}, ${cell.bitsTotal} bits${variableNote}${isSelected ? ", selected" : ""}`}
+        data-field-id={cell.field.id}
+        data-row={cell.row}
+        data-start-bit={cell.startBit}
+        data-end-bit={cell.endBit}
+        data-segment-index={cell.segmentIndex}
         style={{ cursor: "pointer" }}
         onClick={() => onFieldClick(cell.field)}
         onKeyDown={(e) => {
@@ -257,6 +264,11 @@ export default function DiagramSvg({
             role="button"
             tabIndex={-1}
             aria-label={`${sub.subfield.name} (subfield of ${cell.field.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
+            data-field-id={`${cell.field.id}:${sub.subfield.id}`}
+            data-parent-field-id={cell.field.id}
+            data-row={cell.row}
+            data-start-bit={sub.startBit}
+            data-end-bit={sub.endBit}
             style={{ cursor: "pointer" }}
             onClick={(e) => {
               e.stopPropagation();
