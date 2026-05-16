@@ -5,7 +5,7 @@
 // `ColorToken` palette the v1 → PSML migrator preserves so older imports
 // still hit a familiar swatch when no category is set.
 
-import type { CategoryToken } from "./psml/runtime-types";
+import type { CategoryToken } from "./psml/renderer";
 
 /** Palette token kept around for legacy v1 imports without a category. */
 export type ColorToken =

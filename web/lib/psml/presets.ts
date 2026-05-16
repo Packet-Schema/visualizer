@@ -1,5 +1,7 @@
 // PSML 0.3 — Packet Schema Markup Language.
-// Hand-written PSML presets demonstrating every primitive in the schema.
+// Hand-written PSML presets. After Round 6 this file is the canonical home
+// of every preset shipped with packet-view; the Typst-driven runtime
+// resolver and its auto-generated registry were retired.
 //
 // IPv4 — variable-length Options expressed as a Repeat over a Switch on the
 //        option Type byte, plus a Constraint linking IHL ⇔ headerBytes.
@@ -11,17 +13,19 @@
 // PSML 0.3 — Phase 2C additions exercise the Encrypted container and
 // Varint primitives end-to-end:
 //   * quicShort       — header-protection + payload Encrypted (overrides
-//                       the flat shape in presets.generated.ts).
+//                       the flat shape in baseline-presets.ts).
 //   * quicLong        — Long Header with Switch over Initial/0-RTT/Handshake/
 //                       Retry and an encrypted Payload.
 //   * tlsClientHelloFull — TLS 1.3 ClientHello + ServerHello/post-handshake
 //                       encrypted block.
 //
-// The simpler 9 presets continue to live in presets.generated.ts and are
-// produced mechanically from the runtime schema by scripts/migrate-v1-to-psml.ts.
+// The simpler 9 presets (dns, ipv6, icmp, icmpv6, arp, tlsRecord,
+// tlsClientHello, vlan, plus a flat quicShort baseline) live alongside in
+// `baseline-presets.ts` and are merged into the exported `PRESETS` map below.
 
 import { lit, op, ref } from "./expr";
 import type { Container, Encrypted, Packet, Struct } from "./types";
+import { BASELINE_PRESETS } from "./baseline-presets";
 
 /* ------------------------------------------------------------------ *
  * Small helpers — keep preset definitions terse and consistent.
@@ -529,6 +533,33 @@ export const quicShort: Packet = {
  * Followed by an Encrypted Payload container.
  * ------------------------------------------------------------------ */
 
+// Header-protected Packet Number — wrap each case's PN field in an Encrypted
+// container with `headerProtected: ['packetNumber']` so the semantic-view
+// renderer can decorate the cell with an "HP" badge. The wireBits is set to
+// 8 (matching the truncated PN width modeled here) so wire-mode totals stay
+// unchanged from the pre-fix preset.
+function quicLongPnHp(): Encrypted {
+  return {
+    kind: "encrypted",
+    id: "pnArea",
+    name: "Header-protected PN",
+    contextNote:
+      "QUIC header protection (RFC 9001 §5.4) masks the Packet Number bytes with an XOR derived from the AEAD sample under the header-protection key.",
+    headerProtected: ["packetNumber"],
+    wireBits: lit(8),
+    category: "identifier",
+    plaintext: struct("pnPlaintext", [
+      {
+        id: "packetNumber",
+        name: "Packet Number",
+        type: bits(8),
+        category: "identifier",
+        doc: "Truncated packet number — header-protected. 1–4 bytes per pnLen, modeled here as 1 byte. [RFC 9000 §17.1]",
+      },
+    ]),
+  };
+}
+
 const quicLongInitialCase: Struct = struct("longInitial", [
   {
     id: "tokenLength",
@@ -551,13 +582,7 @@ const quicLongInitialCase: Struct = struct("longInitial", [
     category: "length",
     doc: "QUIC varint length of the rest of the packet (PN + payload). [RFC 9000 §17.2]",
   },
-  {
-    id: "packetNumber",
-    name: "Packet Number",
-    type: bits(8),
-    category: "identifier",
-    doc: "Truncated packet number — header-protected. 1–4 bytes per pnLen, modeled here as 1 byte. [RFC 9000 §17.1]",
-  },
+  quicLongPnHp(),
 ]);
 
 const quicLongHandshakeCase: Struct = struct("longHandshake", [
@@ -568,13 +593,7 @@ const quicLongHandshakeCase: Struct = struct("longHandshake", [
     category: "length",
     doc: "QUIC varint length of (PN + payload). [RFC 9000 §17.2.4]",
   },
-  {
-    id: "packetNumber",
-    name: "Packet Number",
-    type: bits(8),
-    category: "identifier",
-    doc: "Truncated packet number — header-protected. Modeled here as 1 byte. [RFC 9000 §17.2.4]",
-  },
+  quicLongPnHp(),
 ]);
 
 const quicLongRetryCase: Struct = struct("longRetry", [
@@ -934,10 +953,16 @@ export const tlsClientHelloFull: Packet = {
 };
 
 /* ------------------------------------------------------------------ *
- * Registry
+ * Registry — unified PSML presets
  * ------------------------------------------------------------------ */
 
-export const MANUAL_PRESETS = {
+/**
+ * Hand-authored PSML presets that override (or extend) the baseline set.
+ * Hand-authored entries win over the baseline so the encrypted/Repeat-
+ * authored versions of ipv4/tcp/udp/ethernet/quicShort take precedence over
+ * the flat baseline shapes for those keys.
+ */
+const MANUAL_PRESETS: Record<string, Packet> = {
   ipv4,
   tcp,
   udp,
@@ -945,4 +970,12 @@ export const MANUAL_PRESETS = {
   quicShort,
   quicLong,
   tlsClientHelloFull,
-} as const;
+};
+
+/** The single unified PSML registry consumed by the renderer and every format. */
+export const PRESETS: Record<string, Packet> = {
+  ...BASELINE_PRESETS,
+  ...MANUAL_PRESETS,
+};
+
+export const PRESET_KEYS: string[] = Object.keys(PRESETS);

@@ -1,16 +1,15 @@
-// PSML 0.2 — Packet Schema Markup Language.
-// Renderer-facing runtime types. These describe the shape that React
-// components consume (cells with TLV/subfield/chain editing affordances).
-// The PSML schema (./types.ts) is the on-disk wire format; this file is the
-// internal model the diagram, dependency overlay, and TLV/Chain editors
-// operate against. PSML packets reach the runtime via the
-// `psml/runtime-from-psml` adapter, and runtime packets reach formats via
-// `psml/runtime-to-psml`.
+// PSML 0.3 — renderer-facing types.
+//
+// The PSML schema (./types.ts) is the canonical on-wire format. This file
+// defines the *internal* shape that React components consume — cells with
+// TLV/subfield/chain editing affordances, layout positions, etc. PSML
+// Packets are lowered to this shape by `psml-to-renderer.ts` for the UI;
+// formats and the diagram layout always go through PSML directly.
 //
 // CategoryToken is re-exported here so callers stay on a single import path.
 // ColorToken is intentionally absent from the schema; it lives in
-// `web/lib/render-tokens.ts` for the legacy migrator and the per-field
-// `color` fallback the renderer still consults when a category is missing.
+// `web/lib/render-tokens.ts` for the per-field `color` fallback the renderer
+// still consults when a category is missing.
 
 import type { ColorToken } from "../render-tokens";
 

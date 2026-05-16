@@ -1,7 +1,7 @@
 // PSML 0.3 — schema validator for the on-disk Container tree.
 //
-// `runtime-resolver.ts` carries the equivalent `validatePacket` for the
-// renderer's runtime shape (subfield bit sums, TLV catalog non-empty, etc.).
+// `renderer-helpers.ts` carries the equivalent `validatePacket` for the
+// renderer's UI shape (subfield bit sums, TLV catalog non-empty, etc.).
 // This module is the schema-side counterpart: it walks the PSML Container
 // tree before normalize/layout and enforces invariants that the new 0.3
 // primitives bring in (Varint encoding allow-list, Encrypted plaintext
