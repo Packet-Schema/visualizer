@@ -1,0 +1,36 @@
+name: preset 追加リクエスト
+description: 新しいプロトコル preset を足したい
+title: "[preset] "
+labels: ["enhancement", "area:preset"]
+body:
+  - type: input
+    id: protocol
+    attributes:
+      label: プロトコル名
+      placeholder: "例: SCTP common header"
+    validations:
+      required: true
+  - type: input
+    id: rfc
+    attributes:
+      label: RFC / 仕様番号
+      placeholder: "例: RFC 9260"
+    validations:
+      required: false
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 優先度
+      options:
+        - 低 (あると嬉しい)
+        - 中 (近いうちに必要)
+        - 高 (授業 / デモで必須)
+    validations:
+      required: true
+  - type: textarea
+    id: similar
+    attributes:
+      label: 既存 preset との類似点 (任意)
+      placeholder: "例: TCP に近い fixed header + 可変 chunk 列"
+    validations:
+      required: false

@@ -1,0 +1,55 @@
+name: バグ報告
+description: 動作がおかしいときに使うテンプレ
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。再現可能な情報があるほど直りが早くなります。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何が起きたかを 1〜2 行で
+      placeholder: "例: IPv4 preset で Options をドラッグすると totalBits が壊れる"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. ホームを開く
+        2. プロトコルピッカで IPv4 を選ぶ
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待動作
+      placeholder: "例: totalBits が IHL × 32 と一致するはず"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      placeholder: "例: totalBits が 1 行ぶん多く表示される"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 環境 (OS / ブラウザ / バージョン)
+      placeholder: "例: macOS 14, Chrome 130"
+    validations:
+      required: false
+  - type: input
+    id: related
+    attributes:
+      label: 関連 PR / issue (あれば)
+      placeholder: "例: #42"
+    validations:
+      required: false
