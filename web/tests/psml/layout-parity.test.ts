@@ -11,9 +11,11 @@ import { PRESETS } from "../../lib/psml/presets";
 import type { Expr, Packet } from "../../lib/psml/types";
 import {
   EXPECTED_TOTAL_BITS,
+  EXPECTED_TOTAL_BITS_PSML_04,
   EXPECTED_TOTAL_BITS_PSML_ONLY,
   EXPECTED_TOTAL_BITS_SEMANTIC,
   PRESET_KEYS,
+  PSML_04_PRESET_KEYS,
   PSML_ONLY_PRESET_KEYS,
 } from "../fixtures/preset-bit-sizes";
 
@@ -95,9 +97,9 @@ describe("preset registry sanity", () => {
     }
   });
 
-  it("PRESETS exposes the 13 picker keys plus the 2 PSML-only keys", () => {
+  it("PRESETS exposes every documented key (picker + PSML-only + PSML 0.4 demo)", () => {
     expect(Object.keys(PRESETS).sort()).toEqual(
-      [...PRESET_KEYS, ...PSML_ONLY_PRESET_KEYS].sort(),
+      [...PRESET_KEYS, ...PSML_ONLY_PRESET_KEYS, ...PSML_04_PRESET_KEYS].sort(),
     );
   });
 });
@@ -171,6 +173,70 @@ describe("quicShort — PSML 0.3 Encrypted shape", () => {
     expect(wire.totalBits).toBe(EXPECTED_TOTAL_BITS["quicShort"]);
     expect(sem.totalBits).toBe(EXPECTED_TOTAL_BITS_SEMANTIC["quicShort"]);
     expect(sem.totalBits).toBeGreaterThan(wire.totalBits);
+  });
+});
+
+for (const key of PSML_04_PRESET_KEYS) {
+  describe(`PSML 0.4 demo preset — ${key}`, () => {
+    it("normalizes without throwing", () => {
+      const pkt = PRESETS[key];
+      const env = buildEnv(pkt);
+      expect(() => normalize(pkt, env)).not.toThrow();
+    });
+
+    it("passes schema validation", () => {
+      const pkt = PRESETS[key];
+      expect(() => validatePsmlPacket(pkt)).not.toThrow();
+    });
+
+    it("totalBits matches expected fixture", () => {
+      const pkt = PRESETS[key];
+      const env = buildEnv(pkt);
+      const layout = resolveLayout(pkt, { env });
+      expect(layout.totalBits).toBe(EXPECTED_TOTAL_BITS_PSML_04[key]);
+    });
+  });
+}
+
+describe("http2FrameHeader — length-prefixed payload", () => {
+  it("payload bits scale with the Length controller", () => {
+    const pkt = PRESETS["http2FrameHeader"];
+    const env = buildEnv(pkt);
+    env.set("length", 7);
+    const layout = resolveLayout(pkt, { env });
+    // 9-byte fixed header (72 bits) + 7 bytes of payload (56 bits) = 128.
+    expect(layout.totalBits).toBe(72 + 7 * 8);
+    const payload = layout.cells.find((c) => c.field.id === "payload");
+    expect(payload?.bitsTotal).toBe(56);
+  });
+});
+
+describe("tlsExtensionsBlock — peek lookahead Switch", () => {
+  it("peek seeds the Switch case via the synthetic env key", () => {
+    const pkt = PRESETS["tlsExtensionsBlock"];
+    const env = buildEnv(pkt);
+    // One repetition, peek = 0 → SNI case.
+    env.set("tlsExtensionsBlock_extensions_count", 1);
+    env.set("__peek__0__16", 0);
+    env.set("serverNameListLength", 5);
+    const layout = resolveLayout(pkt, { env });
+    // 16 (extensionType) + 16 (serverNameListLength) + 40 (5 bytes) = 72.
+    expect(layout.totalBits).toBe(72);
+    expect(
+      layout.cells.some((c) => c.field.id === "serverNameList"),
+    ).toBe(true);
+  });
+});
+
+describe("pcieTlpFragment — per-field byteOrder propagation", () => {
+  it("LE byteOrder reaches the cell layer", () => {
+    const pkt = PRESETS["pcieTlpFragment"];
+    const env = buildEnv(pkt);
+    const layout = resolveLayout(pkt, { env });
+    const addr = layout.cells.find((c) => c.field.id === "address");
+    const len = layout.cells.find((c) => c.field.id === "length");
+    expect(addr?.byteOrder).toBe("BE");
+    expect(len?.byteOrder).toBe("LE");
   });
 });
 

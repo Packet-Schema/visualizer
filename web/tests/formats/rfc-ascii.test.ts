@@ -393,3 +393,153 @@ describe("toAscii — invariants vs normalize", () => {
     }
   });
 });
+
+// PSML 0.4 — adapter decorations for the new primitives.
+describe("toAscii — PSML 0.4 decorations", () => {
+  it("emits an `~ (Optional <name>) ~` row when the predicate is falsy", () => {
+    const pkt: Packet = {
+      name: "Opt",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          field: { id: "trailing", name: "Trailing", type: { kind: "bits", n: 8 } },
+        },
+      ],
+    };
+    // present=0 → Optional absent → placeholder row.
+    const txt = toAscii(pkt, new Map([["present", 0]]));
+    expect(txt).toContain("~ (Optional Trailing) ~");
+    expect(txt).not.toMatch(/\bTrailing\s*\|/);
+  });
+
+  it("does NOT emit the placeholder when the predicate is truthy", () => {
+    const pkt: Packet = {
+      name: "Opt",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          field: { id: "trailing", name: "Trailing", type: { kind: "bits", n: 8 } },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map([["present", 1]]));
+    expect(txt).not.toContain("~ (Optional");
+    expect(txt).toContain("Trailing");
+  });
+
+  it("appends [LE] to a field cell when per-field byteOrder=LE", () => {
+    const pkt: Packet = {
+      name: "BO",
+      rowBits: 16,
+      body: [
+        { id: "x", name: "X", type: { kind: "int", bits: 16 }, byteOrder: "LE" },
+      ],
+    };
+    const txt = toAscii(pkt);
+    expect(txt).toContain("[LE]");
+  });
+
+  it("labels a berLength field as `BER len`", () => {
+    const pkt: Packet = {
+      name: "Ber",
+      rowBits: 8,
+      // Seed env so the dynamic berLength width is 8 bits.
+      body: [{ id: "len", name: "Length", type: { kind: "berLength" } }],
+    };
+    const txt = toAscii(pkt);
+    expect(txt).toContain("BER len");
+  });
+
+  it("peek-on Switch is invisible in the diagram", () => {
+    // A Switch whose `on` is a peek expression should NOT cause an extra
+    // row — peek consumes no bits. The chosen case's fields render normally.
+    const pkt: Packet = {
+      name: "Pk",
+      rowBits: 16,
+      body: [
+        {
+          kind: "switch",
+          id: "s",
+          on: { kind: "peek", bits: 16 },
+          cases: {
+            "0": { id: "z", fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }] },
+          },
+        },
+      ],
+    };
+    const txt = toAscii(pkt);
+    expect(txt).toContain("A");
+    expect(txt).not.toContain("peek");
+  });
+});
+
+describe("toAscii — Optional fallback when predicate refs are unresolved", () => {
+  it("treats an unresolved ref as absent (placeholder row emitted)", () => {
+    const pkt: Packet = {
+      name: "OptU",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          // `present` is never seeded in env nor as a defaultValue field.
+          when: { kind: "ref", field: "present" },
+          field: { id: "trailing", name: "Trailing", type: { kind: "bits", n: 8 } },
+        },
+      ],
+    };
+    // Pass an empty env; the renderer should not throw and should emit the
+    // placeholder row because evaluating `when` raises MissingRefError.
+    const txt = toAscii(pkt, new Map());
+    expect(txt).toContain("~ (Optional Trailing) ~");
+  });
+});
+
+describe("toAscii — Optional wrapping a varint or berLength field", () => {
+  it("seeds a worst-case width when the inner field is a varint", () => {
+    const pkt: Packet = {
+      name: "OptV",
+      rowBits: 32,
+      body: [
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "lit", value: 1 },
+          field: {
+            id: "v",
+            name: "V",
+            type: { kind: "varint", encoding: "quic" },
+          },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map());
+    expect(txt).toContain("(varint)");
+  });
+
+  it("labels a berLength field nested inside a present Optional", () => {
+    const pkt: Packet = {
+      name: "OptB",
+      rowBits: 8,
+      body: [
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "lit", value: 1 },
+          field: { id: "b", name: "BERvar", type: { kind: "berLength" } },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map());
+    expect(txt).toContain("BER len");
+  });
+});

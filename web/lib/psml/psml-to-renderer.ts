@@ -67,6 +67,10 @@ function typeBits(type: PsmlField["type"]): number {
       }
     case "varint":
       return 0;
+    case "berLength":
+      // PSML 0.4 — width is dynamic. Treat as 0 at design time; layout
+      // adapters consult the env for a concrete width.
+      return 0;
   }
 }
 

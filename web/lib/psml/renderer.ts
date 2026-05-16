@@ -180,6 +180,12 @@ export type Cell = {
   encryptedParentId?: string;
   encryptedContextNote?: string;
   headerProtected?: boolean;
+  /**
+   * PSML 0.4 per-field byte order override, propagated from
+   * NormalizedField.byteOrder. Renderers may decorate cells with a `[LE]`
+   * marker when this differs from the enclosing packet's byteOrder.
+   */
+  byteOrder?: "BE" | "LE";
 };
 
 export type ResolvedLayout = {

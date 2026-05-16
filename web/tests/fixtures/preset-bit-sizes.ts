@@ -24,6 +24,21 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
 };
 
 /**
+ * PSML 0.4 demo presets — minimal fixtures exercising one new primitive each.
+ * Bit totals use the same "all refs default to 0" env that `buildEnv()`
+ * synthesises in `layout-parity.test.ts`.
+ *
+ *   * http2FrameHeader  — 9-byte header (72 bits) + 0-byte payload at default.
+ *   * tlsExtensionsBlock — Repeat count refs default to 0 → no extensions.
+ *   * pcieTlpFragment   — 8 + 32 + 16 + 8 = 64 fixed bits.
+ */
+export const EXPECTED_TOTAL_BITS_PSML_04: Record<string, number> = {
+  http2FrameHeader: 72,
+  tlsExtensionsBlock: 0,
+  pcieTlpFragment: 64,
+};
+
+/**
  * PSML-only presets added in Phase 2C. Wire-mode totalBits — the on-the-wire
  * encoding with every Encrypted container collapsed to its `wireBits` (or
  * to the sum of its plaintext bit widths when `wireBits` is absent).
@@ -46,3 +61,4 @@ export const EXPECTED_TOTAL_BITS_SEMANTIC: Record<string, number> = {
 
 export const PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS);
 export const PSML_ONLY_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSML_ONLY);
+export const PSML_04_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSML_04);
