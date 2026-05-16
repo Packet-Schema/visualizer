@@ -3,12 +3,13 @@ import {
   CATEGORY_LABELS, DEFAULT_BYTE_ORDER, packetCategories,
   syncTlvControllers,
 } from "./packets.js";
-import { renderPacket, CATEGORY_TO_TOKEN, tokenToCssVar } from "./renderer.js";
+import { renderPacket, interactiveUpdate, CATEGORY_TO_TOKEN, tokenToCssVar } from "./renderer.js";
 import { annotateAcronyms } from "./glossary.js";
 import { toJson, fromJson } from "./formats/json.js";
 import { toAscii } from "./formats/rfc-ascii.js";
 import { fromAad } from "./formats/aug-ascii.js";
 import { toWorksheet } from "./formats/worksheet.js";
+import { startTour, hasSeenTour } from "./tour.js";
 
 // Runtime registry for imported packets — kept separate from the static
 // PACKETS so imported entries don't bleed into the built-in presets and
@@ -40,6 +41,7 @@ const els = {
   themeToggle: document.getElementById("theme-toggle"),
   btnImport: document.getElementById("btn-import"),
   btnExport: document.getElementById("btn-export"),
+  btnHelp: document.getElementById("btn-help"),
   modalOverlay: document.getElementById("modal-overlay"),
   modalClose: document.getElementById("modal-close"),
   modalMode: document.getElementById("modal-mode"),
@@ -51,7 +53,19 @@ const els = {
   modalCopy: document.getElementById("modal-copy"),
   modalWorksheetAnswers: document.getElementById("modal-worksheet-answers"),
   modalWorksheetLabel: document.querySelector(".worksheet-only"),
+  fieldPopover: document.getElementById("field-popover"),
 };
+
+// Popover/field-detail layout threshold. Above this width, clicks on a field
+// open an anchored popover (in addition to the right-side panel).
+const POPOVER_MIN_WIDTH = 900;
+
+// Tracks the SVG element currently rendered in the diagram so the slider
+// interactive-update path can mutate it without a full rebuild.
+let currentSvg = null;
+// When true, the next call to render() will animate cell width/x changes
+// rather than rebuild the SVG.
+let interactiveRenderPending = false;
 
 // Curriculum-ordered grouping of built-in presets by OSI layer.
 // Keys must match PACKETS keys in packets.js.
@@ -88,8 +102,52 @@ function init() {
   initThemeToggle();
   state.controllers = initialState(getPacket(state.packetKey));
   initModal();
+  initFieldPopover();
   render();
   initDiagramKeyboardNav();
+  initHelpButton();
+  // First-visit tour auto-launch. Delay slightly so the diagram has rendered
+  // and target elements can be located.
+  if (!hasSeenTour()) {
+    setTimeout(launchTour, 350);
+  }
+}
+
+function launchTour() {
+  startTour({
+    steps: [
+      {
+        title: "Welcome to Packet View",
+        body: "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
+      },
+      {
+        title: "The bit ruler",
+        body: "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
+        target: () => els.diagram.querySelector(".bit-ruler"),
+        placement: "bottom",
+      },
+      {
+        title: "Click any field",
+        body: "Cells are interactive. Click one for a popover with size, category, RFC links and a glossary tooltip.",
+        target: () => els.diagram.querySelector("g.field-cell"),
+        placement: "bottom",
+      },
+      {
+        title: "Drag to grow",
+        body: "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
+        target: () => els.controls.querySelector('input[type="range"]'),
+        placement: "top",
+      },
+    ],
+  });
+}
+
+function initHelpButton() {
+  if (!els.btnHelp) return;
+  els.btnHelp.addEventListener("click", () => {
+    closeFieldPopover();
+    launchTour();
+  });
 }
 
 // Minimal CSS.escape polyfill for attribute selectors built from preset keys.
@@ -188,20 +246,32 @@ function render() {
     els.byteOrderNote.textContent = packet.byteOrder || DEFAULT_BYTE_ORDER;
   }
 
-  // Diagram
-  els.diagram.innerHTML = "";
-  const svg = renderPacket(packet, layout, {
-    selectedFieldId: state.selectedFieldId,
-    onFieldClick: (field) => {
-      state.selectedFieldId = field.id;
-      render();
-    },
-    onSubfieldClick: (parentField, subfield) => {
-      state.selectedFieldId = `${parentField.id}:${subfield.id}`;
-      render();
-    },
-  });
-  els.diagram.appendChild(svg);
+  // Diagram: prefer in-place interactive update when the slider just changed
+  // a controlling value and the structural shape is unchanged. Falls back to
+  // full rebuild otherwise.
+  let usedInteractive = false;
+  if (interactiveRenderPending && currentSvg && els.diagram.contains(currentSvg)) {
+    usedInteractive = interactiveUpdate(currentSvg, packet, layout);
+  }
+  interactiveRenderPending = false;
+  if (!usedInteractive) {
+    els.diagram.innerHTML = "";
+    currentSvg = renderPacket(packet, layout, {
+      selectedFieldId: state.selectedFieldId,
+      onFieldClick: (field, event) => {
+        state.selectedFieldId = field.id;
+        render();
+        maybeOpenPopover(field, event);
+      },
+      onSubfieldClick: (parentField, subfield, event) => {
+        state.selectedFieldId = `${parentField.id}:${subfield.id}`;
+        render();
+        // Subfield popovers reuse the same anchor logic.
+        maybeOpenPopover(subfield, event, parentField);
+      },
+    });
+    els.diagram.appendChild(currentSvg);
+  }
 
   // Legend (categories present in the currently rendered packet)
   renderLegend(packet);
@@ -351,16 +421,19 @@ function renderControls(packet) {
     };
     updateValueText(value);
 
-    const apply = (v) => {
+    const apply = (v, interactive) => {
       const clamped = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(v)));
       state.controllers[field.controlsLength] = clamped;
       slider.value = clamped;
       number.value = clamped;
       updateValueText(clamped);
+      // Slider drags want a smooth, animated update; number-input commits do
+      // a full rebuild so any structural change is reflected correctly.
+      interactiveRenderPending = !!interactive;
       render();
     };
-    slider.addEventListener("input", e => apply(e.target.value));
-    number.addEventListener("change", e => apply(e.target.value));
+    slider.addEventListener("input", e => apply(e.target.value, true));
+    number.addEventListener("change", e => apply(e.target.value, false));
 
     row.appendChild(slider);
     row.appendChild(number);
@@ -373,6 +446,168 @@ function renderControls(packet) {
     }
     els.controls.appendChild(wrap);
   }
+}
+
+// ---------------- Field detail popover ----------------
+//
+// On wide viewports (>= POPOVER_MIN_WIDTH px) clicking a field opens a
+// popover anchored above or below the clicked cell (whichever fits), in
+// addition to populating the right-side detail panel. On narrow viewports
+// we keep the panel-only behavior so the popover never crowds the diagram.
+
+let popoverReturnFocusEl = null;
+
+function initFieldPopover() {
+  if (!els.fieldPopover) return;
+  const closeBtn = els.fieldPopover.querySelector(".field-popover-close");
+  if (closeBtn) closeBtn.addEventListener("click", closeFieldPopover);
+  // Click-outside dismissal: any click outside the popover and not inside the
+  // diagram (where a field-cell click will reopen with new content) closes
+  // the popover. We attach in bubble phase so the cell's click handler has
+  // already run and replaced the popover content first.
+  document.addEventListener("click", (e) => {
+    if (els.fieldPopover.hidden) return;
+    const t = e.target;
+    if (!(t instanceof Node)) return;
+    if (els.fieldPopover.contains(t)) return;
+    if (els.diagram && els.diagram.contains(t)) return;
+    closeFieldPopover();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!els.fieldPopover.hidden && e.key === "Escape") {
+      e.preventDefault();
+      closeFieldPopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!els.fieldPopover.hidden) closeFieldPopover();
+  });
+}
+
+function maybeOpenPopover(field, event, parentField) {
+  if (!els.fieldPopover) return;
+  if (window.innerWidth < POPOVER_MIN_WIDTH) return;
+  // Anchor element: the original click target may have been detached by the
+  // re-render that ran before this function. Re-query the freshly rebuilt
+  // diagram by fieldId so we always anchor against a live node.
+  let anchor = null;
+  const targetFieldId = parentField ? field.id : field.id;
+  if (parentField) {
+    anchor = els.diagram.querySelector(
+      `g.subfield-cell[data-subfield-id="${cssEscape(targetFieldId)}"][data-parent-field-id="${cssEscape(parentField.id)}"]`,
+    );
+  } else {
+    anchor = els.diagram.querySelector(
+      `g.field-cell[data-field-id="${cssEscape(targetFieldId)}"]`,
+    );
+  }
+  // Fallback to the original event target if the rebuild somehow lost it.
+  if (!anchor && event && event.currentTarget instanceof Element
+      && document.contains(event.currentTarget)) {
+    anchor = event.currentTarget;
+  }
+  // Build content from the same enrichment used by the panel.
+  const packet = getPacket(state.packetKey);
+  const html = buildFieldDetailHtml(packet, field, parentField);
+  if (!html) return;
+  const body = els.fieldPopover.querySelector(".field-popover-body");
+  if (body) body.innerHTML = html;
+
+  // Remember opener so we can return focus on close.
+  popoverReturnFocusEl = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+
+  els.fieldPopover.hidden = false;
+  positionPopover(anchor);
+}
+
+function positionPopover(anchor) {
+  if (!els.fieldPopover || !anchor) {
+    els.fieldPopover.style.left = "20px";
+    els.fieldPopover.style.top = "80px";
+    return;
+  }
+  const rect = anchor.getBoundingClientRect();
+  // Measure popover size (after content is set).
+  const ttRect = els.fieldPopover.getBoundingClientRect();
+  const ttW = ttRect.width;
+  const ttH = ttRect.height;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const margin = 8;
+  const spaceBelow = vh - rect.bottom;
+  const spaceAbove = rect.top;
+  // Place below if the popover fits below; otherwise above.
+  const placeBelow = spaceBelow >= ttH + margin + 10
+    || spaceBelow >= spaceAbove;
+  const cellCenterX = rect.left + rect.width / 2;
+  let left = Math.round(cellCenterX - ttW / 2);
+  left = Math.max(8, Math.min(vw - ttW - 8, left));
+  let top;
+  if (placeBelow) {
+    top = Math.round(rect.bottom + margin);
+    els.fieldPopover.dataset.placement = "below";
+  } else {
+    top = Math.round(rect.top - ttH - margin);
+    els.fieldPopover.dataset.placement = "above";
+  }
+  els.fieldPopover.style.left = left + "px";
+  els.fieldPopover.style.top = top + "px";
+  // Position the arrow relative to popover so it points at the cell.
+  const arrow = els.fieldPopover.querySelector(".field-popover-arrow");
+  if (arrow) {
+    const arrowX = Math.max(12, Math.min(ttW - 24, cellCenterX - left - 6));
+    arrow.style.left = arrowX + "px";
+  }
+}
+
+function closeFieldPopover() {
+  if (!els.fieldPopover || els.fieldPopover.hidden) return;
+  els.fieldPopover.hidden = true;
+  if (popoverReturnFocusEl && document.contains(popoverReturnFocusEl)) {
+    try { popoverReturnFocusEl.focus(); } catch (_) {}
+  }
+  popoverReturnFocusEl = null;
+}
+
+// Build the same content `renderDetail` produces, but without writing to
+// the detail panel. Returns an HTML string.
+function buildFieldDetailHtml(packet, fieldOrSub, parentField) {
+  // Subfield branch: `parentField` is provided.
+  if (parentField) {
+    const sub = fieldOrSub;
+    const bits = sub.bits;
+    return `
+      <h3>${escapeHtml(sub.name)} <span class="subfield-hint">(subfield of ${escapeHtml(parentField.name)})</span></h3>
+      <dl>
+        <dt>Size</dt><dd>${bits} bit${bits === 1 ? "" : "s"}</dd>
+        <dt>Parent</dt><dd>${escapeHtml(parentField.name)} (${parentField.bits} bits)</dd>
+        ${sub.description ? `<dt>Description</dt><dd>${enrichDescription(sub.description)}</dd>` : ""}
+      </dl>
+    `;
+  }
+  const field = fieldOrSub;
+  const bits = field.variable
+    ? field.toBits(state.controllers[field.lengthFrom])
+    : field.bits;
+  const subfieldsHtml = field.subfields
+    ? `<dt>Subfields</dt><dd>${field.subfields.map(s => `<code>${escapeHtml(s.name)}</code> (${s.bits}b)`).join(" ")}</dd>`
+    : "";
+  const categoryHtml = field.category
+    ? `<dt>Category</dt><dd>${escapeHtml(CATEGORY_LABELS[field.category] || field.category)}</dd>`
+    : "";
+  return `
+    <h3>${escapeHtml(field.name)}</h3>
+    <dl>
+      <dt>Size</dt><dd><span class="mono">${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}</span>${field.variable ? " <em>(variable)</em>" : ""}</dd>
+      ${categoryHtml}
+      ${field.variable ? `<dt>Driven by</dt><dd><code>${escapeHtml(field.lengthFrom)}</code></dd>` : ""}
+      ${field.controlsLength ? `<dt>Controls</dt><dd><code>${escapeHtml(field.controlsLength)}</code> (current: <span class="mono">${state.controllers[field.controlsLength]}</span>)</dd>` : ""}
+      ${field.description ? `<dt>Description</dt><dd>${enrichDescription(field.description)}</dd>` : ""}
+      ${subfieldsHtml}
+    </dl>
+  `;
 }
 
 // ---------------- Import / Export modal ----------------
@@ -459,16 +694,12 @@ function openModal(mode) {
 
   els.modalMode.value = mode;
   // Default format per mode.
-  if (mode === "import") {
-    els.modalFormat.value = "json";
-  } else {
-    els.modalFormat.value = "json";
-  }
+  els.modalFormat.value = "json";
   els.modalText.value = "";
   setStatus("");
-  syncModalUi();
   els.modalOverlay.hidden = false;
-  if (mode === "export") onGenerate();
+  // syncModalUi handles auto-fill on export and clears text on import.
+  syncModalUi();
 
   // Move focus to the first interactive element inside the modal.
   const focusables = getModalFocusables();
@@ -500,22 +731,26 @@ function syncModalUi() {
   // Toggle button visibility.
   const importMode = els.modalMode.value === "import";
   const isWorksheet = !importMode && els.modalFormat.value === "worksheet";
-  els.modalApply.style.display    = importMode ? "" : "none";
-  els.modalGenerate.style.display = importMode ? "none" : "";
+  els.modalApply.hidden    = !importMode;
+  // Generate button is only needed for worksheet (which opens a new tab); for
+  // other export formats we auto-fill on selection.
+  els.modalGenerate.hidden = !(isWorksheet);
   // The Copy button is meaningless for worksheet (we open a new tab instead).
-  els.modalCopy.style.display     = (importMode || isWorksheet) ? "none" : "";
+  els.modalCopy.hidden     = importMode || isWorksheet;
   if (els.modalWorksheetLabel) {
     els.modalWorksheetLabel.hidden = !isWorksheet;
   }
   if (isWorksheet) {
     els.modalText.placeholder = "Click Generate to open the worksheet in a new tab.";
+    els.modalText.value = "";
+  } else if (importMode) {
+    els.modalText.placeholder = "Paste packet definition here, then click Apply.";
+    els.modalText.value = "";
   } else {
-    els.modalText.placeholder = importMode
-      ? "Paste packet definition here, then click Apply."
-      : "Click Generate to populate from the active packet.";
+    // Export, non-worksheet: auto-fill the textarea immediately.
+    els.modalText.placeholder = "";
+    onGenerate();
   }
-  // Don't auto-fill the textarea with the worksheet HTML on switch.
-  if (isWorksheet) els.modalText.value = "";
 }
 
 function onGenerate() {
