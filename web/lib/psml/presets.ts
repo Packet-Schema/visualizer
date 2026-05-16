@@ -1,4 +1,4 @@
-// PSML 0.2 — Packet Schema Markup Language.
+// PSML 0.3 — Packet Schema Markup Language.
 // Hand-written PSML presets demonstrating every primitive in the schema.
 //
 // IPv4 — variable-length Options expressed as a Repeat over a Switch on the
@@ -8,11 +8,20 @@
 // UDP  — pure fixed layout.
 // Ethernet — pure fixed layout.
 //
-// The remaining 9 presets live in presets.generated.ts and are produced
-// mechanically from the runtime schema by scripts/migrate-v1-to-psml.ts.
+// PSML 0.3 — Phase 2C additions exercise the Encrypted container and
+// Varint primitives end-to-end:
+//   * quicShort       — header-protection + payload Encrypted (overrides
+//                       the flat shape in presets.generated.ts).
+//   * quicLong        — Long Header with Switch over Initial/0-RTT/Handshake/
+//                       Retry and an encrypted Payload.
+//   * tlsClientHelloFull — TLS 1.3 ClientHello + ServerHello/post-handshake
+//                       encrypted block.
+//
+// The simpler 9 presets continue to live in presets.generated.ts and are
+// produced mechanically from the runtime schema by scripts/migrate-v1-to-psml.ts.
 
 import { lit, op, ref } from "./expr";
-import type { Container, Packet, Struct } from "./types";
+import type { Container, Encrypted, Packet, Struct } from "./types";
 
 /* ------------------------------------------------------------------ *
  * Small helpers — keep preset definitions terse and consistent.
@@ -334,4 +343,606 @@ export const ethernet: Packet = {
  * Registry
  * ------------------------------------------------------------------ */
 
-export const MANUAL_PRESETS = { ipv4, tcp, udp, ethernet } as const;
+/* ------------------------------------------------------------------ *
+ * Shared building blocks for PSML 0.3 encrypted-protocol presets
+ * ------------------------------------------------------------------ */
+
+/**
+ * Stub QUIC frame layout used inside the Payload Encrypted container of
+ * `quicShort` and `quicLong`. A real QUIC payload is a sequence of frames,
+ * each prefixed by a 1+ byte frame type (RFC 9000 §12.4). We model a single
+ * frame with a Switch over three common types — STREAM (0x08), ACK (0x02),
+ * CRYPTO (0x06) — and a 16-byte fixed placeholder body so the renderer has
+ * something concrete to show in semantic view. The default branch keeps
+ * normalize tolerant when the discriminator hasn't been seeded.
+ */
+function quicFramesStub(): Struct {
+  const FRAME_BODY_BITS = 128;
+  return struct("frames", [
+    {
+      id: "frameType",
+      name: "Frame Type",
+      type: bits(8),
+      category: "type",
+      defaultValue: 8, // STREAM by default
+    },
+    {
+      kind: "switch",
+      id: "frameByType",
+      on: ref("frameType"),
+      cases: {
+        // STREAM (0x08-0x0f base) — modeled as the canonical 0x08 form.
+        "8": struct("streamFrame", [
+          {
+            id: "stream_body",
+            name: "Stream Data",
+            type: bits(FRAME_BODY_BITS),
+            category: "payload-marker",
+            doc: "STREAM frame payload (RFC 9000 §19.8). 16-byte placeholder.",
+          },
+        ]),
+        // ACK (0x02).
+        "2": struct("ackFrame", [
+          {
+            id: "ack_body",
+            name: "ACK Ranges",
+            type: bits(FRAME_BODY_BITS),
+            category: "payload-marker",
+            doc: "ACK frame ranges (RFC 9000 §19.3). 16-byte placeholder.",
+          },
+        ]),
+        // CRYPTO (0x06).
+        "6": struct("cryptoFrame", [
+          {
+            id: "crypto_body",
+            name: "CRYPTO Data",
+            type: bits(FRAME_BODY_BITS),
+            category: "payload-marker",
+            doc: "CRYPTO frame data (RFC 9000 §19.6). 16-byte placeholder.",
+          },
+        ]),
+      },
+      default: struct("frameDefault", [
+        {
+          id: "frame_body",
+          name: "Frame Payload",
+          type: bits(FRAME_BODY_BITS),
+          category: "payload-marker",
+          doc: "Unknown frame type — placeholder body.",
+        },
+      ]),
+    },
+  ]);
+}
+
+/* ------------------------------------------------------------------ *
+ * QUIC Short Header (1-RTT) — PSML 0.3 override
+ *
+ * Overrides the flat shape in presets.generated.ts to expose
+ * header protection and AEAD as Encrypted containers:
+ *   * `pnArea` wraps Packet Number Length + Packet Number, both tagged
+ *     `headerProtected` — a real receiver applies an XOR mask derived
+ *     from the AEAD sample before reading them.
+ *   * `payload` carries the AEAD ciphertext; the plaintext is a single
+ *     stub frame.
+ * ------------------------------------------------------------------ */
+
+const quicShortPnArea: Encrypted = {
+  kind: "encrypted",
+  id: "pnArea",
+  name: "Header-protected PN area",
+  contextNote:
+    "Header protection mask (XOR) derived from the AEAD sample using the hp key — required before reading these bits.",
+  headerProtected: ["pnLen", "packetNumber"],
+  category: "identifier",
+  plaintext: struct("pnAreaPlaintext", [
+    {
+      id: "pnLen",
+      name: "Packet Number Length",
+      type: bits(2),
+      category: "length",
+      doc: "Encoded length of the Packet Number field minus 1 (1–4 bytes). Header-protected. [RFC 9000 §17.3.1]",
+    },
+    {
+      id: "packetNumber",
+      name: "Packet Number",
+      type: bits(8),
+      category: "identifier",
+      doc: "Truncated packet number — header-protected on the wire. 1–4 bytes wide. [RFC 9000 §17.1]",
+    },
+  ]),
+};
+
+const quicShortPayload: Encrypted = {
+  kind: "encrypted",
+  id: "payload",
+  name: "Encrypted Payload",
+  contextNote:
+    "AEAD-protected QUIC frames — requires TLS 1.3 handshake outputs (1-RTT keys) to decrypt.",
+  wireBits: lit(128),
+  category: "payload-marker",
+  plaintext: quicFramesStub(),
+};
+
+export const quicShort: Packet = {
+  name: "QUIC Short Header (1-RTT)",
+  rowBits: 32,
+  byteOrder: "BE",
+  description:
+    "QUIC v1 short-header (1-RTT) packet (RFC 9000 §17.3). Connection ID length is negotiated out-of-band; this preset assumes an 8-byte Destination CID for illustration and wraps the header-protected and AEAD-protected regions in Encrypted containers.",
+  body: [
+    {
+      id: "headerForm",
+      name: "Header Form (0=Short)",
+      type: bits(1),
+      category: "type",
+      doc: "0 = short header (1-RTT). [RFC 9000 §17.3]",
+    },
+    {
+      id: "fixedBit",
+      name: "Fixed Bit",
+      type: bits(1),
+      category: "reserved",
+      doc: "Must be 1 in QUIC v1. [RFC 9000 §17.2]",
+    },
+    {
+      id: "spinBit",
+      name: "Spin Bit",
+      type: bits(1),
+      category: "flags",
+      doc: "Latency spin bit — toggled once per RTT for passive on-path RTT measurement. [RFC 9000 §17.4]",
+    },
+    {
+      id: "reserved",
+      name: "Reserved",
+      type: bits(2),
+      category: "reserved",
+      doc: "Reserved bits — protected by header protection on the wire; must decrypt to 0. [RFC 9000 §17.3.1]",
+    },
+    {
+      id: "keyPhase",
+      name: "Key Phase",
+      type: bits(1),
+      category: "flags",
+      doc: "Identifies which set of packet-protection keys is in use; flips on key update. [RFC 9000 §6]",
+    },
+    {
+      id: "dcid",
+      name: "Destination Connection ID",
+      type: bits(64),
+      category: "addressing",
+      doc: "Receiver-chosen Connection ID — length is negotiated out-of-band (0–20 bytes); shown here as 8 bytes.",
+    },
+    quicShortPnArea,
+    quicShortPayload,
+  ],
+};
+
+/* ------------------------------------------------------------------ *
+ * QUIC Long Header (RFC 9000 §17.2)
+ *
+ * Long header used for Initial / 0-RTT / Handshake / Retry packets. The
+ * Long Packet Type 2-bit field selects per-type tail fields via a Switch:
+ *   * Initial / 0-RTT — Token Length + Token + Length + Packet Number
+ *   * Handshake      — Length + Packet Number
+ *   * Retry          — Retry Token + 16-byte Retry Integrity Tag (no PN)
+ * Followed by an Encrypted Payload container.
+ * ------------------------------------------------------------------ */
+
+const quicLongInitialCase: Struct = struct("longInitial", [
+  {
+    id: "tokenLength",
+    name: "Token Length",
+    type: { kind: "varint", encoding: "quic" },
+    category: "length",
+    doc: "Variable-length token length prefix (QUIC varint). [RFC 9000 §17.2.2]",
+  },
+  {
+    id: "token",
+    name: "Token",
+    type: { kind: "bytes", n: lit(0) },
+    category: "variable",
+    doc: "Server-chosen retry/NEW_TOKEN token. Default 0 bytes for an unsolicited Initial. [RFC 9000 §17.2.2]",
+  },
+  {
+    id: "length",
+    name: "Length",
+    type: { kind: "varint", encoding: "quic" },
+    category: "length",
+    doc: "QUIC varint length of the rest of the packet (PN + payload). [RFC 9000 §17.2]",
+  },
+  {
+    id: "packetNumber",
+    name: "Packet Number",
+    type: bits(8),
+    category: "identifier",
+    doc: "Truncated packet number — header-protected. 1–4 bytes per pnLen, modeled here as 1 byte. [RFC 9000 §17.1]",
+  },
+]);
+
+const quicLongHandshakeCase: Struct = struct("longHandshake", [
+  {
+    id: "length",
+    name: "Length",
+    type: { kind: "varint", encoding: "quic" },
+    category: "length",
+    doc: "QUIC varint length of (PN + payload). [RFC 9000 §17.2.4]",
+  },
+  {
+    id: "packetNumber",
+    name: "Packet Number",
+    type: bits(8),
+    category: "identifier",
+    doc: "Truncated packet number — header-protected. Modeled here as 1 byte. [RFC 9000 §17.2.4]",
+  },
+]);
+
+const quicLongRetryCase: Struct = struct("longRetry", [
+  {
+    id: "retryToken",
+    name: "Retry Token",
+    type: { kind: "bytes", n: lit(0) },
+    category: "variable",
+    doc: "Server-issued retry token; consumes the rest of the packet up to the integrity tag. Default 0 bytes. [RFC 9000 §17.2.5]",
+  },
+  {
+    id: "retryIntegrityTag",
+    name: "Retry Integrity Tag",
+    type: { kind: "bytes", n: lit(16) },
+    category: "checksum",
+    doc: "128-bit integrity tag covering the Retry Pseudo-Packet. [RFC 9001 §5.8]",
+  },
+]);
+
+const quicLongPayload: Encrypted = {
+  kind: "encrypted",
+  id: "payload",
+  name: "Encrypted Payload",
+  contextNote:
+    "AEAD-protected QUIC frames — requires Initial / 0-RTT / Handshake / 1-RTT keys depending on packet type.",
+  wireBits: lit(128),
+  category: "payload-marker",
+  plaintext: quicFramesStub(),
+};
+
+export const quicLong: Packet = {
+  name: "QUIC Long Header",
+  rowBits: 32,
+  byteOrder: "BE",
+  description:
+    "QUIC v1 long-header packet (RFC 9000 §17.2). Header Form=1; the Long Packet Type 2-bit field selects Initial / 0-RTT / Handshake / Retry tail layout via a Switch. Followed by an Encrypted Payload.",
+  body: [
+    {
+      id: "headerForm",
+      name: "Header Form (1=Long)",
+      type: bits(1),
+      category: "type",
+      defaultValue: 1,
+      doc: "1 = long header (Initial / 0-RTT / Handshake / Retry). [RFC 9000 §17.2]",
+    },
+    {
+      id: "fixedBit",
+      name: "Fixed Bit",
+      type: bits(1),
+      category: "reserved",
+      defaultValue: 1,
+      doc: "Must be 1 in QUIC v1. [RFC 9000 §17.2]",
+    },
+    {
+      id: "longPacketType",
+      name: "Long Packet Type",
+      type: bits(2),
+      category: "type",
+      defaultValue: 0,
+      doc: "0=Initial, 1=0-RTT, 2=Handshake, 3=Retry. [RFC 9000 §17.2]",
+    },
+    {
+      id: "typeSpecificBits",
+      name: "Type-Specific Bits",
+      type: bits(4),
+      category: "flags",
+      doc: "Lower 4 bits — meaning depends on Long Packet Type (e.g. Initial: reserved + PN length). [RFC 9000 §17.2]",
+    },
+    {
+      id: "version",
+      name: "Version",
+      type: { kind: "int", bits: 32 },
+      category: "type",
+      doc: "QUIC version (e.g. 0x00000001 for v1). [RFC 9000 §15]",
+    },
+    {
+      id: "dcidLength",
+      name: "DCID Length",
+      type: bits(8),
+      category: "length",
+      defaultValue: 8,
+      doc: "Length in bytes of the Destination Connection ID. 0–20. [RFC 9000 §17.2]",
+    },
+    {
+      id: "dcid",
+      name: "Destination Connection ID",
+      type: { kind: "bytes", n: ref("dcidLength") },
+      category: "addressing",
+      doc: "Destination Connection ID — `dcidLength` bytes. [RFC 9000 §17.2]",
+    },
+    {
+      id: "scidLength",
+      name: "SCID Length",
+      type: bits(8),
+      category: "length",
+      defaultValue: 8,
+      doc: "Length in bytes of the Source Connection ID. 0–20. [RFC 9000 §17.2]",
+    },
+    {
+      id: "scid",
+      name: "Source Connection ID",
+      type: { kind: "bytes", n: ref("scidLength") },
+      category: "addressing",
+      doc: "Source Connection ID — `scidLength` bytes. [RFC 9000 §17.2]",
+    },
+    {
+      kind: "switch",
+      id: "longTail",
+      name: "Type-Specific Tail",
+      on: ref("longPacketType"),
+      cases: {
+        "0": quicLongInitialCase,
+        // 0-RTT shares the Initial tail layout in this model.
+        "1": quicLongInitialCase,
+        "2": quicLongHandshakeCase,
+        "3": quicLongRetryCase,
+      },
+      default: quicLongInitialCase,
+      doc: "Per-type tail fields selected by Long Packet Type.",
+    },
+    quicLongPayload,
+  ],
+};
+
+/* ------------------------------------------------------------------ *
+ * TLS 1.3 ClientHello (full) — RFC 8446 §4.1.2
+ *
+ * Extends the basic tlsClientHello with:
+ *   * a richer Extensions Repeat<Switch> catalog (SNI, supported_versions,
+ *     supported_groups, key_share, ALPN — already present in the generated
+ *     preset; preserved here in the same shape).
+ *   * an Encrypted block representing the post-handshake records the
+ *     server sends back (ServerHello + EncryptedExtensions + Certificate
+ *     + Finished). On the wire these arrive concatenated and most of the
+ *     body is wrapped under TLS 1.3's handshake-traffic AEAD.
+ * ------------------------------------------------------------------ */
+
+const tlsExtensionVariants: Record<string, Struct> = {
+  // server_name (SNI) — RFC 6066.
+  "0": struct("sni", [
+    { id: "type", name: "Type=0", type: bits(16), category: "type" },
+    { id: "length", name: "Ext Len", type: bits(16), category: "length" },
+    { id: "listLen", name: "List Len", type: bits(16), category: "length" },
+    { id: "nameType", name: "Name Type=0", type: bits(8), category: "type" },
+    { id: "nameLen", name: "Name Len", type: bits(16), category: "length" },
+    {
+      id: "hostname",
+      name: "host_name (var)",
+      type: bits(96),
+      category: "addressing",
+    },
+  ]),
+  // supported_versions — RFC 8446 §4.2.1.
+  "43": struct("supportedVersions", [
+    { id: "type", name: "Type=43", type: bits(16), category: "type" },
+    { id: "length", name: "Ext Len", type: bits(16), category: "length" },
+    { id: "vListLen", name: "Versions Len", type: bits(8), category: "length" },
+    { id: "versions", name: "versions", type: bits(16), category: "type" },
+  ]),
+  // supported_groups — RFC 8446 §4.2.7.
+  "10": struct("supportedGroups", [
+    { id: "type", name: "Type=10", type: bits(16), category: "type" },
+    { id: "length", name: "Ext Len", type: bits(16), category: "length" },
+    { id: "listLen", name: "List Len", type: bits(16), category: "length" },
+    { id: "groups", name: "named_group_list", type: bits(32), category: "type" },
+  ]),
+  // key_share — RFC 8446 §4.2.8 (one 32-byte X25519 share modeled).
+  "51": struct("keyShare", [
+    { id: "type", name: "Type=51", type: bits(16), category: "type" },
+    { id: "length", name: "Ext Len", type: bits(16), category: "length" },
+    { id: "listLen", name: "Shares Len", type: bits(16), category: "length" },
+    { id: "group", name: "group", type: bits(16), category: "type" },
+    { id: "keyLen", name: "key Len", type: bits(16), category: "length" },
+    {
+      id: "key",
+      name: "key_exchange (X25519, 32B)",
+      type: bits(256),
+      category: "identifier",
+    },
+  ]),
+  // ALPN — RFC 7301.
+  "16": struct("alpn", [
+    { id: "type", name: "Type=16", type: bits(16), category: "type" },
+    { id: "length", name: "Ext Len", type: bits(16), category: "length" },
+    { id: "listLen", name: "Proto List Len", type: bits(16), category: "length" },
+    { id: "protoLen", name: "Proto Len", type: bits(8), category: "length" },
+    { id: "protocol", name: "protocol (var)", type: bits(16), category: "type" },
+  ]),
+};
+
+/**
+ * Encrypted block representing the server-side post-handshake records
+ * (ServerHello + EncryptedExtensions + Certificate + Finished). In TLS 1.3
+ * everything after ServerHello is wrapped under the handshake-traffic AEAD.
+ * Modeled here as a single Encrypted container with a stub plaintext.
+ */
+const tlsServerEncryptedHandshake: Encrypted = {
+  kind: "encrypted",
+  id: "serverHandshake",
+  name: "Server Handshake (encrypted)",
+  contextNote:
+    "Encrypted handshake — requires TLS 1.3 key schedule outputs (handshake traffic keys derived from ECDHE).",
+  wireBits: lit(384),
+  category: "payload-marker",
+  plaintext: struct("serverHandshakePlaintext", [
+    {
+      id: "sh_msgType",
+      name: "ServerHello Type=2",
+      type: bits(8),
+      category: "type",
+      doc: "ServerHello handshake message type. [RFC 8446 §4.1.3]",
+    },
+    {
+      id: "sh_length",
+      name: "Handshake Length",
+      type: bits(24),
+      category: "length",
+    },
+    {
+      id: "sh_legacyVersion",
+      name: "legacy_version",
+      type: bits(16),
+      category: "type",
+    },
+    {
+      id: "sh_random",
+      name: "random",
+      type: bits(256),
+      category: "identifier",
+    },
+    {
+      id: "ee_msgType",
+      name: "EncryptedExtensions Type=8",
+      type: bits(8),
+      category: "type",
+      doc: "EncryptedExtensions handshake message type. [RFC 8446 §4.3.1]",
+    },
+    {
+      id: "ee_body",
+      name: "EncryptedExtensions Body",
+      type: bits(64),
+      category: "variable",
+    },
+    {
+      id: "fin_msgType",
+      name: "Finished Type=20",
+      type: bits(8),
+      category: "type",
+      doc: "Finished handshake message type. [RFC 8446 §4.4.4]",
+    },
+    {
+      id: "fin_verifyData",
+      name: "verify_data",
+      type: bits(48),
+      category: "checksum",
+    },
+  ]),
+};
+
+export const tlsClientHelloFull: Packet = {
+  name: "TLS ClientHello (full)",
+  rowBits: 32,
+  byteOrder: "BE",
+  description:
+    "TLS 1.3 ClientHello (RFC 8446 §4.1.2) with a populated Extensions catalog (SNI / supported_versions / supported_groups / key_share / ALPN) and the server-side encrypted handshake records modeled as an Encrypted container.",
+  body: [
+    {
+      id: "msgType",
+      name: "Handshake Type",
+      type: bits(8),
+      category: "type",
+      defaultValue: 1,
+      doc: "1 = ClientHello. [RFC 8446 §4]",
+    },
+    {
+      id: "length",
+      name: "Handshake Length",
+      type: bits(24),
+      category: "length",
+      doc: "Length of the handshake message body that follows. [RFC 8446 §4]",
+    },
+    {
+      id: "legacyVersion",
+      name: "legacy_version",
+      type: bits(16),
+      category: "type",
+      doc: "Frozen at 0x0303 (TLS 1.2) for middlebox compatibility. [RFC 8446 §4.1.2]",
+    },
+    {
+      id: "random",
+      name: "random",
+      type: bits(256),
+      category: "identifier",
+      doc: "32 cryptographically random bytes. [RFC 8446 §4.1.2]",
+    },
+    {
+      id: "sessionIdLen",
+      name: "session_id length",
+      type: bits(8),
+      category: "length",
+    },
+    {
+      id: "sessionId",
+      name: "session_id",
+      type: bits(256),
+      category: "identifier",
+    },
+    {
+      id: "cipherSuitesLen",
+      name: "cipher_suites length",
+      type: bits(16),
+      category: "length",
+    },
+    {
+      id: "cipherSuites",
+      name: "cipher_suites",
+      type: bits(32),
+      category: "type",
+    },
+    {
+      id: "compMethodsLen",
+      name: "compression length",
+      type: bits(8),
+      category: "length",
+    },
+    {
+      id: "compMethods",
+      name: "compression_methods",
+      type: bits(8),
+      category: "reserved",
+    },
+    {
+      id: "extensionsLen",
+      name: "extensions length",
+      type: bits(16),
+      category: "length",
+      defaultValue: 0,
+      doc: "Total length in bytes of the extensions block that follows.",
+    },
+    {
+      kind: "repeat",
+      id: "extensions",
+      name: "Extensions",
+      category: "variable",
+      element: struct("extensionRecord", [
+        {
+          kind: "switch",
+          id: "byKind",
+          on: ref("extensions_kind"),
+          cases: tlsExtensionVariants,
+        },
+      ]),
+      count: ref("tlsClientHelloFull_extensions_count"),
+    },
+    tlsServerEncryptedHandshake,
+  ],
+};
+
+/* ------------------------------------------------------------------ *
+ * Registry
+ * ------------------------------------------------------------------ */
+
+export const MANUAL_PRESETS = {
+  ipv4,
+  tcp,
+  udp,
+  ethernet,
+  quicShort,
+  quicLong,
+  tlsClientHelloFull,
+} as const;
