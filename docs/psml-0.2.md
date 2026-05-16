@@ -272,10 +272,66 @@ model back to PSML for export. The format hub itself is three files:
 The Typst worksheet generator in `web/lib/worksheet-typst.ts` also
 takes a PSML packet.
 
+## Kaitai interop
+
+PSML ships a light import/export bridge to [Kaitai Struct](https://kaitai.io/)
+`.ksy` YAML files in `web/lib/formats/ksy.ts`. The bridge is read-mostly:
+the importer prioritises producing a useful PSML packet from real-world
+`.ksy` files (the [kaitai_struct_formats](https://github.com/kaitai-io/kaitai_struct_formats)
+library has ~200+), even when that means dropping computed fields or
+collapsing complex expressions. The exporter is best-effort and surfaces
+anything PSML-specific as YAML comments prefixed `# psml-only:`.
+
+### Supported (import)
+
+| Kaitai construct | PSML mapping |
+| --- | --- |
+| `meta.id` / `meta.title` | `Packet.name` |
+| `meta.endian: be \| le` | `Packet.byteOrder = "BE" \| "LE"` |
+| `seq[]` | top-level `body: Container[]` |
+| `type: u1 \| u2 \| u4 \| u8` | `TypeInt { bits: 8/16/32/64 }` |
+| `type: s1 \| s2 \| s4 \| s8` | `TypeInt { signed: true }` |
+| `type: b1..b64` | `TypeBits { n }` |
+| `type: str \| strz` + `size: N` | `TypeBytes { n: lit(N) }` |
+| `size: N` (no type) or `size: <ref>` | `TypeBytes` |
+| `contents: "..."` | `TypeBytes` of magic byte length |
+| `type: <userTypeName>` | `Group` whose children are the resolved seq |
+| `types:` (nested) | recursive walk, merged into a child registry |
+| `if: <simple-ref>` | `Switch` with cases `"1"` (present) / `"0"` (absent) |
+| `repeat: expr` + `repeat-expr` | `Repeat { count: ref \| lit }` |
+| `repeat: until` | `Repeat { count: { until: env-ref } }` |
+| `repeat: eos` | `Repeat { count: "eos" }` |
+| `doc` / `doc-ref` | concatenated into `Field.doc` (refs prefixed `See:`) |
+| `enums:` (integer keys → labels) | `TypeEnum.variants` when the field cites the enum |
+
+### Unsupported / lossy
+
+| Construct | Status | Behaviour |
+| --- | --- | --- |
+| `instances:` (computed) | won't-fix | every instance emits a warning and is dropped |
+| `process: zlib \| xor \| rotate` | won't-fix | warned and dropped (PSML has no transform pipeline) |
+| Parametric types (`type(args)`) | planned | parameters dropped; bare type name resolved |
+| `switch-on` type with complex cases | planned | non-`string` cases skipped with warnings |
+| Kaitai expression language | planned | only bare `<identifier>` refs and integer literals are modelled; anything richer (arithmetic, `_io.eof`, ternaries) collapses to a placeholder ref and a warning |
+| `valid:`, `terminator:`, `eos-error:` | planned | warned and dropped |
+| `-webide-` / `-orig-id` extension keys | n/a | ignored silently |
+
+### Export (PSML → .ksy)
+
+`toKsy(packet)` produces a `.ksy` document with `meta`, `seq`, and (when
+needed) `types:`. PSML-only features survive as comments at the top of
+the file: `# psml-only: ...` lines tag dropped `category` tokens, dropped
+`Constraint`s, and any `Switch` whose cases can't be mapped to a Kaitai
+`switch-on type`. Round-trip through `fromKsy(toKsy(p))` is not
+structurally identical and is not the goal — the exporter exists so
+users can take a Packet View definition into the Kaitai compiler (`ksc`)
+without rebuilding it by hand.
+
 ## Out of scope
 
-- Kaitai .ksy import/export (Round 4).
 - `encrypted_envelope` and varint primitives for QUIC and TLS 1.3
   (Round 5).
+- Generating parser code (that's Kaitai's job; we don't try to replace
+  `ksc`).
 - Surface syntax change — Typst dict literals continue to be the
   on-disk authoring format for Packet View's preset library.
