@@ -57,6 +57,8 @@
     <section class="toolbar" aria-label="Packet selector">
       <label for="packet-selector">Packet:</label>
       <select id="packet-selector"></select>
+      <button type="button" id="btn-import" class="tb-btn">Import</button>
+      <button type="button" id="btn-export" class="tb-btn">Export</button>
       <span id="summary" class="summary" aria-live="polite"></span>
     </section>
 
@@ -76,6 +78,35 @@
         <div id="detail"></div>
       </div>
     </section>
+
+    <div id="modal-overlay" class="modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h2 id="modal-title">Import / Export</h2>
+          <button type="button" id="modal-close" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-row">
+          <label for="modal-mode">Mode:</label>
+          <select id="modal-mode">
+            <option value="import">Import</option>
+            <option value="export">Export</option>
+          </select>
+          <label for="modal-format">Format:</label>
+          <select id="modal-format">
+            <option value="json">JSON (round-trip)</option>
+            <option value="rfc-ascii">RFC ASCII art (export)</option>
+            <option value="aug-ascii">Augmented ASCII (import)</option>
+          </select>
+        </div>
+        <textarea id="modal-text" spellcheck="false" placeholder="Paste input here, or click Generate to populate from the active packet."></textarea>
+        <div id="modal-status" class="modal-status"></div>
+        <div class="modal-actions">
+          <button type="button" id="modal-generate">Generate</button>
+          <button type="button" id="modal-apply">Apply</button>
+          <button type="button" id="modal-copy">Copy</button>
+        </div>
+      </div>
+    </div>
 
     <footer>
       <p class="muted small">
