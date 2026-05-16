@@ -512,11 +512,15 @@ QUIC frame layout. Same schema, two diagrams.
 
 ## Format hub
 
-The renderer consumes PSML via `web/lib/psml/runtime-from-psml.ts`,
-which lowers PSML's recursive Container tree to a flat `Field[]` with
-TLV/subfield/chain extras populated for the editor components. The
-inverse `web/lib/psml/runtime-to-psml.ts` lifts the renderer's runtime
-model back to PSML for export. The format hub itself is three files:
+After Round 6 the diagram layout is computed by `resolveLayout` directly
+from PSML — there is no separate runtime resolver. For the React editing
+components (TLV editor, chain editor, detail panel) PSML is lowered to a
+renderer-shaped Packet by `web/lib/psml/psml-to-renderer.ts`, which
+collapses Group nodes to subfields and promotes Repeat<Switch> bodies into
+a TLV catalog / chain catalog the editors can mutate. The same module
+exposes `rendererToPsml` for the inverse lift (used by the import/export
+drawer and the worksheet generator). The format hub itself is three
+files:
 
 - `web/lib/formats/json.ts` — `toJson(psmlPacket, env)` /
   `fromJson(text)`.

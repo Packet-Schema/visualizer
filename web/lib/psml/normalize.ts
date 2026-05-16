@@ -1,7 +1,6 @@
-// PSML 0.2 — Packet Schema Markup Language.
+// PSML 0.3 — Packet Schema Markup Language.
 // Normalize a PSML Packet into a flat NormalizedField[] that the cell-layout
-// algorithm in `web/lib/psml/layout.ts` (and its runtime sibling
-// `runtime-resolver.ts`) can consume directly.
+// algorithm in `web/lib/psml/layout.ts` can consume directly.
 //
 // Walks the Container tree depth-first. Repeat is expanded by evaluating its
 // count expression against the current env. Switch is dispatched by the

@@ -5,14 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { toAscii } from "../../lib/formats/rfc-ascii";
 import { initialEnv, normalize } from "../../lib/psml/normalize";
-import { GENERATED_PRESETS } from "../../lib/psml/presets.generated";
-import { MANUAL_PRESETS } from "../../lib/psml/presets";
+import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
 import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psml/types";
-
-const ALL_PRESETS: Record<string, Packet> = {
-  ...MANUAL_PRESETS,
-  ...GENERATED_PRESETS,
-};
 
 function envWithRefs(p: Packet): PacketEnv {
   const env = initialEnv(p);
@@ -86,8 +80,8 @@ describe("toAscii — every preset is well-formed", () => {
 
 describe("toAscii — canonical IPv4 snapshot", () => {
   it("emits the canonical IPv4 diagram for default IHL", () => {
-    const env = envWithRefs(MANUAL_PRESETS.ipv4);
-    const text = toAscii(MANUAL_PRESETS.ipv4, env);
+    const env = envWithRefs(ALL_PRESETS.ipv4);
+    const text = toAscii(ALL_PRESETS.ipv4, env);
     expect(text).toBe(
       [
         " 0               1               2               3",
@@ -110,7 +104,7 @@ describe("toAscii — canonical IPv4 snapshot", () => {
 
 describe("toAscii — Ethernet trailing partial row", () => {
   it("final separator width matches the EtherType row (16 bits, not 32)", () => {
-    const text = toAscii(MANUAL_PRESETS.ethernet, envWithRefs(MANUAL_PRESETS.ethernet));
+    const text = toAscii(ALL_PRESETS.ethernet, envWithRefs(ALL_PRESETS.ethernet));
     const lines = text.split("\n");
     // Last separator line spans only the EtherType row.
     const last = lines[lines.length - 1];
@@ -124,7 +118,7 @@ describe("toAscii — Ethernet trailing partial row", () => {
 
 describe("toAscii — subfield expansion", () => {
   it("flag subfields appear when the preset uses a Group of 1-bit fields", () => {
-    const text = toAscii(MANUAL_PRESETS.ipv4, envWithRefs(MANUAL_PRESETS.ipv4));
+    const text = toAscii(ALL_PRESETS.ipv4, envWithRefs(ALL_PRESETS.ipv4));
     // The IPv4 flagsBits group expands into R/DF/MF — abbreviated to single
     // letters by the truncating label printer.
     expect(text).toMatch(/\|R\|D\|M\|/);
@@ -170,7 +164,7 @@ describe("toAscii — label truncation", () => {
 
 describe("toAscii — UDP layout (sanity)", () => {
   it("UDP fields use the right widths", () => {
-    const text = toAscii(MANUAL_PRESETS.udp, envWithRefs(MANUAL_PRESETS.udp));
+    const text = toAscii(ALL_PRESETS.udp, envWithRefs(ALL_PRESETS.udp));
     expect(text).toContain("Source Port");
     expect(text).toContain("Destination Port");
     expect(text).toContain("Length");

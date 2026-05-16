@@ -11,13 +11,12 @@ import {
 } from "../../lib/worksheet-typst";
 import { WORKSHEET_TYPST_SOURCE } from "../../lib/worksheet-template";
 import { initialEnv } from "../../lib/psml/normalize";
-import { MANUAL_PRESETS } from "../../lib/psml/presets";
-import { GENERATED_PRESETS } from "../../lib/psml/presets.generated";
+import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
 import type { Packet } from "../../lib/psml/types";
 
 describe("buildWorksheetPayload", () => {
   it("emits name, description, and a flat field list for UDP", () => {
-    const udp = MANUAL_PRESETS.udp;
+    const udp = ALL_PRESETS.udp;
     const payload = buildWorksheetPayload(udp, initialEnv(udp));
     expect(payload.name).toBe(udp.name);
     expect(payload.description).toBe(udp.description);
@@ -33,7 +32,7 @@ describe("buildWorksheetPayload", () => {
   });
 
   it("includes per-field bits and offsets (the answer-key payload)", () => {
-    const ethernet = MANUAL_PRESETS.ethernet;
+    const ethernet = ALL_PRESETS.ethernet;
     const payload = buildWorksheetPayload(ethernet);
     // dstMac (48), srcMac (48), etherType (16)
     expect(payload.fields).toHaveLength(3);
@@ -51,7 +50,7 @@ describe("buildWorksheetPayload", () => {
 
   it("handles a preset whose layout segments span row boundaries", () => {
     // IPv6 has 64-bit srcAddr / dstAddr spanning two 32-bit rows each.
-    const ipv6 = GENERATED_PRESETS.ipv6;
+    const ipv6 = ALL_PRESETS.ipv6;
     const env = initialEnv(ipv6);
     env.set("nextHeader_chainCount", 0);
     env.set("nextHeader_proto", 0);
@@ -170,14 +169,14 @@ describe("buildWorksheetPayload — PSML 0.3 Encrypted blocks", () => {
 
 describe("generateWorksheetPdf — Node guard", () => {
   it("throws the documented browser-only error when run in Node", async () => {
-    const udp = MANUAL_PRESETS.udp;
+    const udp = ALL_PRESETS.udp;
     await expect(generateWorksheetPdf(udp, initialEnv(udp))).rejects.toThrow(
       /WASM-backed compilation requires a browser environment/,
     );
   });
 
   it("the same error message also fires with the answers option toggled", async () => {
-    const udp = MANUAL_PRESETS.udp;
+    const udp = ALL_PRESETS.udp;
     await expect(
       generateWorksheetPdf(udp, initialEnv(udp), { answers: true }),
     ).rejects.toThrow(/WASM-backed compilation/);
