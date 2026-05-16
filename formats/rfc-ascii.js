@@ -19,7 +19,9 @@ export function toAscii(packet, controllers = {}) {
   const layout = resolvePacket(packet, controllers);
   const rowBits = packet.rowBits;
 
-  // Group cells by row. Each row is a list of {name, startBit, endBit, isFirst}.
+  // Group cells by row. TLV-expanded cells (those whose field carries a
+  // tlvParent) get their parent label replaced by the per-sub-field labels so
+  // each row shows Kind/Length/Value rather than the outer block name.
   const rowsMap = new Map();
   for (const cell of layout.cells) {
     if (!rowsMap.has(cell.row)) rowsMap.set(cell.row, []);
@@ -34,16 +36,42 @@ export function toAscii(packet, controllers = {}) {
 
   for (const r of rowIndices) {
     const row = rowsMap.get(r).sort((a, b) => a.startBit - b.startBit);
-    // For trailing partial rows (e.g. Ethernet's 14-byte header in a 32-bit
-    // grid leaves the final row only 16 bits wide), use the actual row width
-    // for both the field line and its closing separator.
-    const last = row[row.length - 1];
+    // Expand TLV / chain cells with subCells into per-subfield segments so the
+    // ASCII diagram shows the inner Kind/Length/Value fields directly rather
+    // than the enclosing block name.
+    const expanded = expandTlvCells(row);
+    const last = expanded[expanded.length - 1];
     const rowWidth = last.endBit + 1;
-    lines.push(fieldLine(row, rowWidth));
+    lines.push(fieldLine(expanded, rowWidth));
     lines.push(separator(rowWidth));
   }
 
   return lines.join("\n");
+}
+
+// If a cell came from a TLV-expanded (or chain-expanded) virtual field, drop
+// the parent box and emit one slim cell per sub-cell instead. Non-TLV cells
+// pass through unchanged.
+function expandTlvCells(row) {
+  const out = [];
+  for (const cell of row) {
+    const virtualParent = cell.field
+      && (cell.field.tlvParent || cell.field.chainBlock);
+    if (virtualParent && cell.subCells && cell.subCells.length > 0) {
+      const subs = cell.subCells.slice().sort((a, b) => a.startBit - b.startBit);
+      for (const sub of subs) {
+        out.push({
+          startBit: sub.startBit,
+          endBit: sub.endBit,
+          isFirst: sub.isFirst,
+          field: { name: sub.subfield.name },
+        });
+      }
+    } else {
+      out.push(cell);
+    }
+  }
+  return out;
 }
 
 // Top scale: " 0                   1                   2                   3"

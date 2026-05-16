@@ -11,6 +11,15 @@
 //      parent's bits (validated by validatePacket / resolvePacket). Subfields are
 //      laid out left-to-right within the parent's bit range. Use the synthetic
 //      id `parent.id + ":" + subfield.id` to address a subfield from the UI.
+//   - `tlv: { catalog, instances, padToBoundary?, drivesController?, bytesPerUnit? }`
+//      declares the field as a recursive TLV container. The active `instances`
+//      array names the records currently attached. resolvePacket expands them
+//      into rendered sub-blocks (per-instance groups of kind/length/value
+//      sub-fields), and if `drivesController` is set, the total byte length
+//      drives that controller value (e.g. IHL / Data Offset). See resolveTlv().
+//   - `chainCatalog` + chainInstances (packet-level): on a `Next Header` style
+//      field, allows the user to attach a chain of extension headers that are
+//      laid out as additional rows after the fixed header.
 //
 // Variable-length fields reference a controller via `lengthFrom`: a function
 // (controllerValue) => bits. This keeps the model declarative but flexible.
@@ -75,7 +84,66 @@ export const PACKETS = {
         variable: true, lengthFrom: "ihl",
         // (IHL - 5) 32-bit words = (IHL - 5) * 32 bits
         toBits: (ihl) => Math.max(0, (ihl - 5) * 32),
-        description: "Variable-length IPv4 options (e.g. Record Route, Timestamp) — present only when IHL > 5. Rarely used in modern networks; many routers slow-path or drop packets that carry options. [RFC 791]" },
+        description: "Variable-length IPv4 options (e.g. Record Route, Timestamp) — present only when IHL > 5. Rarely used in modern networks; many routers slow-path or drop packets that carry options. [RFC 791]",
+        tlv: {
+          catalog: [
+            { kind: 0, name: "EOL", bits: 8, description: "End of Option List — final option; remaining option bytes are padding. [RFC 791]",
+              fields: [{ id: "type", name: "Type=0", bits: 8 }] },
+            { kind: 1, name: "NOP", bits: 8, description: "No Operation — single-byte padding used to align the next option on a 4-byte boundary. [RFC 791]",
+              fields: [{ id: "type", name: "Type=1", bits: 8 }] },
+            { kind: 7, name: "Record Route", description: "Record Route — each router along the path inserts its IP address. [RFC 791]",
+              defaultExtras: { count: 3 },
+              variableCount: { key: "count", min: 1, max: 9, label: "Address slots" },
+              fieldsFor: ({ count }) => [
+                { id: "type", name: "Type=7", bits: 8 },
+                { id: "length", name: `Len=${3 + count * 4}`, bits: 8 },
+                { id: "pointer", name: "Ptr", bits: 8 },
+                ...Array.from({ length: count }, (_, i) => ({
+                  id: `addr${i}`, name: `Addr ${i + 1}`, bits: 32,
+                })),
+              ] },
+            { kind: 131, name: "Loose Source Route", description: "Loose Source and Record Route — sender lists intermediate routers but other hops are allowed in between. [RFC 791]",
+              defaultExtras: { count: 2 },
+              variableCount: { key: "count", min: 1, max: 9, label: "Address slots" },
+              fieldsFor: ({ count }) => [
+                { id: "type", name: "Type=131", bits: 8 },
+                { id: "length", name: `Len=${3 + count * 4}`, bits: 8 },
+                { id: "pointer", name: "Ptr", bits: 8 },
+                ...Array.from({ length: count }, (_, i) => ({
+                  id: `addr${i}`, name: `Addr ${i + 1}`, bits: 32,
+                })),
+              ] },
+            { kind: 137, name: "Strict Source Route", description: "Strict Source and Record Route — packet must traverse exactly the listed routers, in order. [RFC 791]",
+              defaultExtras: { count: 2 },
+              variableCount: { key: "count", min: 1, max: 9, label: "Address slots" },
+              fieldsFor: ({ count }) => [
+                { id: "type", name: "Type=137", bits: 8 },
+                { id: "length", name: `Len=${3 + count * 4}`, bits: 8 },
+                { id: "pointer", name: "Ptr", bits: 8 },
+                ...Array.from({ length: count }, (_, i) => ({
+                  id: `addr${i}`, name: `Addr ${i + 1}`, bits: 32,
+                })),
+              ] },
+            { kind: 68, name: "Timestamp", description: "Internet Timestamp — routers stamp their clock as the packet transits. [RFC 791]",
+              defaultExtras: { count: 2 },
+              variableCount: { key: "count", min: 1, max: 9, label: "Timestamp slots" },
+              fieldsFor: ({ count }) => [
+                { id: "type", name: "Type=68", bits: 8 },
+                { id: "length", name: `Len=${4 + count * 4}`, bits: 8 },
+                { id: "pointer", name: "Ptr", bits: 8 },
+                { id: "oflwflg", name: "Oflw/Flg", bits: 8 },
+                ...Array.from({ length: count }, (_, i) => ({
+                  id: `ts${i}`, name: `TS ${i + 1}`, bits: 32,
+                })),
+              ] },
+          ],
+          instances: [],
+          padToBoundary: 32,
+          drivesController: "ihl",
+          bytesPerUnit: 4,
+          baseControllerValue: 5,
+        },
+      },
     ],
   },
 
@@ -127,7 +195,52 @@ export const PACKETS = {
       { id: "options", name: "Options", color: "amber", category: "variable",
         variable: true, lengthFrom: "tcpDataOffset",
         toBits: (off) => Math.max(0, (off - 5) * 32),
-        description: "TCP options carried in the header — MSS, Window Scale, SACK Permitted, SACK blocks, Timestamps, etc. Present when Data Offset > 5; up to 40 bytes. [RFC 9293, RFC 7323]" },
+        description: "TCP options carried in the header — MSS, Window Scale, SACK Permitted, SACK blocks, Timestamps, etc. Present when Data Offset > 5; up to 40 bytes. [RFC 9293, RFC 7323]",
+        tlv: {
+          catalog: [
+            { kind: 0, name: "EOL", bits: 8, description: "End of Option List — marks the final option; remainder padded with zero bytes. [RFC 9293]",
+              fields: [{ id: "kind", name: "Kind=0", bits: 8 }] },
+            { kind: 1, name: "NOP", bits: 8, description: "No Operation — single-byte padding so the next option can align on a 4-byte boundary. [RFC 9293]",
+              fields: [{ id: "kind", name: "Kind=1", bits: 8 }] },
+            { kind: 2, name: "MSS", description: "Maximum Segment Size — sent in SYN to advertise the largest payload this side can accept. [RFC 9293]",
+              fields: [
+                { id: "kind", name: "Kind=2", bits: 8 },
+                { id: "length", name: "Len=4", bits: 8 },
+                { id: "mss", name: "MSS", bits: 16 },
+              ] },
+            { kind: 3, name: "Window Scale", description: "Shift count for the Window field — multiplies advertised window by 2^N, allowing >64KB receive windows. [RFC 7323]",
+              fields: [
+                { id: "kind", name: "Kind=3", bits: 8 },
+                { id: "length", name: "Len=3", bits: 8 },
+                { id: "shift", name: "Shift", bits: 8 },
+              ] },
+            { kind: 4, name: "SACK Permitted", description: "Sender supports Selective Acknowledgments — usually negotiated in SYN/SYN-ACK. [RFC 2018]",
+              fields: [
+                { id: "kind", name: "Kind=4", bits: 8 },
+                { id: "length", name: "Len=2", bits: 8 },
+              ] },
+            { kind: 5, name: "SACK", description: "Selective ACK blocks — reports out-of-order data so the sender retransmits only what was lost. Each block is 8 bytes (left edge + right edge). [RFC 2018]",
+              fields: [
+                { id: "kind", name: "Kind=5", bits: 8 },
+                { id: "length", name: "Len=10", bits: 8 },
+                { id: "leftEdge", name: "Left Edge", bits: 32 },
+                { id: "rightEdge", name: "Right Edge", bits: 32 },
+              ] },
+            { kind: 8, name: "Timestamps", description: "Sender's TS Value plus echoed peer TS Value — used for RTT measurement and PAWS (Protect Against Wrapped Sequence numbers). [RFC 7323]",
+              fields: [
+                { id: "kind", name: "Kind=8", bits: 8 },
+                { id: "length", name: "Len=10", bits: 8 },
+                { id: "tsval", name: "TS Value", bits: 32 },
+                { id: "tsecr", name: "TS Echo Reply", bits: 32 },
+              ] },
+          ],
+          instances: [],
+          padToBoundary: 32,
+          drivesController: "tcpDataOffset",
+          bytesPerUnit: 4,
+          baseControllerValue: 5,
+        },
+      },
     ],
   },
 
@@ -217,7 +330,56 @@ export const PACKETS = {
       { id: "payloadLength", name: "Payload Length", bits: 16, color: "teal", category: "length",
         description: "Bytes of payload following this header, including any extension headers. 0 means a Jumbogram (length carried in a Hop-by-Hop option, allowing packets >65535 bytes). [RFC 8200, RFC 2675]" },
       { id: "nextHeader", name: "Next Header", bits: 8, color: "teal", category: "type",
-        description: "Type of the immediately following header — uses the same numbering as IPv4 Protocol. e.g. 6=TCP, 17=UDP, 58=ICMPv6, 0=Hop-by-Hop, 43=Routing, 44=Fragment, 50=ESP, 51=AH." },
+        description: "Type of the immediately following header — uses the same numbering as IPv4 Protocol. e.g. 6=TCP, 17=UDP, 58=ICMPv6, 0=Hop-by-Hop, 43=Routing, 44=Fragment, 50=ESP, 51=AH.",
+        chainCatalog: [
+          { proto: 0, name: "Hop-by-Hop Options", description: "Hop-by-Hop Options header — examined by every node along the path; first extension header if present. [RFC 8200 §4.3]",
+            fields: [
+              { id: "nextHeader", name: "Next Header", bits: 8 },
+              { id: "hdrExtLen", name: "Hdr Ext Len", bits: 8 },
+              { id: "options", name: "Options + padding", bits: 48 },
+            ] },
+          { proto: 43, name: "Routing", description: "Routing header — directs the packet through a list of intermediate nodes (deprecated Type 0 source-route; Type 4 is Segment Routing). [RFC 8200 §4.4]",
+            fields: [
+              { id: "nextHeader", name: "Next Header", bits: 8 },
+              { id: "hdrExtLen", name: "Hdr Ext Len", bits: 8 },
+              { id: "routingType", name: "Routing Type", bits: 8 },
+              { id: "segmentsLeft", name: "Segments Left", bits: 8 },
+              { id: "typeSpecific", name: "Type-Specific Data", bits: 32 },
+            ] },
+          { proto: 44, name: "Fragment", description: "Fragment header — IPv6 fragments are produced only by the source host, not by intermediate routers. [RFC 8200 §4.5]",
+            fields: [
+              { id: "nextHeader", name: "Next Header", bits: 8 },
+              { id: "reserved", name: "Reserved", bits: 8 },
+              { id: "fragOffset", name: "Frag Offset", bits: 13 },
+              { id: "res2", name: "Res", bits: 2 },
+              { id: "mFlag", name: "M", bits: 1 },
+              { id: "ident", name: "Identification", bits: 32 },
+            ] },
+          { proto: 60, name: "Destination Options", description: "Destination Options header — examined only by the packet's final destination(s). [RFC 8200 §4.6]",
+            fields: [
+              { id: "nextHeader", name: "Next Header", bits: 8 },
+              { id: "hdrExtLen", name: "Hdr Ext Len", bits: 8 },
+              { id: "options", name: "Options + padding", bits: 48 },
+            ] },
+          { proto: 51, name: "AH", description: "Authentication Header (IPsec) — provides integrity/authentication for the packet. [RFC 4302]",
+            fields: [
+              { id: "nextHeader", name: "Next Header", bits: 8 },
+              { id: "payloadLen", name: "Payload Len", bits: 8 },
+              { id: "reserved", name: "Reserved", bits: 16 },
+              { id: "spi", name: "SPI", bits: 32 },
+              { id: "seq", name: "Sequence Number", bits: 32 },
+              { id: "icv", name: "Integrity Check Value", bits: 96 },
+            ] },
+          { proto: 50, name: "ESP", description: "Encapsulating Security Payload (IPsec) — provides confidentiality and integrity by encrypting the payload. [RFC 4303]",
+            fields: [
+              { id: "spi", name: "SPI", bits: 32 },
+              { id: "seq", name: "Sequence Number", bits: 32 },
+              { id: "payload", name: "Encrypted Payload (var)", bits: 64 },
+            ] },
+        ],
+        chainInstances: [],
+        chainFinalProto: 6,
+      },
       { id: "hopLimit", name: "Hop Limit", bits: 8, color: "amber", category: "identifier",
         description: "Hop counter decremented by each forwarding router; the packet is dropped at 0. IPv6 equivalent of IPv4 TTL; default is typically 64. [RFC 8200]" },
       { id: "srcAddr", name: "Source Address", bits: 128, color: "blue", category: "addressing",
@@ -311,6 +473,92 @@ export const PACKETS = {
     ],
   },
 
+  tlsClientHello: {
+    name: "TLS ClientHello",
+    rowBits: 32,
+    byteOrder: "Network byte order (big-endian, MSB-first). All length prefixes are big-endian; vectors are length-prefixed per the TLS presentation language (RFC 8446 §3.4).",
+    description: "TLS 1.3 ClientHello handshake message (RFC 8446 §4.1.2). Wraps inside a TLS Record (Content Type=22). Extensions are a TLV list — add SNI, supported_versions, supported_groups, key_share, ALPN as needed.",
+    fields: [
+      { id: "msgType", name: "Handshake Type", bits: 8, color: "blue", category: "type",
+        description: "Handshake message type — 1 = ClientHello, 2 = ServerHello, etc. [RFC 8446 §4]" },
+      { id: "length", name: "Handshake Length", bits: 24, color: "teal", category: "length",
+        description: "Length of the handshake message body that follows (legacy_version through extensions). [RFC 8446 §4]" },
+      { id: "legacyVersion", name: "legacy_version", bits: 16, color: "violet", category: "type",
+        description: "Frozen at 0x0303 (TLS 1.2) for middlebox compatibility — the actual negotiated version is conveyed via the supported_versions extension. [RFC 8446 §4.1.2]" },
+      { id: "random", name: "random", bits: 256, color: "blue", category: "identifier",
+        description: "32 cryptographically random bytes contributed by the client; mixed into key derivation. [RFC 8446 §4.1.2]" },
+      { id: "sessionIdLen", name: "session_id length", bits: 8, color: "teal", category: "length",
+        description: "Length of the legacy session_id (0 in pure TLS 1.3, but commonly 32 for middlebox compatibility). [RFC 8446 §4.1.2]" },
+      { id: "sessionId", name: "session_id", bits: 256, color: "indigo", category: "identifier",
+        description: "Legacy session identifier echoed by the server in its ServerHello — enables middleboxes that expected TLS 1.2 to behave normally. [RFC 8446 §4.1.2]" },
+      { id: "cipherSuitesLen", name: "cipher_suites length", bits: 16, color: "teal", category: "length",
+        description: "Length in bytes of the cipher_suites vector that follows. [RFC 8446 §4.1.2]" },
+      { id: "cipherSuites", name: "cipher_suites", bits: 32, color: "amber", category: "type",
+        description: "Ordered list of 16-bit cipher suite identifiers the client supports — e.g. 0x1301 = TLS_AES_128_GCM_SHA256. [RFC 8446 §4.1.2]" },
+      { id: "compMethodsLen", name: "compression length", bits: 8, color: "teal", category: "length",
+        description: "Length of the legacy compression_methods vector. Must be 1 in TLS 1.3 (compression is forbidden). [RFC 8446 §4.1.2]" },
+      { id: "compMethods", name: "compression_methods", bits: 8, color: "slate", category: "reserved",
+        description: "Legacy compression methods — must be the single byte 0x00 (null) in TLS 1.3. [RFC 8446 §4.1.2]" },
+      { id: "extensionsLen", name: "extensions length", bits: 16, color: "teal", category: "length",
+        description: "Total length in bytes of the extensions block that follows.",
+        controlsLength: "tlsExtensionsLen", defaultValue: 0, min: 0, max: 8192 },
+      { id: "extensions", name: "Extensions", color: "amber", category: "variable",
+        variable: true, lengthFrom: "tlsExtensionsLen",
+        toBits: (n) => Math.max(0, n * 8),
+        description: "Sequence of TLS extensions (Type, Length, Value). Each extension carries its own internal layout. [RFC 8446 §4.2]",
+        tlv: {
+          catalog: [
+            { kind: 0, name: "server_name (SNI)", description: "Server Name Indication — tells the server which virtual host the client wants so it can pick the right certificate. [RFC 6066]",
+              fields: [
+                { id: "type", name: "Type=0", bits: 16 },
+                { id: "length", name: "Ext Len", bits: 16 },
+                { id: "listLen", name: "List Len", bits: 16 },
+                { id: "nameType", name: "Name Type=0", bits: 8 },
+                { id: "nameLen", name: "Name Len", bits: 16 },
+                { id: "hostname", name: "host_name (var)", bits: 96 },
+              ] },
+            { kind: 16, name: "ALPN", description: "Application-Layer Protocol Negotiation — client lists protocols it can speak (e.g. h2, http/1.1). [RFC 7301]",
+              fields: [
+                { id: "type", name: "Type=16", bits: 16 },
+                { id: "length", name: "Ext Len", bits: 16 },
+                { id: "listLen", name: "Proto List Len", bits: 16 },
+                { id: "protoLen", name: "Proto Len", bits: 8 },
+                { id: "protocol", name: "protocol (var)", bits: 16 },
+              ] },
+            { kind: 10, name: "supported_groups", description: "Lists the (EC)DHE groups the client supports for key exchange — e.g. x25519, secp256r1. [RFC 8446 §4.2.7]",
+              fields: [
+                { id: "type", name: "Type=10", bits: 16 },
+                { id: "length", name: "Ext Len", bits: 16 },
+                { id: "listLen", name: "List Len", bits: 16 },
+                { id: "groups", name: "named_group_list", bits: 32 },
+              ] },
+            { kind: 43, name: "supported_versions", description: "Lists TLS versions the client supports — this is where TLS 1.3 (0x0304) is actually advertised. [RFC 8446 §4.2.1]",
+              fields: [
+                { id: "type", name: "Type=43", bits: 16 },
+                { id: "length", name: "Ext Len", bits: 16 },
+                { id: "vListLen", name: "Versions Len", bits: 8 },
+                { id: "versions", name: "versions", bits: 16 },
+              ] },
+            { kind: 51, name: "key_share", description: "Carries the client's (EC)DHE public key share(s); enables a 1-RTT handshake. [RFC 8446 §4.2.8]",
+              fields: [
+                { id: "type", name: "Type=51", bits: 16 },
+                { id: "length", name: "Ext Len", bits: 16 },
+                { id: "listLen", name: "Shares Len", bits: 16 },
+                { id: "group", name: "group", bits: 16 },
+                { id: "keyLen", name: "key Len", bits: 16 },
+                { id: "key", name: "key_exchange (var)", bits: 256 },
+              ] },
+          ],
+          instances: [],
+          padToBoundary: 8,
+          drivesController: "tlsExtensionsLen",
+          bytesPerUnit: 1,
+          baseControllerValue: 0,
+        },
+      },
+    ],
+  },
+
   quicShort: {
     name: "QUIC Short Header (1-RTT)",
     rowBits: 32,
@@ -364,32 +612,132 @@ export const PACKETS = {
 // their parent's bit width. Throws a clear error on mismatch.
 export function validatePacket(packet) {
   for (const field of packet.fields) {
-    if (!field.subfields) continue;
-    if (field.variable) {
-      throw new Error(
-        `Packet "${packet.name}": field "${field.id}" is variable-length and cannot have subfields.`
-      );
-    }
-    const sum = field.subfields.reduce((acc, sf) => acc + sf.bits, 0);
-    if (sum !== field.bits) {
-      throw new Error(
-        `Packet "${packet.name}": subfields of "${field.id}" sum to ${sum} bits ` +
-        `but parent declares ${field.bits} bits.`
-      );
-    }
-    for (const sf of field.subfields) {
-      if (!Number.isInteger(sf.bits) || sf.bits <= 0) {
+    if (field.subfields) {
+      if (field.variable) {
         throw new Error(
-          `Packet "${packet.name}": subfield "${field.id}.${sf.id}" must have positive integer bits, got ${sf.bits}.`
+          `Packet "${packet.name}": field "${field.id}" is variable-length and cannot have subfields.`
+        );
+      }
+      const sum = field.subfields.reduce((acc, sf) => acc + sf.bits, 0);
+      if (sum !== field.bits) {
+        throw new Error(
+          `Packet "${packet.name}": subfields of "${field.id}" sum to ${sum} bits ` +
+          `but parent declares ${field.bits} bits.`
+        );
+      }
+      for (const sf of field.subfields) {
+        if (!Number.isInteger(sf.bits) || sf.bits <= 0) {
+          throw new Error(
+            `Packet "${packet.name}": subfield "${field.id}.${sf.id}" must have positive integer bits, got ${sf.bits}.`
+          );
+        }
+      }
+    }
+    if (field.tlv) {
+      if (!Array.isArray(field.tlv.catalog) || field.tlv.catalog.length === 0) {
+        throw new Error(
+          `Packet "${packet.name}": field "${field.id}" has tlv but empty catalog.`
         );
       }
     }
   }
 }
 
+// Resolve the bit layout of a TLV field given its current instances.
+// Returns { totalBits, blocks: [{ kind, name, bits, fields: [{id,name,bits}], extras? }] }.
+// `extras` carries per-instance state (e.g. Record Route address count) so the
+// renderer/UI/exporters can round-trip it.
+export function resolveTlv(field, instances) {
+  if (!field || !field.tlv) return { totalBits: 0, blocks: [] };
+  const blocks = [];
+  let totalBits = 0;
+  const catalogByKind = new Map(field.tlv.catalog.map((c) => [c.kind, c]));
+
+  for (const inst of instances || []) {
+    const entry = catalogByKind.get(inst.kind);
+    if (!entry) continue;
+    const extras = { ...(entry.defaultExtras || {}), ...(inst.extras || {}) };
+    const blockFields = typeof entry.fieldsFor === "function"
+      ? entry.fieldsFor(extras)
+      : entry.fields;
+    if (!blockFields || blockFields.length === 0) continue;
+    const bits = blockFields.reduce((acc, f) => acc + f.bits, 0);
+    blocks.push({
+      kind: entry.kind,
+      name: entry.name,
+      bits,
+      fields: blockFields,
+      extras,
+      description: entry.description || "",
+      variableCount: entry.variableCount || null,
+    });
+    totalBits += bits;
+  }
+
+  // Pad with zero/NOP-equivalent bits to reach the requested boundary.
+  const pad = field.tlv.padToBoundary || 0;
+  if (pad > 0 && totalBits % pad !== 0) {
+    const padBits = pad - (totalBits % pad);
+    blocks.push({
+      kind: null,
+      name: "Padding",
+      bits: padBits,
+      fields: [{ id: "padding", name: "Padding", bits: padBits }],
+      extras: {},
+      description: "Zero-bit padding inserted to round the TLV block up to the required boundary.",
+      isPadding: true,
+    });
+    totalBits += padBits;
+  }
+  return { totalBits, blocks };
+}
+
+// Compute the controller value driven by a TLV field's current instances.
+// e.g. for TCP options: ((40 bytes total of header) / 4) = 10 -> Data Offset = 10.
+export function tlvControllerValue(field, instances) {
+  if (!field || !field.tlv || !field.tlv.drivesController) return null;
+  const { totalBits } = resolveTlv(field, instances);
+  const bytes = Math.ceil(totalBits / 8);
+  const unit = field.tlv.bytesPerUnit || 1;
+  const base = field.tlv.baseControllerValue || 0;
+  return base + Math.ceil(bytes / unit);
+}
+
+// Resolve a chain (IPv6 extension headers) into a sequence of additional
+// "virtual" fields to be laid out after the parent packet. Each entry returned
+// describes one row-group with its own ordered field list.
+export function resolveChain(packet) {
+  const out = [];
+  for (const field of packet.fields) {
+    if (!field.chainCatalog || !field.chainInstances) continue;
+    const catalogByProto = new Map(field.chainCatalog.map((c) => [c.proto, c]));
+    for (let i = 0; i < field.chainInstances.length; i++) {
+      const inst = field.chainInstances[i];
+      const entry = catalogByProto.get(inst.proto);
+      if (!entry) continue;
+      const bits = entry.fields.reduce((acc, f) => acc + f.bits, 0);
+      out.push({
+        chainOwnerFieldId: field.id,
+        chainIndex: i,
+        proto: entry.proto,
+        name: entry.name,
+        bits,
+        fields: entry.fields,
+        description: entry.description || "",
+      });
+    }
+  }
+  return out;
+}
+
 // Resolve a packet definition + controller state into laid-out cells.
 // Cells with subfields get a `subCells` array, each entry positioned within
 // the parent cell's segment using bit offsets (relative to the parent's start).
+//
+// TLV-bearing fields (`field.tlv.instances`) are expanded into a sequence of
+// virtual sub-fields (one per TLV record), each its own cell with kind/length/
+// value sub-cells. The parent field itself is not rendered as a striped box
+// when at least one TLV instance is present.
 export function resolvePacket(packet, state) {
   validatePacket(packet);
 
@@ -397,6 +745,36 @@ export function resolvePacket(packet, state) {
   let bitPos = 0;
 
   for (const field of packet.fields) {
+    // TLV expansion path.
+    if (field.tlv && Array.isArray(field.tlv.instances) && field.tlv.instances.length > 0) {
+      const resolved = resolveTlv(field, field.tlv.instances);
+      for (let bi = 0; bi < resolved.blocks.length; bi++) {
+        const block = resolved.blocks[bi];
+        const virtualField = {
+          id: `${field.id}#${bi}`,
+          name: block.name,
+          color: field.color,
+          category: field.category,
+          bits: block.bits,
+          description: block.description,
+          // Mark so app/renderer/exporters can recognise TLV-expanded blocks.
+          tlvParent: field,
+          tlvBlock: block,
+          tlvBlockIndex: bi,
+          // Provide subfields so the renderer's existing subCells path emits
+          // them in the lower half of each row segment.
+          subfields: block.fields.map((sf) => ({
+            id: sf.id,
+            name: sf.name,
+            bits: sf.bits,
+            description: sf.description || "",
+          })),
+        };
+        bitPos = emitField(packet, cells, virtualField, block.bits, bitPos);
+      }
+      continue;
+    }
+
     let bits;
     if (field.variable) {
       const controlValue = state[field.lengthFrom];
@@ -406,72 +784,95 @@ export function resolvePacket(packet, state) {
     }
     if (bits === 0) continue;
 
-    let remaining = bits;
-    let segmentIndex = 0;
-    const totalSegments = computeSegmentCount(bitPos, bits, packet.rowBits);
-    // Track absolute bit position of the parent's start so we can compute
-    // each subfield's offset relative to the parent.
-    const parentStartBitPos = bitPos;
-    const parentSegments = [];
+    bitPos = emitField(packet, cells, field, bits, bitPos);
+  }
 
-    while (remaining > 0) {
-      const row = Math.floor(bitPos / packet.rowBits);
-      const colInRow = bitPos % packet.rowBits;
-      const take = Math.min(remaining, packet.rowBits - colInRow);
-      const cell = {
-        field,
-        bitsTotal: bits,
-        row,
-        startBit: colInRow,
-        endBit: colInRow + take - 1,
-        segmentIndex,
-        totalSegments,
-        isFirst: segmentIndex === 0,
-        isLast: remaining === take,
-        // Bit offset (relative to the start of the field) covered by this cell.
-        fieldStartOffset: bits - remaining,
-        fieldEndOffset: bits - remaining + take - 1,
-      };
-      cells.push(cell);
-      parentSegments.push(cell);
-      remaining -= take;
-      bitPos += take;
-      segmentIndex++;
-    }
+  // Chain blocks (e.g. IPv6 extension headers) appended after the fixed header.
+  const chainBlocks = resolveChain(packet);
+  for (const block of chainBlocks) {
+    // Round bitPos up to the next rowBits boundary so each extension header
+    // starts on its own row, matching how RFCs depict them.
+    const rem = bitPos % packet.rowBits;
+    if (rem !== 0) bitPos += packet.rowBits - rem;
+    const virtualField = {
+      id: `${block.chainOwnerFieldId}@chain#${block.chainIndex}`,
+      name: block.name,
+      color: "amber",
+      category: "type",
+      bits: block.bits,
+      description: block.description,
+      chainBlock: block,
+      subfields: block.fields.map((sf) => ({
+        id: sf.id,
+        name: sf.name,
+        bits: sf.bits,
+      })),
+    };
+    bitPos = emitField(packet, cells, virtualField, block.bits, bitPos);
+  }
 
-    // Distribute subfields across the parent's segments.
-    if (field.subfields && field.subfields.length > 0) {
-      let sfOffset = 0;
-      for (const sf of field.subfields) {
-        const sfStart = sfOffset;
-        const sfEnd = sfOffset + sf.bits - 1;
-        for (const seg of parentSegments) {
-          // Intersect [sfStart, sfEnd] with [seg.fieldStartOffset, seg.fieldEndOffset]
-          const lo = Math.max(sfStart, seg.fieldStartOffset);
-          const hi = Math.min(sfEnd, seg.fieldEndOffset);
-          if (lo > hi) continue;
-          // Map into segment-local bit columns (within seg.startBit..seg.endBit).
-          const colStart = seg.startBit + (lo - seg.fieldStartOffset);
-          const colEnd = seg.startBit + (hi - seg.fieldStartOffset);
-          if (!seg.subCells) seg.subCells = [];
-          seg.subCells.push({
-            parentField: field,
-            subfield: sf,
-            // Synthetic id used by the renderer for data-field-id and click routing.
-            id: `${field.id}:${sf.id}`,
-            startBit: colStart,
-            endBit: colEnd,
-            // Whether this is the first/last segment of the subfield (for label placement).
-            isFirst: lo === sfStart,
-            isLast: hi === sfEnd,
-            bitsTotal: sf.bits,
-          });
-        }
-        sfOffset += sf.bits;
+  return { cells, totalBits: bitPos };
+}
+
+// Emit cells for one field of the given bit-width starting at bitPos.
+// Returns the new bitPos. Also distributes subfields into seg.subCells.
+function emitField(packet, cells, field, bits, bitPos) {
+  let remaining = bits;
+  let segmentIndex = 0;
+  const totalSegments = computeSegmentCount(bitPos, bits, packet.rowBits);
+  const parentSegments = [];
+
+  while (remaining > 0) {
+    const row = Math.floor(bitPos / packet.rowBits);
+    const colInRow = bitPos % packet.rowBits;
+    const take = Math.min(remaining, packet.rowBits - colInRow);
+    const cell = {
+      field,
+      bitsTotal: bits,
+      row,
+      startBit: colInRow,
+      endBit: colInRow + take - 1,
+      segmentIndex,
+      totalSegments,
+      isFirst: segmentIndex === 0,
+      isLast: remaining === take,
+      fieldStartOffset: bits - remaining,
+      fieldEndOffset: bits - remaining + take - 1,
+    };
+    cells.push(cell);
+    parentSegments.push(cell);
+    remaining -= take;
+    bitPos += take;
+    segmentIndex++;
+  }
+
+  if (field.subfields && field.subfields.length > 0) {
+    let sfOffset = 0;
+    for (const sf of field.subfields) {
+      const sfStart = sfOffset;
+      const sfEnd = sfOffset + sf.bits - 1;
+      for (const seg of parentSegments) {
+        const lo = Math.max(sfStart, seg.fieldStartOffset);
+        const hi = Math.min(sfEnd, seg.fieldEndOffset);
+        if (lo > hi) continue;
+        const colStart = seg.startBit + (lo - seg.fieldStartOffset);
+        const colEnd = seg.startBit + (hi - seg.fieldStartOffset);
+        if (!seg.subCells) seg.subCells = [];
+        seg.subCells.push({
+          parentField: field,
+          subfield: sf,
+          id: `${field.id}:${sf.id}`,
+          startBit: colStart,
+          endBit: colEnd,
+          isFirst: lo === sfStart,
+          isLast: hi === sfEnd,
+          bitsTotal: sf.bits,
+        });
       }
+      sfOffset += sf.bits;
     }
   }
-  return { cells, totalBits: bitPos };
+  return bitPos;
 }
 
 function computeSegmentCount(startPos, bits, rowBits) {
@@ -489,11 +890,32 @@ function computeSegmentCount(startPos, bits, rowBits) {
 }
 
 // Initial controller state for a packet (uses each controller field's defaultValue).
+// Also reconciles any TLV-driven controller against the field's current
+// instances so the initial state is internally consistent.
 export function initialState(packet) {
   const state = {};
   for (const field of packet.fields) {
     if (field.controlsLength) {
       state[field.controlsLength] = field.defaultValue ?? 0;
+    }
+  }
+  for (const field of packet.fields) {
+    if (field.tlv && field.tlv.drivesController) {
+      const v = tlvControllerValue(field, field.tlv.instances || []);
+      if (v != null) state[field.tlv.drivesController] = v;
+    }
+  }
+  return state;
+}
+
+// Recompute every TLV-driven controller. Mutates the given state and returns it.
+// Call after the user adds/removes/edits a TLV or chain instance so the
+// controller fields stay in sync with the new layout.
+export function syncTlvControllers(packet, state) {
+  for (const field of packet.fields) {
+    if (field.tlv && field.tlv.drivesController) {
+      const v = tlvControllerValue(field, field.tlv.instances || []);
+      if (v != null) state[field.tlv.drivesController] = v;
     }
   }
   return state;
