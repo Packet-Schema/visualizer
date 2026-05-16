@@ -32,6 +32,13 @@ import {
   deleteCustomPreset,
 } from "@/lib/psml/custom-presets";
 import {
+  buildMyPresetsBundle,
+  downloadBlob,
+  isMyPresetsBundle,
+  readFileAsText,
+  uniqueKey,
+} from "@/lib/preset-file-io";
+import {
   Toolbar,
   FieldRow,
   ContainerRow,
@@ -351,6 +358,62 @@ export default function PacketViewer() {
     setShowJsonPane(false);
   }, [activePsmlPacket]);
 
+  // Bulk export every `custom:<name>` preset into a single JSON envelope so
+  // users can move their library between browsers / devices.
+  const handleExportCustomPresets = useCallback(() => {
+    const bundle = buildMyPresetsBundle(customPresets);
+    downloadBlob(
+      "my-presets.json",
+      "application/json",
+      JSON.stringify(bundle, null, 2),
+    );
+  }, [customPresets]);
+
+  // Hidden input used by the bulk-import flow. The PresetPicker icon button
+  // delegates to a click on this element so the file picker stays a single
+  // OS-native dialog without dragging in another modal.
+  const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
+  const handleImportCustomPresetsClick = useCallback(() => {
+    bulkImportInputRef.current?.click();
+  }, []);
+  const handleImportCustomPresetsFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const text = await readFileAsText(file);
+        const parsed = JSON.parse(text);
+        if (!isMyPresetsBundle(parsed)) {
+          if (typeof window !== "undefined") {
+            window.alert(
+              "That file doesn't look like a my-presets bundle (missing 'presets' map).",
+            );
+          }
+          return;
+        }
+        const existing = new Set(Object.keys(loadCustomPresets()));
+        let imported = 0;
+        for (const [rawKey, pkt] of Object.entries(parsed.presets)) {
+          if (!pkt || typeof pkt !== "object") continue;
+          const key = uniqueKey(rawKey, existing);
+          existing.add(key);
+          saveCustomPreset(key, pkt as PsmlPacket);
+          imported++;
+        }
+        setCustomPresets(loadCustomPresets());
+        if (typeof window !== "undefined") {
+          window.alert(`Imported ${imported} preset${imported === 1 ? "" : "s"}.`);
+        }
+      } catch (err) {
+        if (typeof window !== "undefined") {
+          window.alert(`Bulk import failed: ${(err as Error).message}`);
+        }
+      }
+    },
+    [],
+  );
+
   // Delete the currently selected custom preset (toolbar shortcut). Wrapped
   // in a confirm dialog because there's no undo for this in localStorage.
   const handleDeleteCustomPreset = useCallback(() => {
@@ -563,6 +626,17 @@ export default function PacketViewer() {
             onChange={handlePacketChange}
             imported={importedPackets}
             customPresets={customPresets}
+            onExportCustomPresets={handleExportCustomPresets}
+            onImportCustomPresets={handleImportCustomPresetsClick}
+          />
+          <input
+            ref={bulkImportInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImportCustomPresetsFile}
+            style={{ display: "none" }}
+            aria-hidden="true"
+            tabIndex={-1}
           />
           <div className="flex items-center gap-1.5 ml-2">
             <ToolbarButton onClick={() => setDrawerMode("import")}>
