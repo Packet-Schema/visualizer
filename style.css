@@ -304,10 +304,40 @@ main {
 .description {
   font-size: 13px;
   color: var(--fg-muted);
-  margin: 10px 2px 14px;
+  margin: 10px 2px 4px;
+}
+
+.byte-order-note {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin: 0 2px 12px;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.byte-order-note::before {
+  content: "↦";
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 /* ----- diagram surface ----- */
+.diagram-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .diagram-area {
+    grid-template-columns: 1fr;
+  }
+}
+
 .diagram-wrap {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -316,6 +346,57 @@ main {
   overflow-x: auto;
   box-shadow: var(--shadow-sm);
   transition: background-color var(--transition-base), border-color var(--transition-base);
+}
+
+/* ----- legend ----- */
+.legend {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+  min-width: 180px;
+  transition: background-color var(--transition-base), border-color var(--transition-base);
+}
+
+.legend[hidden] { display: none; }
+
+.legend h2 {
+  font-size: 11px;
+  margin: 0 0 8px 0;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+}
+
+.legend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--field-stroke);
+  flex: 0 0 auto;
+}
+
+.legend-label {
+  line-height: 1.3;
 }
 
 .packet-svg {
@@ -693,4 +774,96 @@ footer {
   background: #2a3260;
   color: #fff;
   border-color: #2a3260;
+}
+
+/* ---- RFC links inside the detail panel description ---- */
+.rfc-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rfc-link:hover { text-decoration-thickness: 2px; }
+
+.rfc-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ---- Acronym glossary tooltips ---- */
+.acronym {
+  font-style: normal;
+  position: relative;
+  border-bottom: 1px dotted var(--accent);
+  cursor: help;
+  /* Keep the surrounding line height stable when the dotted underline is
+     present. */
+}
+
+.acronym:focus { outline: none; }
+
+.acronym:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* The tooltip itself is a pseudo-element positioned above the acronym.
+   Using ::after lets us avoid extra markup; the content comes from the
+   data-gloss attribute populated by glossary.js. */
+.acronym::after {
+  content: attr(data-gloss);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%) scale(0.96);
+  transform-origin: center bottom;
+  background: var(--fg);
+  color: var(--bg-elevated);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+  width: max-content;
+  max-width: 280px;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  z-index: 20;
+}
+
+.acronym::before {
+  /* Small caret underneath the tooltip. */
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--fg);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.acronym:hover::after,
+.acronym:focus::after,
+.acronym:focus-visible::after,
+.acronym:hover::before,
+.acronym:focus::before,
+.acronym:focus-visible::before {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+@media (max-width: 480px) {
+  .acronym::after { max-width: 220px; }
 }

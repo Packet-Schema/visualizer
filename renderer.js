@@ -15,10 +15,41 @@ const KNOWN_TOKENS = new Set([
   "blue", "indigo", "violet", "teal", "green", "amber", "orange", "rose", "slate",
 ]);
 
-function resolveFieldColor(color) {
-  if (!color) return "var(--field-slate)";
-  if (KNOWN_TOKENS.has(color)) return `var(--field-${color})`;
-  return color;
+// Semantic category -> color token. When a field has a `category`, the
+// renderer prefers the category's token over the legacy per-field `color`,
+// which keeps the visual language consistent across packets.
+export const CATEGORY_TO_TOKEN = {
+  addressing: "blue",
+  identifier: "indigo",
+  length: "teal",
+  type: "green",
+  flags: "rose",
+  reserved: "slate",
+  checksum: "orange",
+  variable: "amber",
+  "payload-marker": "violet",
+};
+
+// Resolve a token string to its CSS variable; unknown values pass through
+// (so a legacy hex like "#abc" still works).
+export function tokenToCssVar(token) {
+  if (!token) return "var(--field-slate)";
+  if (KNOWN_TOKENS.has(token)) return `var(--field-${token})`;
+  return token;
+}
+
+// Pick a field's fill color. Prefer the semantic category token; fall back to
+// the legacy per-field color; finally default to slate.
+function resolveFieldColor(fieldOrColor) {
+  // Backwards compatibility: callers used to pass `field.color` directly.
+  if (typeof fieldOrColor === "string" || fieldOrColor == null) {
+    return tokenToCssVar(fieldOrColor);
+  }
+  const field = fieldOrColor;
+  if (field.category && CATEGORY_TO_TOKEN[field.category]) {
+    return tokenToCssVar(CATEGORY_TO_TOKEN[field.category]);
+  }
+  return tokenToCssVar(field.color);
 }
 
 export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, onSubfieldClick }) {
@@ -122,7 +153,7 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
     group.setAttribute("aria-label",
       `${cell.field.name}, ${cell.bitsTotal} bits${isSelected ? ", selected" : ""}`);
 
-    const fillColor = resolveFieldColor(cell.field.color);
+    const fillColor = resolveFieldColor(cell.field);
 
     const rect = createSvg("rect", {
       x: x + 1,

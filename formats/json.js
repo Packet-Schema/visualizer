@@ -50,6 +50,7 @@ export function toJson(packet, controllers = {}) {
     name: packet.name,
     rowBits: packet.rowBits,
     ...(packet.description ? { description: packet.description } : {}),
+    ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
     controllers: { ...controllers },
     fields: packet.fields.map(serializeField),
   };
@@ -80,6 +81,7 @@ export function fromJson(text) {
     name: String(data.name || "Imported Packet"),
     rowBits: Number(data.rowBits) || 32,
     description: data.description || "",
+    ...(data.byteOrder ? { byteOrder: String(data.byteOrder) } : {}),
     fields: data.fields.map(deserializeField),
   };
   const controllers =
@@ -101,6 +103,7 @@ function serializeField(field) {
     name: field.name,
   };
   if (field.color) out.color = field.color;
+  if (field.category) out.category = field.category;
   if (field.description) out.description = field.description;
 
   if (field.variable) {
@@ -129,6 +132,7 @@ function deserializeField(raw) {
     name: String(raw.name),
   };
   if (raw.color) f.color = String(raw.color);
+  if (raw.category) f.category = String(raw.category);
   if (raw.description) f.description = String(raw.description);
 
   if (raw.variable) {
