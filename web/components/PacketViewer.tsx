@@ -9,14 +9,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import { PRESETS, getPsmlPacket } from "@/lib/psml/all-presets";
+import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
 import {
   initialState,
   packetCategories,
-  resolvePacket,
   syncTlvControllers,
-} from "@/lib/psml/runtime-resolver";
+} from "@/lib/psml/renderer-helpers";
+import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import type {
   ChainInstance,
@@ -25,7 +25,7 @@ import type {
   Packet,
   PacketRegistry,
   TlvInstance,
-} from "@/lib/psml/runtime-types";
+} from "@/lib/psml/renderer";
 import type { ViewMode } from "@/lib/psml/types";
 import ControlsPanel from "./ControlsPanel";
 import DependencyOverlay from "./DependencyOverlay";
@@ -51,14 +51,30 @@ const POPOVER_MIN_WIDTH = 900;
 
 export default function PacketViewer() {
   const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
+  // Imported packets are kept in the renderer shape so the editors can mutate
+  // their TLV/Chain/subfield state directly. Built-in presets live in PSML
+  // and are lowered to the renderer shape on demand.
   const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
+  // The renderer-shape mirror of every built-in PSML preset. Lowered once on
+  // mount; TLV/Chain mutations mutate the field object identity in-place so
+  // the mirror is stable across re-renders (the format hub re-lifts back to
+  // PSML at export time).
+  const [renderedPresets] = useState<PacketRegistry>(() => {
+    const out: PacketRegistry = {};
+    for (const [k, v] of Object.entries(PRESETS)) {
+      out[k] = psmlToRenderer(v);
+    }
+    return out;
+  });
 
-  // Resolve packet against both built-in presets and the runtime imported map.
+  // Renderer mirror — the shape the UI editors / detail panels consume.
   const packet: Packet =
-    PRESETS[packetKey] ?? importedPackets[packetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+    renderedPresets[packetKey] ??
+    importedPackets[packetKey] ??
+    renderedPresets[DEFAULT_PACKET_KEY];
 
   const [controllers, setControllers] = useState<ControllerState>(() =>
-    initialState(PRESETS[DEFAULT_PACKET_KEY]),
+    initialState(psmlToRenderer(PRESETS[DEFAULT_PACKET_KEY])),
   );
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
@@ -139,12 +155,12 @@ export default function PacketViewer() {
   const handlePacketChange = useCallback(
     (nextKey: string) => {
       setPacketKey(nextKey);
-      const next = PRESETS[nextKey] ?? importedPackets[nextKey];
+      const next = renderedPresets[nextKey] ?? importedPackets[nextKey];
       if (next) setControllers(initialState(next));
       setSelectedFieldId(null);
       setPopoverAnchor(null);
     },
-    [importedPackets],
+    [renderedPresets, importedPackets],
   );
 
   const handleControllerChange = useCallback((key: string, value: number) => {
@@ -238,17 +254,34 @@ export default function PacketViewer() {
   );
 
   const layout = useMemo(() => {
-    // For PSML-native presets (e.g. quicLong, tlsClientHelloFull) we route
-    // through the PSML layout resolver so Encrypted-container decoration and
-    // viewMode actually take effect. Runtime presets stay on the legacy path.
-    const psml = getPsmlPacket(packetKey);
+    // Every preset is PSML now — route the diagram through resolveLayout so
+    // Encrypted-container decoration and viewMode toggling are uniform.
+    // For imported packets the renderer mirror is the source of truth and we
+    // lift it back to PSML on demand (lossy for variable-length payloads
+    // without TLV metadata, which is acceptable for layout purposes).
+    const env = new Map(
+      Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
+    );
+    // Derive secondary repeat-count keys for presets whose UI slider drives a
+    // bytes-counter rather than the PSML count ref. Each TLV editor sets
+    // {opts}_count directly via syncTlvControllers; this fallback covers the
+    // IHL / Data Offset slider path where the user grows the header without
+    // touching the TLV editor.
+    if (packetKey === "ipv4") {
+      const ihl = env.get("ihl") ?? 5;
+      env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
+    }
+    if (packetKey === "tcp") {
+      const off = env.get("dataOffset") ?? 5;
+      env.set("tcpOptionsCount", Math.max(0, off - 5));
+    }
+    const psml = PRESETS[packetKey] ?? null;
     if (psml) {
-      const env = new Map(
-        Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
-      );
       return resolveLayout(psml, { env, viewMode });
     }
-    return resolvePacket(packet, controllers, { viewMode });
+    // Imported packet — lift renderer → PSML, then resolve.
+    const lifted = rendererToPsml(packet);
+    return resolveLayout(lifted, { env, viewMode });
   }, [packet, packetKey, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);

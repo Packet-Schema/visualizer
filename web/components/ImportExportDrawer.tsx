@@ -12,9 +12,8 @@ import { fromAad } from "@/lib/formats/aug-ascii";
 import { fromJson, toJson } from "@/lib/formats/json";
 import { fromKsy, toKsy } from "@/lib/formats/ksy";
 import { toAscii } from "@/lib/formats/rfc-ascii";
-import { psmlToRuntime } from "@/lib/psml/runtime-from-psml";
-import { runtimeToPsml } from "@/lib/psml/runtime-to-psml";
-import type { ControllerState, Packet } from "@/lib/psml/runtime-types";
+import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
+import type { ControllerState, Packet } from "@/lib/psml/renderer";
 
 export type DrawerMode = "import" | "export";
 export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
@@ -100,7 +99,7 @@ export default function ImportExportDrawer({
     try {
       // Lower the runtime packet to PSML for the format hub. controllers is a
       // plain object keyed by controller id; PSML's PacketEnv is a Map.
-      const psml = runtimeToPsml(packet);
+      const psml = rendererToPsml(packet);
       const env = new Map<string, number>(Object.entries(controllers));
       if (format === "json") {
         setText(toJson(psml, env));
@@ -184,14 +183,14 @@ export default function ImportExportDrawer({
     try {
       if (format === "json") {
         const { packet: psml, env } = fromJson(text);
-        const runtime = psmlToRuntime(psml);
+        const runtime = psmlToRenderer(psml);
         const controllers: ControllerState = {};
         for (const [k, v] of env) controllers[k] = v;
         onImport(runtime, controllers);
         setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
       } else if (format === "aug-ascii") {
         const { packet: psml, warnings } = fromAad(text);
-        const runtime = psmlToRuntime(psml);
+        const runtime = psmlToRenderer(psml);
         onImport(runtime, {});
         if (warnings.length) {
           setStatus({
@@ -203,7 +202,7 @@ export default function ImportExportDrawer({
         }
       } else if (format === "ksy") {
         const { packet: psml, warnings } = fromKsy(text);
-        const runtime = psmlToRuntime(psml);
+        const runtime = psmlToRenderer(psml);
         onImport(runtime, {});
         if (warnings.length) {
           setStatus({

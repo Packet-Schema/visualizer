@@ -9,7 +9,7 @@
 
 import type { NormalizedField, PacketEnv, Packet as PsmlPacket, ViewMode } from "./types";
 import { initialEnv, normalize } from "./normalize";
-import type { Cell, Field as RuntimeField, ResolvedLayout } from "./runtime-types";
+import type { Cell, Field as RendererField, ResolvedLayout } from "./renderer";
 
 export type LayoutOptions = {
   /** Environment overlay merged on top of preset defaults. */
@@ -33,7 +33,7 @@ export function resolveLayout(
   const cells: Cell[] = [];
   let bitPos = 0;
   for (const nf of norm.fields) {
-    const synthetic: RuntimeField = {
+    const synthetic: RendererField = {
       id: nf.id,
       name: nf.name,
       bits: nf.bits,
@@ -46,7 +46,7 @@ export function resolveLayout(
 }
 
 function emitField(
-  field: RuntimeField,
+  field: RendererField,
   nf: NormalizedField,
   bitPos: number,
   rowBits: number,

@@ -5,7 +5,7 @@
 // intent, not schema metadata). This file re-exports the common items so
 // existing component imports stay one-stop.
 
-import type { CategoryToken } from "./psml/runtime-types";
+import type { CategoryToken } from "./psml/renderer";
 
 export {
   CATEGORY_TO_TOKEN,

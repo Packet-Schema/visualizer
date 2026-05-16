@@ -7,7 +7,7 @@ import {
   CATEGORY_TO_TOKEN,
   tokenToCssVar,
 } from "@/lib/constants";
-import type { CategoryToken } from "@/lib/psml/runtime-types";
+import type { CategoryToken } from "@/lib/psml/renderer";
 
 type Props = {
   categories: string[];
