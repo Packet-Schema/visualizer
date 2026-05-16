@@ -1,0 +1,14 @@
+{
+  "yaml.schemas": {
+    "./schemas/psml.schema.json": "data/presets/*.psml.yaml"
+  },
+  "eslint.workingDirectories": [
+    { "directory": "web", "changeProcessCWD": true }
+  ],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.associations": {
+    "*.psml.yaml": "yaml"
+  }
+}

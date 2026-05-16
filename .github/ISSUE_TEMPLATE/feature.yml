@@ -1,0 +1,26 @@
+name: 機能提案
+description: 新機能 / 改善のアイデア
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: やりたいこと
+      placeholder: "例: 任意の preset を URL のクエリで共有できるようにしたい"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 動機 / ユースケース
+      placeholder: "例: 授業で Slack に貼って一発で同じ画面を見せたい"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: メモ (任意)
+      description: 既存実装との関係、参考リンク、想定 UI など
+    validations:
+      required: false
