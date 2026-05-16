@@ -26,6 +26,7 @@ import type {
   TlvInstance,
 } from "@/lib/types";
 import ControlsPanel from "./ControlsPanel";
+import DependencyOverlay from "./DependencyOverlay";
 import DetailPanel from "./DetailPanel";
 import DiagramRuler from "./DiagramRuler";
 import FieldPopover from "./FieldPopover";
@@ -68,6 +69,7 @@ export default function PacketViewer() {
   // Tracks whether the user has explicitly toggled hex visibility. Without
   // this flag, the wide-viewport effect would keep clobbering their choice.
   const hexStripUserSetRef = useRef(false);
+  const [dependenciesVisible, setDependenciesVisible] = useState(false);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
@@ -372,6 +374,17 @@ export default function PacketViewer() {
             >
               Hex view
             </ToolbarButton>
+            <ToolbarButton
+              onClick={() => setDependenciesVisible((v) => !v)}
+              pressed={dependenciesVisible}
+              ariaLabel={
+                dependenciesVisible
+                  ? "Hide dependency arrows"
+                  : "Show dependency arrows"
+              }
+            >
+              Dependencies
+            </ToolbarButton>
           </div>
           <div
             className="ml-auto text-[13px] font-mono tabular-nums"
@@ -434,6 +447,11 @@ export default function PacketViewer() {
                 onByteHover={handleFieldHover}
               />
             ) : null}
+            <DependencyOverlay
+              packet={packet}
+              containerRef={diagramRef}
+              visible={dependenciesVisible}
+            />
           </div>
           <Legend categories={categories} />
         </div>
@@ -557,12 +575,13 @@ function ToolbarButton({
   children,
   pressed,
   ariaLabel,
+  ...rest
 }: {
   onClick: () => void;
   children: React.ReactNode;
   pressed?: boolean;
   ariaLabel?: string;
-}) {
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children" | "aria-label">) {
   return (
     <button
       type="button"
@@ -575,6 +594,7 @@ function ToolbarButton({
         color: pressed ? "var(--accent-fg)" : "var(--fg)",
         borderColor: pressed ? "var(--accent)" : "var(--border-strong)",
       }}
+      {...rest}
     >
       {children}
     </button>
