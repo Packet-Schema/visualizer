@@ -23,6 +23,13 @@ export const cond = (test: Expr, t: Expr, f: Expr): Expr => ({
   t,
   f,
 });
+export const peek = (bits: number, offset?: Expr): Expr =>
+  offset === undefined ? { kind: "peek", bits } : { kind: "peek", bits, offset };
+
+/** Synthetic env key for a `peek` expression: `__peek__<offset>__<bits>`. */
+export function peekEnvKey(offset: number, bits: number): string {
+  return `__peek__${offset}__${bits}`;
+}
 
 export class MissingRefError extends Error {
   constructor(public readonly field: string) {

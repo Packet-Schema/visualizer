@@ -267,6 +267,12 @@ function validateContainer(c: Container, ctx: string): void {
       if (!isValidExpr(c.when)) {
         throw new Error(`${sub}: optional 'when' expression is malformed.`);
       }
+      if (!c.field) {
+        throw new Error(`${sub}: optional is missing inner field.`);
+      }
+      if (!c.field.type) {
+        throw new Error(`${sub}: optional inner field is missing a type.`);
+      }
       validateField(c.field, sub);
       return;
     }
