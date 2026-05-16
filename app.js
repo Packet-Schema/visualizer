@@ -3,6 +3,7 @@ import { renderPacket } from "./renderer.js";
 import { toJson, fromJson } from "./formats/json.js";
 import { toAscii } from "./formats/rfc-ascii.js";
 import { fromAad } from "./formats/aug-ascii.js";
+import { toWorksheet } from "./formats/worksheet.js";
 
 // Runtime registry for imported packets — kept separate from the static
 // PACKETS so imported entries don't bleed into the built-in presets and
@@ -23,6 +24,7 @@ const state = {
 
 const els = {
   selector: document.getElementById("packet-selector"),
+  filter: document.getElementById("packet-filter"),
   description: document.getElementById("packet-description"),
   diagram: document.getElementById("diagram"),
   controls: document.getElementById("controls"),
@@ -40,7 +42,18 @@ const els = {
   modalGenerate: document.getElementById("modal-generate"),
   modalApply: document.getElementById("modal-apply"),
   modalCopy: document.getElementById("modal-copy"),
+  modalWorksheetAnswers: document.getElementById("modal-worksheet-answers"),
+  modalWorksheetLabel: document.querySelector(".worksheet-only"),
 };
+
+// Curriculum-ordered grouping of built-in presets by OSI layer.
+// Keys must match PACKETS keys in packets.js.
+const PRESET_GROUPS = [
+  { label: "Layer 2 — Link",        keys: ["ethernet", "vlan"] },
+  { label: "Layer 3 — Network",     keys: ["ipv4", "ipv6", "arp", "icmp", "icmpv6"] },
+  { label: "Layer 4 — Transport",   keys: ["tcp", "udp"] },
+  { label: "Application",           keys: ["dns", "tlsRecord", "quicShort"] },
+];
 
 function init() {
   rebuildSelector();
@@ -52,10 +65,29 @@ function init() {
     render();
   });
 
+  if (els.filter) {
+    els.filter.addEventListener("input", () => {
+      rebuildSelector(els.filter.value);
+      // Preserve selection if still visible; else fall back to first option.
+      if (els.selector.querySelector(`option[value="${cssEscape(state.packetKey)}"]`)) {
+        els.selector.value = state.packetKey;
+      } else if (els.selector.options.length > 0) {
+        // Don't change state.packetKey from a filter; just visually focus first.
+        els.selector.selectedIndex = 0;
+      }
+    });
+  }
+
   initThemeToggle();
   state.controllers = initialState(getPacket(state.packetKey));
   initModal();
   render();
+}
+
+// Minimal CSS.escape polyfill for attribute selectors built from preset keys.
+function cssEscape(s) {
+  if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(s);
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, (c) => "\\" + c);
 }
 
 function initThemeToggle() {
@@ -98,13 +130,17 @@ function initThemeToggle() {
   }
 }
 
-function rebuildSelector() {
+function rebuildSelector(filterText = "") {
   els.selector.innerHTML = "";
+  const needle = filterText.trim().toLowerCase();
+  const matches = (packet) => !needle || packet.name.toLowerCase().includes(needle);
+
   const addGroup = (label, entries) => {
-    if (!entries.length) return;
+    const visible = entries.filter(([_, packet]) => matches(packet));
+    if (!visible.length) return;
     const grp = document.createElement("optgroup");
     grp.label = label;
-    for (const [key, packet] of entries) {
+    for (const [key, packet] of visible) {
       const opt = document.createElement("option");
       opt.value = key;
       opt.textContent = packet.name;
@@ -112,7 +148,23 @@ function rebuildSelector() {
     }
     els.selector.appendChild(grp);
   };
-  addGroup("Built-in", Object.entries(PACKETS));
+
+  // Built-in groups in curriculum order.
+  const seen = new Set();
+  for (const group of PRESET_GROUPS) {
+    const entries = group.keys
+      .filter((k) => PACKETS[k])
+      .map((k) => {
+        seen.add(k);
+        return [k, PACKETS[k]];
+      });
+    addGroup(group.label, entries);
+  }
+  // Any built-in preset not assigned to an OSI group lands here so we never
+  // silently drop a new packet that someone forgets to categorise.
+  const ungrouped = Object.entries(PACKETS).filter(([k]) => !seen.has(k));
+  if (ungrouped.length) addGroup("Other", ungrouped);
+
   addGroup("Imported", Object.entries(importedPackets));
 }
 
@@ -216,6 +268,11 @@ function initModal() {
   });
   els.modalMode.addEventListener("change", syncModalUi);
   els.modalFormat.addEventListener("change", syncModalUi);
+  if (els.modalWorksheetAnswers) {
+    els.modalWorksheetAnswers.addEventListener("change", () => {
+      // No auto-generate; the user clicks Generate to spawn a new tab.
+    });
+  }
   els.modalGenerate.addEventListener("click", onGenerate);
   els.modalApply.addEventListener("click", onApply);
   els.modalCopy.addEventListener("click", onCopy);
@@ -243,20 +300,34 @@ function closeModal() {
 function syncModalUi() {
   const mode = els.modalMode.value;
   const fmt = els.modalFormat.value;
-  // Format constraints: rfc-ascii is export-only, aug-ascii is import-only.
-  if (mode === "import" && fmt === "rfc-ascii") {
+  // Format constraints:
+  //   rfc-ascii  -> export only
+  //   worksheet  -> export only
+  //   aug-ascii  -> import only
+  if (mode === "import" && (fmt === "rfc-ascii" || fmt === "worksheet")) {
     els.modalFormat.value = "json";
   } else if (mode === "export" && fmt === "aug-ascii") {
     els.modalFormat.value = "json";
   }
   // Toggle button visibility.
   const importMode = els.modalMode.value === "import";
+  const isWorksheet = !importMode && els.modalFormat.value === "worksheet";
   els.modalApply.style.display    = importMode ? "" : "none";
   els.modalGenerate.style.display = importMode ? "none" : "";
-  els.modalCopy.style.display     = importMode ? "none" : "";
-  els.modalText.placeholder = importMode
-    ? "Paste packet definition here, then click Apply."
-    : "Click Generate to populate from the active packet.";
+  // The Copy button is meaningless for worksheet (we open a new tab instead).
+  els.modalCopy.style.display     = (importMode || isWorksheet) ? "none" : "";
+  if (els.modalWorksheetLabel) {
+    els.modalWorksheetLabel.hidden = !isWorksheet;
+  }
+  if (isWorksheet) {
+    els.modalText.placeholder = "Click Generate to open the worksheet in a new tab.";
+  } else {
+    els.modalText.placeholder = importMode
+      ? "Paste packet definition here, then click Apply."
+      : "Click Generate to populate from the active packet.";
+  }
+  // Don't auto-fill the textarea with the worksheet HTML on switch.
+  if (isWorksheet) els.modalText.value = "";
 }
 
 function onGenerate() {
@@ -267,6 +338,24 @@ function onGenerate() {
       els.modalText.value = toJson(packet, state.controllers);
     } else if (fmt === "rfc-ascii") {
       els.modalText.value = toAscii(packet, state.controllers);
+    } else if (fmt === "worksheet") {
+      const withAnswers = !!(els.modalWorksheetAnswers && els.modalWorksheetAnswers.checked);
+      const html = toWorksheet(packet, state.controllers, { withAnswers });
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank");
+      if (!w) {
+        // Pop-up blocked: leave the URL accessible in the textarea so the
+        // user can copy/open it manually.
+        els.modalText.value = url;
+        setStatus("Pop-up blocked. Copy the URL above and open it manually.", "warn");
+        return;
+      }
+      // Revoke after a short delay so the new tab can finish loading.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      els.modalText.value = `(opened ${withAnswers ? "answer key" : "worksheet"} in a new tab)`;
+      setStatus(`Worksheet opened${withAnswers ? " with answers" : ""}.`, "ok");
+      return;
     } else {
       throw new Error(`Unsupported export format: ${fmt}`);
     }

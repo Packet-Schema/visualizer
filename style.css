@@ -266,6 +266,33 @@ main {
   box-shadow: 0 0 0 3px rgba(79, 120, 255, 0.25);
 }
 
+.packet-filter {
+  font-size: 13px;
+  font-family: inherit;
+  padding: 5px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  width: 160px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.packet-filter:hover { border-color: var(--accent); }
+.packet-filter:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 120, 255, 0.25);
+}
+
+.worksheet-only {
+  font-size: 12px;
+  font-weight: 500 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.worksheet-only[hidden] { display: none; }
+
 .summary {
   margin-left: auto;
   font-size: 13px;
