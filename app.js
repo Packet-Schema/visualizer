@@ -1,5 +1,9 @@
-import { PACKETS, resolvePacket, initialState } from "./packets.js";
-import { renderPacket } from "./renderer.js";
+import {
+  PACKETS, resolvePacket, initialState,
+  CATEGORY_LABELS, DEFAULT_BYTE_ORDER, packetCategories,
+} from "./packets.js";
+import { renderPacket, CATEGORY_TO_TOKEN, tokenToCssVar } from "./renderer.js";
+import { annotateAcronyms } from "./glossary.js";
 import { toJson, fromJson } from "./formats/json.js";
 import { toAscii } from "./formats/rfc-ascii.js";
 import { fromAad } from "./formats/aug-ascii.js";
@@ -26,7 +30,9 @@ const els = {
   selector: document.getElementById("packet-selector"),
   filter: document.getElementById("packet-filter"),
   description: document.getElementById("packet-description"),
+  byteOrderNote: document.getElementById("byte-order-note"),
   diagram: document.getElementById("diagram"),
+  legend: document.getElementById("legend"),
   controls: document.getElementById("controls"),
   detail: document.getElementById("detail"),
   summary: document.getElementById("summary"),
@@ -175,6 +181,11 @@ function render() {
   // Description
   els.description.textContent = packet.description || "";
 
+  // Per-packet endianness / byte-order note
+  if (els.byteOrderNote) {
+    els.byteOrderNote.textContent = packet.byteOrder || DEFAULT_BYTE_ORDER;
+  }
+
   // Diagram
   els.diagram.innerHTML = "";
   const svg = renderPacket(packet, layout, {
@@ -190,6 +201,9 @@ function render() {
   });
   els.diagram.appendChild(svg);
 
+  // Legend (categories present in the currently rendered packet)
+  renderLegend(packet);
+
   // Controls (variable-length controllers)
   renderControls(packet);
 
@@ -200,6 +214,44 @@ function render() {
   const bytes = layout.totalBits / 8;
   const byteStr = Number.isInteger(bytes) ? `${bytes} bytes` : `${layout.totalBits} bits`;
   els.summary.textContent = `Header size: ${layout.totalBits} bits (${byteStr})`;
+}
+
+function renderLegend(packet) {
+  if (!els.legend) return;
+  const categories = packetCategories(packet);
+  els.legend.innerHTML = "";
+  if (categories.length === 0) {
+    els.legend.hidden = true;
+    return;
+  }
+  els.legend.hidden = false;
+
+  const heading = document.createElement("h2");
+  heading.textContent = "Legend";
+  els.legend.appendChild(heading);
+
+  const list = document.createElement("ul");
+  list.className = "legend-list";
+  for (const cat of categories) {
+    const token = CATEGORY_TO_TOKEN[cat];
+    const label = CATEGORY_LABELS[cat] || cat;
+    const li = document.createElement("li");
+    li.className = "legend-item";
+
+    const swatch = document.createElement("span");
+    swatch.className = "legend-swatch";
+    swatch.style.background = tokenToCssVar(token);
+    swatch.setAttribute("aria-hidden", "true");
+
+    const text = document.createElement("span");
+    text.className = "legend-label";
+    text.textContent = label;
+
+    li.appendChild(swatch);
+    li.appendChild(text);
+    list.appendChild(li);
+  }
+  els.legend.appendChild(list);
 }
 
 function renderControls(packet) {
@@ -438,7 +490,7 @@ function renderDetail(packet) {
       <dl>
         <dt>Size</dt><dd>${bits} bit${bits === 1 ? "" : "s"}</dd>
         <dt>Parent</dt><dd>${escapeHtml(parent.name)} (${parent.bits} bits)</dd>
-        ${sub.description ? `<dt>Description</dt><dd>${escapeHtml(sub.description)}</dd>` : ""}
+        ${sub.description ? `<dt>Description</dt><dd>${enrichDescription(sub.description)}</dd>` : ""}
       </dl>
     `;
     return;
@@ -457,16 +509,49 @@ function renderDetail(packet) {
     ? `<dt>Subfields</dt><dd>${field.subfields.map(s => `<code>${escapeHtml(s.name)}</code> (${s.bits}b)`).join(" ")}</dd>`
     : "";
 
+  const categoryHtml = field.category
+    ? `<dt>Category</dt><dd>${escapeHtml(CATEGORY_LABELS[field.category] || field.category)}</dd>`
+    : "";
+
   els.detail.innerHTML = `
     <h3>${escapeHtml(field.name)}</h3>
     <dl>
       <dt>Size</dt><dd><span class="mono">${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}</span>${field.variable ? " <em>(variable)</em>" : ""}</dd>
+      ${categoryHtml}
       ${field.variable ? `<dt>Driven by</dt><dd><code>${escapeHtml(field.lengthFrom)}</code></dd>` : ""}
       ${field.controlsLength ? `<dt>Controls</dt><dd><code>${escapeHtml(field.controlsLength)}</code> (current: <span class="mono">${state.controllers[field.controlsLength]}</span>)</dd>` : ""}
-      ${field.description ? `<dt>Description</dt><dd>${escapeHtml(field.description)}</dd>` : ""}
+      ${field.description ? `<dt>Description</dt><dd>${enrichDescription(field.description)}</dd>` : ""}
       ${subfieldsHtml}
     </dl>
   `;
+}
+
+// Format a field description for the detail panel:
+//   1. Escape HTML.
+//   2. Turn any "RFC NNNN" / "RFC NNNNN" reference into a clickable link
+//      pointing at datatracker.ietf.org.
+//   3. Wrap recognised acronyms in <dfn class="acronym"> tags so hover/focus
+//      can reveal the glossary entry.
+//
+// Step ordering matters: we annotate acronyms AFTER inserting the RFC anchor
+// so that the anchor's href is not mistaken for plain text containing "TLS",
+// "DNS", etc.
+function enrichDescription(text) {
+  let escaped = escapeHtml(text);
+
+  // RFC link substitution. The regex matches "RFC NNNN" or "RFCNNNN" with
+  // 1-5 digits. The numeric capture group is what we put in the URL.
+  // Replacement happens on the escaped string so surrounding context stays
+  // safe.
+  escaped = escaped.replace(/\b(RFC\s?(\d{1,5}))\b/g, (match, _full, num) => {
+    return `<a class="rfc-link" href="https://datatracker.ietf.org/doc/html/rfc${num}" target="_blank" rel="noopener noreferrer">${match}</a>`;
+  });
+
+  // Glossary acronym annotation. annotateAcronyms operates on already-escaped
+  // HTML and only matches whole-word acronyms, so it will not touch the RFC
+  // anchor's attributes (those contain digits/slashes, not bare acronyms).
+  escaped = annotateAcronyms(escaped);
+  return escaped;
 }
 
 function escapeHtml(s) {
