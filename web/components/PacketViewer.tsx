@@ -16,12 +16,15 @@ import {
   resolvePacket,
 } from "@/lib/packet-resolver";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
-import type { ControllerState } from "@/lib/types";
+import type { ControllerState, Packet, PacketRegistry } from "@/lib/types";
 
 import ControlsPanel from "./ControlsPanel";
 import DetailPanel from "./DetailPanel";
 import DiagramSvg from "./DiagramSvg";
 import FieldPopover from "./FieldPopover";
+import ImportExportDrawer, {
+  type DrawerMode,
+} from "./ImportExportDrawer";
 import Legend from "./Legend";
 import PresetPicker from "./PresetPicker";
 import ThemeToggle from "./ThemeToggle";
@@ -34,7 +37,11 @@ const POPOVER_MIN_WIDTH = 900;
 
 export default function PacketViewer() {
   const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
-  const packet = PRESETS[packetKey];
+  const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
+
+  // Resolve packet against both built-in presets and the runtime imported map.
+  const packet: Packet =
+    PRESETS[packetKey] ?? importedPackets[packetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
 
   const [controllers, setControllers] = useState<ControllerState>(() =>
     initialState(PRESETS[DEFAULT_PACKET_KEY]),
@@ -42,6 +49,7 @@ export default function PacketViewer() {
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const [isWideViewport, setIsWideViewport] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
 
@@ -57,12 +65,16 @@ export default function PacketViewer() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  const handlePacketChange = useCallback((nextKey: string) => {
-    setPacketKey(nextKey);
-    setControllers(initialState(PRESETS[nextKey]));
-    setSelectedFieldId(null);
-    setPopoverAnchor(null);
-  }, []);
+  const handlePacketChange = useCallback(
+    (nextKey: string) => {
+      setPacketKey(nextKey);
+      const next = PRESETS[nextKey] ?? importedPackets[nextKey];
+      if (next) setControllers(initialState(next));
+      setSelectedFieldId(null);
+      setPopoverAnchor(null);
+    },
+    [importedPackets],
+  );
 
   const handleControllerChange = useCallback((key: string, value: number) => {
     setControllers((prev) => ({ ...prev, [key]: value }));
@@ -86,6 +98,18 @@ export default function PacketViewer() {
       }
     },
     [isWideViewport],
+  );
+
+  const handleImport = useCallback(
+    (imported: Packet, importedControllers: ControllerState) => {
+      const key = `imported:${imported.name}`;
+      setImportedPackets((prev) => ({ ...prev, [key]: imported }));
+      setPacketKey(key);
+      setControllers({ ...initialState(imported), ...importedControllers });
+      setSelectedFieldId(null);
+      setDrawerMode(null);
+    },
+    [],
   );
 
   const layout = useMemo(
@@ -205,7 +229,19 @@ export default function PacketViewer() {
             boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
           }}
         >
-          <PresetPicker value={packetKey} onChange={handlePacketChange} />
+          <PresetPicker
+            value={packetKey}
+            onChange={handlePacketChange}
+            imported={importedPackets}
+          />
+          <div className="flex items-center gap-1.5 ml-2">
+            <ToolbarButton onClick={() => setDrawerMode("import")}>
+              Import
+            </ToolbarButton>
+            <ToolbarButton onClick={() => setDrawerMode("export")}>
+              Export
+            </ToolbarButton>
+          </div>
           <div
             className="ml-auto text-[13px] font-mono tabular-nums"
             style={{ color: "var(--fg-muted)" }}
@@ -324,13 +360,21 @@ export default function PacketViewer() {
           onDismiss={() => setPopoverAnchor(null)}
         />
       ) : null}
+
+      <ImportExportDrawer
+        open={drawerMode !== null}
+        mode={drawerMode ?? "export"}
+        packet={packet}
+        controllers={controllers}
+        onClose={() => setDrawerMode(null)}
+        onImport={handleImport}
+      />
     </div>
   );
 }
 
 // findRowNeighbor: prefer a cell on the adjacent row whose bit range overlaps
-// the currently focused cell, falling back to direct list neighbors. Mirrors
-// the legacy app.js behavior so users with prior muscle memory aren't broken.
+// the currently focused cell, falling back to direct list neighbors.
 function findRowNeighbor(
   cells: SVGGElement[],
   current: SVGGElement,
@@ -354,11 +398,33 @@ function findRowNeighbor(
   return overlap ?? sameRow[0] ?? null;
 }
 
-// Minimal CSS.escape() polyfill for attribute selector building. We only need
-// to handle field-id strings that contain "." or ":" (subfield separators).
+// Minimal CSS.escape() polyfill for attribute selector building.
 function cssEscape(s: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
     return CSS.escape(s);
   }
   return s.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
+}
+
+function ToolbarButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+      style={{
+        background: "var(--bg-elevated)",
+        color: "var(--fg)",
+        borderColor: "var(--border-strong)",
+      }}
+    >
+      {children}
+    </button>
+  );
 }
