@@ -1,6 +1,6 @@
 "use client";
 
-import { PRESETS } from "@/lib/psml/runtime-presets";
+import { PRESETS } from "@/lib/psml/all-presets";
 import { PRESET_GROUPS } from "@/lib/constants";
 import type { PacketRegistry } from "@/lib/psml/runtime-types";
 
