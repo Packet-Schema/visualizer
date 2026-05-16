@@ -1,0 +1,102 @@
+# PR が開かれた / 更新されたら Codex に差分レビューを依頼する。
+# 結果は PR コメントとして投稿される。
+#
+# 前提:
+#   - Repo Settings → Secrets and variables → Actions に OPENAI_API_KEY を
+#     登録しておくこと。未登録の場合この workflow は skip される (secret が
+#     空のため Codex action 自体が fail-fast する想定)。
+#   - 完全自動コメントを止めたい場合は post_feedback ジョブを workflow_dispatch
+#     ベースに切り替えるか、この workflow ファイル自体を一旦消すこと。
+name: codex review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  codex:
+    runs-on: ubuntu-latest
+    # secret が無い repo / fork で空回りしないように skip。
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    outputs:
+      final_message: ${{ steps.run_codex.outputs.final-message }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          persist-credentials: false
+
+      - name: Pre-fetch base and head refs for the PR
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --no-tags origin \
+            "$PR_BASE_REF" \
+            "+refs/pull/$PR_NUMBER/head"
+
+      - name: Run Codex
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            あなたはこのリポジトリ (packet-view) のシニアレビュアーです。
+            PR #${{ github.event.pull_request.number }} の差分のみをレビューしてください。
+
+            ## 差分の見方
+            git log --oneline ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
+            git diff ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
+
+            ## このリポジトリの背景
+            - Next.js 15 + React 19 + Tailwind v4 + TypeScript strict の packet visualizer
+            - PSML (Packet Schema Markup Language) という独自スキーマでパケット定義を YAML で持つ。仕様: docs/psml-0.4.md
+            - data/presets/*.psml.yaml が preset 本体、web/scripts/build-presets.ts で生成
+            - web/lib/formats/ は import/export の中心ハブ。CI で 100% coverage を強制している
+            - web/lib/psml/ にスキーマ評価器 (normalize/layout/expr/validate/constraint)
+            - 詳細は docs/architecture.md, CONTRIBUTING.md, docs/testing.md を参照
+
+            ## レビュー観点
+            1. **動作上のバグ**: 型エラー / nullable 取り扱い / off-by-one / state mutation / race condition
+            2. **PSML の不変条件**: TLV 親と subfields の混在禁止、Encrypted plaintext の headerProtected id 整合、Constraint の参照欠落
+            3. **テスト**: lib/formats/ への変更で 100% coverage が落ちないか、layout-parity が更新されているか
+            4. **セキュリティ**: XSS (dangerouslySetInnerHTML 経路), prototype pollution, eval 系
+            5. **不必要な抽象化 / 過剰なエラーハンドリング / dead code**
+
+            ## レビューの形式
+            - 日本語で書く
+            - bullet point で簡潔に
+            - 軽微な nit はスキップして良い (信頼でブロックしない範囲のもの)
+            - 良い変更は短く褒める (1〜2 行)
+            - 致命的な指摘がなければ「特に問題なし」と明言
+
+            ## PR のメタ情報
+            タイトル: ${{ github.event.pull_request.title }}
+
+            本文:
+            ${{ github.event.pull_request.body }}
+
+  post_feedback:
+    runs-on: ubuntu-latest
+    needs: codex
+    if: needs.codex.outputs.final_message != ''
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Report Codex feedback
+        uses: actions/github-script@v7
+        env:
+          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const header = "## 🤖 Codex Review\n\n";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: header + process.env.CODEX_FINAL_MESSAGE,
+            });
