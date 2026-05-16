@@ -45,6 +45,11 @@ function typeBits(type: PsmlField["type"]): number {
         if (e instanceof MissingRefError) return 0;
         throw e;
       }
+    case "varint":
+      // Variable-length encoding — width unknown at design-time without an
+      // env override; the runtime adapter is not the right place to consult
+      // one, so report 0 bits and let the renderer treat it accordingly.
+      return 0;
   }
 }
 
