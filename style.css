@@ -524,3 +524,146 @@ footer {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ---- Toolbar buttons ---- */
+
+.tb-btn {
+  font-size: 13px;
+  padding: 6px 12px;
+  border: 1px solid #c5cad8;
+  border-radius: 6px;
+  background: #fff;
+  color: #2a3260;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tb-btn:hover {
+  background: #eef0f6;
+  border-color: #2a3260;
+}
+
+/* ---- Import/Export modal ---- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 40, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+
+.modal-overlay[hidden] { display: none; }
+
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #2a3260 0%, #1a2148 100%);
+  color: #fff;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.4px;
+}
+
+.modal-close {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.modal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid #eef0f6;
+  font-size: 13px;
+}
+
+.modal-row label {
+  font-weight: 600;
+  color: #445;
+}
+
+.modal-row select {
+  padding: 4px 8px;
+  border: 1px solid #c5cad8;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 13px;
+}
+
+#modal-text {
+  flex: 1;
+  margin: 12px 18px;
+  min-height: 280px;
+  padding: 10px;
+  border: 1px solid #c5cad8;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
+.modal-status {
+  margin: 0 18px;
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.modal-status.error { color: #b3261e; }
+.modal-status.warn  { color: #a06400; }
+.modal-status.ok    { color: #1f6f43; }
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px solid #eef0f6;
+  background: #f9fafd;
+}
+
+.modal-actions button {
+  font-size: 13px;
+  padding: 6px 14px;
+  border: 1px solid #c5cad8;
+  border-radius: 6px;
+  background: #fff;
+  color: #2a3260;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.modal-actions button:hover {
+  background: #2a3260;
+  color: #fff;
+  border-color: #2a3260;
+}
