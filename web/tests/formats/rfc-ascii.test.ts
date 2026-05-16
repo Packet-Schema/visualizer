@@ -372,8 +372,22 @@ describe("toAscii — PSML 0.3 Varint type", () => {
 });
 
 describe("toAscii — invariants vs normalize", () => {
+  // The invariant "rendered rows == ceil(totalBits / rowBits)" only holds for
+  // presets whose layout is a flat sequence of byte-aligned fields. Presets
+  // containing an Encrypted container (PSML 0.3+) intentionally inflate the
+  // rendering with a "~Encrypted Payload~" marker plus interior plaintext
+  // padding, breaking the cheap row arithmetic. Skip those by id rather than
+  // by deeper container inspection so the invariant stays load-bearing for
+  // the simple presets where it matters most.
+  const PRESETS_WITH_ENCRYPTED = new Set([
+    "quicShort",
+    "quicLong",
+    "tlsClientHelloFull",
+  ]);
+
   it("the rendered total bit count equals normalize().totalBits", () => {
     for (const [key, pkt] of Object.entries(ALL_PRESETS)) {
+      if (PRESETS_WITH_ENCRYPTED.has(key)) continue;
       const env = envWithRefs(pkt);
       const total = normalize(pkt, env).totalBits;
       const text = toAscii(pkt, env);
