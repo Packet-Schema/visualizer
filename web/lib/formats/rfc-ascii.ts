@@ -28,7 +28,7 @@ import type {
   Packet as PsmlPacket,
   ViewMode,
 } from "../psml/types";
-import type { Cell } from "../psml/runtime-types";
+import type { Cell } from "../psml/renderer";
 
 type RowCellLike = {
   startBit: number;

@@ -3,9 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build:data": "tsx scripts/build-presets.ts",
-    "prebuild": "npm run build:data",
-    "predev": "npm run build:data",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -5,8 +5,8 @@
 
 import { useState } from "react";
 
-import type { ControllerState, Packet } from "@/lib/psml/runtime-types";
-import { runtimeToPsml } from "@/lib/psml/runtime-to-psml";
+import type { ControllerState, Packet } from "@/lib/psml/renderer";
+import { rendererToPsml } from "@/lib/psml/psml-to-renderer";
 
 type Props = {
   packet: Packet;
@@ -31,7 +31,7 @@ export default function WorksheetButton({
       // The worksheet generator speaks PSML; lower the runtime packet on the
       // way out and translate the controller state into a PacketEnv map.
       const env = new Map<string, number>(Object.entries(controllers));
-      const blob = await generateWorksheetPdf(runtimeToPsml(packet), env, { answers });
+      const blob = await generateWorksheetPdf(rendererToPsml(packet), env, { answers });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener");
       // Revoke shortly after open; the new tab has already taken ownership.

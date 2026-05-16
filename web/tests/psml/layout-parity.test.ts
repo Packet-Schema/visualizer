@@ -1,21 +1,13 @@
-// PSML layout parity — for presets that exist in both the runtime registry
-// (`resolvePacket`, used by the React components) and the PSML registry
-// (`resolveLayout`, used by every format exporter) the totalBits must agree.
-// PSML 0.3 (Phase 2C) introduces a few PSML-only presets — those exercise
-// Encrypted/Varint primitives the runtime can't represent — so they are
-// asserted separately against the wire-mode and semantic-mode fixtures.
+// PSML layout parity — after Round 6 every preset is a PSML Packet and the
+// diagram is resolved via `resolveLayout`. This file asserts that each
+// preset's totalBits matches the documented fixture in both wire and (where
+// applicable) semantic view modes.
 
 import { describe, expect, it } from "vitest";
 import { resolveLayout } from "../../lib/psml/layout";
 import { initialEnv, normalize } from "../../lib/psml/normalize";
-import {
-  initialState,
-  resolvePacket,
-} from "../../lib/psml/runtime-resolver";
 import { validatePsmlPacket } from "../../lib/psml/validate";
-import { GENERATED_PRESETS } from "../../lib/psml/presets.generated";
-import { MANUAL_PRESETS } from "../../lib/psml/presets";
-import { PRESETS } from "../../lib/psml/runtime-presets";
+import { PRESETS } from "../../lib/psml/presets";
 import type { Expr, Packet } from "../../lib/psml/types";
 import {
   EXPECTED_TOTAL_BITS,
@@ -24,15 +16,6 @@ import {
   PRESET_KEYS,
   PSML_ONLY_PRESET_KEYS,
 } from "../fixtures/preset-bit-sizes";
-
-// MANUAL wins over GENERATED so `quicShort` picks up the PSML 0.3 shape
-// (Encrypted header-protection + AEAD payload) defined in presets.ts.
-const ALL_PSML: Record<string, Packet> = { ...GENERATED_PRESETS, ...MANUAL_PRESETS };
-
-// quicShort has different shapes in the runtime (flat 80 bits) and PSML
-// (208 bits with Encrypted containers) — skip its runtime↔PSML parity check
-// but still assert PSML totalBits against the fixture below.
-const SKIP_RUNTIME_PARITY = new Set(["quicShort"]);
 
 function collectAllRefs(packet: Packet): Set<string> {
   const out = new Set<string>();
@@ -94,43 +77,37 @@ function collectAllRefs(packet: Packet): Set<string> {
   return out;
 }
 
+function buildEnv(packet: Packet) {
+  const env = initialEnv(packet);
+  for (const r of collectAllRefs(packet)) {
+    if (!env.has(r)) env.set(r, 0);
+  }
+  return env;
+}
+
 describe("preset registry sanity", () => {
-  it("PSML registry covers runtime registry plus PSML-only Phase 2C presets", () => {
-    expect(Object.keys(PRESETS)).toHaveLength(13);
-    expect(Object.keys(EXPECTED_TOTAL_BITS)).toHaveLength(13);
-    expect(Object.keys(EXPECTED_TOTAL_BITS_PSML_ONLY)).toHaveLength(2);
-    // Every runtime key must also exist in the PSML registry.
-    for (const k of Object.keys(PRESETS)) {
-      expect(ALL_PSML[k], `psml preset "${k}"`).toBeDefined();
+  it("PSML registry contains every documented preset", () => {
+    for (const k of PRESET_KEYS) {
+      expect(PRESETS[k], `psml preset "${k}"`).toBeDefined();
     }
-    // PSML extends the runtime set by exactly the PSML-only Phase 2C keys.
-    expect(new Set(Object.keys(ALL_PSML))).toEqual(
-      new Set([
-        ...Object.keys(PRESETS),
-        ...PSML_ONLY_PRESET_KEYS,
-      ]),
+    for (const k of PSML_ONLY_PRESET_KEYS) {
+      expect(PRESETS[k], `psml-only preset "${k}"`).toBeDefined();
+    }
+  });
+
+  it("PRESETS exposes the 13 picker keys plus the 2 PSML-only keys", () => {
+    expect(Object.keys(PRESETS).sort()).toEqual(
+      [...PRESET_KEYS, ...PSML_ONLY_PRESET_KEYS].sort(),
     );
   });
 });
 
 for (const key of PRESET_KEYS) {
-  describe(`layout parity — ${key}`, () => {
-    if (!SKIP_RUNTIME_PARITY.has(key)) {
-      it("runtime totalBits matches expected fixture", () => {
-        const pkt = PRESETS[key];
-        expect(pkt, `runtime preset "${key}"`).toBeDefined();
-        const layout = resolvePacket(pkt, initialState(pkt));
-        expect(layout.totalBits).toBe(EXPECTED_TOTAL_BITS[key]);
-      });
-    }
-
+  describe(`layout — ${key}`, () => {
     it("PSML totalBits matches expected fixture", () => {
-      const pkt = ALL_PSML[key];
+      const pkt = PRESETS[key];
       expect(pkt, `psml preset "${key}"`).toBeDefined();
-      const env = initialEnv(pkt);
-      for (const r of collectAllRefs(pkt)) {
-        if (!env.has(r)) env.set(r, 0);
-      }
+      const env = buildEnv(pkt);
       const layout = resolveLayout(pkt, { env });
       expect(layout.totalBits).toBe(EXPECTED_TOTAL_BITS[key]);
     });
@@ -140,46 +117,33 @@ for (const key of PRESET_KEYS) {
 for (const key of PSML_ONLY_PRESET_KEYS) {
   describe(`PSML-only preset — ${key}`, () => {
     it("normalizes without throwing", () => {
-      const pkt = ALL_PSML[key];
-      expect(pkt, `psml preset "${key}"`).toBeDefined();
-      const env = initialEnv(pkt);
-      for (const r of collectAllRefs(pkt)) {
-        if (!env.has(r)) env.set(r, 0);
-      }
+      const pkt = PRESETS[key];
+      const env = buildEnv(pkt);
       expect(() => normalize(pkt, env)).not.toThrow();
     });
 
     it("passes schema validation", () => {
-      const pkt = ALL_PSML[key];
+      const pkt = PRESETS[key];
       expect(() => validatePsmlPacket(pkt)).not.toThrow();
     });
 
     it("wire-mode totalBits matches expected fixture", () => {
-      const pkt = ALL_PSML[key];
-      const env = initialEnv(pkt);
-      for (const r of collectAllRefs(pkt)) {
-        if (!env.has(r)) env.set(r, 0);
-      }
+      const pkt = PRESETS[key];
+      const env = buildEnv(pkt);
       const layout = resolveLayout(pkt, { env, viewMode: "wire" });
       expect(layout.totalBits).toBe(EXPECTED_TOTAL_BITS_PSML_ONLY[key]);
     });
 
     it("semantic-mode totalBits matches expected fixture", () => {
-      const pkt = ALL_PSML[key];
-      const env = initialEnv(pkt);
-      for (const r of collectAllRefs(pkt)) {
-        if (!env.has(r)) env.set(r, 0);
-      }
+      const pkt = PRESETS[key];
+      const env = buildEnv(pkt);
       const layout = resolveLayout(pkt, { env, viewMode: "semantic" });
       expect(layout.totalBits).toBe(EXPECTED_TOTAL_BITS_SEMANTIC[key]);
     });
 
     it("semantic-mode totalBits is greater than wire-mode totalBits", () => {
-      const pkt = ALL_PSML[key];
-      const env = initialEnv(pkt);
-      for (const r of collectAllRefs(pkt)) {
-        if (!env.has(r)) env.set(r, 0);
-      }
+      const pkt = PRESETS[key];
+      const env = buildEnv(pkt);
       const wire = resolveLayout(pkt, { env, viewMode: "wire" });
       const sem = resolveLayout(pkt, { env, viewMode: "semantic" });
       expect(sem.totalBits).toBeGreaterThan(wire.totalBits);
@@ -189,29 +153,34 @@ for (const key of PSML_ONLY_PRESET_KEYS) {
 
 describe("quicShort — PSML 0.3 Encrypted shape", () => {
   it("normalizes without throwing", () => {
-    const pkt = ALL_PSML["quicShort"];
-    const env = initialEnv(pkt);
-    for (const r of collectAllRefs(pkt)) {
-      if (!env.has(r)) env.set(r, 0);
-    }
+    const pkt = PRESETS["quicShort"];
+    const env = buildEnv(pkt);
     expect(() => normalize(pkt, env)).not.toThrow();
   });
 
   it("passes schema validation", () => {
-    const pkt = ALL_PSML["quicShort"];
+    const pkt = PRESETS["quicShort"];
     expect(() => validatePsmlPacket(pkt)).not.toThrow();
   });
 
   it("semantic-mode totalBits is greater than wire-mode totalBits", () => {
-    const pkt = ALL_PSML["quicShort"];
-    const env = initialEnv(pkt);
-    for (const r of collectAllRefs(pkt)) {
-      if (!env.has(r)) env.set(r, 0);
-    }
+    const pkt = PRESETS["quicShort"];
+    const env = buildEnv(pkt);
     const wire = resolveLayout(pkt, { env, viewMode: "wire" });
     const sem = resolveLayout(pkt, { env, viewMode: "semantic" });
     expect(wire.totalBits).toBe(EXPECTED_TOTAL_BITS["quicShort"]);
     expect(sem.totalBits).toBe(EXPECTED_TOTAL_BITS_SEMANTIC["quicShort"]);
     expect(sem.totalBits).toBeGreaterThan(wire.totalBits);
+  });
+});
+
+describe("quicLong — header-protected Packet Number", () => {
+  it("semantic-mode emits headerProtected on Packet Number cells", () => {
+    const pkt = PRESETS["quicLong"];
+    const env = buildEnv(pkt);
+    const layout = resolveLayout(pkt, { env, viewMode: "semantic" });
+    const pnCells = layout.cells.filter((c) => c.field.id === "packetNumber");
+    expect(pnCells.length).toBeGreaterThan(0);
+    expect(pnCells.every((c) => c.headerProtected)).toBe(true);
   });
 });

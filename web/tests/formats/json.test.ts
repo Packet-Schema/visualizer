@@ -6,14 +6,8 @@
 import { describe, expect, it } from "vitest";
 import { fromJson, toJson } from "../../lib/formats/json";
 import { initialEnv } from "../../lib/psml/normalize";
-import { GENERATED_PRESETS } from "../../lib/psml/presets.generated";
-import { MANUAL_PRESETS } from "../../lib/psml/presets";
+import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
 import type { Packet, PacketEnv } from "../../lib/psml/types";
-
-const ALL_PRESETS: Record<string, Packet> = {
-  ...MANUAL_PRESETS,
-  ...GENERATED_PRESETS,
-};
 
 describe("toJson / fromJson — every preset round-trips", () => {
   for (const [key, pkt] of Object.entries(ALL_PRESETS)) {
@@ -29,28 +23,28 @@ describe("toJson / fromJson — every preset round-trips", () => {
 
 describe("toJson — preset shape", () => {
   it("emits format/version tags", () => {
-    const text = toJson(MANUAL_PRESETS.udp, new Map());
+    const text = toJson(ALL_PRESETS.udp, new Map());
     const obj = JSON.parse(text);
     expect(obj.format).toBe("psml");
     expect(obj.version).toBe("0.2");
-    expect(obj.name).toBe(MANUAL_PRESETS.udp.name);
+    expect(obj.name).toBe(ALL_PRESETS.udp.name);
     expect(obj.rowBits).toBe(32);
     expect(Array.isArray(obj.body)).toBe(true);
   });
 
   it("omits empty env entirely", () => {
-    const obj = JSON.parse(toJson(MANUAL_PRESETS.udp));
+    const obj = JSON.parse(toJson(ALL_PRESETS.udp));
     expect(obj.env).toBeUndefined();
   });
 
   it("preserves the env when populated", () => {
     const env: PacketEnv = new Map([["ihl", 7]]);
-    const obj = JSON.parse(toJson(MANUAL_PRESETS.ipv4, env));
+    const obj = JSON.parse(toJson(ALL_PRESETS.ipv4, env));
     expect(obj.env).toEqual({ ihl: 7 });
   });
 
   it("preserves byteOrder, description, and constraints when present", () => {
-    const obj = JSON.parse(toJson(MANUAL_PRESETS.ipv4, new Map()));
+    const obj = JSON.parse(toJson(ALL_PRESETS.ipv4, new Map()));
     expect(obj.byteOrder).toBe("BE");
     expect(typeof obj.description).toBe("string");
     expect(Array.isArray(obj.constraints)).toBe(true);
@@ -75,7 +69,7 @@ describe("toJson / fromJson — IHL=7 controller value", () => {
       ["ihl", 7],
       ["headerBytes", 28],
     ]);
-    const text = toJson(MANUAL_PRESETS.ipv4, env);
+    const text = toJson(ALL_PRESETS.ipv4, env);
     const round = fromJson(text);
     expect(round.env.get("ihl")).toBe(7);
     expect(round.env.get("headerBytes")).toBe(28);
@@ -83,7 +77,7 @@ describe("toJson / fromJson — IHL=7 controller value", () => {
 
   it("non-default TCP dataOffset=10", () => {
     const env: PacketEnv = new Map([["dataOffset", 10]]);
-    const text = toJson(MANUAL_PRESETS.tcp, env);
+    const text = toJson(ALL_PRESETS.tcp, env);
     expect(JSON.parse(text).env).toEqual({ dataOffset: 10 });
   });
 });
@@ -94,7 +88,7 @@ describe("toJson / fromJson — TLV options populated", () => {
       ["ipv4OptionsCount", 1],
       ["optType", 7],
     ]);
-    const text = toJson(MANUAL_PRESETS.ipv4, env);
+    const text = toJson(ALL_PRESETS.ipv4, env);
     const round = fromJson(text);
     expect(round.env.get("ipv4OptionsCount")).toBe(1);
     expect(round.env.get("optType")).toBe(7);
@@ -105,7 +99,7 @@ describe("toJson / fromJson — TLV options populated", () => {
       ["tcpOptionsCount", 2],
       ["optKind", 2],
     ]);
-    const text = toJson(MANUAL_PRESETS.tcp, env);
+    const text = toJson(ALL_PRESETS.tcp, env);
     const round = fromJson(text);
     expect(round.env.get("tcpOptionsCount")).toBe(2);
   });
@@ -117,7 +111,7 @@ describe("toJson / fromJson — chain (IPv6 extension headers)", () => {
       ["nextHeader_chainCount", 2],
       ["nextHeader_proto", 0],
     ]);
-    const text = toJson(GENERATED_PRESETS.ipv6, env);
+    const text = toJson(ALL_PRESETS.ipv6, env);
     const round = fromJson(text);
     expect(round.env.get("nextHeader_chainCount")).toBe(2);
     expect(round.env.get("nextHeader_proto")).toBe(0);

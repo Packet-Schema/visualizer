@@ -1,12 +1,11 @@
-// Expected totalBits for every PSML preset under its initial state. The
-// runtime resolver and the PSML layout adapter must both produce these
-// numbers; they are also the canonical "default" sizes the README documents.
+// Expected totalBits for every PSML preset under its initial state. After
+// Round 6 every preset is a PSML Packet and these numbers are produced by
+// `resolveLayout`; the totals are also the canonical "default" sizes the
+// README documents.
 //
-// `EXPECTED_TOTAL_BITS` covers presets that exist in BOTH the runtime
-// registry and the PSML registry (parity-tested). `EXPECTED_TOTAL_BITS_PSML`
-// extends that with PSML-only presets introduced in PSML 0.3 (Phase 2C),
-// which use primitives — Encrypted containers, Varint — that have no
-// runtime equivalent.
+// `EXPECTED_TOTAL_BITS` covers the original 13 presets that ship with the
+// picker. `EXPECTED_TOTAL_BITS_PSML_ONLY` extends that with the encrypted
+// presets (quicLong, tlsClientHelloFull) added in PSML 0.3 Phase 2C.
 
 export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   ipv4: 160,

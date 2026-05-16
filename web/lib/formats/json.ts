@@ -2,7 +2,7 @@
 //
 // Reads and writes the canonical PSML JSON wire format. This is the central
 // hub: every format converts to/from PSML once, and the renderer consumes
-// PSML via `web/lib/psml/runtime-from-psml.ts`. The schema lives at
+// PSML via `web/lib/psml/psml-to-renderer.ts`. The schema lives at
 // `schemas/psml.schema.json` (repo root) — keep this file in lock-step.
 //
 // Wire shape:

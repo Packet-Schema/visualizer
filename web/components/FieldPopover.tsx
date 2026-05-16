@@ -10,7 +10,7 @@ import type {
   Field,
   Packet,
   SubField,
-} from "@/lib/psml/runtime-types";
+} from "@/lib/psml/renderer";
 
 type Props = {
   packet: Packet;

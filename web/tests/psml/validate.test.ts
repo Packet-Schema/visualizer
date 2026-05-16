@@ -1,13 +1,11 @@
-// PSML packet validation tests — checks structural invariants enforced by
-// `validatePacket` and the variable-field formula resolution in
-// `attachToBits`.
+// Renderer-side packet validation tests — exercises the structural rules
+// enforced by `validatePacket` against the renderer-shaped Packet model.
+// PSML-side validation lives next door in `validate.test.ts` for the
+// `validatePsmlPacket` walker.
 
 import { describe, expect, it } from "vitest";
-import {
-  attachToBits,
-  validatePacket,
-} from "../../lib/psml/runtime-resolver";
-import type { Packet } from "../../lib/psml/runtime-types";
+import { validatePacket } from "../../lib/psml/renderer-helpers";
+import type { Packet } from "../../lib/psml/renderer";
 
 function pkt(fields: Packet["fields"]): Packet {
   return { name: "Test", rowBits: 32, fields };
@@ -97,48 +95,5 @@ describe("validatePacket — structural rules", () => {
       },
     ]);
     expect(() => validatePacket(p)).toThrow();
-  });
-});
-
-describe("attachToBits — variable formula resolution", () => {
-  it("attaches a known formula", () => {
-    const p = pkt([
-      {
-        id: "options",
-        name: "Options",
-        variable: true,
-        lengthFrom: "ihl",
-        formula: "ihl_options",
-      },
-    ]);
-    attachToBits(p);
-    expect(typeof p.fields[0].toBits).toBe("function");
-    expect(p.fields[0].toBits!(7)).toBe(64);
-    expect(p.fields[0].toBits!(5)).toBe(0);
-  });
-
-  it("throws on a missing formula token", () => {
-    const p = pkt([
-      {
-        id: "options",
-        name: "Options",
-        variable: true,
-        lengthFrom: "ihl",
-      },
-    ]);
-    expect(() => attachToBits(p)).toThrow(/has no formula/);
-  });
-
-  it("throws on an unknown formula", () => {
-    const p = pkt([
-      {
-        id: "options",
-        name: "Options",
-        variable: true,
-        lengthFrom: "ihl",
-        formula: "no_such_formula",
-      },
-    ]);
-    expect(() => attachToBits(p)).toThrow(/unknown variable-length formula/);
   });
 });
