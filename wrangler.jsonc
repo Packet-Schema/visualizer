@@ -2,13 +2,15 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "packet-view",
   "compatibility_date": "2026-05-16",
+  "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "."
-  },
-  "compatibility_flags": [
-    "nodejs_compat"
-  ]
+    // Next.js static export goes here. The Cloudflare build container
+    // produces it via `cd web && npm install && npm run build` (set in
+    // the dashboard's Build command).
+    "directory": "./web/out",
+    "not_found_handling": "404-page"
+  }
 }
