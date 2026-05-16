@@ -1,33 +1,25 @@
-// Augmented Packet Header Diagrams importer
+// PSML 0.2 — Augmented Packet Header Diagrams importer
 // (draft-mcquistin-augmented-ascii-diagrams).
 //
-// Best-effort parser for the machine-readable variant. Supported constructs:
-//
+// Best-effort parser that produces a PSML Packet on success. Supported
+// constructs:
 //   1. A title line of the form "A/An <Name> is formatted as follows:".
 //   2. A diagram block: a leading bit-position scale (two header lines) and
 //      one or more "+-+-..." separator lines bracketing rows of
-//      "|Field|Field|..." text. Per-field bit widths are derived from cell
+//      "|Field|Field|..." text. Per-field bit widths derive from cell
 //      column widths (each bit = 2 chars between separators).
 //   3. An optional "where:" block listing field metadata as
-//        "Field Name (short): N bits. <description>"
+//        "Field Name (short): N bits. <description>".
 //
-// We deliberately do not try to interpret variable-length or conditional
-// fields in this initial implementation; if the diagram uses them they are
-// imported as fixed 0-bit placeholders and a warning is collected.
+// Variable-length and conditional constructs surface as warnings; this
+// initial implementation models them as fixed 0-bit placeholders.
 
-import type { ColorToken, Field, Packet } from "../types";
-import { fromJson, toJson } from "./json";
-
-const COLORS: ColorToken[] = [
-  "blue",
-  "indigo",
-  "violet",
-  "teal",
-  "green",
-  "amber",
-  "orange",
-  "rose",
-];
+import type {
+  CategoryToken,
+  Container,
+  Field as PsmlField,
+  Packet as PsmlPacket,
+} from "../psml/types";
 
 type RawCell = { label: string; bits: number; startBit: number };
 type MergedCell = { label: string; bits: number };
@@ -38,7 +30,7 @@ type WhereEntry = {
   description: string;
 };
 
-export function fromAad(text: string): { packet: Packet; warnings: string[] } {
+export function fromAad(text: string): { packet: PsmlPacket; warnings: string[] } {
   const warnings: string[] = [];
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
 
@@ -82,39 +74,60 @@ export function fromAad(text: string): { packet: Packet; warnings: string[] } {
   const merged = mergeContinuations(cells);
 
   const whereInfo = parseWhereBlock(lines.slice(i));
-  if (whereInfo.unsupported.length) {
-    warnings.push(...whereInfo.unsupported);
-  }
+  if (whereInfo.unsupported.length) warnings.push(...whereInfo.unsupported);
 
-  const fields = merged.map((c, idx): Field => {
+  const body: Container[] = merged.map((c, idx): PsmlField => {
     const trimmed = c.label.trim();
     const meta = matchWhereMeta(trimmed, whereInfo.entries);
     const id = makeId(trimmed || `field${idx}`, idx);
-    const f: Field = {
+    const f: PsmlField = {
       id,
       name: meta?.fullName || trimmed || `Field ${idx + 1}`,
-      bits: c.bits,
-      color: COLORS[idx % COLORS.length],
+      type: { kind: "bits", n: c.bits },
+      ...(meta?.description ? { doc: meta.description } : {}),
+      ...(guessCategory(trimmed) ? { category: guessCategory(trimmed)! } : {}),
     };
-    if (meta?.description) f.description = meta.description;
     return f;
   });
 
-  // Round-trip through json so the imported packet matches the runtime shape
-  // exactly and the schema is validated.
-  const draftPacket: Packet = {
+  const packet: PsmlPacket = {
     name: title || "Imported Packet",
     rowBits,
-    description: `Imported from Augmented ASCII diagram (${fields.length} fields, ${
-      fields.reduce((a, f) => a + (f.bits ?? 0), 0)
+    description: `Imported from Augmented ASCII diagram (${body.length} fields, ${
+      body.reduce((a, c) => a + (isLeafField(c) ? leafBits(c) : 0), 0)
     } bits).`,
-    fields,
+    body,
   };
-  const { packet, controllers } = fromJson(toJson(draftPacket, {}));
-  // controllers will be empty since we don't produce length controllers here,
-  // but keep them around so the import flow can merge them with initial state.
-  void controllers;
   return { packet, warnings };
+}
+
+function isLeafField(c: Container): c is PsmlField {
+  return !("kind" in c) || c.kind === "field";
+}
+
+function leafBits(f: PsmlField): number {
+  switch (f.type.kind) {
+    case "int":
+    case "enum":
+      return f.type.bits;
+    case "bits":
+      return f.type.n;
+    default:
+      return 0;
+  }
+}
+
+function guessCategory(label: string): CategoryToken | null {
+  const norm = label.toLowerCase();
+  if (norm.includes("address") || norm.includes("mac") || norm.includes("ip"))
+    return "addressing";
+  if (norm.includes("checksum") || norm.includes("crc")) return "checksum";
+  if (norm.includes("length") || norm.includes("len")) return "length";
+  if (norm.includes("type") || norm.includes("kind") || norm.includes("opcode"))
+    return "type";
+  if (norm.includes("flag")) return "flags";
+  if (norm.includes("reserved") || norm === "rsvd") return "reserved";
+  return null;
 }
 
 // ---------------------------------------------------------------- helpers

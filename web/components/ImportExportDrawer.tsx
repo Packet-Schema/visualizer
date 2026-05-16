@@ -11,7 +11,9 @@ import {
 import { fromAad } from "@/lib/formats/aug-ascii";
 import { fromJson, toJson } from "@/lib/formats/json";
 import { toAscii } from "@/lib/formats/rfc-ascii";
-import type { ControllerState, Packet } from "@/lib/types";
+import { psmlToRuntime } from "@/lib/psml/runtime-from-psml";
+import { runtimeToPsml } from "@/lib/psml/runtime-to-psml";
+import type { ControllerState, Packet } from "@/lib/psml/runtime-types";
 
 export type DrawerMode = "import" | "export";
 export type FormatKey = "json" | "rfc-ascii" | "aug-ascii";
@@ -94,10 +96,14 @@ export default function ImportExportDrawer({
     if (!open) return;
     if (currentMode !== "export") return;
     try {
+      // Lower the runtime packet to PSML for the format hub. controllers is a
+      // plain object keyed by controller id; PSML's PacketEnv is a Map.
+      const psml = runtimeToPsml(packet);
+      const env = new Map<string, number>(Object.entries(controllers));
       if (format === "json") {
-        setText(toJson(packet, controllers));
+        setText(toJson(psml, env));
       } else if (format === "rfc-ascii") {
-        setText(toAscii(packet, controllers));
+        setText(toAscii(psml, env));
       }
       setStatus(null);
     } catch (e) {
@@ -173,19 +179,23 @@ export default function ImportExportDrawer({
   const handleApply = useCallback(() => {
     try {
       if (format === "json") {
-        const { packet: p, controllers: c } = fromJson(text);
-        onImport(p, c);
-        setStatus({ msg: `Imported "${p.name}".`, kind: "ok" });
+        const { packet: psml, env } = fromJson(text);
+        const runtime = psmlToRuntime(psml);
+        const controllers: ControllerState = {};
+        for (const [k, v] of env) controllers[k] = v;
+        onImport(runtime, controllers);
+        setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
       } else if (format === "aug-ascii") {
-        const { packet: p, warnings } = fromAad(text);
-        onImport(p, {});
+        const { packet: psml, warnings } = fromAad(text);
+        const runtime = psmlToRuntime(psml);
+        onImport(runtime, {});
         if (warnings.length) {
           setStatus({
             msg: `Imported with warnings: ${warnings.join("; ")}`,
             kind: "warn",
           });
         } else {
-          setStatus({ msg: `Imported "${p.name}".`, kind: "ok" });
+          setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
         }
       } else {
         throw new Error(`Format "${format}" cannot be imported.`);

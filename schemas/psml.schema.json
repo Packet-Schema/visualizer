@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://packet-view.dev/schemas/psml.schema.json",
+  "title": "PSML 0.2 Packet",
+  "description": "JSON serialization of a PSML 0.2 (Packet Schema Markup Language) packet. PSML carries semantic intent only — `color` is intentionally absent from the wire shape; the renderer maps `category` to a CSS variable.",
+  "type": "object",
+  "required": ["format", "version", "name", "rowBits", "body"],
+  "additionalProperties": true,
+  "properties": {
+    "format": { "const": "psml" },
+    "version": { "const": "0.2" },
+    "name": { "type": "string", "minLength": 1 },
+    "rowBits": { "type": "integer", "minimum": 1 },
+    "byteOrder": { "type": "string" },
+    "description": { "type": "string" },
+    "body": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Container" }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Constraint" }
+    },
+    "env": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "type": "integer" }
+      }
+    }
+  },
+  "$defs": {
+    "Category": {
+      "type": "string",
+      "enum": [
+        "addressing",
+        "identifier",
+        "length",
+        "type",
+        "flags",
+        "reserved",
+        "checksum",
+        "variable",
+        "payload-marker"
+      ]
+    },
+    "Type": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["kind", "bits"],
+          "additionalProperties": true,
+          "properties": {
+            "kind": { "const": "int" },
+            "bits": { "type": "integer", "minimum": 1 },
+            "signed": { "type": "boolean" }
+          }
+        },
+        {
+          "required": ["kind", "n"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "bits" },
+            "n": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "required": ["kind", "n"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "bytes" },
+            "n": { "$ref": "#/$defs/Expr" }
+          }
+        },
+        {
+          "required": ["kind", "bits", "variants"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "enum" },
+            "bits": { "type": "integer", "minimum": 1 },
+            "variants": {
+              "type": "object",
+              "patternProperties": {
+                "^[0-9]+$": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Expr": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["kind", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "lit" },
+            "value": { "type": "number" }
+          }
+        },
+        {
+          "required": ["kind", "field"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "ref" },
+            "field": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "required": ["kind", "op", "a", "b"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "op" },
+            "op": { "type": "string", "enum": ["+", "-", "*", "/", "%", "<<", ">>"] },
+            "a": { "$ref": "#/$defs/Expr" },
+            "b": { "$ref": "#/$defs/Expr" }
+          }
+        },
+        {
+          "required": ["kind", "test", "t", "f"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "cond" },
+            "test": { "$ref": "#/$defs/Expr" },
+            "t": { "$ref": "#/$defs/Expr" },
+            "f": { "$ref": "#/$defs/Expr" }
+          }
+        }
+      ]
+    },
+    "Field": {
+      "type": "object",
+      "required": ["id", "name", "type"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "field" },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "type": { "$ref": "#/$defs/Type" },
+        "doc": { "type": "string" },
+        "category": { "$ref": "#/$defs/Category" },
+        "defaultValue": { "type": "number" }
+      }
+    },
+    "Group": {
+      "type": "object",
+      "required": ["kind", "id", "children"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "group" },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Container" }
+        }
+      }
+    },
+    "Repeat": {
+      "type": "object",
+      "required": ["kind", "id", "element", "count"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "repeat" },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "category": { "$ref": "#/$defs/Category" },
+        "doc": { "type": "string" },
+        "element": { "$ref": "#/$defs/Struct" },
+        "count": {
+          "oneOf": [
+            { "$ref": "#/$defs/Expr" },
+            { "const": "eos" },
+            {
+              "type": "object",
+              "required": ["until"],
+              "additionalProperties": false,
+              "properties": {
+                "until": { "$ref": "#/$defs/Expr" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Switch": {
+      "type": "object",
+      "required": ["kind", "id", "on", "cases"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "const": "switch" },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "doc": { "type": "string" },
+        "on": { "$ref": "#/$defs/Expr" },
+        "cases": {
+          "type": "object",
+          "patternProperties": {
+            "^.+$": { "$ref": "#/$defs/Struct" }
+          }
+        },
+        "default": { "$ref": "#/$defs/Struct" }
+      }
+    },
+    "Struct": {
+      "type": "object",
+      "required": ["id", "fields"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Container" }
+        }
+      }
+    },
+    "Container": {
+      "oneOf": [
+        { "$ref": "#/$defs/Field" },
+        { "$ref": "#/$defs/Group" },
+        { "$ref": "#/$defs/Repeat" },
+        { "$ref": "#/$defs/Switch" }
+      ]
+    },
+    "Constraint": {
+      "type": "object",
+      "required": ["lhs", "rhs"],
+      "additionalProperties": true,
+      "properties": {
+        "lhs": { "$ref": "#/$defs/Expr" },
+        "rhs": { "$ref": "#/$defs/Expr" },
+        "doc": { "type": "string" }
+      }
+    }
+  }
+}

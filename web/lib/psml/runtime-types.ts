@@ -1,7 +1,20 @@
-// Type definitions for the Packet View data model.
+// PSML 0.2 — Packet Schema Markup Language.
+// Renderer-facing runtime types. These describe the shape that React
+// components consume (cells with TLV/subfield/chain editing affordances).
+// The PSML schema (./types.ts) is the on-disk wire format; this file is the
+// internal model the diagram, dependency overlay, and TLV/Chain editors
+// operate against. PSML packets reach the runtime via the
+// `psml/runtime-from-psml` adapter, and runtime packets reach formats via
+// `psml/runtime-to-psml`.
 //
-// These mirror the shapes used in the legacy packets.js / renderer.js so the
-// resolver behaviour is preserved across the port to TypeScript.
+// CategoryToken is re-exported here so callers stay on a single import path.
+// ColorToken is intentionally absent from the schema; it lives in
+// `web/lib/render-tokens.ts` for the legacy migrator and the per-field
+// `color` fallback the renderer still consults when a category is missing.
+
+import type { ColorToken } from "../render-tokens";
+
+export type { ColorToken } from "../render-tokens";
 
 export type CategoryToken =
   | "addressing"
@@ -13,17 +26,6 @@ export type CategoryToken =
   | "checksum"
   | "variable"
   | "payload-marker";
-
-export type ColorToken =
-  | "blue"
-  | "indigo"
-  | "violet"
-  | "teal"
-  | "green"
-  | "amber"
-  | "orange"
-  | "rose"
-  | "slate";
 
 export type SubField = {
   id: string;

@@ -2,7 +2,7 @@
 
 import { useMemo, type CSSProperties } from "react";
 
-import type { Field, ResolvedLayout } from "@/lib/types";
+import type { Field, ResolvedLayout } from "@/lib/psml/runtime-types";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
 type Props = {

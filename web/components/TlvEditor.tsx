@@ -10,13 +10,13 @@
 
 import { useMemo, useState } from "react";
 
-import { tlvRecordBits, tlvTotalBits } from "@/lib/packet-resolver";
+import { tlvRecordBits, tlvTotalBits } from "@/lib/psml/runtime-resolver";
 import type {
   ControllerState,
   Field,
   TlvCatalogEntry,
   TlvInstance,
-} from "@/lib/types";
+} from "@/lib/psml/runtime-types";
 
 type Props = {
   field: Field;

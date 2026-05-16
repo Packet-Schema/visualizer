@@ -1,5 +1,7 @@
-// Normalize a v2 Packet into a flat NormalizedField[] that the v1 cell-layout
-// algorithm in lib/packet-resolver.ts can consume directly.
+// PSML 0.2 — Packet Schema Markup Language.
+// Normalize a PSML Packet into a flat NormalizedField[] that the cell-layout
+// algorithm in `web/lib/psml/layout.ts` (and its runtime sibling
+// `runtime-resolver.ts`) can consume directly.
 //
 // Walks the Container tree depth-first. Repeat is expanded by evaluating its
 // count expression against the current env. Switch is dispatched by the
@@ -87,7 +89,6 @@ function emit(
     absoluteBitOffset: state.offset,
     originalContainerPath: path,
     category: field.category,
-    color: field.color,
     doc: field.doc,
     ...extra,
   });
