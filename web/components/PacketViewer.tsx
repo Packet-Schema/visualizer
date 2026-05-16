@@ -29,6 +29,7 @@ import ControlsPanel from "./ControlsPanel";
 import DetailPanel from "./DetailPanel";
 import DiagramRuler from "./DiagramRuler";
 import FieldPopover from "./FieldPopover";
+import HexStrip from "./HexStrip";
 import HybridDiagram from "./HybridDiagram";
 import ImportExportDrawer, {
   type DrawerMode,
@@ -61,6 +62,12 @@ export default function PacketViewer() {
   const [isWideViewport, setIsWideViewport] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
+  // Hex strip is hidden by default on narrow viewports so phones aren't
+  // overwhelmed; users can flip it on via the toolbar regardless.
+  const [hexStripVisible, setHexStripVisible] = useState(false);
+  // Tracks whether the user has explicitly toggled hex visibility. Without
+  // this flag, the wide-viewport effect would keep clobbering their choice.
+  const hexStripUserSetRef = useRef(false);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
@@ -83,6 +90,42 @@ export default function PacketViewer() {
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // Default the hex strip on for wide viewports the first time we know the
+  // viewport size. Once the user toggles, leave their preference alone.
+  useEffect(() => {
+    if (hexStripUserSetRef.current) return;
+    setHexStripVisible(isWideViewport);
+  }, [isWideViewport]);
+
+  // Bidirectional highlight wiring. Both the diagram cells and the hex strip
+  // call this; we mirror the active fieldId to the diagram root and tag any
+  // matching elements with `.hex-match`. CSS can't compare two attribute
+  // values, so we apply the class imperatively — zero re-render churn during
+  // hover and the styling rules stay declarative in globals.css.
+  const handleFieldHover = useCallback((fieldId: string | null) => {
+    const root = diagramRef.current;
+    if (!root) return;
+    // Always clear the previous highlight first so rapid hover transitions
+    // don't leave stale classes behind.
+    for (const el of root.querySelectorAll<HTMLElement>(".hex-match")) {
+      el.classList.remove("hex-match");
+    }
+    if (!fieldId) {
+      root.removeAttribute("data-highlighted-field");
+      return;
+    }
+    root.setAttribute("data-highlighted-field", fieldId);
+    // Subfield ids look like "parent:sub". Highlight both the subfield itself
+    // and the parent field cell so the relationship is unambiguous.
+    const parentId = fieldId.includes(":") ? fieldId.split(":")[0] : null;
+    const matches = root.querySelectorAll<HTMLElement>(
+      parentId
+        ? `[data-field-id="${cssEscape(fieldId)}"], .field-cell[data-field-id="${cssEscape(parentId)}"]`
+        : `[data-field-id="${cssEscape(fieldId)}"]`,
+    );
+    for (const el of matches) el.classList.add("hex-match");
   }, []);
 
   const handlePacketChange = useCallback(
@@ -319,6 +362,16 @@ export default function PacketViewer() {
             <ToolbarButton onClick={() => setDrawerMode("export")}>
               Export
             </ToolbarButton>
+            <ToolbarButton
+              onClick={() => {
+                hexStripUserSetRef.current = true;
+                setHexStripVisible((v) => !v);
+              }}
+              pressed={hexStripVisible}
+              ariaLabel={`${hexStripVisible ? "Hide" : "Show"} hex byte strip`}
+            >
+              Hex view
+            </ToolbarButton>
           </div>
           <div
             className="ml-auto text-[13px] font-mono tabular-nums"
@@ -371,7 +424,16 @@ export default function PacketViewer() {
               onSubfieldClick={(parentField, subfield, elem) =>
                 handleFieldClick(`${parentField.id}:${subfield.id}`, elem)
               }
+              onFieldHover={hexStripVisible ? handleFieldHover : undefined}
             />
+            {hexStripVisible ? (
+              <HexStrip
+                layout={layout}
+                rowBits={packet.rowBits}
+                selectedFieldId={selectedFieldId}
+                onByteHover={handleFieldHover}
+              />
+            ) : null}
           </div>
           <Legend categories={categories} />
         </div>
@@ -454,6 +516,17 @@ export default function PacketViewer() {
   );
 }
 
+// cssEscape: tolerant wrapper around CSS.escape for environments where the
+// global is missing (older test runners, edge SSR shims). Field ids contain
+// `:` and `#` (TLV-expanded virtual fields), both of which need escaping
+// before dropping into a querySelector.
+function cssEscape(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
+}
+
 // findRowNeighbor: prefer a cell on the adjacent row whose bit range overlaps
 // the currently focused cell, falling back to direct list neighbors.
 function findRowNeighbor(
@@ -482,19 +555,25 @@ function findRowNeighbor(
 function ToolbarButton({
   onClick,
   children,
+  pressed,
+  ariaLabel,
 }: {
   onClick: () => void;
   children: React.ReactNode;
+  pressed?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={pressed}
+      aria-label={ariaLabel}
       className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
       style={{
-        background: "var(--bg-elevated)",
-        color: "var(--fg)",
-        borderColor: "var(--border-strong)",
+        background: pressed ? "var(--accent)" : "var(--bg-elevated)",
+        color: pressed ? "var(--accent-fg)" : "var(--fg)",
+        borderColor: pressed ? "var(--accent)" : "var(--border-strong)",
       }}
     >
       {children}

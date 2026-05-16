@@ -15,6 +15,8 @@ type Props = {
     subfield: SubField,
     element: HTMLElement,
   ) => void;
+  /** Optional hover sink (used by HexStrip for bidirectional highlight). */
+  onFieldHover?: (fieldId: string | null) => void;
 };
 
 function resolveFieldColor(field: Field): string {
@@ -48,6 +50,7 @@ export default function HybridDiagram({
   selectedFieldId,
   onFieldClick,
   onSubfieldClick,
+  onFieldHover,
 }: Props) {
   const rowBits = packet.rowBits;
   const rowsTotal = layout.cells.length
@@ -92,6 +95,7 @@ export default function HybridDiagram({
                 selectedFieldId={selectedFieldId}
                 onFieldClick={onFieldClick}
                 onSubfieldClick={onSubfieldClick}
+                onFieldHover={onFieldHover}
                 tabIndex={tabIndex}
               />
             );
@@ -111,6 +115,7 @@ type FieldCellProps = {
     subfield: SubField,
     element: HTMLElement,
   ) => void;
+  onFieldHover?: (fieldId: string | null) => void;
   tabIndex: number;
 };
 
@@ -119,6 +124,7 @@ function FieldCell({
   selectedFieldId,
   onFieldClick,
   onSubfieldClick,
+  onFieldHover,
   tabIndex,
 }: FieldCellProps) {
   const isSelected = cell.field.id === selectedFieldId;
@@ -174,6 +180,12 @@ function FieldCell({
           onFieldClick(cell.field, e.currentTarget);
         }
       }}
+      onMouseOver={
+        onFieldHover ? () => onFieldHover(cell.field.id) : undefined
+      }
+      onMouseOut={onFieldHover ? () => onFieldHover(null) : undefined}
+      onFocus={onFieldHover ? () => onFieldHover(cell.field.id) : undefined}
+      onBlur={onFieldHover ? () => onFieldHover(null) : undefined}
     >
       <span className="cell-body">
         {cell.isFirst ? (
@@ -200,6 +212,7 @@ function FieldCell({
           subCells={cell.subCells!}
           selectedFieldId={selectedFieldId}
           onSubfieldClick={onSubfieldClick}
+          onFieldHover={onFieldHover}
         />
       ) : null}
     </div>
@@ -217,6 +230,7 @@ type SubfieldRowProps = {
     subfield: SubField,
     element: HTMLElement,
   ) => void;
+  onFieldHover?: (fieldId: string | null) => void;
 };
 
 function SubfieldRow({
@@ -226,6 +240,7 @@ function SubfieldRow({
   subCells,
   selectedFieldId,
   onSubfieldClick,
+  onFieldHover,
 }: SubfieldRowProps) {
   // Nested grid: parentSpan columns wide so subfield positions track the
   // parent geometry exactly.
@@ -271,6 +286,22 @@ function SubfieldRow({
                 );
               }
             }}
+            onMouseOver={
+              onFieldHover
+                ? (e) => {
+                    e.stopPropagation();
+                    onFieldHover(`${parent.id}:${sub.subfield.id}`);
+                  }
+                : undefined
+            }
+            onMouseOut={
+              onFieldHover
+                ? (e) => {
+                    e.stopPropagation();
+                    onFieldHover(null);
+                  }
+                : undefined
+            }
           >
             {sub.isFirst ? (
               <span className="subfield-name" title={sub.subfield.name}>
