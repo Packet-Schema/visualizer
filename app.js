@@ -88,6 +88,7 @@ function init() {
   state.controllers = initialState(getPacket(state.packetKey));
   initModal();
   render();
+  initDiagramKeyboardNav();
 }
 
 // Minimal CSS.escape polyfill for attribute selectors built from preset keys.
@@ -263,40 +264,86 @@ function renderControls(packet) {
   }
   for (const field of controllers) {
     const value = state.controllers[field.controlsLength];
+    const baseId = `ctrl-${field.id}`;
+    const sliderId = `${baseId}-slider`;
+    const numberId = `${baseId}-number`;
+    const labelId = `${baseId}-label`;
+    const hintId = `${baseId}-hint`;
 
     const wrap = document.createElement("div");
     wrap.className = "control";
 
+    // Visible label is a real <label for=...> targeting the slider, with an
+    // id so screen-readers can also reference it via aria-labelledby on the
+    // numeric input. The hint paragraph carries an id used by aria-describedby.
     const label = document.createElement("label");
-    label.innerHTML = `
-      <span class="control-name">${field.name}</span>
-      <span class="control-hint">${field.description || ""}</span>
-    `;
+    label.setAttribute("for", sliderId);
+    label.id = labelId;
+    label.className = "control-label";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "control-name";
+    nameSpan.textContent = field.name;
+    label.appendChild(nameSpan);
     wrap.appendChild(label);
+
+    if (field.description) {
+      const hint = document.createElement("span");
+      hint.className = "control-hint";
+      hint.id = hintId;
+      hint.textContent = field.description;
+      wrap.appendChild(hint);
+    }
 
     const row = document.createElement("div");
     row.className = "control-row";
 
     const slider = document.createElement("input");
     slider.type = "range";
+    slider.id = sliderId;
     slider.min = field.min ?? 0;
     slider.max = field.max ?? (2 ** field.bits - 1);
     slider.value = value;
-    slider.setAttribute("aria-label", `${field.name} value`);
+    if (field.description) slider.setAttribute("aria-describedby", hintId);
 
     const number = document.createElement("input");
     number.type = "number";
+    number.id = numberId;
     number.min = slider.min;
     number.max = slider.max;
     number.value = value;
     number.className = "control-number";
-    number.setAttribute("aria-label", `${field.name} numeric input`);
+    number.setAttribute("aria-labelledby", labelId);
+    if (field.description) number.setAttribute("aria-describedby", hintId);
+
+    // aria-valuetext gives a richer announcement than the bare numeric value
+    // (e.g. "IHL: 5 (header is 20 bytes)"). Use the variable-length
+    // dependent-field byte count when available.
+    const updateValueText = (v) => {
+      const dependent = packet.fields.find(
+        f => f.variable && f.lengthFrom === field.controlsLength,
+      );
+      let suffix = "";
+      if (dependent && typeof dependent.toBits === "function") {
+        const baseBits = packet.fields
+          .filter(f => !f.variable && typeof f.bits === "number")
+          .reduce((acc, f) => acc + f.bits, 0);
+        const totalBits = baseBits + dependent.toBits(Number(v));
+        if (Number.isInteger(totalBits / 8)) {
+          suffix = ` (header is ${totalBits / 8} bytes)`;
+        } else {
+          suffix = ` (header is ${totalBits} bits)`;
+        }
+      }
+      slider.setAttribute("aria-valuetext", `${field.name}: ${v}${suffix}`);
+    };
+    updateValueText(value);
 
     const apply = (v) => {
       const clamped = Math.max(Number(slider.min), Math.min(Number(slider.max), Number(v)));
       state.controllers[field.controlsLength] = clamped;
       slider.value = clamped;
       number.value = clamped;
+      updateValueText(clamped);
       render();
     };
     slider.addEventListener("input", e => apply(e.target.value));
@@ -310,6 +357,9 @@ function renderControls(packet) {
 }
 
 // ---------------- Import / Export modal ----------------
+
+// Element to restore focus to when the modal closes.
+let modalReturnFocusEl = null;
 
 function initModal() {
   els.btnImport.addEventListener("click", () => openModal("import"));
@@ -328,9 +378,66 @@ function initModal() {
   els.modalGenerate.addEventListener("click", onGenerate);
   els.modalApply.addEventListener("click", onApply);
   els.modalCopy.addEventListener("click", onCopy);
+
+  // Esc to close + Tab focus trap. Bound to the overlay so it only fires while
+  // the modal is rendered (overlay carries `hidden` when closed).
+  els.modalOverlay.addEventListener("keydown", handleModalKeydown);
+}
+
+// Returns visible, focusable elements within the modal in DOM order.
+function getModalFocusables() {
+  const sel = [
+    "a[href]",
+    "button:not([disabled])",
+    "input:not([disabled]):not([type=hidden])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(",");
+  return Array.from(els.modalOverlay.querySelectorAll(sel)).filter((el) => {
+    if (el.hidden) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    return true;
+  });
+}
+
+function handleModalKeydown(e) {
+  if (els.modalOverlay.hidden) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+  if (e.key === "Tab") {
+    const focusables = getModalFocusables();
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !els.modalOverlay.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (active === last || !els.modalOverlay.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
 }
 
 function openModal(mode) {
+  // Remember opener so we can return focus on close.
+  modalReturnFocusEl = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+
   els.modalMode.value = mode;
   // Default format per mode.
   if (mode === "import") {
@@ -343,10 +450,20 @@ function openModal(mode) {
   syncModalUi();
   els.modalOverlay.hidden = false;
   if (mode === "export") onGenerate();
+
+  // Move focus to the first interactive element inside the modal.
+  const focusables = getModalFocusables();
+  if (focusables.length > 0) focusables[0].focus();
 }
 
 function closeModal() {
   els.modalOverlay.hidden = true;
+  // Return focus to the opener (or any saved element). Guard against the
+  // saved element having been removed from the DOM.
+  if (modalReturnFocusEl && document.contains(modalReturnFocusEl)) {
+    try { modalReturnFocusEl.focus(); } catch (_) { /* ignore */ }
+  }
+  modalReturnFocusEl = null;
 }
 
 function syncModalUi() {
@@ -558,6 +675,128 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
+}
+
+// ---------------- Diagram keyboard navigation ----------------
+//
+// Field cells (top-level) implement a roving tabindex: only one cell is
+// reachable via Tab at a time, and arrow keys move focus to neighboring cells
+// (Left/Right within the row, Up/Down between rows). Subfield groups within
+// the same parent likewise rove with Left/Right.
+
+function initDiagramKeyboardNav() {
+  els.diagram.addEventListener("focusin", onDiagramFocusIn);
+  els.diagram.addEventListener("keydown", onDiagramKeydown);
+}
+
+function onDiagramFocusIn(e) {
+  const target = e.target;
+  if (!(target instanceof Element)) return;
+  if (target.classList.contains("field-cell")) {
+    setRovingTabindex(getFieldCells(), target);
+  } else if (target.classList.contains("subfield-cell")) {
+    const parentId = target.dataset.parentFieldId;
+    setRovingTabindex(getSubfieldCells(parentId), target);
+  }
+}
+
+function getFieldCells() {
+  return Array.from(els.diagram.querySelectorAll("g.field-cell"));
+}
+
+function getSubfieldCells(parentId) {
+  if (!parentId) return [];
+  return Array.from(
+    els.diagram.querySelectorAll(`g.subfield-cell[data-parent-field-id="${cssEscape(parentId)}"]`),
+  );
+}
+
+function cssEscape(s) {
+  if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(s);
+  return String(s).replace(/[^a-zA-Z0-9_\-]/g, "\\$&");
+}
+
+function setRovingTabindex(group, focused) {
+  for (const el of group) {
+    el.setAttribute("tabindex", el === focused ? "0" : "-1");
+  }
+}
+
+function onDiagramKeydown(e) {
+  const target = e.target;
+  if (!(target instanceof Element)) return;
+  if (target.classList.contains("field-cell")) {
+    handleFieldCellKey(e, target);
+  } else if (target.classList.contains("subfield-cell")) {
+    handleSubfieldCellKey(e, target);
+  }
+}
+
+function handleFieldCellKey(e, current) {
+  const cells = getFieldCells();
+  if (cells.length === 0) return;
+  const idx = cells.indexOf(current);
+  if (idx === -1) return;
+  let next = null;
+  switch (e.key) {
+    case "ArrowRight": next = cells[Math.min(cells.length - 1, idx + 1)]; break;
+    case "ArrowLeft":  next = cells[Math.max(0, idx - 1)]; break;
+    case "ArrowDown":  next = findRowNeighbor(cells, current, +1); break;
+    case "ArrowUp":    next = findRowNeighbor(cells, current, -1); break;
+    case "Home":       next = cells[0]; break;
+    case "End":        next = cells[cells.length - 1]; break;
+    default: return;
+  }
+  if (next && next !== current) {
+    e.preventDefault();
+    setRovingTabindex(cells, next);
+    next.focus();
+  }
+}
+
+function handleSubfieldCellKey(e, current) {
+  const parentId = current.dataset.parentFieldId;
+  const subs = getSubfieldCells(parentId);
+  if (subs.length === 0) return;
+  const idx = subs.indexOf(current);
+  if (idx === -1) return;
+  let next = null;
+  switch (e.key) {
+    case "ArrowRight": next = subs[Math.min(subs.length - 1, idx + 1)]; break;
+    case "ArrowLeft":  next = subs[Math.max(0, idx - 1)]; break;
+    case "Home":       next = subs[0]; break;
+    case "End":        next = subs[subs.length - 1]; break;
+    default: return;
+  }
+  if (next && next !== current) {
+    e.preventDefault();
+    setRovingTabindex(subs, next);
+    next.focus();
+  }
+}
+
+// Fallback row-neighbor finder: walks the cell list and picks the first cell
+// whose row index differs by ±1 and whose horizontal range overlaps the
+// current cell. Renderer encodes the row in `data-row`; if absent, fall back
+// to direct list neighbors so navigation still works.
+function findRowNeighbor(cells, current, direction) {
+  const curRow = Number(current.dataset.row);
+  if (Number.isNaN(curRow)) {
+    const idx = cells.indexOf(current);
+    return cells[Math.max(0, Math.min(cells.length - 1, idx + direction))];
+  }
+  const curStart = Number(current.dataset.startBit);
+  const curEnd = Number(current.dataset.endBit);
+  const targetRow = curRow + direction;
+  // Prefer a cell on targetRow that overlaps current's bit range.
+  const sameRow = cells.filter(c => Number(c.dataset.row) === targetRow);
+  if (sameRow.length === 0) return null;
+  const overlap = sameRow.find(c => {
+    const s = Number(c.dataset.startBit);
+    const en = Number(c.dataset.endBit);
+    return !(en < curStart || s > curEnd);
+  });
+  return overlap || sameRow[0];
 }
 
 init();

@@ -38,7 +38,9 @@
   --field-stroke: #4a5168;
   --field-stroke-selected: #1c2030;
   --field-label: #1c2030;
-  --field-sublabel: #404660;
+  /* Darkened from #404660 to clear WCAG AA (4.5:1) over field-blue,
+     field-indigo, field-violet, and field-rose at fill-opacity 0.78. */
+  --field-sublabel: #252a3e;
   --field-continuation: #555c6e;
   --field-fill-opacity: 0.78;
   --field-fill-opacity-hover: 0.95;
@@ -187,11 +189,11 @@ body {
   .tagline { font-size: 12px; }
 }
 
-/* theme toggle */
+/* theme toggle: 44x44 minimum hit area (WCAG 2.5.5 / 2.5.8). */
 .theme-toggle {
   flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -520,8 +522,13 @@ main {
 .control { margin-bottom: 14px; }
 .control:last-child { margin-bottom: 0; }
 
-.control label {
+.control label,
+.control .control-label {
   display: block;
+  margin-bottom: 4px;
+}
+
+.control .control-hint {
   margin-bottom: 6px;
 }
 
@@ -624,12 +631,21 @@ footer {
   border-top: 1px solid var(--border);
 }
 
-/* Reduced motion */
+/* Reduced motion: also strip any motion-producing transforms. The previous
+   rule only neutralised transitions/animations, but interactive press states
+   (e.g. .theme-toggle:active { transform: scale(0.94) }) still produced an
+   instantaneous motion artifact for users who requested less movement. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+  .theme-toggle:active,
+  .theme-toggle:hover,
+  .field-cell:hover,
+  .subfield-cell:hover {
+    transform: none !important;
   }
 }
 
@@ -637,7 +653,9 @@ footer {
 
 .tb-btn {
   font-size: 13px;
-  padding: 6px 12px;
+  /* Padded to reach a 44px minimum effective hit area (WCAG 2.5.5). */
+  padding: 12px 16px;
+  min-height: 44px;
   border: 1px solid #c5cad8;
   border-radius: 6px;
   background: #fff;
@@ -699,7 +717,13 @@ footer {
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
-  padding: 0 4px;
+  /* 44x44 minimum hit area (WCAG 2.5.5). */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-row {

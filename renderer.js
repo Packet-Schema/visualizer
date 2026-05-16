@@ -136,8 +136,13 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
     }
   }
 
-  // Field cells
-  for (const cell of layout.cells) {
+  // Field cells. We use roving tabindex: only the first cell (or the selected
+  // cell when present) is in the tab order; arrow keys move focus between
+  // siblings. See app.js#initDiagramKeyboardNav.
+  let rovingTopAssigned = false;
+  const selectedTopCellIndex = layout.cells.findIndex(c => c.field.id === selectedFieldId);
+  for (let i = 0; i < layout.cells.length; i++) {
+    const cell = layout.cells[i];
     const x = PADDING_X + cell.startBit * BIT_WIDTH;
     const y = gridY0 + cell.row * ROW_HEIGHT;
     const w = (cell.endBit - cell.startBit + 1) * BIT_WIDTH;
@@ -148,10 +153,25 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
     group.classList.add("field-cell");
     if (isSelected) group.classList.add("selected");
     group.dataset.fieldId = cell.field.id;
-    group.setAttribute("tabindex", "0");
+    group.dataset.row = String(cell.row);
+    group.dataset.startBit = String(cell.startBit);
+    group.dataset.endBit = String(cell.endBit);
+
+    // Roving tabindex: pick the selected cell when one exists, otherwise the
+    // first cell. All others become tabindex=-1 (programmatically focusable).
+    const shouldBeRoving = selectedTopCellIndex >= 0
+      ? i === selectedTopCellIndex
+      : !rovingTopAssigned;
+    if (shouldBeRoving) {
+      group.setAttribute("tabindex", "0");
+      rovingTopAssigned = true;
+    } else {
+      group.setAttribute("tabindex", "-1");
+    }
     group.setAttribute("role", "button");
+    const variableNote = cell.field.variable ? ", variable-length" : "";
     group.setAttribute("aria-label",
-      `${cell.field.name}, ${cell.bitsTotal} bits${isSelected ? ", selected" : ""}`);
+      `${cell.field.name}, ${cell.bitsTotal} bits${variableNote}${isSelected ? ", selected" : ""}`);
 
     const fillColor = resolveFieldColor(cell.field);
 
@@ -181,7 +201,9 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
       group.appendChild(stripe);
     }
 
-    // Field name (only on first segment)
+    // Field name (only on first segment). Variable-length fields receive a
+    // `~` prefix as a non-color signal (WCAG 1.4.1) — color alone (the stripe
+    // pattern) is not enough on its own.
     if (cell.isFirst) {
       const label = createSvg("text", {
         x: x + w / 2,
@@ -192,7 +214,10 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
         "pointer-events": "none",
       });
       label.classList.add("field-label");
-      label.textContent = truncateToFit(cell.field.name, w - 10);
+      const displayName = cell.field.variable
+        ? `~${cell.field.name}`
+        : cell.field.name;
+      label.textContent = truncateToFit(displayName, w - 10);
       group.appendChild(label);
 
       const sub = createSvg("text", {
@@ -216,7 +241,8 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
         "pointer-events": "none",
       });
       cont.classList.add("field-continuation");
-      cont.textContent = `… ${cell.field.name} (cont.)`;
+      const contName = cell.field.variable ? `~${cell.field.name}` : cell.field.name;
+      cont.textContent = `… ${contName} (cont.)`;
       cont.textContent = truncateToFit(cont.textContent, w - 10);
       group.appendChild(cont);
     }
@@ -236,7 +262,12 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
 
     // Subfield sub-cells rendered on top of the parent.
     if (cell.subCells && cell.subCells.length > 0) {
-      for (const sub of cell.subCells) {
+      // Determine which sub-cell holds the roving tabindex for this parent.
+      // If one is selected, that one; else the first sub-cell of this parent.
+      const selectedSubIdx = cell.subCells.findIndex(s => s.id === selectedFieldId);
+      let subRovingAssigned = false;
+      for (let si = 0; si < cell.subCells.length; si++) {
+        const sub = cell.subCells[si];
         const sx = PADDING_X + sub.startBit * BIT_WIDTH;
         const sw = (sub.endBit - sub.startBit + 1) * BIT_WIDTH;
         // Lay subfield rect in the lower portion of the parent so the parent
@@ -252,6 +283,20 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
         subGroup.dataset.fieldId = sub.id;
         subGroup.dataset.parentFieldId = cell.field.id;
         subGroup.dataset.subfieldId = sub.subfield.id;
+        subGroup.setAttribute("role", "button");
+        subGroup.setAttribute(
+          "aria-label",
+          `${sub.subfield.name} (subfield of ${cell.field.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`,
+        );
+        const shouldBeSubRoving = selectedSubIdx >= 0
+          ? si === selectedSubIdx
+          : !subRovingAssigned;
+        if (shouldBeSubRoving) {
+          subGroup.setAttribute("tabindex", "0");
+          subRovingAssigned = true;
+        } else {
+          subGroup.setAttribute("tabindex", "-1");
+        }
 
         const subRect = createSvg("rect", {
           x: sx + 1,
@@ -287,6 +332,13 @@ export function renderPacket(packet, layout, { selectedFieldId, onFieldClick, on
           subGroup.addEventListener("click", (e) => {
             e.stopPropagation();
             onSubfieldClick(cell.field, sub.subfield);
+          });
+          subGroup.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              onSubfieldClick(cell.field, sub.subfield);
+            }
           });
         }
 
