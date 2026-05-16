@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+
 import {
   CATEGORY_LABELS,
   CATEGORY_TO_TOKEN,
@@ -11,7 +13,32 @@ type Props = {
   categories: string[];
 };
 
+/**
+ * Set a CSS custom property on document.documentElement so the diagram can
+ * dim non-matching cells via `[data-category!="..."]` selectors. We toggle a
+ * `--legend-hover-category` variable + a `data-hovered-category` attribute on
+ * the diagram root.
+ *
+ * We do this imperatively rather than via React state to avoid re-rendering
+ * the whole diagram on every legend hover.
+ */
+function setHoveredCategory(cat: string | null) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (cat) {
+    root.setAttribute("data-hovered-category", cat);
+  } else {
+    root.removeAttribute("data-hovered-category");
+  }
+}
+
 export default function Legend({ categories }: Props) {
+  const handleEnter = useCallback(
+    (cat: string) => () => setHoveredCategory(cat),
+    [],
+  );
+  const handleLeave = useCallback(() => setHoveredCategory(null), []);
+
   if (categories.length === 0) return null;
   return (
     <aside
@@ -35,14 +62,18 @@ export default function Legend({ categories }: Props) {
           return (
             <li
               key={cat}
-              className="flex items-center gap-2 text-xs"
+              className="legend-item flex items-center gap-2 text-xs"
               style={{ color: "var(--fg)" }}
+              onMouseEnter={handleEnter(cat)}
+              onMouseLeave={handleLeave}
+              onFocus={handleEnter(cat)}
+              onBlur={handleLeave}
+              tabIndex={0}
             >
               <span
-                className="inline-block w-3.5 h-3.5 rounded-[4px] border flex-none"
+                className="legend-swatch flex-none"
                 style={{
                   background: tokenToCssVar(token),
-                  borderColor: "var(--field-stroke)",
                 }}
                 aria-hidden="true"
               />
