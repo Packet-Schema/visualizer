@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import { PRESETS } from "@/lib/presets.generated";
 import {
@@ -14,11 +21,16 @@ import type { ControllerState } from "@/lib/types";
 import ControlsPanel from "./ControlsPanel";
 import DetailPanel from "./DetailPanel";
 import DiagramSvg from "./DiagramSvg";
+import FieldPopover from "./FieldPopover";
 import Legend from "./Legend";
 import PresetPicker from "./PresetPicker";
 import ThemeToggle from "./ThemeToggle";
 
 const DEFAULT_PACKET_KEY = "ipv4";
+
+// Width threshold at which the floating field popover is enabled. Below this
+// we rely on the inline DetailPanel only.
+const POPOVER_MIN_WIDTH = 900;
 
 export default function PacketViewer() {
   const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
@@ -28,16 +40,53 @@ export default function PacketViewer() {
     initialState(PRESETS[DEFAULT_PACKET_KEY]),
   );
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
+  const [isWideViewport, setIsWideViewport] = useState(false);
+
+  const diagramRef = useRef<HTMLDivElement | null>(null);
+
+  // Track viewport width to gate the popover affordance. Read on mount and on
+  // resize; SSR sees `false` so the markup matches the initial client render.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function update() {
+      setIsWideViewport(window.innerWidth >= POPOVER_MIN_WIDTH);
+    }
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const handlePacketChange = useCallback((nextKey: string) => {
     setPacketKey(nextKey);
     setControllers(initialState(PRESETS[nextKey]));
     setSelectedFieldId(null);
+    setPopoverAnchor(null);
   }, []);
 
   const handleControllerChange = useCallback((key: string, value: number) => {
     setControllers((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  const handleFieldClick = useCallback(
+    (fieldId: string, elem?: Element | null) => {
+      setSelectedFieldId(fieldId);
+      if (isWideViewport && elem && elem instanceof HTMLElement) {
+        setPopoverAnchor(elem.getBoundingClientRect());
+      } else if (isWideViewport && elem) {
+        // SVG <g> elements expose getBoundingClientRect via SVGGraphicsElement.
+        const anyElem = elem as unknown as { getBoundingClientRect?: () => DOMRect };
+        if (typeof anyElem.getBoundingClientRect === "function") {
+          setPopoverAnchor(anyElem.getBoundingClientRect());
+        } else {
+          setPopoverAnchor(null);
+        }
+      } else {
+        setPopoverAnchor(null);
+      }
+    },
+    [isWideViewport],
+  );
 
   const layout = useMemo(
     () => resolvePacket(packet, controllers),
@@ -50,6 +99,77 @@ export default function PacketViewer() {
   const byteStr = Number.isInteger(bytes)
     ? `${bytes} bytes`
     : `${layout.totalBits} bits`;
+
+  // Roving tabindex keyboard navigation on the diagram. We treat field cells
+  // (and subfield cells) as a flat list keyed by document order, but Up/Down
+  // routes through `data-row` + `data-start-bit` for spatial behaviour.
+  const handleDiagramKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      const root = diagramRef.current;
+      if (!root) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+
+      const isFieldCell = target.classList.contains("field-cell");
+      const isSubfieldCell = target.classList.contains("subfield-cell");
+      if (!isFieldCell && !isSubfieldCell) return;
+
+      const cells = Array.from(
+        root.querySelectorAll<SVGGElement>(
+          isSubfieldCell ? "g.subfield-cell" : "g.field-cell",
+        ),
+      );
+      // Subfields navigate within their parent only.
+      const group = isSubfieldCell
+        ? cells.filter(
+            (c) =>
+              c.dataset.parentFieldId ===
+              (target as HTMLElement).dataset.parentFieldId,
+          )
+        : cells;
+
+      const idx = group.indexOf(target as SVGGElement);
+      if (idx === -1) return;
+
+      let next: SVGGElement | null = null;
+      switch (e.key) {
+        case "ArrowRight":
+          next = group[Math.min(group.length - 1, idx + 1)] ?? null;
+          break;
+        case "ArrowLeft":
+          next = group[Math.max(0, idx - 1)] ?? null;
+          break;
+        case "ArrowDown":
+          next = isSubfieldCell
+            ? null
+            : findRowNeighbor(group, target as SVGGElement, +1);
+          break;
+        case "ArrowUp":
+          next = isSubfieldCell
+            ? null
+            : findRowNeighbor(group, target as SVGGElement, -1);
+          break;
+        case "Home":
+          next = group[0] ?? null;
+          break;
+        case "End":
+          next = group[group.length - 1] ?? null;
+          break;
+        default:
+          return;
+      }
+
+      if (next && next !== target) {
+        e.preventDefault();
+        // Move the single tabindex=0 to the focused element.
+        for (const c of group) {
+          c.setAttribute("tabindex", c === next ? "0" : "-1");
+        }
+        next.focus();
+      }
+    },
+    [],
+  );
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -118,21 +238,33 @@ export default function PacketViewer() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_max-content] gap-3 items-start">
           <div
+            id="diagram"
+            ref={diagramRef}
             className="rounded-[10px] border p-3.5 overflow-x-auto"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
+            onKeyDown={handleDiagramKeyDown}
           >
             <DiagramSvg
               packet={packet}
               layout={layout}
               selectedFieldId={selectedFieldId}
-              onFieldClick={(field) => setSelectedFieldId(field.id)}
-              onSubfieldClick={(parentField, subfield) =>
-                setSelectedFieldId(`${parentField.id}:${subfield.id}`)
-              }
+              onFieldClick={(field) => {
+                const elem = diagramRef.current?.querySelector(
+                  `g.field-cell[data-field-id="${cssEscape(field.id)}"]`,
+                );
+                handleFieldClick(field.id, elem);
+              }}
+              onSubfieldClick={(parentField, subfield) => {
+                const id = `${parentField.id}:${subfield.id}`;
+                const elem = diagramRef.current?.querySelector(
+                  `g.subfield-cell[data-field-id="${cssEscape(id)}"]`,
+                );
+                handleFieldClick(id, elem);
+              }}
             />
           </div>
           <Legend categories={categories} />
@@ -182,6 +314,51 @@ export default function PacketViewer() {
           </section>
         </div>
       </main>
+
+      {isWideViewport && selectedFieldId && popoverAnchor ? (
+        <FieldPopover
+          packet={packet}
+          controllers={controllers}
+          selectedFieldId={selectedFieldId}
+          anchorRect={popoverAnchor}
+          onDismiss={() => setPopoverAnchor(null)}
+        />
+      ) : null}
     </div>
   );
+}
+
+// findRowNeighbor: prefer a cell on the adjacent row whose bit range overlaps
+// the currently focused cell, falling back to direct list neighbors. Mirrors
+// the legacy app.js behavior so users with prior muscle memory aren't broken.
+function findRowNeighbor(
+  cells: SVGGElement[],
+  current: SVGGElement,
+  direction: number,
+): SVGGElement | null {
+  const curRow = Number(current.dataset.row);
+  if (Number.isNaN(curRow)) {
+    const idx = cells.indexOf(current);
+    return cells[Math.max(0, Math.min(cells.length - 1, idx + direction))] ?? null;
+  }
+  const curStart = Number(current.dataset.startBit);
+  const curEnd = Number(current.dataset.endBit);
+  const targetRow = curRow + direction;
+  const sameRow = cells.filter((c) => Number(c.dataset.row) === targetRow);
+  if (sameRow.length === 0) return null;
+  const overlap = sameRow.find((c) => {
+    const s = Number(c.dataset.startBit);
+    const en = Number(c.dataset.endBit);
+    return !(en < curStart || s > curEnd);
+  });
+  return overlap ?? sameRow[0] ?? null;
+}
+
+// Minimal CSS.escape() polyfill for attribute selector building. We only need
+// to handle field-id strings that contain "." or ":" (subfield separators).
+function cssEscape(s: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(s);
+  }
+  return s.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
 }
