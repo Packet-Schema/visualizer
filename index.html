@@ -64,7 +64,7 @@
       <span id="summary" class="summary" aria-live="polite"></span>
     </section>
 
-    <p id="packet-description" class="description"></p>
+    <p id="packet-description" class="description" aria-live="polite" aria-atomic="true"></p>
     <p id="byte-order-note" class="byte-order-note" aria-live="polite"></p>
 
     <section class="diagram-area">
@@ -109,7 +109,7 @@
           </label>
         </div>
         <textarea id="modal-text" spellcheck="false" placeholder="Paste input here, or click Generate to populate from the active packet."></textarea>
-        <div id="modal-status" class="modal-status"></div>
+        <div id="modal-status" class="modal-status" aria-live="polite" aria-atomic="true"></div>
         <div class="modal-actions">
           <button type="button" id="modal-generate">Generate</button>
           <button type="button" id="modal-apply">Apply</button>
