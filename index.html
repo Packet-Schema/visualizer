@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Packet View — Interactive Packet Structure Viewer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Packet View</h1>
+    <p class="tagline">Interactive packet structure viewer. Click fields for details; drag sliders to resize variable-length parts.</p>
+  </header>
+
+  <main>
+    <section class="toolbar">
+      <label for="packet-selector">Packet:</label>
+      <select id="packet-selector"></select>
+      <span id="summary" class="summary"></span>
+    </section>
+
+    <p id="packet-description" class="description"></p>
+
+    <section class="diagram-wrap">
+      <div id="diagram"></div>
+    </section>
+
+    <section class="panels">
+      <div class="panel">
+        <h2>Variable-length controls</h2>
+        <div id="controls"></div>
+      </div>
+      <div class="panel">
+        <h2>Field detail</h2>
+        <div id="detail"></div>
+      </div>
+    </section>
+
+    <footer>
+      <p class="muted small">
+        MVP. Planned: RFC ASCII import/export, Augmented Packet Header Diagrams import, custom packet editor.
+      </p>
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
