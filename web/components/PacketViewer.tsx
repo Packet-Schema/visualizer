@@ -9,7 +9,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import { PRESETS } from "@/lib/psml/runtime-presets";
+import { PRESETS, getPsmlPacket } from "@/lib/psml/all-presets";
+import { resolveLayout } from "@/lib/psml/layout";
 import {
   initialState,
   packetCategories,
@@ -236,10 +237,19 @@ export default function PacketViewer() {
     [],
   );
 
-  const layout = useMemo(
-    () => resolvePacket(packet, controllers, { viewMode }),
-    [packet, controllers, viewMode],
-  );
+  const layout = useMemo(() => {
+    // For PSML-native presets (e.g. quicLong, tlsClientHelloFull) we route
+    // through the PSML layout resolver so Encrypted-container decoration and
+    // viewMode actually take effect. Runtime presets stay on the legacy path.
+    const psml = getPsmlPacket(packetKey);
+    if (psml) {
+      const env = new Map(
+        Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
+      );
+      return resolveLayout(psml, { env, viewMode });
+    }
+    return resolvePacket(packet, controllers, { viewMode });
+  }, [packet, packetKey, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
