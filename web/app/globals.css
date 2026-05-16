@@ -237,6 +237,136 @@ body {
   stroke-width: 1.6;
 }
 
+/* ---- enriched description text: glossary acronyms + RFC links ---- */
+
+.enriched-text {
+  display: inline;
+}
+
+.acronym {
+  position: relative;
+  font-style: normal;
+  border-bottom: 1px dotted var(--fg-muted);
+  cursor: help;
+  /* Pad so the dotted underline reads as an affordance rather than a typo. */
+  padding-bottom: 0.5px;
+}
+
+.acronym:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.acronym::after {
+  content: attr(data-gloss);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg-elevated);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: 6px;
+  width: max-content;
+  max-width: 260px;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 4px 14px rgba(15, 22, 50, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 90;
+}
+
+.acronym:hover::after,
+.acronym:focus::after,
+.acronym:focus-visible::after {
+  opacity: 1;
+}
+
+.rfc-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.rfc-link:hover,
+.rfc-link:focus-visible {
+  text-decoration-style: solid;
+}
+
+/* ---- field popover (wide viewports only) ---- */
+
+.field-popover {
+  background: var(--bg-elevated);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 22, 50, 0.22);
+  padding: 12px 14px;
+  font-size: 13px;
+  /* Allow growth past the rough estimate without clipping content. */
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.field-popover-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.field-popover-subnote {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+.field-popover-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+}
+
+.field-popover-list dt {
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+.field-popover-list dd {
+  margin: 0;
+  color: var(--fg);
+}
+
+.field-popover-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.field-popover-arrow.arrow-up {
+  top: -7px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.field-popover-arrow.arrow-down {
+  bottom: -7px;
+  border-left: none;
+  border-top: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
