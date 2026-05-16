@@ -1,10 +1,17 @@
-// PSML 0.2 — worksheet PDF generator (Typst.ts).
+// PSML 0.2/0.3 — worksheet PDF generator (Typst.ts).
 //
 // Compiles `data/worksheet.typ` against a PSML Packet via `sys.inputs`. Uses
 // the `$typst` snippet API with a lazy WASM import so the Typst runtime is
 // only fetched when the user clicks the worksheet button.
 //
 // Browser-only.
+//
+// PSML 0.3: worksheets always render in 'wire' viewMode (i.e. Encrypted
+// containers collapse to one opaque row). Expanding the plaintext would
+// defeat the worksheet's purpose — students are meant to identify wire-level
+// fields, and decrypted contents aren't visible on the wire. The single
+// encrypted row is relabelled `Encrypted (X bytes — requires <contextNote>)`
+// so the worksheet still names the gap.
 
 import type { PacketEnv, Packet as PsmlPacket } from "./psml/types";
 import { resolveLayout } from "./psml/layout";
@@ -28,7 +35,9 @@ export function buildWorksheetPayload(
   packet: PsmlPacket,
   env?: PacketEnv,
 ): { name: string; description: string; fields: FieldSummary[] } {
-  const layout = resolveLayout(packet, { env });
+  // Always force wire mode for worksheets — decrypted contents aren't on the
+  // wire, so the worksheet must show the opaque envelope, not its plaintext.
+  const layout = resolveLayout(packet, { env, viewMode: "wire" });
   const cellsByFieldId = new Map<string, typeof layout.cells>();
   for (const cell of layout.cells) {
     if (!cellsByFieldId.has(cell.field.id)) cellsByFieldId.set(cell.field.id, []);
@@ -44,9 +53,16 @@ export function buildWorksheetPayload(
     seen.add(cell.field.id);
     const cells = cellsByFieldId.get(cell.field.id) ?? [];
     const bits = cells.reduce((acc, c) => acc + (c.endBit - c.startBit + 1), 0);
+    // Encrypted rows are relabelled to make the requirement obvious to the
+    // student; the underlying bit width still comes from the cell sum.
+    const isEncrypted = cell.encrypted === true;
+    const bytes = Math.ceil(bits / 8);
+    const name = isEncrypted
+      ? `Encrypted (${bytes} bytes — requires ${cell.encryptedContextNote ?? "key material"})`
+      : cell.field.name;
     fields.push({
       id: cell.field.id,
-      name: cell.field.name,
+      name,
       bits,
       offset: bitOffset,
       description: cell.field.description || "",

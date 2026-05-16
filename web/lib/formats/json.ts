@@ -13,10 +13,18 @@
 //     "rowBits": integer,
 //     "byteOrder"?: string,
 //     "description"?: string,
-//     "body": Container[],            // Field | Group | Repeat | Switch
+//     "body": Container[],            // Field | Group | Repeat | Switch | Encrypted
 //     "constraints"?: Constraint[],
 //     "env"?: { [key]: integer }      // optional packet env (controllers etc.)
 //   }
+//
+// PSML 0.3 adds two new shapes that flow through this serializer untouched:
+//   * `TypeVarint` on a Field — `{ kind: 'varint', encoding: 'quic' | 'protobuf' | 'cbor' }`.
+//   * `Encrypted` container — `{ kind: 'encrypted', id, plaintext: Struct,
+//     contextNote, wireBits?, headerProtected? }`. The Struct inside is the
+//     recursive on-wire format unchanged (so its children round-trip too).
+// Both are passed through `body: r.body as Packet["body"]` — structural
+// validation lives in `lib/psml/validate.ts` and runs downstream.
 //
 // Color is intentionally not part of the wire shape — PSML carries
 // semantic category only.

@@ -1234,3 +1234,87 @@ describe("toKsy — exporter", () => {
     expect(yamlParse(yaml).meta.id).toBe("packet");
   });
 });
+
+describe("toKsy — PSML 0.3 Encrypted container", () => {
+  it("emits a single zero-size placeholder entry with a psml-only header note", () => {
+    const yaml = toKsy({
+      name: "QuicShort",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "payload",
+          plaintext: {
+            id: "p",
+            fields: [
+              { id: "pn", name: "PN", type: { kind: "bits", n: 32 } },
+              { id: "frame", name: "Frame", type: { kind: "bits", n: 32 } },
+            ],
+          },
+          contextNote: "TLS 1.3 handshake keys",
+        },
+      ],
+    });
+    expect(yaml).toMatch(/# psml-only: encrypted block "payload"/);
+    expect(yaml).toMatch(/TLS 1\.3 handshake keys/);
+    const obj = yamlParse(yaml);
+    // One placeholder entry, NOT the two plaintext fields.
+    expect(obj.seq).toHaveLength(1);
+    expect(obj.seq[0].id).toBe("payload");
+    expect(obj.seq[0].size).toBe(0);
+    expect(obj.seq[0].doc).toContain("encrypted block");
+    expect(obj.seq[0].doc).toContain("TLS 1.3 handshake keys");
+    // Plaintext field ids must not surface.
+    const ksyText = yaml;
+    expect(ksyText).not.toMatch(/^\s*-\s*id:\s*pn\b/m);
+    expect(ksyText).not.toMatch(/^\s*-\s*id:\s*frame\b/m);
+  });
+
+  it("encrypted nested inside a Group still produces the placeholder", () => {
+    const yaml = toKsy({
+      name: "Nest",
+      rowBits: 32,
+      body: [
+        {
+          kind: "group",
+          id: "outer",
+          children: [
+            { id: "hdr", name: "Hdr", type: { kind: "int", bits: 8 } },
+            {
+              kind: "encrypted",
+              id: "secret",
+              plaintext: {
+                id: "p",
+                fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+              },
+              contextNote: "key",
+            },
+          ],
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["hdr", "secret"]);
+    expect(obj.seq[1].size).toBe(0);
+  });
+});
+
+describe("toKsy — PSML 0.3 Varint type", () => {
+  it("emits a u1 placeholder with a psml-only header note carrying the encoding", () => {
+    for (const encoding of ["quic", "protobuf", "cbor"] as const) {
+      const yaml = toKsy({
+        name: "V",
+        rowBits: 32,
+        body: [
+          { id: "len", name: "Length", type: { kind: "varint", encoding } },
+        ],
+      });
+      expect(yaml).toMatch(
+        new RegExp(`# psml-only:.*varint \\(${encoding}\\) lowered to u1 placeholder`),
+      );
+      const obj = yamlParse(yaml);
+      expect(obj.seq[0].type).toBe("u1");
+      expect(obj.seq[0].id).toBe("len");
+    }
+  });
+});

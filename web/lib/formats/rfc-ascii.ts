@@ -1,12 +1,33 @@
-// PSML 0.2 — RFC ASCII art exporter.
+// PSML 0.2/0.3 — RFC ASCII art exporter.
 //
 // Takes a PSML Packet, normalises it through PSML's expression-aware walker,
 // runs the cell-layout in `web/lib/psml/layout.ts`, and prints a canonical
 // RFC 791 / 793 style ASCII diagram. Variable-length fields render only
 // when the supplied env gives them a concrete bit count.
+//
+// PSML 0.3 additions:
+//   * `viewMode` option ('wire' | 'semantic', default 'wire') threads through
+//     to the layout adapter so Encrypted containers can either collapse to a
+//     single virtual field (wire) or expand into their plaintext (semantic).
+//   * In semantic mode every row that contains plaintext from an Encrypted
+//     container is prefixed with a `>>> ` indent marker so the reader can
+//     tell decrypted contents from on-the-wire bytes.
+//   * Varint Type: when a Field has `type.kind === 'varint'` and the env does
+//     not already supply a concrete bit count for it, we seed the worst-case
+//     width for the encoding (QUIC: 64 bits / 8 bytes incl. 2-bit prefix;
+//     protobuf: 80 bits / 10 bytes; CBOR: 72 bits / 9 bytes), and annotate
+//     the rendered name with a ` (varint)` suffix so the diagram makes the
+//     variable-length nature obvious.
 
 import { resolveLayout } from "../psml/layout";
-import type { PacketEnv, Packet as PsmlPacket } from "../psml/types";
+import type {
+  Container,
+  Encrypted,
+  Field,
+  PacketEnv,
+  Packet as PsmlPacket,
+  ViewMode,
+} from "../psml/types";
 import type { Cell } from "../psml/runtime-types";
 
 type RowCellLike = {
@@ -16,8 +37,47 @@ type RowCellLike = {
   field: { name: string };
 };
 
-export function toAscii(packet: PsmlPacket, env?: PacketEnv): string {
-  const layout = resolveLayout(packet, { env });
+export type AsciiOptions = {
+  /** Wire vs. semantic view of Encrypted containers (default 'wire'). */
+  viewMode?: ViewMode;
+};
+
+/**
+ * Worst-case wire bit width for an un-seeded varint, by encoding. Keep these
+ * conservative — they're the maximum sized form so the rendered cell can
+ * advertise the largest a varint could grow to in the absence of runtime
+ * data.
+ *
+ *   * QUIC: 2-bit prefix + 62-bit value = 8 bytes = 64 bits (RFC 9000 §16).
+ *   * protobuf: 10 bytes of continuation-bit-prefixed payload = 80 bits.
+ *   * CBOR: initial byte + up to 8 data bytes = 9 bytes = 72 bits.
+ */
+const VARINT_WORST_CASE_BITS: Record<string, number> = {
+  quic: 64,
+  protobuf: 80,
+  cbor: 72,
+};
+
+export function toAscii(
+  packet: PsmlPacket,
+  env?: PacketEnv,
+  opts: AsciiOptions = {},
+): string {
+  // Single-pass collection: gather `id → encoding` for every varint Field
+  // reachable through the body's container tree. We then seed worst-case
+  // widths into a local env copy for any varints the caller didn't override,
+  // so the renderer has a concrete bit count to lay out.
+  const localEnv: PacketEnv = new Map(env ?? []);
+  const varintEncodings = new Map<string, string>();
+  collectVarints(packet.body, varintEncodings);
+  for (const [id, encoding] of varintEncodings) {
+    if (!localEnv.has(id)) {
+      localEnv.set(id, VARINT_WORST_CASE_BITS[encoding]);
+    }
+  }
+
+  const viewMode: ViewMode = opts.viewMode ?? "wire";
+  const layout = resolveLayout(packet, { env: localEnv, viewMode });
   const rowBits = packet.rowBits;
 
   const rowsMap = new Map<number, Cell[]>();
@@ -33,6 +93,15 @@ export function toAscii(packet: PsmlPacket, env?: PacketEnv): string {
   lines.push(headerLine2(rowBits));
   lines.push(separator(rowBits));
 
+  // Decorate field names for display. Encrypted-wire-mode fields use a
+  // dedicated `~Encrypted Payload~` label so they stand out, and any field
+  // emitted from a varint Type gets a trailing `(varint)` marker.
+  const displayName = (cell: Cell): string => {
+    if (cell.encrypted) return "~Encrypted Payload~";
+    if (varintEncodings.has(cell.field.id)) return `${cell.field.name} (varint)`;
+    return cell.field.name;
+  };
+
   for (const r of rowIndices) {
     // The `?? []` and `length === 0` guards are defensive; rowIndices is
     // populated from the same Map we read here, so every key always has a
@@ -45,15 +114,52 @@ export function toAscii(packet: PsmlPacket, env?: PacketEnv): string {
       startBit: c.startBit,
       endBit: c.endBit,
       isFirst: c.isFirst,
-      field: { name: c.field.name },
+      field: { name: displayName(c) },
     }));
     const last = expanded[expanded.length - 1];
     const rowWidth = last.endBit + 1;
-    lines.push(fieldLine(expanded, rowWidth));
-    lines.push(separator(rowWidth));
+    // Semantic mode: mark every row whose cells come from inside an Encrypted
+    // container with a `>>> ` indent. The separator above and below the row
+    // gets the same prefix so the run-of-`+ - +` shape stays aligned visually.
+    const semanticEncrypted =
+      viewMode === "semantic" &&
+      row.some((c) => c.encryptedParentId !== undefined);
+    const indent = semanticEncrypted ? ">>> " : "";
+    lines.push(indent + fieldLine(expanded, rowWidth));
+    lines.push(indent + separator(rowWidth));
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Walk the container tree and record every varint Field as `id → encoding`.
+ * Recurses through every compound primitive: Group children, Repeat element
+ * fields, every Switch case (including default), and Encrypted plaintext.
+ */
+function collectVarints(containers: Container[], out: Map<string, string>): void {
+  for (const c of containers) {
+    if (!("kind" in c) || c.kind === "field") {
+      const f = c as Field;
+      if (f.type.kind === "varint") out.set(f.id, f.type.encoding);
+      continue;
+    }
+    switch (c.kind) {
+      case "group":
+        collectVarints(c.children, out);
+        break;
+      case "repeat":
+        collectVarints(c.element.fields, out);
+        break;
+      case "switch":
+        for (const v of Object.values(c.cases)) collectVarints(v.fields, out);
+        if (c.default) collectVarints(c.default.fields, out);
+        break;
+      case "encrypted":
+        collectVarints((c as Encrypted).plaintext.fields, out);
+        break;
+    }
+  }
 }
 
 function headerLine1(rowBits: number): string {
