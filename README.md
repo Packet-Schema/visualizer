@@ -79,6 +79,17 @@ behind every Packet View import, export, and built-in preset.
 Spec: [`docs/psml-0.4.md`](./docs/psml-0.4.md).
 JSON Schema: [`schemas/psml.schema.json`](./schemas/psml.schema.json).
 
+### Adding a preset
+
+Built-in presets live as YAML in [`data/presets/*.psml.yaml`](./data/presets/).
+Each file is validated against the schema above and compiled to
+`web/lib/psml/presets.generated.ts` by `web/scripts/build-presets.ts` (run
+automatically before `npm test` and `npm run build`). To add one, drop a new
+`<key>.psml.yaml` into `data/presets/` and run `npm run build:presets` —
+no TypeScript edits required. See
+[`docs/psml-0.4.md`](./docs/psml-0.4.md#adding-a-preset-yaml-authoring)
+for the YAML authoring guide.
+
 ## Tests
 
 ```

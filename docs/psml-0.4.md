@@ -888,6 +888,59 @@ identical and is not the goal — the exporter exists so users can take a
 Packet View definition into the Kaitai compiler (`ksc`) without
 rebuilding it by hand.
 
+## Adding a preset (YAML authoring)
+
+Built-in presets live as YAML in `data/presets/<key>.psml.yaml`. They are
+validated against `schemas/psml.schema.json` and compiled to
+`web/lib/psml/presets.generated.ts` by `web/scripts/build-presets.ts` at
+build time (wired through the `prebuild` and `pretest` npm hooks).
+
+To add a new preset:
+
+1. Drop a file into `data/presets/`, e.g. `mything.psml.yaml`. The
+   filename stem becomes the preset key (`mything`).
+2. Start it with the schema pragma so editors with the
+   `yaml-language-server` extension give you completion and validation:
+   ```yaml
+   # yaml-language-server: $schema=../../schemas/psml.schema.json
+   name: My Thing
+   rowBits: 32
+   byteOrder: BE
+   body:
+     - { id: foo, name: Foo, type: { kind: int, bits: 8 }, category: type }
+   ```
+3. Run `npm run build:presets` from `web/` (or just `npm test` /
+   `npm run build` — the hooks run it for you).
+4. The new preset is now in `PRESETS` and available via the preset
+   picker. No TS changes required.
+
+Reusable sub-trees can be defined as YAML anchors (recommended for option
+catalogs, extension TLV cases, IPv6 extension-header chains, etc.).
+Top-level keys whose names start with `_` are treated as anchor-only and
+are stripped from the generated registry. Example:
+
+```yaml
+_tcp_option_variants: &tcp_option_variants
+  "0": { id: eol, fields: [ ... ] }
+  "1": { id: nop, fields: [ ... ] }
+  # ...
+
+body:
+  - kind: repeat
+    id: options
+    element:
+      id: optionRecord
+      fields:
+        - kind: switch
+          id: byKind
+          on: { kind: ref, field: optKind }
+          cases: *tcp_option_variants
+    count: { kind: ref, field: tcpOptionsCount }
+```
+
+The generated file (`web/lib/psml/presets.generated.ts`) is gitignored;
+do not edit it by hand and do not commit it.
+
 ## Out of scope
 
 - Actual decryption — PSML 0.3 models the *shape* of an encrypted
