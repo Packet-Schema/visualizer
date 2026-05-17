@@ -39,6 +39,12 @@ import {
   uniqueKey,
 } from "@/lib/preset-file-io";
 import {
+  SHARE_URL_WARN_BYTES,
+  buildShareUrl,
+  parseShareParams,
+  shareUrlByteLength,
+} from "@/lib/share-url";
+import {
   Toolbar,
   FieldRow,
   ContainerRow,
@@ -75,6 +81,7 @@ import PresetPicker from "./PresetPicker";
 import ThemeToggle from "./ThemeToggle";
 
 const DEFAULT_PACKET_KEY = "ipv4";
+const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
 
 // Width threshold at which the floating field popover is enabled. Below this
 // we rely on the inline DetailPanel only.
@@ -136,6 +143,11 @@ export default function PacketViewer() {
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const [isWideViewport, setIsWideViewport] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
+  const [shareStatus, setShareStatus] = useState<{
+    msg: string;
+    kind: "ok" | "error";
+  } | null>(null);
+  const [urlHydrated, setUrlHydrated] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   // Hex strip is hidden by default on narrow viewports so phones aren't
   // overwhelmed; users can flip it on via the toolbar regardless.
@@ -152,11 +164,41 @@ export default function PacketViewer() {
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
 
-  // Pull user-saved presets from localStorage on mount. Refreshed after
-  // save/delete so the picker stays in sync.
+  // Pull user-saved presets from localStorage on mount, then apply any shared
+  // URL state. URL hydration is intentionally one-shot; later state changes
+  // update the address bar through the share-url sync effect below.
   useEffect(() => {
-    setCustomPresets(loadCustomPresets());
-  }, []);
+    const stored = loadCustomPresets();
+    if (typeof window === "undefined") {
+      setCustomPresets(stored);
+      setUrlHydrated(true);
+      return;
+    }
+
+    const parsed = parseShareParams(window.location.search, BUILT_IN_PRESET_KEYS);
+    if (parsed.kind === "psml") {
+      const { key, presets } = persistSharedCustomPreset(parsed.packet, stored);
+      setCustomPresets(presets);
+      setPacketKey(key);
+      setControllers({
+        ...initialState(psmlToRenderer(parsed.packet)),
+        ...parsed.controllers,
+      });
+    } else if (parsed.kind === "preset") {
+      setCustomPresets(stored);
+      setPacketKey(parsed.presetKey);
+      setControllers({
+        ...initialState(renderedPresets[parsed.presetKey]),
+        ...parsed.controllers,
+      });
+    } else {
+      setCustomPresets(stored);
+      if (parsed.error) {
+        console.warn(`Packet View ignored share URL: ${parsed.error}`);
+      }
+    }
+    setUrlHydrated(true);
+  }, [renderedPresets]);
 
   // The active PSML packet for the studio reducer. Prefers built-in PSML,
   // then a custom preset, then a lifted version of the imported renderer
@@ -263,12 +305,15 @@ export default function PacketViewer() {
   const handlePacketChange = useCallback(
     (nextKey: string) => {
       setPacketKey(nextKey);
-      const next = renderedPresets[nextKey] ?? importedPackets[nextKey];
+      const next =
+        renderedPresets[nextKey] ??
+        importedPackets[nextKey] ??
+        (customPresets[nextKey] ? psmlToRenderer(customPresets[nextKey]) : null);
       if (next) setControllers(initialState(next));
       setSelectedFieldId(null);
       setPopoverAnchor(null);
     },
-    [renderedPresets, importedPackets],
+    [renderedPresets, importedPackets, customPresets],
   );
 
   const handleControllerChange = useCallback((key: string, value: number) => {
@@ -429,6 +474,69 @@ export default function PacketViewer() {
     setEditMode(false);
   }, [packetKey, customPresets]);
 
+  const buildCurrentShareUrl = useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const builtInPsml = PRESETS[packetKey];
+    const sharePacket =
+      editMode
+        ? studioState.packet
+        : builtInPsml ?? customPresets[packetKey] ?? rendererToPsml(packet);
+    const defaultControllers = builtInPsml
+      ? initialState(psmlToRenderer(builtInPsml))
+      : undefined;
+
+    return buildShareUrl({
+      baseUrl: window.location.href,
+      packetKey,
+      packet: sharePacket,
+      controllers,
+      builtInKeys: BUILT_IN_PRESET_KEYS,
+      defaultPacketKey: DEFAULT_PACKET_KEY,
+      defaultControllers,
+      forcePsml: editMode || !builtInPsml,
+    });
+  }, [controllers, customPresets, editMode, packet, packetKey, studioState.packet]);
+
+  useEffect(() => {
+    if (!urlHydrated || typeof window === "undefined") return;
+    try {
+      const nextUrl = buildCurrentShareUrl();
+      if (nextUrl && nextUrl !== window.location.href) {
+        window.history.replaceState(null, "", nextUrl);
+      }
+    } catch (err) {
+      console.warn(`Packet View could not update the share URL: ${(err as Error).message}`);
+    }
+  }, [buildCurrentShareUrl, urlHydrated]);
+
+  useEffect(() => {
+    if (!shareStatus) return;
+    const id = window.setTimeout(() => setShareStatus(null), 2400);
+    return () => window.clearTimeout(id);
+  }, [shareStatus]);
+
+  const handleShare = useCallback(async () => {
+    try {
+      const url = buildCurrentShareUrl();
+      const bytes = shareUrlByteLength(url);
+      if (bytes > SHARE_URL_WARN_BYTES) {
+        console.warn(
+          `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
+        );
+      }
+      await copyText(url);
+      if (typeof window !== "undefined" && window.location.href !== url) {
+        window.history.replaceState(null, "", url);
+      }
+      setShareStatus({ msg: "Share URL copied.", kind: "ok" });
+    } catch (err) {
+      setShareStatus({
+        msg: `Share failed: ${(err as Error).message}`,
+        kind: "error",
+      });
+    }
+  }, [buildCurrentShareUrl]);
+
   const tourSteps: TourStep[] = useMemo(
     () => [
       {
@@ -478,11 +586,15 @@ export default function PacketViewer() {
     // touching the TLV editor.
     if (packetKey === "ipv4") {
       const ihl = env.get("ihl") ?? 5;
-      env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
+      const count = Math.max(0, ihl - 5);
+      env.set("ipv4OptionsCount", count);
+      if (count > 0 && !env.has("optType")) env.set("optType", 0);
     }
     if (packetKey === "tcp") {
       const off = env.get("dataOffset") ?? 5;
-      env.set("tcpOptionsCount", Math.max(0, off - 5));
+      const count = Math.max(0, off - 5);
+      env.set("tcpOptionsCount", count);
+      if (count > 0 && !env.has("optKind")) env.set("optKind", 0);
     }
     // In edit mode the studio's packet is the source of truth so the diagram
     // reflects in-progress edits live.
@@ -630,6 +742,7 @@ export default function PacketViewer() {
             onImportCustomPresets={handleImportCustomPresetsClick}
           />
           <input
+            suppressHydrationWarning
             ref={bulkImportInputRef}
             type="file"
             accept=".json,application/json"
@@ -644,6 +757,9 @@ export default function PacketViewer() {
             </ToolbarButton>
             <ToolbarButton onClick={() => setDrawerMode("export")}>
               Export
+            </ToolbarButton>
+            <ToolbarButton onClick={handleShare} ariaLabel="Copy share URL">
+              Share
             </ToolbarButton>
             <ToolbarButton
               onClick={() => {
@@ -695,6 +811,21 @@ export default function PacketViewer() {
               </ToolbarButton>
             ) : null}
           </div>
+          {shareStatus ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="text-xs font-medium"
+              style={{
+                color:
+                  shareStatus.kind === "error"
+                    ? "var(--field-rose)"
+                    : "var(--field-green)",
+              }}
+            >
+              {shareStatus.msg}
+            </div>
+          ) : null}
           <div
             className="ml-auto text-[13px] font-mono tabular-nums"
             style={{ color: "var(--fg-muted)" }}
@@ -898,6 +1029,42 @@ function findRowNeighbor(
   return overlap ?? sameRow[0] ?? null;
 }
 
+function persistSharedCustomPreset(
+  packet: PsmlPacket,
+  stored: Record<string, PsmlPacket>,
+): { key: string; presets: Record<string, PsmlPacket> } {
+  const desired = `custom:${packet.name}`;
+  if (stored[desired] && samePsmlPacket(stored[desired], packet)) {
+    return { key: desired, presets: stored };
+  }
+
+  const existing = new Set(Object.keys(stored));
+  const key = stored[desired] ? uniqueKey(desired, existing) : desired;
+  saveCustomPreset(key, packet);
+  return { key, presets: loadCustomPresets() };
+}
+
+function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+async function copyText(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand("copy");
+  textarea.remove();
+  if (!ok) throw new Error("Clipboard copy was not available.");
+}
+
 // StudioPanel — the in-edit-mode editor surface. Renders the Toolbar at the
 // top, a flat walk of `state.packet.body[]` as FieldRow / ContainerRow
 // instances, the ConstraintEditor, and an optional JsonPane. The diagram
@@ -918,8 +1085,6 @@ function StudioPanel({
   onSaveAs: () => void;
   onDiscard: () => void;
 }) {
-  const canUndo = state.history.length > 0;
-  const canRedo = state.future.length > 0;
   return (
     <section
       className="rounded-[10px] border px-4 py-3.5 mt-4"
