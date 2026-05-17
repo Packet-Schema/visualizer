@@ -32,6 +32,32 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   isisLsp: 216,
   // SCTP (RFC 9260) — 12 B common header; the Chunks repeat defaults to 0.
   sctp: 96,
+  // DHCPv4 (RFC 2131 §2 + RFC 2132) — 236 B BOOTP-compatible fixed header +
+  // 4 B Magic Cookie. Options repeat defaults to 0 under env=0.
+  dhcpv4: 1920,
+  // BGP-4 UPDATE (RFC 4271 §4.1 + §4.3) — 19 B Common Header + 2 B Withdrawn
+  // Length + 2 B Total Path Attribute Length. The three opaque variable-
+  // length sections (Withdrawn Routes / Path Attributes / NLRI) default to
+  // 0 bytes — matching the spec's stated 23-octet minimum UPDATE.
+  bgpUpdate: 184,
+  // CoAP (RFC 7252 §3) — 4 B fixed header. Token (bytes n=ref(tkl)) and the
+  // Options Repeat / Payload Optional all collapse to 0 at env=0.
+  coap: 32,
+  // MQTT v3.1.1 CONNECT (OASIS §3.1) — 1 B Fixed Header type/flags +
+  // 1 B Remaining Length placeholder + 10 B Variable Header (Protocol Name
+  // length+payload + Level + Flags + Keep Alive) + 2 B Client Identifier
+  // Length. Will / Username / Password Optional fields all gate to 0.
+  mqttConnect: 112,
+  // WebSocket frame (RFC 6455 §5.2) — 2 B fixed header. Extended payload
+  // length Switch hits its empty default (0..125 inline) at env=0, Masking
+  // Key Optional erases at MASK=0, Payload bytes(n=ref) is 0.
+  websocketFrame: 16,
+  // IEEE 802.11 MAC Data Frame header (IEEE 802.11-2020 §9.2.4) — 24 B basic
+  // form (Frame Control 2 + Duration 2 + Addr1-3 18 + Sequence Control 2).
+  // Address 4 Optional uses `op("*", ref(toDS), ref(fromDS))` (AND via
+  // product of 1-bit fields) and HT Control gates on `ref(order)` — both
+  // erase at env=0.
+  ieee80211Mac: 192,
 };
 
 /**

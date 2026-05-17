@@ -31,12 +31,22 @@ export const DEFAULT_BYTE_ORDER =
 
 // Curriculum-ordered grouping of presets by OSI layer.
 export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [
-  { label: "Layer 2 — Link", keys: ["ethernet", "vlan", "arp", "stpBpdu"] },
+  { label: "Layer 2 — Link", keys: ["ethernet", "vlan", "arp", "stpBpdu", "ieee80211Mac"] },
   { label: "Layer 3 — Network", keys: ["ipv4", "ipv6", "icmp", "icmpv6", "ospfHello", "isisLsp"] },
   { label: "Layer 4 — Transport", keys: ["tcp", "udp", "sctp", "quicShort", "quicLong"] },
   {
     label: "Layer 7 — Application",
-    keys: ["dns", "tlsRecord", "tlsClientHello", "tlsClientHelloFull"],
+    keys: [
+      "dns",
+      "dhcpv4",
+      "bgpUpdate",
+      "coap",
+      "mqttConnect",
+      "websocketFrame",
+      "tlsRecord",
+      "tlsClientHello",
+      "tlsClientHelloFull",
+    ],
   },
 ];
 
