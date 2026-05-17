@@ -21,6 +21,12 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   tlsClientHello: 648,
   quicShort: 208,
   vlan: 144,
+  // STP Configuration BPDU (IEEE 802.1D-1998) is a fixed 35-byte payload.
+  stpBpdu: 280,
+  // OSPFv2 Hello (RFC 2328) — 24 B common header + 20 B Hello fixed; the
+  // Neighbor List is a Repeat<count = ref(ospfNeighborCount)> which defaults
+  // to 0 under the all-refs-zero env used by `layout-parity.test.ts`.
+  ospfHello: 352,
 };
 
 /**

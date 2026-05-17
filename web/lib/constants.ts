@@ -31,8 +31,8 @@ export const DEFAULT_BYTE_ORDER =
 
 // Curriculum-ordered grouping of presets by OSI layer.
 export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [
-  { label: "Layer 2 — Link", keys: ["ethernet", "vlan", "arp"] },
-  { label: "Layer 3 — Network", keys: ["ipv4", "ipv6", "icmp", "icmpv6"] },
+  { label: "Layer 2 — Link", keys: ["ethernet", "vlan", "arp", "stpBpdu"] },
+  { label: "Layer 3 — Network", keys: ["ipv4", "ipv6", "icmp", "icmpv6", "ospfHello"] },
   { label: "Layer 4 — Transport", keys: ["tcp", "udp", "quicShort", "quicLong"] },
   {
     label: "Layer 7 — Application",
