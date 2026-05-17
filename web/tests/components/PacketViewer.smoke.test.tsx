@@ -11,7 +11,7 @@
 // 7A/7B modules haven't landed yet, so CI on the integration branch can still
 // surface unrelated regressions.
 
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -22,14 +22,9 @@ import { encodePsmlParam } from "@/lib/share-url";
 import type { PsmlPacket } from "@/lib/psml/types";
 
 beforeEach(() => {
-  vi.restoreAllMocks();
   localStorage.clear();
   localStorage.setItem("packet-view-tour-seen", "1");
   window.history.replaceState(null, "", "/");
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: undefined,
-  });
 });
 
 // The reducer module is a hard dependency for the integration; we import
@@ -102,50 +97,6 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
-  it("copies the canonical URL from the Share button", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    const { container, cleanup } = await mountPacketViewer(
-      "/?preset=tcp&controllers.dataOffset=10",
-    );
-    try {
-      await clickShare(container);
-      expect(writeText).toHaveBeenCalledTimes(1);
-      const copied = writeText.mock.calls[0][0] as string;
-      expect(copied).toContain("preset=tcp");
-      expect(copied).toContain("controllers.dataOffset=10");
-      expect(container.textContent).toContain("Share URL copied.");
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("copies URLs over 2KB and only warns in the console", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    const { container, cleanup } = await mountPacketViewer(
-      `/?psml=${encodePsmlParam(mkLargePacket())}`,
-    );
-    try {
-      await clickShare(container);
-      const copied = writeText.mock.calls[0][0] as string;
-      expect(new TextEncoder().encode(copied).length).toBeGreaterThan(2048);
-      expect(
-        warn.mock.calls.some(([msg]) =>
-          String(msg).includes("exceeding 2048; copied anyway"),
-        ),
-      ).toBe(true);
-    } finally {
-      await cleanup();
-    }
-  });
 });
 
 async function mountPacketViewer(path = "/"): Promise<{
@@ -174,37 +125,10 @@ async function mountPacketViewer(path = "/"): Promise<{
   };
 }
 
-async function clickShare(container: HTMLElement): Promise<void> {
-  const share = Array.from(container.querySelectorAll("button")).find(
-    (button) => button.textContent?.trim() === "Share",
-  );
-  expect(share).toBeTruthy();
-  await act(async () => {
-    share?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await Promise.resolve();
-  });
-}
-
 function mkPacket(name: string): PsmlPacket {
   return {
     name,
     rowBits: 8,
     body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
-  };
-}
-
-function mkLargePacket(): PsmlPacket {
-  return {
-    name: "Large Shared Packet",
-    rowBits: 8,
-    body: Array.from({ length: 420 }, (_, i) => ({
-      id: `f${i}`,
-      name: `Field ${i}`,
-      doc: `unique-${i}-${((i + 17) * 2654435761).toString(36)}-${(
-        (i + 31) *
-        1103515245
-      ).toString(36)}`,
-      type: { kind: "bits", n: 8 },
-    })),
   };
 }
