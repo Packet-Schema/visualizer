@@ -1,5 +1,3 @@
-"use client";
-
 import type { CSSProperties } from "react";
 
 import type { Cell, Field, Packet, ResolvedLayout, SubCell, SubField } from "@/lib/psml/renderer";

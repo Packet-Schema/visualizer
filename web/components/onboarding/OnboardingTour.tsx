@@ -1,5 +1,3 @@
-"use client";
-
 // Lightweight onboarding tour ported from /tour.js.
 //
 // Render: a fixed overlay div with a "spotlight" cutout. The cutout is a
