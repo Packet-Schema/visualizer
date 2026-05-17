@@ -11,6 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
+import copy from "copy-to-clipboard";
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
 import {
@@ -530,7 +531,8 @@ export default function PacketViewer() {
           `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
-      await copyText(url);
+      const ok = copy(url);
+      if (!ok) throw new Error("Clipboard copy was not available.");
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }
@@ -1050,22 +1052,7 @@ function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-async function copyText(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const ok = document.execCommand("copy");
-  textarea.remove();
-  if (!ok) throw new Error("Clipboard copy was not available.");
-}
+
 
 // StudioPanel — the in-edit-mode editor surface. Renders the Toolbar at the
 // top, a flat walk of `state.packet.body[]` as FieldRow / ContainerRow
