@@ -193,6 +193,12 @@ export default function PacketViewer() {
       });
     } else {
       setCustomPresets(stored);
+      if (Object.keys(parsed.controllers).length > 0) {
+        setControllers({
+          ...initialState(renderedPresets[DEFAULT_PACKET_KEY]),
+          ...parsed.controllers,
+        });
+      }
       if (parsed.error) {
         console.warn(`Packet View ignored share URL: ${parsed.error}`);
       }
@@ -383,7 +389,7 @@ export default function PacketViewer() {
       const key = `custom:${trimmed}`;
       const packetToSave: PsmlPacket = {
         ...studioState.packet,
-        name: studioState.packet.name || trimmed,
+        name: trimmed,
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
@@ -580,22 +586,18 @@ export default function PacketViewer() {
       Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
     );
     // Derive secondary repeat-count keys for presets whose UI slider drives a
-    // bytes-counter rather than the PSML count ref. Each TLV editor sets
-    // {opts}_count directly via syncTlvControllers; this fallback covers the
-    // IHL / Data Offset slider path where the user grows the header without
-    // touching the TLV editor.
-    if (packetKey === "ipv4") {
-      const ihl = env.get("ihl") ?? 5;
-      const count = Math.max(0, ihl - 5);
-      env.set("ipv4OptionsCount", count);
-      if (count > 0 && !env.has("optType")) env.set("optType", 0);
-    }
-    if (packetKey === "tcp") {
-      const off = env.get("dataOffset") ?? 5;
-      const count = Math.max(0, off - 5);
-      env.set("tcpOptionsCount", count);
-      if (count > 0 && !env.has("optKind")) env.set("optKind", 0);
-    }
+    // bytes-counter rather than the PSML count ref. We do this unconditionally
+    // rather than checking packetKey because custom user-saved presets will have
+    // different keys (e.g. 'custom:my-preset') but still need these derived variables.
+    const ihl = env.get("ihl") ?? 5;
+    const ipv4Count = Math.max(0, ihl - 5);
+    env.set("ipv4OptionsCount", ipv4Count);
+    if (ipv4Count > 0 && !env.has("optType")) env.set("optType", 0);
+
+    const off = env.get("dataOffset") ?? 5;
+    const tcpCount = Math.max(0, off - 5);
+    env.set("tcpOptionsCount", tcpCount);
+    if (tcpCount > 0 && !env.has("optKind")) env.set("optKind", 0);
     // In edit mode the studio's packet is the source of truth so the diagram
     // reflects in-progress edits live.
     if (editMode) {
