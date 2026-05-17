@@ -45,6 +45,7 @@ export default function PresetPicker({
     <label className="flex items-center gap-2 text-sm font-semibold">
       <span>Preset:</span>
       <select
+        suppressHydrationWarning
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="text-sm px-2.5 py-1.5 rounded-md border"
