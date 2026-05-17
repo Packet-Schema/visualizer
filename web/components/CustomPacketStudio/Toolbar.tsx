@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import type { Container, Field } from "@/lib/psml/types";
