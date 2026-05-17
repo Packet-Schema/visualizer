@@ -27,6 +27,11 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   // Neighbor List is a Repeat<count = ref(ospfNeighborCount)> which defaults
   // to 0 under the all-refs-zero env used by `layout-parity.test.ts`.
   ospfHello: 352,
+  // IS-IS LSP (ISO 10589 §9.8 / RFC 1142) — 8 B common header + 19 B LSP-
+  // specific header = 27 B. The TLV repeat defaults to 0 under env=0.
+  isisLsp: 216,
+  // SCTP (RFC 9260) — 12 B common header; the Chunks repeat defaults to 0.
+  sctp: 96,
 };
 
 /**
