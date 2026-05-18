@@ -62,6 +62,16 @@ async function renderDialog(onClose = vi.fn()) {
   return { container, onClose, root };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function selectByLabel(container: HTMLElement, labelText: string): HTMLSelectElement {
   const label = [...container.querySelectorAll("label")].find((candidate) =>
     candidate.textContent?.includes(labelText),
@@ -175,6 +185,54 @@ describe("ExportDialog", () => {
     );
 
     await act(async () => root?.unmount());
+  });
+
+  it("ignores stale PNG completions after the dialog is closed and reopened", async () => {
+    const pending = deferred<Blob>();
+    vi.mocked(svgToPngBlob).mockReturnValue(pending.promise);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const firstOnClose = vi.fn();
+    const secondOnClose = vi.fn();
+
+    await act(async () => {
+      root.render(<ExportDialog packet={packet} layout={layout} open onClose={firstOnClose} />);
+    });
+
+    const format = selectByLabel(container, "Format");
+    await act(async () => {
+      format.value = "png";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "Save PNG")
+        ?.click();
+    });
+
+    await act(async () => {
+      root.render(
+        <ExportDialog packet={packet} layout={layout} open={false} onClose={firstOnClose} />,
+      );
+    });
+    await act(async () => {
+      root.render(
+        <ExportDialog packet={packet} layout={layout} open onClose={secondOnClose} />,
+      );
+    });
+
+    pending.resolve(new Blob(["png"], { type: "image/png" }));
+    await act(async () => {
+      await pending.promise;
+    });
+
+    expect(downloadBlobFile).not.toHaveBeenCalled();
+    expect(firstOnClose).not.toHaveBeenCalled();
+    expect(secondOnClose).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
   });
 
   it("persists all dialog settings as JSON and restores them on the next mount", async () => {

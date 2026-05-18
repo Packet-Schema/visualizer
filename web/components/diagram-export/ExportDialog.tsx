@@ -115,10 +115,19 @@ export default function ExportDialog({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const firstControlRef = useRef<HTMLSelectElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const openRef = useRef(open);
+  const exportSessionRef = useRef(0);
   const titleId = useId();
 
   useEffect(() => {
-    if (!open) return;
+    openRef.current = open;
+    if (!open) {
+      exportSessionRef.current += 1;
+      setBusy(false);
+      return;
+    }
+    exportSessionRef.current += 1;
+    setBusy(false);
     setError(null);
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -183,18 +192,27 @@ export default function ExportDialog({
 
   const handlePngDownload = useCallback(async () => {
     if (!svg) return;
+    const exportSession = exportSessionRef.current;
     setBusy(true);
     setError(null);
     try {
       const png = await svgToPngBlob(svg, settings.pngScale);
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
+        return;
+      }
       const filename = `${slugify(packet.name)}-diagram-${settings.pngScale}x.png`;
       downloadBlobFile(filename, png);
       onClose();
     } catch (caught) {
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
+        return;
+      }
       console.error("Failed to export diagram as PNG.", caught);
       setError("PNG export failed. Please try SVG or another browser.");
     } finally {
-      setBusy(false);
+      if (openRef.current && exportSessionRef.current === exportSession) {
+        setBusy(false);
+      }
     }
   }, [packet.name, settings.pngScale, svg, onClose]);
 
