@@ -1,5 +1,11 @@
-import PacketViewer from "@/components/PacketViewer";
+import SiteHeader from "@/components/app-shell/SiteHeader";
+import PacketViewer from "@/components/packet-viewer/PacketViewer";
 
 export default function Page() {
-  return <PacketViewer />;
+  return (
+    <div className="min-h-screen flex flex-col">
+      <SiteHeader />
+      <PacketViewer />
+    </div>
+  );
 }

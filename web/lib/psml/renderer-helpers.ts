@@ -168,7 +168,7 @@ export function resolveChain(packet: Packet): ChainBlock[] {
 }
 
 /** Initial controller state from each field's defaultValue, then synced
- *  against any current TLV instances. */
+ *  against any current TLV / chain instances. */
 export function initialState(packet: Packet): ControllerState {
   const state: ControllerState = {};
   for (const field of packet.fields) {
@@ -177,6 +177,7 @@ export function initialState(packet: Packet): ControllerState {
     }
   }
   syncTlvControllers(packet, state);
+  syncChainControllers(packet, state);
   return state;
 }
 
@@ -190,6 +191,29 @@ export function syncTlvControllers(
       const v = tlvControllerValue(field, field.tlv.instances ?? []);
       if (v != null) state[field.tlv.drivesController] = v;
     }
+  }
+  return state;
+}
+
+/** Recompute renderer chain-derived env keys used by PSML Repeat<Switch>. */
+export function syncChainControllers(
+  packet: Packet,
+  state: ControllerState,
+): ControllerState {
+  for (const field of packet.fields) {
+    if (!field.chainCatalog) continue;
+
+    const instances = field.chainInstances ?? [];
+    const baseId = field.id.endsWith("_chain")
+      ? field.id.slice(0, -"_chain".length)
+      : field.id;
+    const proto = instances[0]?.proto ?? field.chainFinalProto ?? 59;
+
+    state[`${field.id}Count`] = instances.length;
+    state[`${field.id}_chainCount`] = instances.length;
+    state[`${baseId}_chainCount`] = instances.length;
+    state[`${field.id}_proto`] = proto;
+    state[`${baseId}_proto`] = proto;
   }
   return state;
 }

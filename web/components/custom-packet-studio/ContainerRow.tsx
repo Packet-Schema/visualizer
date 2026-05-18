@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 
 import type { EditAction, Path } from "@/lib/psml/edit-reducer";

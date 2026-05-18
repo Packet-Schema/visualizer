@@ -15,7 +15,7 @@ import { describe, it, expect } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import PacketViewer from "@/components/PacketViewer";
+import PacketViewer from "@/components/packet-viewer/PacketViewer";
 import { PRESETS } from "@/lib/psml/presets";
 
 // The reducer module is a hard dependency for the integration; we import

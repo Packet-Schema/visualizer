@@ -1,5 +1,3 @@
-"use client";
-
 import { useRef, useState } from "react";
 
 import type { ControllerState, Packet } from "@/lib/psml/renderer";
