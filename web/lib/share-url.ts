@@ -52,7 +52,7 @@ export function parseShareParams(
   builtInKeys: Iterable<string>,
 ): ParsedShareParams {
   const params =
-    typeof input === "string" ? new URLSearchParams(trimSearch(input)) : input;
+    typeof input === "string" ? new URLSearchParams(input) : input;
   const controllers = parseControllers(params);
   const psml = params.get("psml");
 
@@ -117,10 +117,6 @@ export function buildShareUrl({
 
 export function shareUrlByteLength(url: string): number {
   return new TextEncoder().encode(url).length;
-}
-
-function trimSearch(value: string): string {
-  return value.startsWith("?") ? value.slice(1) : value;
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {
