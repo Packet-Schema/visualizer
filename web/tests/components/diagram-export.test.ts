@@ -155,8 +155,45 @@ describe("buildDiagramSvg", () => {
     const firstFieldLabel = svg.querySelector("text[clip-path]");
 
     expect(firstRulerLabel?.getAttribute("text-anchor")).toBe("middle");
-    expect(firstFieldLabel?.getAttribute("clip-path")).toBe("url(#cell-0-0-a)");
-    expect(svg.querySelector("clipPath#cell-0-0-a")).not.toBeNull();
+    expect(firstFieldLabel?.getAttribute("clip-path")).toBe("url(#cell-0-0-0061)");
+    expect(svg.querySelector("clipPath#cell-0-0-0061")).not.toBeNull();
+  });
+
+  it("sanitizes clip-path ids for field ids that contain fragment-breaking characters", () => {
+    const repeatedFieldPacket: Packet = {
+      ...packet,
+      fields: [{ id: "name#1 \"quoted\"", name: "Type", bits: 8, category: "type" }],
+    };
+    const layout: ResolvedLayout = {
+      totalBits: 8,
+      cells: [
+        {
+          field: repeatedFieldPacket.fields[0],
+          bitsTotal: 8,
+          row: 0,
+          startBit: 0,
+          endBit: 7,
+          segmentIndex: 0,
+          totalSegments: 1,
+          isFirst: true,
+          isLast: true,
+          fieldStartOffset: 0,
+          fieldEndOffset: 7,
+        },
+      ],
+    };
+    const svg = new DOMParser()
+      .parseFromString(buildDiagramSvg(repeatedFieldPacket, layout), "image/svg+xml")
+      .documentElement;
+    const fieldLabel = svg.querySelector("text[clip-path]");
+    const clipPath = svg.querySelector("clipPath");
+    const clipPathId = clipPath?.getAttribute("id");
+
+    expect(clipPathId).toBe("cell-0-0-006e-0061-006d-0065-0023-0031-0020-0022-0071-0075-006f-0074-0065-0064-0022");
+    expect(clipPathId).not.toContain("#");
+    expect(clipPathId).not.toContain(" ");
+    expect(clipPathId).not.toContain("\"");
+    expect(fieldLabel?.getAttribute("clip-path")).toBe(`url(#${clipPathId})`);
   });
 
   it("rejects invalid row indices instead of corrupting the row array", () => {

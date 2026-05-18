@@ -111,6 +111,13 @@ function cellGeometry(cell: Cell, bitWidth: number) {
   return { x, y, width, height };
 }
 
+function clipPathIdForCell(cell: Cell): string {
+  const encodedFieldId = Array.from(cell.field.id, (char) =>
+    char.codePointAt(0)?.toString(16).padStart(4, "0") ?? "fffd",
+  ).join("-");
+  return `cell-${cell.row}-${cell.segmentIndex}-${encodedFieldId}`;
+}
+
 function textForCell(cell: Cell): { title: string; subtitle: string } {
   if (!cell.isFirst) {
     return {
@@ -194,7 +201,7 @@ export function buildDiagramSvg(
           const escapedSubtitle = xmlEscape(subtitle);
           const fill = fieldFill(cell.field, theme);
           const dash = cell.encrypted ? ' stroke-dasharray="5 3"' : "";
-          const clipId = `cell-${cell.row}-${cell.segmentIndex}-${cell.field.id}`;
+          const clipId = clipPathIdForCell(cell);
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${fill}" stroke="${theme.fieldStroke}" stroke-width="1"${dash} />`,
             `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${cell.isFirst ? theme.fieldLabel : theme.fieldContinuation}">${escapedTitle}</text>`,
@@ -210,7 +217,7 @@ export function buildDiagramSvg(
   const clipPaths = layout.cells
     .map((cell) => {
       const { x, y, width, height } = cellGeometry(cell, bitWidth);
-      return `<clipPath id="cell-${cell.row}-${cell.segmentIndex}-${cell.field.id}"><rect x="${x + 4}" y="${y}" width="${Math.max(width - 8, 1)}" height="${height}" /></clipPath>`;
+      return `<clipPath id="${clipPathIdForCell(cell)}"><rect x="${x + 4}" y="${y}" width="${Math.max(width - 8, 1)}" height="${height}" /></clipPath>`;
     })
     .join("");
 
