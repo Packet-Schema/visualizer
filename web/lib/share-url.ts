@@ -1,4 +1,5 @@
 import { compressToUint8Array, decompressFromUint8Array } from "lz-string";
+import { fromUint8Array, toUint8Array } from "js-base64";
 
 import { fromJson, toJson } from "./formats/json";
 import { validatePsmlPacket } from "./psml/validate";
@@ -29,14 +30,14 @@ export function encodePsmlParam(
   controllers: ControllerState = {},
 ): string {
   const json = toJson(packet, controllersToEnv(controllers));
-  return bytesToBase64Url(compressToUint8Array(json));
+  return fromUint8Array(compressToUint8Array(json), true);
 }
 
 export function decodePsmlParam(value: string): {
   packet: PsmlPacket;
   controllers: ControllerState;
 } {
-  const bytes = base64UrlToBytes(value);
+  const bytes = toUint8Array(value);
   const json = decompressFromUint8Array(bytes);
   if (!json) {
     throw new Error("Shared PSML payload could not be decompressed.");
@@ -152,29 +153,4 @@ function envToControllers(env: PacketEnv): ControllerState {
     if (Number.isFinite(value)) out[key] = value;
   }
   return out;
-}
-
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    const chunk = bytes.subarray(i, i + 0x8000);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-function base64UrlToBytes(value: string): Uint8Array {
-  const padded = value
-    .replace(/-/g, "+")
-    .replace(/_/g, "/")
-    .padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }
