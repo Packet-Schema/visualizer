@@ -10,6 +10,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import copy from "copy-to-clipboard";
+import stableStringify from "safe-stable-stringify";
 
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
@@ -951,24 +952,4 @@ function normalizeCustomPresetName(name: string): string {
 
 function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {
   return stableStringify(a) === stableStringify(b);
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(canonicalizePsmlValue(value));
-}
-
-function canonicalizePsmlValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(canonicalizePsmlValue);
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, child]) => child !== undefined)
-      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-      .map(([key, child]) => [key, canonicalizePsmlValue(child)]),
-  );
 }
