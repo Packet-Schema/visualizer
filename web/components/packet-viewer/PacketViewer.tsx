@@ -12,6 +12,7 @@ import {
 
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
+import { initialEnv } from "@/lib/psml/normalize";
 import {
   initialState,
   packetCategories,
@@ -86,7 +87,6 @@ function collectPsmlRefs(packet: PsmlPacket): Set<string> {
   const visit = (e: Expr): void => {
     switch (e.kind) {
       case "lit":
-      case "peek":
         return;
       case "ref":
         out.add(e.field);
@@ -99,6 +99,14 @@ function collectPsmlRefs(packet: PsmlPacket): Set<string> {
         visit(e.test);
         visit(e.t);
         visit(e.f);
+        return;
+      case "peek":
+        // peek.bits は定数 (number) で ref を含まない一方、
+        // peek.offset は Expr なので ref を含み得る (例: offset を
+        // 同 packet の長さ field で動かす lookahead パターン)。
+        // ここを walk しないと該当パケットが MissingRefError で落ちる
+        // (Codex P2 指摘)。
+        if (e.offset) visit(e.offset);
         return;
     }
   };
@@ -570,6 +578,17 @@ export default function PacketViewer() {
       : PRESETS[packetKey] ??
         customPresets[packetKey] ??
         rendererToPsml(packet);
+    // Default value seed: packet が宣言する Field.defaultValue を env に
+    // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
+    // 入力を上書きしない)。 これを fallback seed より先にやらないと、
+    // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
+    // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
+    // 既存 preset の variable-length field が zero-length に描かれる
+    // regression を起こす (Codex P1 指摘)。
+    const packetDefaults = initialEnv(targetPsml);
+    for (const [k, v] of packetDefaults) {
+      if (!env.has(k)) env.set(k, v);
+    }
     // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
     // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
     // PacketViewer 側が手動で seed しない限り `resolveLayout` が
