@@ -912,25 +912,24 @@ function persistSharedCustomPreset(
     name: normalizeCustomPresetName(packet.name),
   };
   const desired = `custom:${normalizedPacket.name}`;
-  const storedPacket = stored[desired];
 
-  if (storedPacket) {
+  for (const [key, candidate] of Object.entries(stored)) {
     const normalizedStoredPacket: PsmlPacket = {
-      ...storedPacket,
-      name: normalizeCustomPresetName(storedPacket.name),
+      ...candidate,
+      name: normalizeCustomPresetName(candidate.name),
     };
     if (samePsmlPacket(normalizedStoredPacket, normalizedPacket)) {
-      if (!samePsmlPacket(storedPacket, normalizedStoredPacket)) {
-        saveCustomPreset(desired, normalizedStoredPacket);
+      if (!samePsmlPacket(candidate, normalizedStoredPacket)) {
+        saveCustomPreset(key, normalizedStoredPacket);
         const presets = loadCustomPresets();
         return {
-          key: desired,
-          presets: presets[desired]
+          key,
+          presets: presets[key]
             ? presets
-            : { ...stored, [desired]: normalizedStoredPacket },
+            : { ...stored, [key]: normalizedStoredPacket },
         };
       }
-      return { key: desired, presets: stored };
+      return { key, presets: stored };
     }
   }
 

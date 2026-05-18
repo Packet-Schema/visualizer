@@ -126,16 +126,46 @@ describe("PacketViewer (smoke)", () => {
 
   it("reuses a shared custom preset when only object key order differs", async () => {
     const name = "Shared URL Packet";
+    const matchingKey = `custom:${name}-2`;
     const storedPacket: PsmlPacket = {
       body: [{ name: "X", id: "x", type: { n: 8, kind: "bits" } }],
       rowBits: 8,
       name,
     };
+    const collidingPacket = mkPacket(name, "different-packet");
     const sharedPacket: PsmlPacket = {
       name,
       rowBits: 8,
       body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
     };
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        [`custom:${name}`]: collidingPacket,
+        [matchingKey]: storedPacket,
+      }),
+    );
+
+    const { container, cleanup } = await mountPacketViewer(
+      `/?psml=${encodePsmlParam(sharedPacket, {})}`,
+    );
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+      const picker = container.querySelector("select");
+      expect(Object.keys(stored)).toEqual([`custom:${name}`, matchingKey]);
+      expect(stored[matchingKey]).toMatchObject({ name });
+      expect(picker?.value).toBe(matchingKey);
+      expect(window.location.search).toContain("psml=");
+      expect(window.location.search).not.toContain("preset=custom");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("stores a same-named shared packet under the next custom key when content differs", async () => {
+    const name = "Shared URL Packet";
+    const storedPacket = mkPacket(name, "stored-field");
+    const sharedPacket = mkPacket(name, "incoming-field");
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ [`custom:${name}`]: storedPacket }),
@@ -147,9 +177,17 @@ describe("PacketViewer (smoke)", () => {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
       const picker = container.querySelector("select");
-      expect(Object.keys(stored)).toEqual([`custom:${name}`]);
-      expect(stored[`custom:${name}`]).toMatchObject({ name });
-      expect(picker?.value).toBe(`custom:${name}`);
+      expect(Object.keys(stored)).toEqual([
+        `custom:${name}`,
+        `custom:${name}-2`,
+      ]);
+      expect(stored[`custom:${name}-2`]).toMatchObject({
+        name,
+        body: [{ id: "incoming-field" }],
+      });
+      expect(picker?.value).toBe(`custom:${name}-2`);
+      expect(window.location.search).toContain("psml=");
+      expect(window.location.search).not.toContain("preset=custom");
     } finally {
       await cleanup();
     }

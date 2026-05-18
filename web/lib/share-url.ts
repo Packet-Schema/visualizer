@@ -1,5 +1,7 @@
-import { compressToUint8Array, decompressFromUint8Array } from "lz-string";
-import { fromUint8Array, toUint8Array } from "js-base64";
+import {
+  compressToEncodedURIComponent,
+  decompressFromEncodedURIComponent,
+} from "lz-string";
 
 import { fromJson, toJson } from "./formats/json";
 import { validatePsmlPacket } from "./psml/validate";
@@ -30,15 +32,14 @@ export function encodePsmlParam(
   controllers: ControllerState = {},
 ): string {
   const json = toJson(packet, controllersToEnv(controllers));
-  return fromUint8Array(compressToUint8Array(json), true);
+  return compressToEncodedURIComponent(json);
 }
 
 export function decodePsmlParam(value: string): {
   packet: PsmlPacket;
   controllers: ControllerState;
 } {
-  const bytes = toUint8Array(value);
-  const json = decompressFromUint8Array(bytes);
+  const json = decompressFromEncodedURIComponent(value);
   if (!json) {
     throw new Error("Shared PSML payload could not be decompressed.");
   }
