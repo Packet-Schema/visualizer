@@ -61,6 +61,7 @@ import type {
 } from "@/lib/psml/types";
 import ControlsPanel from "./ControlsPanel";
 import DependencyOverlay from "./DependencyOverlay";
+import DiagramExportControls from "./DiagramExportControls";
 import DetailPanel from "./DetailPanel";
 import DiagramRuler from "./DiagramRuler";
 import FieldPopover from "./FieldPopover";
@@ -645,6 +646,7 @@ export default function PacketViewer() {
             <ToolbarButton onClick={() => setDrawerMode("export")}>
               Export
             </ToolbarButton>
+            <DiagramExportControls packet={packet} layout={layout} />
             <ToolbarButton
               onClick={() => {
                 hexStripUserSetRef.current = true;
