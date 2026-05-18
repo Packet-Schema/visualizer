@@ -381,7 +381,7 @@ export default function PacketViewer() {
       const key = `custom:${trimmed}`;
       const packetToSave: PsmlPacket = {
         ...studioState.packet,
-        name: studioState.packet.name || trimmed,
+        name: trimmed,
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
@@ -590,18 +590,17 @@ export default function PacketViewer() {
     // {opts}_count directly via syncTlvControllers; this fallback covers the
     // IHL / Data Offset slider path where the user grows the header without
     // touching the TLV editor.
-    if (packetKey === "ipv4") {
-      const ihl = env.get("ihl") ?? 5;
-      const ipv4Count = Math.max(0, ihl - 5);
-      env.set("ipv4OptionsCount", ipv4Count);
-      if (ipv4Count > 0 && !env.has("optType")) env.set("optType", 0);
-    }
-    if (packetKey === "tcp") {
-      const off = env.get("dataOffset") ?? 5;
-      const tcpCount = Math.max(0, off - 5);
-      env.set("tcpOptionsCount", tcpCount);
-      if (tcpCount > 0 && !env.has("optKind")) env.set("optKind", 0);
-    }
+    // We compute these generically based on the environment so that custom presets
+    // (which have different packetKeys) can still resolve their layout refs.
+    const ihl = env.get("ihl") ?? 5;
+    const ipv4Count = Math.max(0, ihl - 5);
+    env.set("ipv4OptionsCount", ipv4Count);
+    if (ipv4Count > 0 && !env.has("optType")) env.set("optType", 0);
+
+    const off = env.get("dataOffset") ?? 5;
+    const tcpCount = Math.max(0, off - 5);
+    env.set("tcpOptionsCount", tcpCount);
+    if (tcpCount > 0 && !env.has("optKind")) env.set("optKind", 0);
     // In edit mode the studio's packet is the source of truth so the diagram
     // reflects in-progress edits live.
     if (editMode) {
