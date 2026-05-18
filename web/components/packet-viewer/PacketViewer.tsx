@@ -7,7 +7,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
@@ -16,6 +15,7 @@ import { resolveLayout } from "@/lib/psml/layout";
 import {
   initialState,
   packetCategories,
+  syncChainControllers,
   syncTlvControllers,
 } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
@@ -23,8 +23,6 @@ import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import {
   editReducer,
   makeInitialState,
-  type EditAction,
-  type EditState,
 } from "@/lib/psml/edit-reducer";
 import {
   loadCustomPresets,
@@ -38,13 +36,6 @@ import {
   readFileAsText,
   uniqueKey,
 } from "@/lib/preset-file-io";
-import {
-  Toolbar,
-  FieldRow,
-  ContainerRow,
-  ConstraintEditor,
-  JsonPane,
-} from "@/components/CustomPacketStudio";
 import type {
   ChainInstance,
   ControllerState,
@@ -53,27 +44,27 @@ import type {
   PacketRegistry,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type {
-  Container as PsmlContainer,
-  Field as PsmlField,
-  PsmlPacket,
-  ViewMode,
-} from "@/lib/psml/types";
-import ControlsPanel from "./ControlsPanel";
-import DependencyOverlay from "./DependencyOverlay";
-import DiagramExportControls from "./DiagramExportControls";
-import DetailPanel from "./DetailPanel";
-import DiagramRuler from "./DiagramRuler";
-import FieldPopover from "./FieldPopover";
-import HexStrip from "./HexStrip";
-import HybridDiagram from "./HybridDiagram";
+import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
+import ControlsPanel from "@/components/controls/ControlsPanel";
+import DependencyOverlay from "@/components/diagram/DependencyOverlay";
+import DiagramExportControls from "@/components/DiagramExportControls";
+import DetailPanel from "@/components/field-details/DetailPanel";
+import DiagramRuler from "@/components/diagram/DiagramRuler";
+import FieldPopover from "@/components/diagram/FieldPopover";
+import HexStrip from "@/components/diagram/HexStrip";
+import HybridDiagram from "@/components/diagram/HybridDiagram";
 import ImportExportDrawer, {
   type DrawerMode,
-} from "./ImportExportDrawer";
-import Legend from "./Legend";
-import OnboardingTour, { hasSeenTour, type TourStep } from "./OnboardingTour";
-import PresetPicker from "./PresetPicker";
-import ThemeToggle from "./ThemeToggle";
+} from "@/components/import-export/ImportExportDrawer";
+import Legend from "@/components/diagram/Legend";
+import OnboardingTour, {
+  hasSeenTour,
+  type TourStep,
+} from "@/components/onboarding/OnboardingTour";
+import PacketToolbar from "./PacketToolbar";
+import SavePresetDialog from "./SavePresetDialog";
+import StudioPanel from "./StudioPanel";
+import { cssEscape, findRowNeighbor } from "./navigation";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 
@@ -264,12 +255,16 @@ export default function PacketViewer() {
   const handlePacketChange = useCallback(
     (nextKey: string) => {
       setPacketKey(nextKey);
-      const next = renderedPresets[nextKey] ?? importedPackets[nextKey];
+      const customPreset = customPresets[nextKey];
+      const next =
+        renderedPresets[nextKey] ??
+        importedPackets[nextKey] ??
+        (customPreset ? psmlToRenderer(customPreset) : null);
       if (next) setControllers(initialState(next));
       setSelectedFieldId(null);
       setPopoverAnchor(null);
     },
-    [renderedPresets, importedPackets],
+    [customPresets, importedPackets, renderedPresets],
   );
 
   const handleControllerChange = useCallback((key: string, value: number) => {
@@ -324,9 +319,9 @@ export default function PacketViewer() {
         field.chainFinalProto = next.finalProto;
       }
       // Force a re-render even though we mutated the field directly.
-      setControllers((prev) => ({ ...prev }));
+      setControllers((prev) => syncChainControllers(packet, { ...prev }));
     },
-    [],
+    [packet],
   );
 
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
@@ -587,123 +582,45 @@ export default function PacketViewer() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header
-        className="sticky top-0 z-50 shadow-md"
-        style={{
-          background: "var(--bg-header)",
-          color: "var(--header-fg)",
-        }}
-      >
-        <div className="max-w-[1200px] mx-auto px-6 py-2 flex items-center justify-between gap-4">
-          <div className="flex flex-wrap items-baseline gap-2.5 min-w-0">
-            <h1 className="m-0 text-[18px] font-semibold tracking-wide whitespace-nowrap">
-              Packet View
-            </h1>
-            <p
-              className="m-0 text-xs truncate min-w-0"
-              style={{ color: "var(--header-fg-muted)" }}
-            >
-              Visual viewer for common network packet headers.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
-
+    <>
       <main className="max-w-[1200px] mx-auto px-6 py-3 pb-10 w-full flex-1">
-        <div
-          className="flex flex-wrap items-center gap-3 mb-2 rounded-[10px] border px-3.5 py-2.5"
-          style={{
-            background: "var(--bg-elevated)",
-            borderColor: "var(--border)",
-            boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
-          }}
-        >
-          <PresetPicker
-            value={packetKey}
-            onChange={handlePacketChange}
-            imported={importedPackets}
-            customPresets={customPresets}
-            onExportCustomPresets={handleExportCustomPresets}
-            onImportCustomPresets={handleImportCustomPresetsClick}
-          />
-          <input
-            ref={bulkImportInputRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={handleImportCustomPresetsFile}
-            style={{ display: "none" }}
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-          <div className="flex items-center gap-1.5 ml-2">
-            <ToolbarButton onClick={() => setDrawerMode("import")}>
-              Import
-            </ToolbarButton>
-            <ToolbarButton onClick={() => setDrawerMode("export")}>
-              Export
-            </ToolbarButton>
+        <PacketToolbar
+          packetKey={packetKey}
+          importedPackets={importedPackets}
+          customPresets={customPresets}
+          hexStripVisible={hexStripVisible}
+          dependenciesVisible={dependenciesVisible}
+          editMode={editMode}
+          viewMode={viewMode}
+          headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
+          extraControls={
             <DiagramExportControls packet={packet} layout={layout} />
-            <ToolbarButton
-              onClick={() => {
-                hexStripUserSetRef.current = true;
-                setHexStripVisible((v) => !v);
-              }}
-              pressed={hexStripVisible}
-              ariaLabel={`${hexStripVisible ? "Hide" : "Show"} hex byte strip`}
-            >
-              Hex view
-            </ToolbarButton>
-            <ToolbarButton
-              onClick={() => setDependenciesVisible((v) => !v)}
-              pressed={dependenciesVisible}
-              ariaLabel={
-                dependenciesVisible
-                  ? "Hide dependency arrows"
-                  : "Show dependency arrows"
-              }
-            >
-              Dependencies
-            </ToolbarButton>
-            <ToolbarButton
-              onClick={() =>
-                setViewMode((v) => (v === "semantic" ? "wire" : "semantic"))
-              }
-              pressed={viewMode === "semantic"}
-              ariaLabel={
-                viewMode === "semantic"
-                  ? "Switch to wire view (collapse encrypted payloads)"
-                  : "Switch to decrypted view (expand encrypted payloads)"
-              }
-            >
-              Decrypted view
-            </ToolbarButton>
-            <ToolbarButton
-              onClick={() => setEditMode((v) => !v)}
-              pressed={editMode}
-              ariaLabel={editMode ? "Exit edit mode" : "Enter edit mode"}
-            >
-              ✏️ Edit packet
-            </ToolbarButton>
-            {packetKey.startsWith("custom:") ? (
-              <ToolbarButton
-                onClick={handleDeleteCustomPreset}
-                ariaLabel="Delete this custom preset"
-              >
-                Delete preset
-              </ToolbarButton>
-            ) : null}
-          </div>
-          <div
-            className="ml-auto text-[13px] font-mono tabular-nums"
-            style={{ color: "var(--fg-muted)" }}
-          >
-            Header size: {layout.totalBits} bits ({byteStr})
-          </div>
-        </div>
+          }
+          onPacketChange={handlePacketChange}
+          onExportCustomPresets={handleExportCustomPresets}
+          onImportCustomPresets={handleImportCustomPresetsClick}
+          onOpenImport={() => setDrawerMode("import")}
+          onOpenExport={() => setDrawerMode("export")}
+          onToggleHexStrip={() => {
+            hexStripUserSetRef.current = true;
+            setHexStripVisible((v) => !v);
+          }}
+          onToggleDependencies={() => setDependenciesVisible((v) => !v)}
+          onToggleViewMode={() =>
+            setViewMode((v) => (v === "semantic" ? "wire" : "semantic"))
+          }
+          onToggleEditMode={() => setEditMode((v) => !v)}
+          onDeleteCustomPreset={handleDeleteCustomPreset}
+        />
+        <input
+          ref={bulkImportInputRef}
+          type="file"
+          accept=".json,application/json"
+          onChange={handleImportCustomPresetsFile}
+          style={{ display: "none" }}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
 
         {packet.description ? (
           <p
@@ -860,265 +777,6 @@ export default function PacketViewer() {
           onSubmit={handleSaveAsPreset}
         />
       ) : null}
-    </div>
-  );
-}
-
-// cssEscape: tolerant wrapper around CSS.escape for environments where the
-// global is missing (older test runners, edge SSR shims). Field ids contain
-// `:` and `#` (TLV-expanded virtual fields), both of which need escaping
-// before dropping into a querySelector.
-function cssEscape(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
-}
-
-// findRowNeighbor: prefer a cell on the adjacent row whose bit range overlaps
-// the currently focused cell, falling back to direct list neighbors.
-function findRowNeighbor(
-  cells: HTMLElement[],
-  current: HTMLElement,
-  direction: number,
-): HTMLElement | null {
-  const curRow = Number(current.dataset.row);
-  if (Number.isNaN(curRow)) {
-    const idx = cells.indexOf(current);
-    return cells[Math.max(0, Math.min(cells.length - 1, idx + direction))] ?? null;
-  }
-  const curStart = Number(current.dataset.startBit);
-  const curEnd = Number(current.dataset.endBit);
-  const targetRow = curRow + direction;
-  const sameRow = cells.filter((c) => Number(c.dataset.row) === targetRow);
-  if (sameRow.length === 0) return null;
-  const overlap = sameRow.find((c) => {
-    const s = Number(c.dataset.startBit);
-    const en = Number(c.dataset.endBit);
-    return !(en < curStart || s > curEnd);
-  });
-  return overlap ?? sameRow[0] ?? null;
-}
-
-// StudioPanel — the in-edit-mode editor surface. Renders the Toolbar at the
-// top, a flat walk of `state.packet.body[]` as FieldRow / ContainerRow
-// instances, the ConstraintEditor, and an optional JsonPane. The diagram
-// lives above this panel and re-resolves layout from state.packet, so
-// every dispatch produces a live update without prop drilling.
-function StudioPanel({
-  state,
-  dispatch,
-  showJsonPane,
-  onToggleJsonPane,
-  onSaveAs,
-  onDiscard,
-}: {
-  state: EditState;
-  dispatch: Dispatch<EditAction>;
-  showJsonPane: boolean;
-  onToggleJsonPane: () => void;
-  onSaveAs: () => void;
-  onDiscard: () => void;
-}) {
-  const canUndo = state.history.length > 0;
-  const canRedo = state.future.length > 0;
-  return (
-    <section
-      className="rounded-[10px] border px-4 py-3.5 mt-4"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border)",
-        boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
-      }}
-    >
-      <h2
-        className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
-        style={{ color: "var(--fg-muted)" }}
-      >
-        Custom Packet Studio
-      </h2>
-      <Toolbar
-        dispatch={dispatch}
-        insertPath={[state.packet.body.length]}
-        historyLength={state.history.length}
-        futureLength={state.future.length}
-        jsonOpen={showJsonPane}
-        onToggleJson={onToggleJsonPane}
-        onSaveAs={(name: string) => {
-          // Toolbar may submit name directly; otherwise it calls onSaveAs()
-          // with an empty string and the parent opens a dialog. We route both
-          // through the parent so the dialog stays the single name source.
-          if (name && name.trim()) {
-            // Defer to parent's onSaveAs which opens the dialog; we ignore
-            // the inline name to keep a single naming UX.
-          }
-          onSaveAs();
-        }}
-        onDiscard={onDiscard}
-      />
-      <ol className="mt-3 flex flex-col gap-2 list-none p-0">
-        {state.packet.body.map((node: PsmlContainer, i: number) => (
-          <li key={containerId(node, i)}>
-            {isLeafField(node) ? (
-              <FieldRow
-                field={node as PsmlField}
-                path={[i]}
-                dispatch={dispatch}
-                siblingFieldIds={state.packet.body
-                  .filter(isLeafField)
-                  .map((n) => (n as PsmlField).id)}
-              />
-            ) : (
-              <ContainerRow
-                container={node as PsmlContainer}
-                path={[i]}
-                dispatch={dispatch}
-                siblingFieldIds={state.packet.body
-                  .filter(isLeafField)
-                  .map((n) => (n as PsmlField).id)}
-              />
-            )}
-          </li>
-        ))}
-      </ol>
-      <div className="mt-4">
-        <ConstraintEditor
-          constraints={state.packet.constraints ?? []}
-          fieldIds={state.packet.body
-            .filter(isLeafField)
-            .map((n) => (n as PsmlField).id)}
-          dispatch={dispatch}
-        />
-      </div>
-      {showJsonPane ? (
-        <div className="mt-4">
-          <JsonPane packet={state.packet} dispatch={dispatch} />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-// isLeafField: a PSML Container with no `kind` (or kind === 'field') is a
-// leaf Field — everything else (struct/group/repeat/switch/encrypted) is a
-// container row.
-function isLeafField(node: PsmlContainer): boolean {
-  const k = (node as { kind?: string }).kind;
-  return !k || k === "field";
-}
-
-function containerId(node: PsmlContainer, fallback: number): string {
-  const id = (node as { id?: string }).id;
-  return id ?? `node-${fallback}`;
-}
-
-// SavePresetDialog — minimal modal for naming a custom preset. Native
-// HTMLDialogElement is overkill here; a fixed-position overlay keeps the
-// markup portable for the smoke test.
-function SavePresetDialog({
-  defaultName,
-  onCancel,
-  onSubmit,
-}: {
-  defaultName: string;
-  onCancel: () => void;
-  onSubmit: (name: string) => void;
-}) {
-  const [name, setName] = useState(defaultName);
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.45)" }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Save as my preset"
-    >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSubmit(name);
-        }}
-        className="rounded-[10px] border p-4 min-w-[320px]"
-        style={{
-          background: "var(--bg-elevated)",
-          borderColor: "var(--border-strong)",
-          color: "var(--fg)",
-        }}
-      >
-        <h3 className="m-0 mb-3 text-sm font-bold">Save as my preset</h3>
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Preset name</span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="text-sm px-2.5 py-1.5 rounded-md border"
-            style={{
-              borderColor: "var(--border-strong)",
-              background: "var(--bg)",
-              color: "var(--fg)",
-            }}
-            autoFocus
-          />
-        </label>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-            style={{
-              background: "var(--bg-elevated)",
-              color: "var(--fg)",
-              borderColor: "var(--border-strong)",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!name.trim()}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-fg)",
-              borderColor: "var(--accent)",
-            }}
-          >
-            Save
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function ToolbarButton({
-  onClick,
-  children,
-  pressed,
-  ariaLabel,
-  ...rest
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  pressed?: boolean;
-  ariaLabel?: string;
-} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children" | "aria-label">) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={pressed}
-      aria-label={ariaLabel}
-      className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-      style={{
-        background: pressed ? "var(--accent)" : "var(--bg-elevated)",
-        color: pressed ? "var(--accent-fg)" : "var(--fg)",
-        borderColor: pressed ? "var(--accent)" : "var(--border-strong)",
-      }}
-      {...rest}
-    >
-      {children}
-    </button>
+    </>
   );
 }

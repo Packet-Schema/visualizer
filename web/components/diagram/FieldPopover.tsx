@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 
 import { CATEGORY_LABELS } from "@/lib/constants";

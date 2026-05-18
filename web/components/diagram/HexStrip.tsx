@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo, type CSSProperties } from "react";
 
 import type { Field, ResolvedLayout } from "@/lib/psml/renderer";
