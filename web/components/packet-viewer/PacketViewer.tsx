@@ -44,7 +44,7 @@ import type {
   PacketRegistry,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
+import type { Expr, PsmlPacket, ViewMode } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
@@ -70,6 +70,89 @@ const DEFAULT_PACKET_KEY = "ipv4";
 // Width threshold at which the floating field popover is enabled. Below this
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
+
+// PSML packet 内で参照されている ref フィールド名を全て集める。
+// PacketViewer の env 構築で controllers に無い ref を 0 で fallback seed
+// するために使う。 PSML 0.4 の全 Container kind (group / switch / repeat /
+// encrypted / optional) を再帰的に walk する。
+//
+// 動機: 既存設計では preset ごとに PacketViewer.tsx の `if (packetKey ===
+// "ipv4")` のような手動 seed を必要としていた (ipv4OptionsCount /
+// tcpOptionsCount 等)。 issue #91 で 8 個の preset を追加した時にこの
+// wiring を全部 PacketViewer に書くと脆くなるので、 packet 側の式を walk
+// して env を自動で補う形に汎化する。
+function collectPsmlRefs(packet: PsmlPacket): Set<string> {
+  const out = new Set<string>();
+  const visit = (e: Expr): void => {
+    switch (e.kind) {
+      case "lit":
+      case "peek":
+        return;
+      case "ref":
+        out.add(e.field);
+        return;
+      case "op":
+        visit(e.a);
+        visit(e.b);
+        return;
+      case "cond":
+        visit(e.test);
+        visit(e.t);
+        visit(e.f);
+        return;
+    }
+  };
+  type AnyNode = {
+    kind?: string;
+    type?: { kind: string; n?: Expr };
+    children?: AnyNode[];
+    element?: { fields: AnyNode[] };
+    cases?: Record<string, { fields: AnyNode[] }>;
+    default?: { fields: AnyNode[] };
+    on?: Expr;
+    count?: Expr | string | { until: Expr };
+    plaintext?: { fields: AnyNode[] };
+    wireBits?: Expr;
+    when?: Expr;
+    field?: AnyNode;
+  };
+  const walk = (containers: AnyNode[]): void => {
+    for (const c of containers) {
+      if (!c.kind || c.kind === "field") {
+        if (c.type?.kind === "bytes" && c.type.n) visit(c.type.n);
+        continue;
+      }
+      if (c.kind === "group" && c.children) walk(c.children);
+      if (c.kind === "switch") {
+        if (c.on) visit(c.on);
+        for (const v of Object.values(c.cases ?? {})) walk(v.fields);
+        if (c.default) walk(c.default.fields);
+      }
+      if (c.kind === "repeat") {
+        if (c.count && typeof c.count === "object" && "kind" in c.count) {
+          visit(c.count as Expr);
+        } else if (
+          c.count &&
+          typeof c.count === "object" &&
+          "until" in c.count
+        ) {
+          visit(c.count.until);
+        }
+        if (c.element) walk(c.element.fields);
+      }
+      if (c.kind === "encrypted") {
+        if (c.wireBits) visit(c.wireBits);
+        if (c.plaintext) walk(c.plaintext.fields);
+      }
+      if (c.kind === "optional") {
+        if (c.when) visit(c.when);
+        if (c.field) walk([c.field]);
+      }
+    }
+  };
+  walk(packet.body as AnyNode[]);
+  return out;
+}
 
 export default function PacketViewer() {
   const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
@@ -479,18 +562,24 @@ export default function PacketViewer() {
       const off = env.get("dataOffset") ?? 5;
       env.set("tcpOptionsCount", Math.max(0, off - 5));
     }
-    // In edit mode the studio's packet is the source of truth so the diagram
-    // reflects in-progress edits live.
-    if (editMode) {
-      return resolveLayout(studioState.packet, { env, viewMode });
+    // 描画対象の PSML packet を一旦変数で持つ — editMode / built-in /
+    // custom / imported のいずれも resolveLayout には PsmlPacket を渡す
+    // ので、 ref fallback seed を一箇所に集約できる。
+    const targetPsml: PsmlPacket = editMode
+      ? studioState.packet
+      : PRESETS[packetKey] ??
+        customPresets[packetKey] ??
+        rendererToPsml(packet);
+    // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
+    // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
+    // PacketViewer 側が手動で seed しない限り `resolveLayout` が
+    // MissingRefError で throw → React render が落ちて "Application error"
+    // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
+    // と命名が一致しない ref をまとめて吸収する。
+    for (const r of collectPsmlRefs(targetPsml)) {
+      if (!env.has(r)) env.set(r, 0);
     }
-    const psml = PRESETS[packetKey] ?? customPresets[packetKey] ?? null;
-    if (psml) {
-      return resolveLayout(psml, { env, viewMode });
-    }
-    // Imported packet — lift renderer → PSML, then resolve.
-    const lifted = rendererToPsml(packet);
-    return resolveLayout(lifted, { env, viewMode });
+    return resolveLayout(targetPsml, { env, viewMode });
   }, [
     packet,
     packetKey,
