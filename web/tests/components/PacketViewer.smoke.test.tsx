@@ -11,7 +11,7 @@
 // 7A/7B modules haven't landed yet, so CI on the integration branch can still
 // surface unrelated regressions.
 
-import { beforeEach, describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -29,6 +29,10 @@ beforeEach(() => {
   localStorage.clear();
   localStorage.setItem("packet-view-tour-seen", "1");
   window.history.replaceState(null, "", "/");
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("PacketViewer (smoke)", () => {
@@ -80,17 +84,72 @@ describe("PacketViewer (smoke)", () => {
   });
 
   it("stores a shared psml payload in My presets", async () => {
-    const shared = mkPacket("Shared URL Packet");
+    const baseName = "Shared URL Packet ";
+    const expectedName = `${baseName}${"x".repeat(80 - baseName.length)}`;
+    const shared = mkPacket(`   Shared URL Packet   ${"x".repeat(100)}   `);
     const { container, cleanup } = await mountPacketViewer(
       `/?psml=${encodePsmlParam(shared, { len: 3 })}`,
     );
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
       const picker = container.querySelector("select");
-      expect(stored["custom:Shared URL Packet"]).toMatchObject({
-        name: "Shared URL Packet",
+      expect(stored[`custom:${expectedName}`]).toMatchObject({
+        name: expectedName,
       });
-      expect(picker?.value).toBe("custom:Shared URL Packet");
+      expect(stored[`custom:${shared.name}`]).toBeUndefined();
+      expect(picker?.value).toBe(`custom:${expectedName}`);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("hydrates shared psml from memory when preset storage is unavailable", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage is unavailable", "QuotaExceededError");
+    });
+
+    const shared = mkPacket("No Storage Packet", "storage-only");
+    const { container, cleanup } = await mountPacketViewer(
+      `/?psml=${encodePsmlParam(shared, { len: 3 })}`,
+    );
+    try {
+      const picker = container.querySelector("select");
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(picker?.value).toBe("custom:No Storage Packet");
+      expect(
+        container.querySelector('[data-field-id="storage-only"]'),
+      ).not.toBeNull();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("reuses a shared custom preset when only object key order differs", async () => {
+    const name = "Shared URL Packet";
+    const storedPacket: PsmlPacket = {
+      body: [{ name: "X", id: "x", type: { n: 8, kind: "bits" } }],
+      rowBits: 8,
+      name,
+    };
+    const sharedPacket: PsmlPacket = {
+      name,
+      rowBits: 8,
+      body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+    };
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ [`custom:${name}`]: storedPacket }),
+    );
+
+    const { container, cleanup } = await mountPacketViewer(
+      `/?psml=${encodePsmlParam(sharedPacket, {})}`,
+    );
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+      const picker = container.querySelector("select");
+      expect(Object.keys(stored)).toEqual([`custom:${name}`]);
+      expect(stored[`custom:${name}`]).toMatchObject({ name });
+      expect(picker?.value).toBe(`custom:${name}`);
     } finally {
       await cleanup();
     }
@@ -123,10 +182,10 @@ async function mountPacketViewer(path = "/"): Promise<{
   };
 }
 
-function mkPacket(name: string): PsmlPacket {
+function mkPacket(name: string, fieldId = "x"): PsmlPacket {
   return {
     name,
     rowBits: 8,
-    body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+    body: [{ id: fieldId, name: "X", type: { kind: "bits", n: 8 } }],
   };
 }

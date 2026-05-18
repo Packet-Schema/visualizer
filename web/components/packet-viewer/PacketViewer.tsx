@@ -71,6 +71,8 @@ import { cssEscape, findRowNeighbor } from "./navigation";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
+const CUSTOM_PRESET_NAME_MAX = 80;
+const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 
 // Width threshold at which the floating field popover is enabled. Below this
 // we rely on the inline DetailPanel only.
@@ -376,12 +378,12 @@ export default function PacketViewer() {
   // imports so the picker can group them cleanly.
   const handleSaveAsPreset = useCallback(
     (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const key = `custom:${trimmed}`;
+      if (!name.trim()) return;
+      const normalizedName = normalizeCustomPresetName(name);
+      const key = `custom:${normalizedName}`;
       const packetToSave: PsmlPacket = {
         ...studioState.packet,
-        name: trimmed,
+        name: normalizedName,
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
@@ -904,17 +906,69 @@ function persistSharedCustomPreset(
   packet: PsmlPacket,
   stored: Record<string, PsmlPacket>,
 ): { key: string; presets: Record<string, PsmlPacket> } {
-  const desired = `custom:${packet.name}`;
-  if (stored[desired] && samePsmlPacket(stored[desired], packet)) {
-    return { key: desired, presets: stored };
+  const normalizedPacket: PsmlPacket = {
+    ...packet,
+    name: normalizeCustomPresetName(packet.name),
+  };
+  const desired = `custom:${normalizedPacket.name}`;
+  const storedPacket = stored[desired];
+
+  if (storedPacket) {
+    const normalizedStoredPacket: PsmlPacket = {
+      ...storedPacket,
+      name: normalizeCustomPresetName(storedPacket.name),
+    };
+    if (samePsmlPacket(normalizedStoredPacket, normalizedPacket)) {
+      if (!samePsmlPacket(storedPacket, normalizedStoredPacket)) {
+        saveCustomPreset(desired, normalizedStoredPacket);
+        const presets = loadCustomPresets();
+        return {
+          key: desired,
+          presets: presets[desired]
+            ? presets
+            : { ...stored, [desired]: normalizedStoredPacket },
+        };
+      }
+      return { key: desired, presets: stored };
+    }
   }
 
   const existing = new Set(Object.keys(stored));
   const key = stored[desired] ? uniqueKey(desired, existing) : desired;
-  saveCustomPreset(key, packet);
-  return { key, presets: loadCustomPresets() };
+  saveCustomPreset(key, normalizedPacket);
+  const presets = loadCustomPresets();
+  return {
+    key,
+    presets: presets[key] ? presets : { ...stored, [key]: normalizedPacket },
+  };
+}
+
+function normalizeCustomPresetName(name: string): string {
+  const normalized = name.trim().replace(/\s+/g, " ");
+  if (normalized.length === 0) return SHARED_CUSTOM_PRESET_FALLBACK_NAME;
+  return normalized.slice(0, CUSTOM_PRESET_NAME_MAX).trimEnd();
 }
 
 function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return stableStringify(a) === stableStringify(b);
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(canonicalizePsmlValue(value));
+}
+
+function canonicalizePsmlValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalizePsmlValue);
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, child]) => [key, canonicalizePsmlValue(child)]),
+  );
 }
