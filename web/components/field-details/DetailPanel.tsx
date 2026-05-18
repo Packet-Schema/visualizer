@@ -1,5 +1,3 @@
-"use client";
-
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { enrichDescriptionHtml } from "@/lib/enrich";
 import type {

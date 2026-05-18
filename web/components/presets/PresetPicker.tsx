@@ -1,5 +1,3 @@
-"use client";
-
 import { PRESETS } from "@/lib/psml/presets";
 import { PRESET_GROUPS } from "@/lib/constants";
 import type { PacketRegistry } from "@/lib/psml/renderer";
