@@ -114,7 +114,3 @@ CI runs lint + build + coverage on every push and pull request.
 - More presets: SCTP, GRE, VXLAN, HTTP/2 frame, BGP UPDATE, X.509
   certificate, full PCIe TLP header.
 - In-page custom packet editor backed by the existing JSON schema.
-
-## License
-
-MIT.
