@@ -1,5 +1,3 @@
-"use client";
-
 // Recursive TLV record editor.
 //
 // Ported from the legacy `renderTlvDetail` in app.js. Renders the current

@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Packet View",
+  title: "Packet Visualizer",
   description: "Visual viewer for common network packet headers.",
 };
 
