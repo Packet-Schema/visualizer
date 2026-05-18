@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
-import DiagramExportPopup from "./DiagramExportPopup";
+import ExportDialog from "./ExportDialog";
 
 type Props = {
   packet: Packet;
   layout: ResolvedLayout;
 };
 
-export default function DiagramExportControls({ packet, layout }: Props) {
+export default function ExportButton({ packet, layout }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -25,9 +25,9 @@ export default function DiagramExportControls({ packet, layout }: Props) {
           borderColor: "var(--border-strong)",
         }}
       >
-        Save diagram
+        Save image
       </button>
-      <DiagramExportPopup
+      <ExportDialog
         packet={packet}
         layout={layout}
         open={open}

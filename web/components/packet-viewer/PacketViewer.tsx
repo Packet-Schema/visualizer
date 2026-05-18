@@ -47,7 +47,6 @@ import type {
 import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
-import DiagramExportControls from "@/components/DiagramExportControls";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
@@ -61,6 +60,7 @@ import OnboardingTour, {
   hasSeenTour,
   type TourStep,
 } from "@/components/onboarding/OnboardingTour";
+import ExportButton from "@/components/diagram-export/ExportButton";
 import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
 import StudioPanel from "./StudioPanel";
@@ -594,7 +594,7 @@ export default function PacketViewer() {
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
           extraControls={
-            <DiagramExportControls packet={packet} layout={layout} />
+            <ExportButton packet={packet} layout={layout} />
           }
           onPacketChange={handlePacketChange}
           onExportCustomPresets={handleExportCustomPresets}

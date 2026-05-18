@@ -14,8 +14,8 @@ export default function SavePresetDialog({
   const [name, setName] = useState(defaultName);
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.45)" }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "oklch(18% 0.03 270 / 0.45)" }}
       role="dialog"
       aria-modal="true"
       aria-label="Save as my preset"
@@ -25,24 +25,25 @@ export default function SavePresetDialog({
           e.preventDefault();
           onSubmit(name);
         }}
-        className="rounded-[10px] border p-4 min-w-[320px]"
+        className="w-full max-w-sm rounded-xl border p-4"
         style={{
           background: "var(--bg-elevated)",
-          borderColor: "var(--border-strong)",
+          borderColor: "var(--border)",
           color: "var(--fg)",
+          boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
         }}
       >
-        <h3 className="m-0 mb-3 text-sm font-bold">Save as my preset</h3>
-        <label className="flex flex-col gap-1 text-sm">
+        <h3 className="m-0 mb-3 text-sm font-semibold">Save as my preset</h3>
+        <label className="block text-xs">
           <span>Preset name</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="text-sm px-2.5 py-1.5 rounded-md border"
+            className="mt-1 h-9 w-full rounded-md border px-2 text-sm"
             style={{
-              borderColor: "var(--border-strong)",
-              background: "var(--bg)",
+              borderColor: "var(--border)",
+              background: "var(--bg-elevated)",
               color: "var(--fg)",
             }}
             autoFocus
@@ -52,11 +53,11 @@ export default function SavePresetDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            className="tb-btn rounded-md border px-2.5 py-1.5 text-sm font-medium"
             style={{
               background: "var(--bg-elevated)",
               color: "var(--fg)",
-              borderColor: "var(--border-strong)",
+              borderColor: "var(--border)",
             }}
           >
             Cancel
@@ -64,7 +65,7 @@ export default function SavePresetDialog({
           <button
             type="submit"
             disabled={!name.trim()}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            className="tb-btn rounded-md border px-2.5 py-1.5 text-sm font-medium"
             style={{
               background: "var(--accent)",
               color: "var(--accent-fg)",
