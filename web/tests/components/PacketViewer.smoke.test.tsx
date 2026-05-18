@@ -11,43 +11,42 @@
 // 7A/7B modules haven't landed yet, so CI on the integration branch can still
 // surface unrelated regressions.
 
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
+import { STORAGE_KEY } from "@/lib/psml/custom-presets";
 import { PRESETS } from "@/lib/psml/presets";
+import { encodePsmlParam } from "@/lib/share-url";
+import type { PsmlPacket } from "@/lib/psml/types";
 
 // The reducer module is a hard dependency for the integration; we import
 // the action shape lazily inside the test so the rest of the file still
 // type-checks when 7A hasn't merged yet.
 
+beforeEach(() => {
+  localStorage.clear();
+  localStorage.setItem("packet-view-tour-seen", "1");
+  window.history.replaceState(null, "", "/");
+});
+
 describe("PacketViewer (smoke)", () => {
   it("renders the default preset diagram", async () => {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    let root: Root | null = null;
-    await act(async () => {
-      root = createRoot(container);
-      root.render(<PacketViewer />);
-    });
+    const { container, cleanup } = await mountPacketViewer();
     try {
       const cells = container.querySelectorAll(".field-cell");
       expect(cells.length).toBeGreaterThan(0);
     } finally {
-      await act(async () => {
-        root?.unmount();
-      });
-      container.remove();
+      await cleanup();
     }
   });
 
   it("adds a field via the reducer when in edit mode", async () => {
     // Import the reducer pieces directly; we drive the same state shape the
     // component uses so we don't depend on internal UI affordances.
-    const { editReducer, makeInitialState } = await import(
-      "@/lib/psml/edit-reducer"
-    );
+    const { editReducer, makeInitialState } =
+      await import("@/lib/psml/edit-reducer");
     const initial = makeInitialState(PRESETS.ipv4);
     const baseline = initial.packet.body.length;
     const next = editReducer(initial, {
@@ -61,4 +60,73 @@ describe("PacketViewer (smoke)", () => {
     });
     expect(next.packet.body.length).toBe(baseline + 1);
   });
+
+  it("hydrates a built-in preset and controllers from the URL", async () => {
+    const { container, cleanup } = await mountPacketViewer(
+      "/?preset=tcp&controllers.dataOffset=10",
+    );
+    try {
+      const picker = container.querySelector("select");
+      const dataOffset = container.querySelector<HTMLInputElement>(
+        "#ctrl-dataOffset-number",
+      );
+      expect(picker?.value).toBe("tcp");
+      expect(dataOffset?.value).toBe("10");
+      expect(window.location.search).toContain("preset=tcp");
+      expect(window.location.search).toContain("controllers.dataOffset=10");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("stores a shared psml payload in My presets", async () => {
+    const shared = mkPacket("Shared URL Packet");
+    const { container, cleanup } = await mountPacketViewer(
+      `/?psml=${encodePsmlParam(shared, { len: 3 })}`,
+    );
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+      const picker = container.querySelector("select");
+      expect(stored["custom:Shared URL Packet"]).toMatchObject({
+        name: "Shared URL Packet",
+      });
+      expect(picker?.value).toBe("custom:Shared URL Packet");
+    } finally {
+      await cleanup();
+    }
+  });
 });
+
+async function mountPacketViewer(path = "/"): Promise<{
+  container: HTMLDivElement;
+  cleanup: () => Promise<void>;
+}> {
+  window.history.replaceState(null, "", path);
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  let root: Root | null = null;
+  await act(async () => {
+    root = createRoot(container);
+    root.render(<PacketViewer />);
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  return {
+    container,
+    cleanup: async () => {
+      await act(async () => {
+        root?.unmount();
+      });
+      container.remove();
+    },
+  };
+}
+
+function mkPacket(name: string): PsmlPacket {
+  return {
+    name,
+    rowBits: 8,
+    body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+  };
+}
