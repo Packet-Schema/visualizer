@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
 
-import { buildDiagramSvg } from "../../lib/diagram-export";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  buildDiagramSvg,
+  downloadBlobFile,
+  downloadTextFile,
+  readDiagramTheme,
+  readDiagramThemeFromDocument,
+  svgToPngBlob,
+} from "../../lib/diagram-export";
 import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
 
 const packet: Packet = {
@@ -116,9 +125,14 @@ describe("buildDiagramSvg", () => {
     const wide = buildDiagramSvg(packet, layoutForMode("wire"), {
       bitWidth: 40,
     });
-    expect(standard).toContain('width="224"');
-    expect(wide).toContain('width="352"');
-    expect(wide).toContain('x="178"');
+    const parser = new DOMParser();
+    const standardSvg = parser.parseFromString(standard, "image/svg+xml").documentElement;
+    const wideSvg = parser.parseFromString(wide, "image/svg+xml").documentElement;
+    const wideBodyRect = wideSvg.querySelector("rect[rx='10']");
+
+    expect(standardSvg.getAttribute("width")).toBe("224");
+    expect(wideSvg.getAttribute("width")).toBe("352");
+    expect(wideBodyRect?.getAttribute("width")).toBe("156");
   });
 
   it("can emit transparent background when requested", () => {
@@ -127,7 +141,154 @@ describe("buildDiagramSvg", () => {
       transparentBackground: true,
     });
     expect(normal).toContain("<rect width=");
+    expect(normal).toContain('fill="#f5f7fb"');
     expect(transparent).not.toContain("<rect width=");
+    expect(transparent).not.toContain('fill="#f5f7fb"');
+    expect(transparent).not.toContain('fill="#fbfcfe"');
   });
 
+  it("centers ruler labels and clips field text to each cell", () => {
+    const svg = new DOMParser()
+      .parseFromString(buildDiagramSvg(packet, layoutForMode("wire")), "image/svg+xml")
+      .documentElement;
+    const firstRulerLabel = svg.querySelector("text");
+    const firstFieldLabel = svg.querySelector("text[clip-path]");
+
+    expect(firstRulerLabel?.getAttribute("text-anchor")).toBe("middle");
+    expect(firstFieldLabel?.getAttribute("clip-path")).toBe("url(#cell-0-0-a)");
+    expect(svg.querySelector("clipPath#cell-0-0-a")).not.toBeNull();
+  });
+
+  it("rejects invalid row indices instead of corrupting the row array", () => {
+    const invalidLayout = {
+      ...layoutForMode("wire"),
+      cells: [{ ...layoutForMode("wire").cells[0], row: -1 }],
+    };
+
+    expect(() => buildDiagramSvg(packet, invalidLayout)).toThrow(
+      "Invalid diagram row index: -1",
+    );
+  });
+});
+
+describe("diagram export helpers", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads concrete theme colors from the document", () => {
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const color = (element as HTMLElement).style.color;
+      return {
+        color:
+          color === "var(--bg-elevated)"
+            ? "rgb(1, 2, 3)"
+            : color === "var(--field-blue)"
+              ? "rgb(4, 5, 6)"
+              : "",
+      } as CSSStyleDeclaration;
+    });
+
+    const theme = readDiagramThemeFromDocument();
+
+    expect(theme.background).toBe("rgb(1, 2, 3)");
+    expect(theme.fieldPalette.blue).toBe("rgb(4, 5, 6)");
+  });
+
+  it("resolves explicit light/dark theme independent from current UI theme", () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const themedAncestor = (element as HTMLElement).closest("[data-theme]");
+      const explicitTheme = themedAncestor?.getAttribute("data-theme");
+      const color = (element as HTMLElement).style.color;
+      if (color === "var(--bg-elevated)" && explicitTheme === "light") {
+        return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
+      }
+      if (color === "var(--bg-elevated)" && explicitTheme === "dark") {
+        return { color: "rgb(15, 15, 15)" } as CSSStyleDeclaration;
+      }
+      return { color: "" } as CSSStyleDeclaration;
+    });
+
+    expect(readDiagramTheme("light").background).toBe("rgb(250, 250, 250)");
+    expect(readDiagramTheme("dark").background).toBe("rgb(15, 15, 15)");
+  });
+
+  it("uses the current UI theme when mode is follow-ui", () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const color = (element as HTMLElement).style.color;
+      if (color !== "var(--bg-elevated)") return { color: "" } as CSSStyleDeclaration;
+      return { color: "rgb(20, 21, 22)" } as CSSStyleDeclaration;
+    });
+
+    expect(readDiagramTheme("follow-ui").background).toBe("rgb(20, 21, 22)");
+  });
+
+  it("downloads text and blob files through temporary anchors", () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:test"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    downloadTextFile("demo.svg", "image/svg+xml", "<svg />");
+    downloadBlobFile("demo.png", new Blob(["png"], { type: "image/png" }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(2);
+    expect(click).toHaveBeenCalledTimes(2);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("rasterizes SVG into a PNG blob", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:test"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const createElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+      if (tagName !== "canvas") {
+        return createElement(tagName);
+      }
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          scale: vi.fn(),
+          drawImage: vi.fn(),
+        }),
+        toBlob: (callback: BlobCallback) =>
+          callback(new Blob(["png"], { type: "image/png" })),
+      } as HTMLCanvasElement;
+    }) as typeof document.createElement);
+
+    class MockImage {
+      width = 100;
+      height = 50;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+
+    vi.stubGlobal("Image", MockImage);
+
+    await expect(svgToPngBlob("<svg />", 2)).resolves.toBeInstanceOf(Blob);
+  });
 });

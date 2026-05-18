@@ -14,6 +14,8 @@ export type DiagramExportTheme = {
   fieldPalette: Record<string, string>;
 };
 
+export type DiagramThemeMode = "follow-ui" | "light" | "dark";
+
 export type DiagramSvgOptions = {
   theme?: DiagramExportTheme;
   bitWidth?: number;
@@ -71,7 +73,11 @@ function resolveToken(field: Field): string {
 
 function fieldFill(field: Field, theme: DiagramExportTheme): string {
   const token = resolveToken(field);
-  return theme.fieldPalette[token] ?? token;
+  if (theme.fieldPalette[token]) return theme.fieldPalette[token];
+  const cssVariable = token.match(/^var\((--[^)]+)\)$/);
+  return cssVariable
+    ? cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate)
+    : token;
 }
 
 function rowsFor(layout: ResolvedLayout): Cell[][] {
@@ -79,7 +85,12 @@ function rowsFor(layout: ResolvedLayout): Cell[][] {
     ? Math.max(...layout.cells.map((cell) => cell.row)) + 1
     : 0;
   const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
-  for (const cell of layout.cells) rows[cell.row].push(cell);
+  for (const cell of layout.cells) {
+    if (!Number.isInteger(cell.row) || cell.row < 0 || cell.row >= rowsTotal) {
+      throw new Error(`Invalid diagram row index: ${cell.row}`);
+    }
+    rows[cell.row].push(cell);
+  }
   return rows;
 }
 
@@ -108,6 +119,8 @@ function textForCell(cell: Cell): { title: string; subtitle: string } {
     };
   }
   const title = cell.field.variable ? `~${cell.field.name}` : cell.field.name;
+  // The first segment shows the whole field size so split fields retain one
+  // authoritative label across rows; continuation segments stay lightweight.
   const bytes = cell.bitsTotal / 8;
   const suffix = cell.field.variable ? " (var)" : "";
   const subtitle = Number.isInteger(bytes)
@@ -162,7 +175,7 @@ export function buildDiagramSvg(
     const major = bit % 8 === 0;
     const tickHeight = major ? 10 : 6;
     const label = bit % 4 === 0
-      ? `<text x="${x}" y="${LAYOUT.padding + 10}" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${theme.rulerLabel}">${bit}</text>`
+      ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${theme.rulerLabel}">${bit}</text>`
       : "";
     return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${theme.rulerTick}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
   }).join("");
@@ -170,7 +183,9 @@ export function buildDiagramSvg(
   const body = rows
     .map((cells, rowIndex) => {
       const y = rowY(rowIndex);
-      const band = `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd}" />`;
+      const band = transparentBackground
+        ? ""
+        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd}" />`;
       const renderedCells = cells
         .map((cell) => {
           const { x, y: cy, width: cw, height: ch } = cellGeometry(cell, bitWidth);
@@ -179,10 +194,11 @@ export function buildDiagramSvg(
           const escapedSubtitle = xmlEscape(subtitle);
           const fill = fieldFill(cell.field, theme);
           const dash = cell.encrypted ? ' stroke-dasharray="5 3"' : "";
+          const clipId = `cell-${cell.row}-${cell.segmentIndex}-${cell.field.id}`;
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${fill}" stroke="${theme.fieldStroke}" stroke-width="1"${dash} />`,
-            `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${cell.isFirst ? theme.fieldLabel : theme.fieldContinuation}">${escapedTitle}</text>`,
-            `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${theme.fieldSublabel}">${escapedSubtitle}</text>`,
+            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${cell.isFirst ? theme.fieldLabel : theme.fieldContinuation}">${escapedTitle}</text>`,
+            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${theme.fieldSublabel}">${escapedSubtitle}</text>`,
             renderSubfields(cell.subCells, cell, bitWidth, theme),
           ].join("");
         })
@@ -191,8 +207,16 @@ export function buildDiagramSvg(
     })
     .join("");
 
+  const clipPaths = layout.cells
+    .map((cell) => {
+      const { x, y, width, height } = cellGeometry(cell, bitWidth);
+      return `<clipPath id="cell-${cell.row}-${cell.segmentIndex}-${cell.field.id}"><rect x="${x + 4}" y="${y}" width="${Math.max(width - 8, 1)}" height="${height}" /></clipPath>`;
+    })
+    .join("");
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${xmlEscape(packet.name)} diagram">`,
+    `<defs>${clipPaths}</defs>`,
     transparentBackground
       ? ""
       : `<rect width="${width}" height="${height}" fill="${theme.background}" />`,
@@ -203,7 +227,7 @@ export function buildDiagramSvg(
 }
 
 function cssColor(name: string, fallback: string): string {
-  if (typeof document === "undefined") return fallback;
+  if (typeof document === "undefined" || !document.body) return fallback;
   const probe = document.createElement("span");
   probe.style.color = `var(${name})`;
   probe.style.display = "none";
@@ -213,24 +237,67 @@ function cssColor(name: string, fallback: string): string {
   return color;
 }
 
-export function readDiagramThemeFromDocument(): DiagramExportTheme {
+function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
+  const cssColorFromRoot = (name: string, fallback: string): string => {
+    if (typeof document === "undefined") return fallback;
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    probe.style.display = "none";
+    root.appendChild(probe);
+    const color = getComputedStyle(probe).color || fallback;
+    probe.remove();
+    return color;
+  };
+
   return {
-    background: cssColor("--bg-elevated", DEFAULT_THEME.background),
-    rowEven: cssColor("--row-band-even", DEFAULT_THEME.rowEven),
-    rowOdd: cssColor("--row-band-odd", DEFAULT_THEME.rowOdd),
-    rulerTick: cssColor("--ruler-tick", DEFAULT_THEME.rulerTick),
-    rulerLabel: cssColor("--ruler-label", DEFAULT_THEME.rulerLabel),
-    fieldStroke: cssColor("--field-stroke", DEFAULT_THEME.fieldStroke),
-    fieldLabel: cssColor("--field-label", DEFAULT_THEME.fieldLabel),
-    fieldSublabel: cssColor("--field-sublabel", DEFAULT_THEME.fieldSublabel),
-    fieldContinuation: cssColor("--field-continuation", DEFAULT_THEME.fieldContinuation),
+    background: cssColorFromRoot("--bg-elevated", DEFAULT_THEME.background),
+    rowEven: cssColorFromRoot("--row-band-even", DEFAULT_THEME.rowEven),
+    rowOdd: cssColorFromRoot("--row-band-odd", DEFAULT_THEME.rowOdd),
+    rulerTick: cssColorFromRoot("--ruler-tick", DEFAULT_THEME.rulerTick),
+    rulerLabel: cssColorFromRoot("--ruler-label", DEFAULT_THEME.rulerLabel),
+    fieldStroke: cssColorFromRoot("--field-stroke", DEFAULT_THEME.fieldStroke),
+    fieldLabel: cssColorFromRoot("--field-label", DEFAULT_THEME.fieldLabel),
+    fieldSublabel: cssColorFromRoot("--field-sublabel", DEFAULT_THEME.fieldSublabel),
+    fieldContinuation: cssColorFromRoot(
+      "--field-continuation",
+      DEFAULT_THEME.fieldContinuation,
+    ),
     fieldPalette: Object.fromEntries(
       Object.keys(DEFAULT_THEME.fieldPalette).map((token) => [
         token,
-        cssColor(`--field-${token}`, DEFAULT_THEME.fieldPalette[token]),
+        cssColorFromRoot(`--field-${token}`, DEFAULT_THEME.fieldPalette[token]),
       ]),
     ),
   };
+}
+
+export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
+  if (typeof document === "undefined" || !document.body || mode === "follow-ui") {
+    return readDiagramThemeFromDocument();
+  }
+
+  const root = document.documentElement;
+  const previousTheme = root.getAttribute("data-theme");
+  root.setAttribute("data-theme", mode);
+  try {
+    return readDiagramThemeFromDocument();
+  } finally {
+    if (previousTheme === null) {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", previousTheme);
+    }
+  }
+}
+
+export function readDiagramThemeFromDocument(): DiagramExportTheme {
+  if (typeof document === "undefined" || !document.body) {
+    return {
+      ...DEFAULT_THEME,
+      fieldPalette: { ...DEFAULT_THEME.fieldPalette },
+    };
+  }
+  return readDiagramThemeFromRoot(document.body);
 }
 
 export function downloadTextFile(filename: string, mime: string, content: string): void {
