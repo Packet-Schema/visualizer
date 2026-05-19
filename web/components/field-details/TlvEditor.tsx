@@ -142,12 +142,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono"
-                    style={{
-                      background: "var(--bg-elevated)",
-                      color: "var(--fg-muted)",
-                      border: "1px solid var(--border)",
-                    }}
+                    className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border"
                   >
                     kind {entry.kind}
                   </span>

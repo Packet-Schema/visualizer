@@ -164,8 +164,7 @@ export default function Toolbar({
 
       <span
         aria-hidden
-        className="mx-1 h-5 w-px"
-        style={{ background: "var(--border-strong)" }}
+        className="mx-1 h-5 w-px bg-border-strong"
       />
 
       <button
@@ -191,8 +190,7 @@ export default function Toolbar({
 
       <span
         aria-hidden
-        className="mx-1 h-5 w-px"
-        style={{ background: "var(--border-strong)" }}
+        className="mx-1 h-5 w-px bg-border-strong"
       />
 
       <button
@@ -216,8 +214,7 @@ export default function Toolbar({
 
       <span
         aria-hidden
-        className="mx-1 h-5 w-px"
-        style={{ background: "var(--border-strong)" }}
+        className="mx-1 h-5 w-px bg-border-strong"
       />
 
       <button
