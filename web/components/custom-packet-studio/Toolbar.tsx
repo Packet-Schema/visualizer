@@ -171,7 +171,11 @@ export default function Toolbar({
         + Encrypted
       </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px" style={{ background: "var(--border-strong)" }} />
+      <span
+        aria-hidden
+        className="mx-1 h-5 w-px"
+        style={{ background: "var(--border-strong)" }}
+      />
 
       <button
         type="button"
@@ -194,7 +198,11 @@ export default function Toolbar({
         Redo
       </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px" style={{ background: "var(--border-strong)" }} />
+      <span
+        aria-hidden
+        className="mx-1 h-5 w-px"
+        style={{ background: "var(--border-strong)" }}
+      />
 
       {savePromptOpen ? (
         <span className="flex items-center gap-1">
@@ -260,7 +268,11 @@ export default function Toolbar({
         Discard
       </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px" style={{ background: "var(--border-strong)" }} />
+      <span
+        aria-hidden
+        className="mx-1 h-5 w-px"
+        style={{ background: "var(--border-strong)" }}
+      />
 
       <button
         type="button"

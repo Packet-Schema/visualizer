@@ -9,15 +9,16 @@ type Props = {
   onChange: (controllerKey: string, value: number) => void;
 };
 
-export default function ControlsPanel({ packet, controllers, onChange }: Props) {
+export default function ControlsPanel({
+  packet,
+  controllers,
+  onChange,
+}: Props) {
   const controllerFields = packet.fields.filter((f) => f.controlsLength);
 
   if (controllerFields.length === 0) {
     return (
-      <p
-        className="text-[13px] m-0"
-        style={{ color: "var(--fg-faint)" }}
-      >
+      <p className="text-[13px] m-0" style={{ color: "var(--fg-faint)" }}>
         This packet has no variable-length controllers.
       </p>
     );
@@ -48,8 +49,7 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
   const value = controllers[key] ?? field.defaultValue ?? 0;
   const min = field.min ?? 0;
   const max =
-    field.max ??
-    (typeof field.bits === "number" ? 2 ** field.bits - 1 : 255);
+    field.max ?? (typeof field.bits === "number" ? 2 ** field.bits - 1 : 255);
   const sliderId = `ctrl-${field.id}-slider`;
   const numberId = `ctrl-${field.id}-number`;
   const labelId = `ctrl-${field.id}-label`;

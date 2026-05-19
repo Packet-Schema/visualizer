@@ -91,7 +91,11 @@ export default function ExprBuilder({
         marginLeft: depth > 0 ? 4 : 0,
       }}
     >
-      <div role="tablist" aria-label="Expression kind" className="flex gap-1 flex-wrap">
+      <div
+        role="tablist"
+        aria-label="Expression kind"
+        className="flex gap-1 flex-wrap"
+      >
         {(["lit", "ref", "op", "cond", "peek"] as ExprKind[]).map((k) => (
           <button
             key={k}
@@ -148,7 +152,9 @@ export default function ExprBuilder({
           <select
             value={value.op}
             aria-label="Operator"
-            onChange={(e) => onChange({ ...value, op: e.target.value as BinOp })}
+            onChange={(e) =>
+              onChange({ ...value, op: e.target.value as BinOp })
+            }
             className="text-sm px-2 py-1 rounded border"
             style={inputStyle()}
           >

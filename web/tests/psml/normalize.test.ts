@@ -5,7 +5,12 @@
 import { describe, expect, it } from "vitest";
 import { lit, op, ref } from "../../lib/psml/expr";
 import { initialEnv, normalize, typeBits } from "../../lib/psml/normalize";
-import type { Container, Packet, PacketEnv, Struct } from "../../lib/psml/types";
+import type {
+  Container,
+  Packet,
+  PacketEnv,
+  Struct,
+} from "../../lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
 const int = (n: number) => ({ kind: "int" as const, bits: n });
@@ -18,7 +23,9 @@ describe("typeBits", () => {
   const env: PacketEnv = new Map([["len", 5]]);
   it("int / enum", () => {
     expect(typeBits(int(16), env)).toBe(16);
-    expect(typeBits({ kind: "enum", bits: 8, variants: { 0: "x" } }, env)).toBe(8);
+    expect(typeBits({ kind: "enum", bits: 8, variants: { 0: "x" } }, env)).toBe(
+      8,
+    );
   });
   it("bits", () => {
     expect(typeBits(bits(7), env)).toBe(7);
@@ -104,7 +111,12 @@ describe("normalize — Repeat", () => {
 
   it("expression count from env (case 4)", () => {
     const p = mk("rep-expr", [
-      { kind: "repeat", id: "rows", element: elem, count: op("+", ref("n"), lit(1)) },
+      {
+        kind: "repeat",
+        id: "rows",
+        element: elem,
+        count: op("+", ref("n"), lit(1)),
+      },
     ]);
     const env = new Map([["n", 2]]);
     const n = normalize(p, env);
@@ -122,7 +134,12 @@ describe("normalize — Repeat", () => {
 
   it("until count falls back to env override (case 6)", () => {
     const p = mk("rep-until", [
-      { kind: "repeat", id: "rows", element: elem, count: { until: ref("done") } },
+      {
+        kind: "repeat",
+        id: "rows",
+        element: elem,
+        count: { until: ref("done") },
+      },
     ]);
     expect(normalize(p).fields.length).toBe(0);
     const env = new Map([["rows", 4]]);
@@ -136,7 +153,10 @@ describe("normalize — Repeat", () => {
         {
           kind: "repeat",
           id: "leaves",
-          element: { id: "leaf", fields: [{ id: "v", name: "V", type: bits(8) }] },
+          element: {
+            id: "leaf",
+            fields: [{ id: "v", name: "V", type: bits(8) }],
+          },
           count: lit(2),
         },
       ],
@@ -153,16 +173,30 @@ describe("normalize — Repeat", () => {
 
   it("negative or fractional counts truncate to zero / floor", () => {
     const p = mk("neg", [
-      { kind: "repeat", id: "x", element: elem, count: op("-", lit(0), lit(1)) },
+      {
+        kind: "repeat",
+        id: "x",
+        element: elem,
+        count: op("-", lit(0), lit(1)),
+      },
     ]);
     expect(normalize(p).fields.length).toBe(0);
   });
 });
 
 describe("normalize — Switch", () => {
-  const opt0: Struct = { id: "eol", fields: [{ id: "k", name: "K0", type: bits(8) }] };
-  const opt1: Struct = { id: "nop", fields: [{ id: "k", name: "K1", type: bits(8) }] };
-  const def: Struct = { id: "def", fields: [{ id: "k", name: "Default", type: bits(8) }] };
+  const opt0: Struct = {
+    id: "eol",
+    fields: [{ id: "k", name: "K0", type: bits(8) }],
+  };
+  const opt1: Struct = {
+    id: "nop",
+    fields: [{ id: "k", name: "K1", type: bits(8) }],
+  };
+  const def: Struct = {
+    id: "def",
+    fields: [{ id: "k", name: "Default", type: bits(8) }],
+  };
 
   it("explicit case match", () => {
     const p = mk("sw", [

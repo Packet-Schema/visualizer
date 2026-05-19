@@ -5,7 +5,13 @@
 // dim everything except the spotlight area. Tooltip floats next to the
 // spotlight with Next / Skip buttons. Esc closes.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 const SEEN_KEY = "packet-view-tour-seen";
 
@@ -135,8 +141,14 @@ export default function OnboardingTour({ steps, onClose }: Props) {
         position: "fixed",
         left: Math.max(4, rect.left - pad),
         top: Math.max(4, rect.top - pad),
-        width: Math.min(viewport.w - Math.max(4, rect.left - pad) - 4, rect.width + pad * 2),
-        height: Math.min(viewport.h - Math.max(4, rect.top - pad) - 4, rect.height + pad * 2),
+        width: Math.min(
+          viewport.w - Math.max(4, rect.left - pad) - 4,
+          rect.width + pad * 2,
+        ),
+        height: Math.min(
+          viewport.h - Math.max(4, rect.top - pad) - 4,
+          rect.height + pad * 2,
+        ),
         borderRadius: 8,
         boxShadow: "0 0 0 9999px rgba(15, 22, 50, 0.55)",
         pointerEvents: "none",
@@ -151,7 +163,9 @@ export default function OnboardingTour({ steps, onClose }: Props) {
   if (rect) {
     const sy = Math.max(4, rect.top - pad);
     const sh = Math.min(viewport.h - sy - 4, rect.height + pad * 2);
-    const place = step.placement || (viewport.h - rect.top - rect.height > rect.top ? "bottom" : "top");
+    const place =
+      step.placement ||
+      (viewport.h - rect.top - rect.height > rect.top ? "bottom" : "top");
     const left = Math.min(
       viewport.w - ttW - 12,
       Math.max(12, rect.left + rect.width / 2 - ttW / 2),

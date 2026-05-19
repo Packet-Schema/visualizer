@@ -7,7 +7,12 @@
 // matching the v1 cell-layout output (so existing format renderers stay
 // surface-level — they only need to know how to read cells).
 
-import type { NormalizedField, PacketEnv, Packet as PsmlPacket, ViewMode } from "./types";
+import type {
+  NormalizedField,
+  PacketEnv,
+  Packet as PsmlPacket,
+  ViewMode,
+} from "./types";
 import { initialEnv, normalize } from "./normalize";
 import type { Cell, Field as RendererField, ResolvedLayout } from "./renderer";
 
@@ -91,7 +96,11 @@ function emitField(
   return bitPos;
 }
 
-function computeSegmentCount(startPos: number, bits: number, rowBits: number): number {
+function computeSegmentCount(
+  startPos: number,
+  bits: number,
+  rowBits: number,
+): number {
   let remaining = bits;
   let pos = startPos;
   let count = 0;

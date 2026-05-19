@@ -86,7 +86,9 @@ describe("downloadBlob", () => {
     const createUrlSpy = vi
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:mock");
-    const revokeSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const revokeSpy = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
 
     vi.useFakeTimers();
     downloadBlob("foo.txt", "text/plain", "hello");
