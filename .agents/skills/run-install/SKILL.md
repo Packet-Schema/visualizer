@@ -1,6 +1,6 @@
 ---
 name: run-install
-description: packet-view リポジトリで依存関係をインストールしたいときに使う。web ディレクトリで npm install を実行し、必要に応じて結果や差分を確認したい場合にこのスキルを使う。
+description: packet-view リポジトリで依存関係をインストールしたいときに使う。web ディレクトリで npm ci または依存追加・更新時の npm install を実行し、必要に応じて結果や差分を確認したい場合にこのスキルを使う。
 ---
 
 # 依存関係インストール
@@ -19,6 +19,12 @@ description: packet-view リポジトリで依存関係をインストールし�
 ```bash
 cd web
 npm ci
+```
+
+依存関係を追加・更新して lockfile を更新する必要がある場合だけ実行します。
+
+```bash
+cd web
 npm install
 ```
 

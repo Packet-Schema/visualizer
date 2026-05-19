@@ -20,6 +20,12 @@ description: web フロントエンドのコード整形を実行したいとき
 ```bash
 cd web
 npm run format:check
+```
+
+`format:check` が失敗し、既存差分への影響を確認したうえで書き換えてよい場合だけ実行します。
+
+```bash
+cd web
 npm run format
 ```
 
@@ -28,4 +34,4 @@ npm run format
 - 既存の未コミット差分がある場合は、`npm run format` が広い範囲を書き換える可能性があるため注意する。
 - コードスタイル上、文字列クォートはダブルクォートを前提にしつつ、実際の整形結果は既存の Prettier 設定を優先する。
 - フォーマット後に差分確認が必要なら `git status --short` や `git diff --stat` を使う。
-- 他の検証スキルから参照される前提の基本スキルとして扱い、迷ったら最初に `run-format` を実行する。
+- 他の検証スキルから参照される前提の基本スキルとして扱い、迷ったら最初に `npm run format:check` で整形状態を確認する。`npm run format` は、書き換えが必要で既存差分への影響を確認できた場合に実行する。
