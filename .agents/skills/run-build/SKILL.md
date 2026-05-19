@@ -16,7 +16,7 @@ description: packet-view リポジトリで本番ビルドを実行したいと�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run build
 ```
 

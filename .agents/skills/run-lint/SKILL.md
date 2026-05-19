@@ -16,7 +16,7 @@ description: packet-view リポジトリで Lint を実行したいときに使�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run lint
 ```
 

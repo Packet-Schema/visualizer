@@ -17,7 +17,7 @@ description: packet-view リポジトリで依存関係をインストールし�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm ci
 npm install
 ```

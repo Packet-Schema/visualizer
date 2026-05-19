@@ -16,7 +16,7 @@ description: packet-view リポジトリで開発サーバーを起動したい�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run dev
 ```
 
