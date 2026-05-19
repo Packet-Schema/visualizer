@@ -370,27 +370,6 @@ function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
   return buildTheme(resolveCssColor);
 }
 
-function withDocumentTheme<T>(
-  mode: Exclude<DiagramThemeMode, "follow-ui">,
-  read: () => T,
-): T {
-  if (typeof document === "undefined" || !document.body) {
-    throw new Error("Themed color resolution requires a document body.");
-  }
-  const root = document.documentElement;
-  const previousTheme = root.getAttribute("data-theme");
-  root.setAttribute("data-theme", mode);
-  try {
-    return read();
-  } finally {
-    if (previousTheme === null) {
-      root.removeAttribute("data-theme");
-    } else {
-      root.setAttribute("data-theme", previousTheme);
-    }
-  }
-}
-
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
   if (
     typeof document === "undefined" ||
@@ -400,12 +379,25 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
     return readDiagramThemeFromDocument();
   }
 
-  const resolveCssColor = (name: string, fallback: string): string =>
-    withDocumentTheme(mode, () =>
-      readCssColorFromRoot(document.body, name, fallback),
-    );
+  const probeRoot = document.createElement("div");
+  probeRoot.setAttribute("data-theme", mode);
+  probeRoot.style.position = "fixed";
+  probeRoot.style.left = "-10000px";
+  probeRoot.style.top = "-10000px";
+  probeRoot.style.width = "0";
+  probeRoot.style.height = "0";
+  probeRoot.style.overflow = "hidden";
+  probeRoot.style.pointerEvents = "none";
+  document.body.appendChild(probeRoot);
 
-  return buildTheme(resolveCssColor);
+  const resolveCssColor = (name: string, fallback: string): string =>
+    readCssColorFromRoot(probeRoot, name, fallback);
+
+  try {
+    return buildTheme(resolveCssColor);
+  } finally {
+    probeRoot.remove();
+  }
 }
 
 export function readDiagramThemeFromDocument(): DiagramExportTheme {

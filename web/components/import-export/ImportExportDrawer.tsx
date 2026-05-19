@@ -91,6 +91,8 @@ export default function ImportExportDrawer({
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const openRef = useRef(open);
+  const exportSessionRef = useRef(0);
 
   // Format availability per mode.
   const availableFormats: FormatKey[] = useMemo(
@@ -103,12 +105,16 @@ export default function ImportExportDrawer({
 
   // Sync mode when parent re-opens with a different mode.
   useEffect(() => {
+    openRef.current = open;
+    exportSessionRef.current += 1;
     if (open) {
       setCurrentMode(mode);
       // Default sensible format per mode.
       setFormat(mode === "import" ? "json" : "json");
       setText("");
       setStatus(null);
+      setImageBusy(false);
+    } else {
       setImageBusy(false);
     }
   }, [open, mode]);
@@ -276,6 +282,7 @@ export default function ImportExportDrawer({
 
   const handleImageDownload = useCallback(async () => {
     try {
+      const exportSession = exportSessionRef.current;
       setImageBusy(true);
       const svg = buildDiagramSvg(packet, layout, {
         theme: readDiagramTheme(exportThemeMode),
@@ -283,22 +290,33 @@ export default function ImportExportDrawer({
         transparentBackground,
       });
       if (format === "svg") {
+        if (!openRef.current || exportSessionRef.current !== exportSession) {
+          return;
+        }
         const filename = `${slugify(packet.name)}-diagram.svg`;
         downloadTextFile(filename, "image/svg+xml", svg);
         setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
       } else {
         const blob = await svgToPngBlob(svg, pngScale);
+        if (!openRef.current || exportSessionRef.current !== exportSession) {
+          return;
+        }
         const filename = `${slugify(packet.name)}-diagram-${pngScale}x.png`;
         downloadBlobFile(filename, blob);
         setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
       }
     } catch (e) {
+      if (!openRef.current) {
+        return;
+      }
       setStatus({
         msg: `Image export failed: ${(e as Error).message}`,
         kind: "error",
       });
     } finally {
-      setImageBusy(false);
+      if (openRef.current) {
+        setImageBusy(false);
+      }
     }
   }, [
     diagramWidth,
