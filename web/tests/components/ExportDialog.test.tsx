@@ -74,7 +74,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function selectByLabel(container: HTMLElement, labelText: string): HTMLSelectElement {
+function selectByLabel(
+  container: HTMLElement,
+  labelText: string,
+): HTMLSelectElement {
   const label = [...container.querySelectorAll("label")].find((candidate) =>
     candidate.textContent?.includes(labelText),
   );
@@ -85,7 +88,10 @@ function selectByLabel(container: HTMLElement, labelText: string): HTMLSelectEle
   return select;
 }
 
-function inputByLabel(container: HTMLElement, labelText: string): HTMLInputElement {
+function inputByLabel(
+  container: HTMLElement,
+  labelText: string,
+): HTMLInputElement {
   const label = [...container.querySelectorAll("label")].find((candidate) =>
     candidate.textContent?.includes(labelText),
   );
@@ -110,7 +116,9 @@ describe("ExportDialog", () => {
     const { container, root } = await renderDialog();
 
     expect(selectByLabel(container, "Format").value).toBe("svg");
-    expect(selectByLabel(container, "Theme for saved image").value).toBe("follow-ui");
+    expect(selectByLabel(container, "Theme for saved image").value).toBe(
+      "follow-ui",
+    );
     expect(container.textContent).not.toContain("PNG resolution");
     expect(container.textContent).toContain("Save SVG");
 
@@ -128,17 +136,29 @@ describe("ExportDialog", () => {
 
     expect(container.textContent).toContain("PNG resolution");
     expect(container.textContent).toContain("Save PNG");
-    expect(inputByLabel(container, "PNG resolution").getAttribute("type")).toBe("range");
-    expect(inputByLabel(container, "PNG resolution").getAttribute("min")).toBe("1");
-    expect(inputByLabel(container, "PNG resolution").getAttribute("max")).toBe("8");
-    expect(inputByLabel(container, "PNG resolution").getAttribute("step")).toBe("1");
-    expect(inputByLabel(container, "PNG resolution").className).toBe("pv-slider");
+    expect(inputByLabel(container, "PNG resolution").getAttribute("type")).toBe(
+      "range",
+    );
+    expect(inputByLabel(container, "PNG resolution").getAttribute("min")).toBe(
+      "1",
+    );
+    expect(inputByLabel(container, "PNG resolution").getAttribute("max")).toBe(
+      "8",
+    );
+    expect(inputByLabel(container, "PNG resolution").getAttribute("step")).toBe(
+      "1",
+    );
+    expect(inputByLabel(container, "PNG resolution").className).toBe(
+      "pv-slider",
+    );
 
     await act(async () => root.unmount());
   });
 
   it("routes the single save action to the selected format", async () => {
-    vi.mocked(svgToPngBlob).mockResolvedValue(new Blob(["png"], { type: "image/png" }));
+    vi.mocked(svgToPngBlob).mockResolvedValue(
+      new Blob(["png"], { type: "image/png" }),
+    );
     const { container, root } = await renderDialog();
 
     await act(async () => {
@@ -200,7 +220,14 @@ describe("ExportDialog", () => {
     const secondOnClose = vi.fn();
 
     await act(async () => {
-      root.render(<ExportDialog packet={packet} layout={layout} open onClose={firstOnClose} />);
+      root.render(
+        <ExportDialog
+          packet={packet}
+          layout={layout}
+          open
+          onClose={firstOnClose}
+        />,
+      );
     });
 
     const format = selectByLabel(container, "Format");
@@ -216,12 +243,22 @@ describe("ExportDialog", () => {
 
     await act(async () => {
       root.render(
-        <ExportDialog packet={packet} layout={layout} open={false} onClose={firstOnClose} />,
+        <ExportDialog
+          packet={packet}
+          layout={layout}
+          open={false}
+          onClose={firstOnClose}
+        />,
       );
     });
     await act(async () => {
       root.render(
-        <ExportDialog packet={packet} layout={layout} open onClose={secondOnClose} />,
+        <ExportDialog
+          packet={packet}
+          layout={layout}
+          open
+          onClose={secondOnClose}
+        />,
       );
     });
 
@@ -256,31 +293,36 @@ describe("ExportDialog", () => {
 
     const scale = inputByLabel(container, "PNG resolution");
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        scale,
-        "7",
-      );
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(scale, "7");
       scale.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
-    expect(JSON.parse(localStorage.getItem("packet-view-diagram-export-settings-v1") ?? ""))
-      .toEqual({
-        format: "png",
-        exportThemeMode: "dark",
-        pngScale: 7,
-        diagramWidth: 40,
-        transparentBackground: true,
-      });
+    expect(
+      JSON.parse(
+        localStorage.getItem("packet-view-diagram-export-settings-v1") ?? "",
+      ),
+    ).toEqual({
+      format: "png",
+      exportThemeMode: "dark",
+      pngScale: 7,
+      diagramWidth: 40,
+      transparentBackground: true,
+    });
 
     await act(async () => root.unmount());
 
     const remounted = await renderDialog();
     expect(selectByLabel(remounted.container, "Format").value).toBe("png");
-    expect(selectByLabel(remounted.container, "Theme for saved image").value).toBe("dark");
+    expect(
+      selectByLabel(remounted.container, "Theme for saved image").value,
+    ).toBe("dark");
     expect(selectByLabel(remounted.container, "Width").value).toBe("40");
-    expect(inputByLabel(remounted.container, "Transparent background").checked).toBe(
-      true,
-    );
+    expect(
+      inputByLabel(remounted.container, "Transparent background").checked,
+    ).toBe(true);
     expect(inputByLabel(remounted.container, "PNG resolution").value).toBe("7");
 
     await act(async () => remounted.root.unmount());

@@ -1,5 +1,11 @@
 import { CATEGORY_TO_TOKEN } from "./constants";
-import type { Cell, Field, Packet, ResolvedLayout, SubCell } from "./psml/renderer";
+import type {
+  Cell,
+  Field,
+  Packet,
+  ResolvedLayout,
+  SubCell,
+} from "./psml/renderer";
 
 export type DiagramExportTheme = {
   background: string;
@@ -83,8 +89,10 @@ function fieldFill(field: Field, theme: DiagramExportTheme): string {
   if (theme.fieldPalette[token]) return theme.fieldPalette[token];
   const cssVariable = token.match(/^var\((--[^)]+)\)$/);
   return cssVariable
-    ? (theme.resolveCssColor?.(cssVariable[1], DEFAULT_THEME.fieldPalette.slate) ??
-        cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate))
+    ? (theme.resolveCssColor?.(
+        cssVariable[1],
+        DEFAULT_THEME.fieldPalette.slate,
+      ) ?? cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate))
     : token;
 }
 
@@ -114,14 +122,16 @@ function rowY(row: number): number {
 function cellGeometry(cell: Cell, bitWidth: number) {
   const x = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
   const y = rowY(cell.row) + LAYOUT.cellInset;
-  const width = (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
+  const width =
+    (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
   const height = LAYOUT.rowHeight - LAYOUT.cellInset * 2;
   return { x, y, width, height };
 }
 
 function clipPathIdForCell(cell: Cell): string {
-  const encodedFieldId = Array.from(cell.field.id, (char) =>
-    char.codePointAt(0)?.toString(16).padStart(4, "0") ?? "fffd",
+  const encodedFieldId = Array.from(
+    cell.field.id,
+    (char) => char.codePointAt(0)?.toString(16).padStart(4, "0") ?? "fffd",
   ).join("-");
   return `cell-${cell.row}-${cell.segmentIndex}-${encodedFieldId}`;
 }
@@ -156,7 +166,8 @@ function renderSubfields(
   return subCells
     .map((sub) => {
       const x = LAYOUT.padding + sub.startBit * bitWidth + LAYOUT.cellInset + 4;
-      const width = (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - 8;
+      const width =
+        (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - 8;
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
         `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
@@ -168,7 +179,12 @@ function renderSubfields(
     .join("");
 }
 
-function renderLockBadge(x: number, y: number, size: number, color: string): string {
+function renderLockBadge(
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+): string {
   const scale = size / 16;
   return [
     `<g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${xmlAttribute(color)}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`,
@@ -178,14 +194,23 @@ function renderLockBadge(x: number, y: number, size: number, color: string): str
   ].join("");
 }
 
-function renderCellBadges(cell: Cell, x: number, y: number, width: number, height: number, theme: DiagramExportTheme): string {
+function renderCellBadges(
+  cell: Cell,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  theme: DiagramExportTheme,
+): string {
   if (!cell.isFirst) return "";
   const badges: string[] = [];
   if (cell.encrypted === true) {
     badges.push(renderLockBadge(x + width - 20, y + 6, 14, theme.accent));
   }
   if (cell.encryptedParentId) {
-    badges.push(renderLockBadge(x + width - 14, y + height - 14, 10, theme.accent));
+    badges.push(
+      renderLockBadge(x + width - 14, y + height - 14, 10, theme.accent),
+    );
   }
   if (cell.headerProtected === true) {
     badges.push(
@@ -204,7 +229,9 @@ export function buildDiagramSvg(
   const bitWidth = options.bitWidth ?? 24;
   const transparentBackground = options.transparentBackground === true;
   const rows = rowsFor(layout);
-  const packetFieldsById = new Map(packet.fields.map((field) => [field.id, field]));
+  const packetFieldsById = new Map(
+    packet.fields.map((field) => [field.id, field]),
+  );
   const width = LAYOUT.padding * 2 + packet.rowBits * bitWidth;
   const height =
     LAYOUT.padding * 2 +
@@ -217,9 +244,10 @@ export function buildDiagramSvg(
     const x = LAYOUT.padding + bit * bitWidth;
     const major = bit % 8 === 0;
     const tickHeight = major ? 10 : 6;
-    const label = bit % 4 === 0
-      ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${theme.rulerLabel}">${bit}</text>`
-      : "";
+    const label =
+      bit % 4 === 0
+        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${theme.rulerLabel}">${bit}</text>`
+        : "";
     return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
   }).join("");
 
@@ -231,14 +259,21 @@ export function buildDiagramSvg(
         : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${xmlAttribute(rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd)}" />`;
       const renderedCells = cells
         .map((cell) => {
-          const { x, y: cy, width: cw, height: ch } = cellGeometry(cell, bitWidth);
+          const {
+            x,
+            y: cy,
+            width: cw,
+            height: ch,
+          } = cellGeometry(cell, bitWidth);
           const { title, subtitle } = textForCell(cell);
           const escapedTitle = xmlEscape(title);
           const escapedSubtitle = xmlEscape(subtitle);
           const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
           const fill = fieldFill(exportField, theme);
           const dash = cell.encrypted ? ' stroke-dasharray="5 3"' : "";
-          const stroke = cell.encryptedParentId ? theme.accent : theme.fieldStroke;
+          const stroke = cell.encryptedParentId
+            ? theme.accent
+            : theme.fieldStroke;
           const clipId = clipPathIdForCell(cell);
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
@@ -283,7 +318,11 @@ function cssColor(name: string, fallback: string): string {
   return color;
 }
 
-function readCssColorFromRoot(root: ParentNode, name: string, fallback: string): string {
+function readCssColorFromRoot(
+  root: ParentNode,
+  name: string,
+  fallback: string,
+): string {
   if (typeof document === "undefined") return fallback;
   const probe = document.createElement("span");
   probe.style.color = `var(${name})`;
@@ -294,7 +333,9 @@ function readCssColorFromRoot(root: ParentNode, name: string, fallback: string):
   return color;
 }
 
-function buildTheme(resolveCssColor: (name: string, fallback: string) => string): DiagramExportTheme {
+function buildTheme(
+  resolveCssColor: (name: string, fallback: string) => string,
+): DiagramExportTheme {
   return {
     background: resolveCssColor("--bg-elevated", DEFAULT_THEME.background),
     rowEven: resolveCssColor("--row-band-even", DEFAULT_THEME.rowEven),
@@ -304,7 +345,10 @@ function buildTheme(resolveCssColor: (name: string, fallback: string) => string)
     accent: resolveCssColor("--accent", DEFAULT_THEME.accent),
     fieldStroke: resolveCssColor("--field-stroke", DEFAULT_THEME.fieldStroke),
     fieldLabel: resolveCssColor("--field-label", DEFAULT_THEME.fieldLabel),
-    fieldSublabel: resolveCssColor("--field-sublabel", DEFAULT_THEME.fieldSublabel),
+    fieldSublabel: resolveCssColor(
+      "--field-sublabel",
+      DEFAULT_THEME.fieldSublabel,
+    ),
     fieldContinuation: resolveCssColor(
       "--field-continuation",
       DEFAULT_THEME.fieldContinuation,
@@ -348,12 +392,18 @@ function withDocumentTheme<T>(
 }
 
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
-  if (typeof document === "undefined" || !document.body || mode === "follow-ui") {
+  if (
+    typeof document === "undefined" ||
+    !document.body ||
+    mode === "follow-ui"
+  ) {
     return readDiagramThemeFromDocument();
   }
 
   const resolveCssColor = (name: string, fallback: string): string =>
-    withDocumentTheme(mode, () => readCssColorFromRoot(document.body, name, fallback));
+    withDocumentTheme(mode, () =>
+      readCssColorFromRoot(document.body, name, fallback),
+    );
 
   return buildTheme(resolveCssColor);
 }
@@ -368,7 +418,11 @@ export function readDiagramThemeFromDocument(): DiagramExportTheme {
   return readDiagramThemeFromRoot(document.body);
 }
 
-export function downloadTextFile(filename: string, mime: string, content: string): void {
+export function downloadTextFile(
+  filename: string,
+  mime: string,
+  content: string,
+): void {
   if (typeof document === "undefined" || typeof URL === "undefined") return;
   const blob = new Blob([content], { type: mime });
   downloadBlobFile(filename, blob);

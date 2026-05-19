@@ -830,9 +830,7 @@ export default function PacketViewer() {
           editMode={editMode}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
-          extraControls={
-            <ExportButton packet={exportPacket} layout={layout} />
-          }
+          extraControls={<ExportButton packet={exportPacket} layout={layout} />}
           shareStatus={shareStatus}
           onPacketChange={handlePacketChange}
           onExportCustomPresets={handleExportCustomPresets}

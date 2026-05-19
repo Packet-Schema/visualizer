@@ -70,7 +70,12 @@ function layoutForMode(mode: "wire" | "semantic"): ResolvedLayout {
               fieldEndOffset: 3,
             },
             {
-              field: { id: "plain", name: "Plaintext", bits: 12, category: "payload-marker" },
+              field: {
+                id: "plain",
+                name: "Plaintext",
+                bits: 12,
+                category: "payload-marker",
+              },
               bitsTotal: 12,
               row: 0,
               startBit: 4,
@@ -83,7 +88,12 @@ function layoutForMode(mode: "wire" | "semantic"): ResolvedLayout {
               fieldEndOffset: 7,
             },
             {
-              field: { id: "plain", name: "Plaintext", bits: 12, category: "payload-marker" },
+              field: {
+                id: "plain",
+                name: "Plaintext",
+                bits: 12,
+                category: "payload-marker",
+              },
               bitsTotal: 12,
               row: 1,
               startBit: 0,
@@ -107,7 +117,7 @@ describe("buildDiagramSvg", () => {
     expect(svg).toContain("Type");
     expect(svg).toContain("Body");
     expect(svg).toContain('stroke-dasharray="5 3"');
-    expect(svg).toContain("<path d=\"M5.5 7V5a2.5 2.5 0 0 1 5 0v2\" />");
+    expect(svg).toContain('<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />');
   });
 
   it("reflects the supplied layout shape, so callers can export the current view mode", () => {
@@ -127,8 +137,14 @@ describe("buildDiagramSvg", () => {
       bitWidth: 40,
     });
     const parser = new DOMParser();
-    const standardSvg = parser.parseFromString(standard, "image/svg+xml").documentElement;
-    const wideSvg = parser.parseFromString(wide, "image/svg+xml").documentElement;
+    const standardSvg = parser.parseFromString(
+      standard,
+      "image/svg+xml",
+    ).documentElement;
+    const wideSvg = parser.parseFromString(
+      wide,
+      "image/svg+xml",
+    ).documentElement;
     const wideBodyRect = wideSvg.querySelector("rect[rx='10']");
 
     expect(standardSvg.getAttribute("width")).toBe("224");
@@ -149,52 +165,56 @@ describe("buildDiagramSvg", () => {
   });
 
   it("renders semantic encryption badges and themed subfield backgrounds", () => {
-    const themed = buildDiagramSvg(packet, {
-      totalBits: 8,
-      cells: [
-        {
-          field: packet.fields[0],
-          bitsTotal: 8,
-          row: 0,
-          startBit: 0,
-          endBit: 7,
-          segmentIndex: 0,
-          totalSegments: 1,
-          isFirst: true,
-          isLast: true,
-          fieldStartOffset: 0,
-          fieldEndOffset: 7,
-          encryptedParentId: "ciphertext",
-          headerProtected: true,
-          subCells: [
-            {
-              id: "kind",
-              parentField: packet.fields[0],
-              subfield: { id: "kind", name: "Kind", bits: 8 },
-              startBit: 0,
-              endBit: 7,
-              isFirst: true,
-              isLast: true,
-              bitsTotal: 8,
-            },
-          ],
-        },
-      ],
-    }, {
-      theme: {
-        background: "#111111",
-        rowEven: "#222222",
-        rowOdd: "#333333",
-        rulerTick: "#444444",
-        rulerLabel: "#555555",
-        accent: "#abcdef",
-        fieldStroke: "#666666",
-        fieldLabel: "#777777",
-        fieldSublabel: "#888888",
-        fieldContinuation: "#999999",
-        fieldPalette: { type: "#aaaaaa" },
+    const themed = buildDiagramSvg(
+      packet,
+      {
+        totalBits: 8,
+        cells: [
+          {
+            field: packet.fields[0],
+            bitsTotal: 8,
+            row: 0,
+            startBit: 0,
+            endBit: 7,
+            segmentIndex: 0,
+            totalSegments: 1,
+            isFirst: true,
+            isLast: true,
+            fieldStartOffset: 0,
+            fieldEndOffset: 7,
+            encryptedParentId: "ciphertext",
+            headerProtected: true,
+            subCells: [
+              {
+                id: "kind",
+                parentField: packet.fields[0],
+                subfield: { id: "kind", name: "Kind", bits: 8 },
+                startBit: 0,
+                endBit: 7,
+                isFirst: true,
+                isLast: true,
+                bitsTotal: 8,
+              },
+            ],
+          },
+        ],
       },
-    });
+      {
+        theme: {
+          background: "#111111",
+          rowEven: "#222222",
+          rowOdd: "#333333",
+          rulerTick: "#444444",
+          rulerLabel: "#555555",
+          accent: "#abcdef",
+          fieldStroke: "#666666",
+          fieldLabel: "#777777",
+          fieldSublabel: "#888888",
+          fieldContinuation: "#999999",
+          fieldPalette: { type: "#aaaaaa" },
+        },
+      },
+    );
 
     expect(themed).toContain('fill="#111111" fill-opacity="0.52"');
     expect(themed).toContain('stroke="#abcdef"');
@@ -205,7 +225,14 @@ describe("buildDiagramSvg", () => {
     const svg = buildDiagramSvg(
       {
         ...packet,
-        fields: [{ id: "custom", name: "Custom", bits: 8, color: "var(--custom-fill)" as never }],
+        fields: [
+          {
+            id: "custom",
+            name: "Custom",
+            bits: 8,
+            color: "var(--custom-fill)" as never,
+          },
+        ],
       },
       {
         totalBits: 8,
@@ -344,21 +371,26 @@ describe("buildDiagramSvg", () => {
   });
 
   it("centers ruler labels and clips field text to each cell", () => {
-    const svg = new DOMParser()
-      .parseFromString(buildDiagramSvg(packet, layoutForMode("wire")), "image/svg+xml")
-      .documentElement;
+    const svg = new DOMParser().parseFromString(
+      buildDiagramSvg(packet, layoutForMode("wire")),
+      "image/svg+xml",
+    ).documentElement;
     const firstRulerLabel = svg.querySelector("text");
     const firstFieldLabel = svg.querySelector("text[clip-path]");
 
     expect(firstRulerLabel?.getAttribute("text-anchor")).toBe("middle");
-    expect(firstFieldLabel?.getAttribute("clip-path")).toBe("url(#cell-0-0-0061)");
+    expect(firstFieldLabel?.getAttribute("clip-path")).toBe(
+      "url(#cell-0-0-0061)",
+    );
     expect(svg.querySelector("clipPath#cell-0-0-0061")).not.toBeNull();
   });
 
   it("sanitizes clip-path ids for field ids that contain fragment-breaking characters", () => {
     const repeatedFieldPacket: Packet = {
       ...packet,
-      fields: [{ id: "name#1 \"quoted\"", name: "Type", bits: 8, category: "type" }],
+      fields: [
+        { id: 'name#1 "quoted"', name: "Type", bits: 8, category: "type" },
+      ],
     };
     const layout: ResolvedLayout = {
       totalBits: 8,
@@ -378,17 +410,20 @@ describe("buildDiagramSvg", () => {
         },
       ],
     };
-    const svg = new DOMParser()
-      .parseFromString(buildDiagramSvg(repeatedFieldPacket, layout), "image/svg+xml")
-      .documentElement;
+    const svg = new DOMParser().parseFromString(
+      buildDiagramSvg(repeatedFieldPacket, layout),
+      "image/svg+xml",
+    ).documentElement;
     const fieldLabel = svg.querySelector("text[clip-path]");
     const clipPath = svg.querySelector("clipPath");
     const clipPathId = clipPath?.getAttribute("id");
 
-    expect(clipPathId).toBe("cell-0-0-006e-0061-006d-0065-0023-0031-0020-0022-0071-0075-006f-0074-0065-0064-0022");
+    expect(clipPathId).toBe(
+      "cell-0-0-006e-0061-006d-0065-0023-0031-0020-0022-0071-0075-006f-0074-0065-0064-0022",
+    );
     expect(clipPathId).not.toContain("#");
     expect(clipPathId).not.toContain(" ");
-    expect(clipPathId).not.toContain("\"");
+    expect(clipPathId).not.toContain('"');
     expect(fieldLabel?.getAttribute("clip-path")).toBe(`url(#${clipPathId})`);
   });
 
@@ -418,9 +453,9 @@ describe("diagram export helpers", () => {
             ? "rgb(1, 2, 3)"
             : color === "var(--accent)"
               ? "rgb(7, 8, 9)"
-            : color === "var(--field-blue)"
-              ? "rgb(4, 5, 6)"
-              : "",
+              : color === "var(--field-blue)"
+                ? "rgb(4, 5, 6)"
+                : "",
       } as CSSStyleDeclaration;
     });
 
@@ -455,7 +490,8 @@ describe("diagram export helpers", () => {
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
       const color = (element as HTMLElement).style.color;
-      if (color !== "var(--bg-elevated)") return { color: "" } as CSSStyleDeclaration;
+      if (color !== "var(--bg-elevated)")
+        return { color: "" } as CSSStyleDeclaration;
       return { color: "rgb(20, 21, 22)" } as CSSStyleDeclaration;
     });
 
@@ -466,7 +502,8 @@ describe("diagram export helpers", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const explicitTheme = document.documentElement.getAttribute("data-theme") ?? "dark";
+      const explicitTheme =
+        document.documentElement.getAttribute("data-theme") ?? "dark";
       const color = (element as HTMLElement).style.color;
       if (color === "var(--custom-fill)" && explicitTheme === "light") {
         return { color: "rgb(240, 240, 240)" } as CSSStyleDeclaration;
@@ -486,7 +523,14 @@ describe("diagram export helpers", () => {
     const svg = buildDiagramSvg(
       {
         ...packet,
-        fields: [{ id: "custom", name: "Custom", bits: 8, color: "var(--custom-fill)" as never }],
+        fields: [
+          {
+            id: "custom",
+            name: "Custom",
+            bits: 8,
+            color: "var(--custom-fill)" as never,
+          },
+        ],
       },
       {
         totalBits: 8,
@@ -546,9 +590,15 @@ describe("diagram export helpers", () => {
       configurable: true,
       value: vi.fn(),
     });
-    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
-    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test");
+    const revokeObjectURL = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
 
     downloadTextFile("demo.svg", "image/svg+xml", "<svg />");
     downloadBlobFile("demo.png", new Blob(["png"], { type: "image/png" }));
@@ -570,7 +620,9 @@ describe("diagram export helpers", () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     const createElement = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+    vi.spyOn(document, "createElement").mockImplementation(((
+      tagName: string,
+    ) => {
       if (tagName !== "canvas") {
         return createElement(tagName);
       }
