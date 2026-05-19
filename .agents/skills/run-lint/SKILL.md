@@ -10,13 +10,16 @@ description: packet-view リポジトリで Lint を実行したいときに使�
 ## 実行手順
 
 1. `web` ディレクトリへ移動する。
-2. 標準の Lint 実行として `npm run lint` を使う。
-3. 失敗した場合は、主なファイル名とエラー内容を要約して共有する。
+2. Lint の前に `npm run format:check` で整形状態を確認する。
+3. `format:check` が失敗した場合は、先に `npm run format` で整形してから `npm run lint` を実行する。
+4. 失敗した場合は、主なファイル名とエラー内容を要約して共有する。
 
 ## コマンド
 
 ```bash
 cd web
+npm run format:check
+npm run format
 npm run lint
 ```
 
@@ -25,3 +28,4 @@ npm run lint
 - `web/package-lock.json` があるため、パッケージマネージャーは `npm` を使う。
 - `npm run lint` 実行時は `build:presets` が先に走る前提でよい。
 - 差分確認が必要なら `git status --short` や `git diff --stat` を使う。
+- `npm run format` は `format:check` が失敗した場合に実行する想定で、整形が不要なら省略してよい。
