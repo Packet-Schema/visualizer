@@ -77,7 +77,13 @@ export type VarintEncoding = (typeof VARINT_ENCODINGS)[number];
  */
 export type TypeBerLength = { kind: "berLength" };
 
-export type Type = TypeInt | TypeBits | TypeBytes | TypeEnum | TypeVarint | TypeBerLength;
+export type Type =
+  | TypeInt
+  | TypeBits
+  | TypeBytes
+  | TypeEnum
+  | TypeVarint
+  | TypeBerLength;
 
 /* ------------------------------------------------------------------ *
  * Expressions

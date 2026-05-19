@@ -72,7 +72,9 @@ describe("toAscii — every preset is well-formed", () => {
       expect(lines[2]).toBe("+" + "-+".repeat(pkt.rowBits));
       // Every odd-numbered line at index >= 3 (field lines) ends with "|".
       for (let i = 3; i < lines.length; i += 2) {
-        expect(lines[i].endsWith("|"), `field line ${i}: "${lines[i]}"`).toBe(true);
+        expect(lines[i].endsWith("|"), `field line ${i}: "${lines[i]}"`).toBe(
+          true,
+        );
       }
     });
   }
@@ -104,7 +106,10 @@ describe("toAscii — canonical IPv4 snapshot", () => {
 
 describe("toAscii — Ethernet trailing partial row", () => {
   it("final separator width matches the EtherType row (16 bits, not 32)", () => {
-    const text = toAscii(ALL_PRESETS.ethernet, envWithRefs(ALL_PRESETS.ethernet));
+    const text = toAscii(
+      ALL_PRESETS.ethernet,
+      envWithRefs(ALL_PRESETS.ethernet),
+    );
     const lines = text.split("\n");
     // Last separator line spans only the EtherType row.
     const last = lines[lines.length - 1];
@@ -238,7 +243,11 @@ describe("toAscii — PSML 0.3 Varint type", () => {
       name: "V",
       rowBits: 32,
       body: [
-        { id: "vlen", name: "VLen", type: { kind: "varint", encoding: "quic" } },
+        {
+          id: "vlen",
+          name: "VLen",
+          type: { kind: "varint", encoding: "quic" },
+        },
       ],
     };
     const text = toAscii(pkt);
@@ -257,7 +266,10 @@ describe("toAscii — PSML 0.3 Varint type", () => {
     });
     // Each row covers 8 bits → row count = bits / 8.
     const rowsOf = (text: string) =>
-      text.split("\n").slice(3).filter((_, i) => i % 2 === 0).length;
+      text
+        .split("\n")
+        .slice(3)
+        .filter((_, i) => i % 2 === 0).length;
     expect(rowsOf(toAscii(pkt("quic")))).toBe(64 / 8);
     expect(rowsOf(toAscii(pkt("protobuf")))).toBe(80 / 8);
     expect(rowsOf(toAscii(pkt("cbor")))).toBe(72 / 8);
@@ -267,12 +279,17 @@ describe("toAscii — PSML 0.3 Varint type", () => {
     const pkt: Packet = {
       name: "V",
       rowBits: 8,
-      body: [{ id: "v", name: "V", type: { kind: "varint", encoding: "quic" } }],
+      body: [
+        { id: "v", name: "V", type: { kind: "varint", encoding: "quic" } },
+      ],
     };
     const env: PacketEnv = new Map([["v", 16]]);
     const text = toAscii(pkt, env);
     // 16 bits → 2 rows.
-    const rows = text.split("\n").slice(3).filter((_, i) => i % 2 === 0).length;
+    const rows = text
+      .split("\n")
+      .slice(3)
+      .filter((_, i) => i % 2 === 0).length;
     expect(rows).toBe(2);
   });
 
@@ -287,7 +304,11 @@ describe("toAscii — PSML 0.3 Varint type", () => {
           kind: "group",
           id: "g",
           children: [
-            { id: "vg", name: "VG", type: { kind: "varint", encoding: "quic" } },
+            {
+              id: "vg",
+              name: "VG",
+              type: { kind: "varint", encoding: "quic" },
+            },
           ],
         },
         {
@@ -296,7 +317,11 @@ describe("toAscii — PSML 0.3 Varint type", () => {
           element: {
             id: "elem",
             fields: [
-              { id: "vr", name: "VR", type: { kind: "varint", encoding: "protobuf" } },
+              {
+                id: "vr",
+                name: "VR",
+                type: { kind: "varint", encoding: "protobuf" },
+              },
             ],
           },
           count: { kind: "lit", value: 0 },
@@ -309,14 +334,22 @@ describe("toAscii — PSML 0.3 Varint type", () => {
             "1": {
               id: "s1",
               fields: [
-                { id: "vs", name: "VS", type: { kind: "varint", encoding: "cbor" } },
+                {
+                  id: "vs",
+                  name: "VS",
+                  type: { kind: "varint", encoding: "cbor" },
+                },
               ],
             },
           },
           default: {
             id: "sd",
             fields: [
-              { id: "vd", name: "VD", type: { kind: "varint", encoding: "quic" } },
+              {
+                id: "vd",
+                name: "VD",
+                type: { kind: "varint", encoding: "quic" },
+              },
             ],
           },
         },
@@ -326,7 +359,11 @@ describe("toAscii — PSML 0.3 Varint type", () => {
           plaintext: {
             id: "ep",
             fields: [
-              { id: "ve", name: "VE", type: { kind: "varint", encoding: "quic" } },
+              {
+                id: "ve",
+                name: "VE",
+                type: { kind: "varint", encoding: "quic" },
+              },
             ],
           },
           contextNote: "k",
@@ -352,7 +389,11 @@ describe("toAscii — PSML 0.3 Varint type", () => {
           default: {
             id: "sd",
             fields: [
-              { id: "vd", name: "VD", type: { kind: "varint", encoding: "quic" } },
+              {
+                id: "vd",
+                name: "VD",
+                type: { kind: "varint", encoding: "quic" },
+              },
             ],
           },
         },
@@ -412,7 +453,11 @@ describe("toAscii — PSML 0.4 decorations", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "ref", field: "present" },
-          field: { id: "trailing", name: "Trailing", type: { kind: "bits", n: 8 } },
+          field: {
+            id: "trailing",
+            name: "Trailing",
+            type: { kind: "bits", n: 8 },
+          },
         },
       ],
     };
@@ -432,7 +477,11 @@ describe("toAscii — PSML 0.4 decorations", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "ref", field: "present" },
-          field: { id: "trailing", name: "Trailing", type: { kind: "bits", n: 8 } },
+          field: {
+            id: "trailing",
+            name: "Trailing",
+            type: { kind: "bits", n: 8 },
+          },
         },
       ],
     };
@@ -446,7 +495,12 @@ describe("toAscii — PSML 0.4 decorations", () => {
       name: "BO",
       rowBits: 16,
       body: [
-        { id: "x", name: "X", type: { kind: "int", bits: 16 }, byteOrder: "LE" },
+        {
+          id: "x",
+          name: "X",
+          type: { kind: "int", bits: 16 },
+          byteOrder: "LE",
+        },
       ],
     };
     const txt = toAscii(pkt);
@@ -476,7 +530,10 @@ describe("toAscii — PSML 0.4 decorations", () => {
           id: "s",
           on: { kind: "peek", bits: 16 },
           cases: {
-            "0": { id: "z", fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }] },
+            "0": {
+              id: "z",
+              fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }],
+            },
           },
         },
       ],
@@ -499,7 +556,11 @@ describe("toAscii — Optional fallback when predicate refs are unresolved", () 
           id: "maybe",
           // `present` is never seeded in env nor as a defaultValue field.
           when: { kind: "ref", field: "present" },
-          field: { id: "trailing", name: "Trailing", type: { kind: "bits", n: 8 } },
+          field: {
+            id: "trailing",
+            name: "Trailing",
+            type: { kind: "bits", n: 8 },
+          },
         },
       ],
     };

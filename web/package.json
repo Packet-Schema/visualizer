@@ -8,6 +8,8 @@
     "prebuild": "npm run build:presets",
     "build": "next build",
     "start": "next start",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "lint": "npm run build:presets && eslint .",
     "pretest": "npm run build:presets",
     "test": "vitest run",

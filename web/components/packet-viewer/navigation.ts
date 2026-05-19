@@ -13,7 +13,9 @@ export function findRowNeighbor(
   const curRow = Number(current.dataset.row);
   if (Number.isNaN(curRow)) {
     const idx = cells.indexOf(current);
-    return cells[Math.max(0, Math.min(cells.length - 1, idx + direction))] ?? null;
+    return (
+      cells[Math.max(0, Math.min(cells.length - 1, idx + direction))] ?? null
+    );
   }
   const curStart = Number(current.dataset.startBit);
   const curEnd = Number(current.dataset.endBit);

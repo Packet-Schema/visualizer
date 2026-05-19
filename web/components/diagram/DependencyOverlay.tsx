@@ -138,10 +138,14 @@ export default function DependencyOverlay({
       // Anchor at the cell's top-center so multiple arrows in the same row
       // don't overlap badly. Convert to container-local coordinates accounting
       // for any horizontal scroll inside the diagram-shell.
-      const sx = fr.left - containerRect.left + fr.width / 2 + container.scrollLeft;
-      const sy = fr.top - containerRect.top + fr.height / 2 + container.scrollTop;
-      const tx = tr.left - containerRect.left + tr.width / 2 + container.scrollLeft;
-      const ty = tr.top - containerRect.top + tr.height / 2 + container.scrollTop;
+      const sx =
+        fr.left - containerRect.left + fr.width / 2 + container.scrollLeft;
+      const sy =
+        fr.top - containerRect.top + fr.height / 2 + container.scrollTop;
+      const tx =
+        tr.left - containerRect.left + tr.width / 2 + container.scrollLeft;
+      const ty =
+        tr.top - containerRect.top + tr.height / 2 + container.scrollTop;
 
       // Quadratic Bezier control point: arc above the midpoint by an amount
       // proportional to the horizontal distance, clamped so vertical neighbors

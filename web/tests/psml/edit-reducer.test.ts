@@ -128,9 +128,9 @@ describe("editReducer — actions", () => {
       at: [2],
       patch: { name: "Group A" },
     });
-    expect(
-      (next.packet.body[2] as Container & { name?: string }).name,
-    ).toBe("Group A");
+    expect((next.packet.body[2] as Container & { name?: string }).name).toBe(
+      "Group A",
+    );
   });
 
   it("add-constraint appends", () => {
@@ -308,7 +308,10 @@ describe("editReducer — no-op edge cases", () => {
     const s = makeInitialState(pkt);
     const next = apply(s, {
       type: "add-constraint",
-      constraint: { lhs: { kind: "lit", value: 1 }, rhs: { kind: "lit", value: 1 } },
+      constraint: {
+        lhs: { kind: "lit", value: 1 },
+        rhs: { kind: "lit", value: 1 },
+      },
     });
     expect(next.packet.constraints).toHaveLength(1);
   });

@@ -30,7 +30,8 @@ describe("fromAad — synthetic IPv4-shaped diagram", () => {
     expect(packet.name).toBe("IPv4 Header");
     expect(packet.rowBits).toBe(32);
     const widths = packet.body.map((c) => {
-      const t = (c as { type: { kind: string; n?: number; bits?: number } }).type;
+      const t = (c as { type: { kind: string; n?: number; bits?: number } })
+        .type;
       return t.kind === "bits" ? t.n : t.bits;
     });
     // Version=4, IHL=4, DSCP=6, ECN=2, TotalLen=16, Ident=16, Flags=7,
@@ -62,9 +63,7 @@ A Frame is formatted as follows:
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 `;
     const { packet } = fromAad(text);
-    const cats = packet.body.map(
-      (c) => (c as { category?: string }).category,
-    );
+    const cats = packet.body.map((c) => (c as { category?: string }).category);
     expect(cats).toContain("addressing");
     expect(cats).toContain("checksum");
   });
@@ -246,7 +245,9 @@ where:
 `;
     const { packet } = fromAad(text);
     const fields = packet.body as Array<{ name: string; doc?: string }>;
-    expect(fields.find((f) => f.name === "Source Address")?.doc).toMatch(/came from/);
+    expect(fields.find((f) => f.name === "Source Address")?.doc).toMatch(
+      /came from/,
+    );
     // 'chk' alias should match Checksum
     expect(fields.find((f) => f.name === "Checksum")?.doc).toMatch(/csum/);
   });

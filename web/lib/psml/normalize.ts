@@ -135,7 +135,10 @@ function emit(
 ): void {
   const bits = typeBits(field.type, state.env, field.id);
   const nf: NormalizedField = {
-    id: extra.repeatIndex !== undefined ? `${field.id}#${extra.repeatIndex}` : field.id,
+    id:
+      extra.repeatIndex !== undefined
+        ? `${field.id}#${extra.repeatIndex}`
+        : field.id,
     name: field.name,
     bits,
     absoluteBitOffset: state.offset,
@@ -272,9 +275,10 @@ function walkSwitch(s: Switch, path: string, state: WalkState): void {
 function walkEncrypted(e: Encrypted, path: string, state: WalkState): void {
   const sub = `${path}/${e.id}`;
   if (state.viewMode === "wire") {
-    const bits = e.wireBits !== undefined
-      ? Math.max(0, Math.trunc(evalExpr(e.wireBits, state.env)))
-      : sumPlaintextBits(e.plaintext, state.env);
+    const bits =
+      e.wireBits !== undefined
+        ? Math.max(0, Math.trunc(evalExpr(e.wireBits, state.env)))
+        : sumPlaintextBits(e.plaintext, state.env);
     const nf: NormalizedField = {
       id: e.id,
       name: e.name ?? e.id,

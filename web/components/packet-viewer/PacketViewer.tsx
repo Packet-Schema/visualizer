@@ -695,9 +695,9 @@ export default function PacketViewer() {
     // ので、 ref fallback seed を一箇所に集約できる。
     const targetPsml: PsmlPacket = editMode
       ? studioState.packet
-      : PRESETS[packetKey] ??
+      : (PRESETS[packetKey] ??
         customPresets[packetKey] ??
-        rendererToPsml(packet);
+        rendererToPsml(packet));
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、

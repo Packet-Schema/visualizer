@@ -5,7 +5,10 @@ type Props = {
   children: ReactNode;
   pressed?: boolean;
   ariaLabel?: string;
-} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children" | "aria-label">;
+} & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "onClick" | "children" | "aria-label"
+>;
 
 export default function ToolbarButton({
   onClick,

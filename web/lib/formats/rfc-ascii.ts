@@ -73,7 +73,13 @@ export function toAscii(
   const varintEncodings = new Map<string, string>();
   const berLengthFieldIds = new Set<string>();
   const absentOptionals: Optional[] = [];
-  collectPsml04(packet.body, varintEncodings, berLengthFieldIds, absentOptionals, localEnv);
+  collectPsml04(
+    packet.body,
+    varintEncodings,
+    berLengthFieldIds,
+    absentOptionals,
+    localEnv,
+  );
   for (const [id, encoding] of varintEncodings) {
     if (!localEnv.has(id)) {
       localEnv.set(id, VARINT_WORST_CASE_BITS[encoding]);
@@ -120,7 +126,9 @@ export function toAscii(
     // populated from the same Map we read here, so every key always has a
     // non-empty array. Keeping the guards for safety, ignored for coverage.
     /* v8 ignore start */
-    const row = (rowsMap.get(r) ?? []).slice().sort((a, b) => a.startBit - b.startBit);
+    const row = (rowsMap.get(r) ?? [])
+      .slice()
+      .sort((a, b) => a.startBit - b.startBit);
     if (row.length === 0) continue;
     /* v8 ignore stop */
     const expanded: RowCellLike[] = row.map((c) => ({
@@ -203,10 +211,17 @@ function collectPsml04(
         for (const v of Object.values(c.cases)) {
           collectPsml04(v.fields, varints, berIds, absent, env);
         }
-        if (c.default) collectPsml04(c.default.fields, varints, berIds, absent, env);
+        if (c.default)
+          collectPsml04(c.default.fields, varints, berIds, absent, env);
         break;
       case "encrypted":
-        collectPsml04((c as Encrypted).plaintext.fields, varints, berIds, absent, env);
+        collectPsml04(
+          (c as Encrypted).plaintext.fields,
+          varints,
+          berIds,
+          absent,
+          env,
+        );
         break;
       case "optional": {
         // Evaluate `when` against the (already seeded) env. Refs that don't
@@ -221,7 +236,8 @@ function collectPsml04(
         if (present) {
           // The inner field will lay out normally; recurse so any berLength /
           // varint inside it (if we ever nest) still seeds correctly.
-          if (c.field.type.kind === "varint") varints.set(c.field.id, c.field.type.encoding);
+          if (c.field.type.kind === "varint")
+            varints.set(c.field.id, c.field.type.encoding);
           if (c.field.type.kind === "berLength") berIds.add(c.field.id);
         } else {
           absent.push(c);
@@ -262,7 +278,9 @@ function fieldLine(cells: RowCellLike[], rowWidth: number): string {
     let label: string = c.isFirst ? c.field.name : "";
     if (label.length > cellWidth) {
       label =
-        cellWidth > 1 ? label.slice(0, cellWidth - 1) + "." : label.slice(0, cellWidth);
+        cellWidth > 1
+          ? label.slice(0, cellWidth - 1) + "."
+          : label.slice(0, cellWidth);
     }
     const pad = cellWidth - label.length;
     const left = Math.floor(pad / 2);
