@@ -66,7 +66,6 @@ import OnboardingTour, {
   hasSeenTour,
   type TourStep,
 } from "@/components/onboarding/OnboardingTour";
-import ExportButton from "@/components/diagram-export/ExportButton";
 import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
 import StudioPanel from "./StudioPanel";
@@ -830,7 +829,6 @@ export default function PacketViewer() {
           editMode={editMode}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
-          extraControls={<ExportButton packet={exportPacket} layout={layout} />}
           shareStatus={shareStatus}
           onPacketChange={handlePacketChange}
           onExportCustomPresets={handleExportCustomPresets}
@@ -996,8 +994,9 @@ export default function PacketViewer() {
       <ImportExportDrawer
         open={drawerMode !== null}
         mode={drawerMode ?? "export"}
-        packet={packet}
+        packet={exportPacket}
         controllers={controllers}
+        layout={layout}
         onClose={() => setDrawerMode(null)}
         onImport={handleImport}
       />
