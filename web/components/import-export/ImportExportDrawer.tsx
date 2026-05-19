@@ -281,18 +281,18 @@ export default function ImportExportDrawer({
   }, [format, packet.name, text]);
 
   const handleImageDownload = useCallback(async () => {
+    const exportSession = exportSessionRef.current;
     try {
-      const exportSession = exportSessionRef.current;
       setImageBusy(true);
       const svg = buildDiagramSvg(packet, layout, {
         theme: readDiagramTheme(exportThemeMode),
         bitWidth: diagramWidth,
         transparentBackground,
       });
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
+        return;
+      }
       if (format === "svg") {
-        if (!openRef.current || exportSessionRef.current !== exportSession) {
-          return;
-        }
         const filename = `${slugify(packet.name)}-diagram.svg`;
         downloadTextFile(filename, "image/svg+xml", svg);
         setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
@@ -306,7 +306,7 @@ export default function ImportExportDrawer({
         setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
       }
     } catch (e) {
-      if (!openRef.current) {
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
         return;
       }
       setStatus({
@@ -314,7 +314,7 @@ export default function ImportExportDrawer({
         kind: "error",
       });
     } finally {
-      if (openRef.current) {
+      if (openRef.current && exportSessionRef.current === exportSession) {
         setImageBusy(false);
       }
     }
