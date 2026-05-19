@@ -100,7 +100,8 @@ npm run test:watch     # iterate in watch mode
 npm run test:coverage  # generate coverage report (100% on lib/formats/)
 ```
 
-CI runs lint + build + coverage on every push and pull request.
+CI runs linting, build verification, and coverage checks on pushes and pull
+requests.
 
 ## Roadmap
 
