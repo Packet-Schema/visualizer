@@ -87,16 +87,3 @@ npm run test:coverage
 
 CI runs linting, build verification, and coverage checks on pushes and pull
 requests.
-
-## Roadmap
-
-- Beyond 0.4: **layered packets** (an outer packet whose payload is
-  itself a typed PSML packet — Ethernet/IP/TCP/TLS as one composed
-  diagram instead of four siblings), and **type unions on byte-prefix
-  discriminators** (a richer Switch that dispatches on a contents-match
-  rather than a single integer value, for magic-byte-style framing).
-- TLV / option expansion inside variable-length fields (TCP Options, IPv4
-  Options, TLS extensions) — partially unlocked by 0.4's peek expression.
-- More presets: SCTP, GRE, VXLAN, HTTP/2 frame, BGP UPDATE, X.509
-  certificate, full PCIe TLP header.
-- In-page custom packet editor backed by the existing JSON schema.
