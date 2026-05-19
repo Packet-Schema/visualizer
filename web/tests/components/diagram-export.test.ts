@@ -470,9 +470,9 @@ describe("diagram export helpers", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const explicitTheme = (element as HTMLElement).parentElement?.getAttribute(
-        "data-theme",
-      );
+      const explicitTheme = (
+        element as HTMLElement
+      ).parentElement?.getAttribute("data-theme");
       const color = (element as HTMLElement).style.color;
       if (color === "var(--bg-elevated)" && explicitTheme === "light") {
         return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
@@ -569,9 +569,9 @@ describe("diagram export helpers", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const explicitTheme = (element as HTMLElement).parentElement?.getAttribute(
-        "data-theme",
-      );
+      const explicitTheme = (
+        element as HTMLElement
+      ).parentElement?.getAttribute("data-theme");
       const color = (element as HTMLElement).style.color;
       if (color === "var(--bg-elevated)" && explicitTheme === "light") {
         return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
