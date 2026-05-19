@@ -203,6 +203,14 @@ describe("PacketViewer (smoke)", () => {
       expect(
         container.querySelector<HTMLInputElement>("#ctrl-ihl-number"),
       ).toBeNull();
+      // No IPv4 option-cell leftovers (Type=0 etc.) — those use the
+      // `${field.id}#${repeatIndex}` synthetic id from the Repeat expansion.
+      const leftoverIds = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-field-id]"),
+      )
+        .map((el) => el.dataset.fieldId ?? "")
+        .filter((id) => id.startsWith("type#") || id.startsWith("type:"));
+      expect(leftoverIds).toEqual([]);
     } finally {
       await cleanup();
     }
