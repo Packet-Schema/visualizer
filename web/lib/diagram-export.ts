@@ -7,11 +7,13 @@ export type DiagramExportTheme = {
   rowOdd: string;
   rulerTick: string;
   rulerLabel: string;
+  accent: string;
   fieldStroke: string;
   fieldLabel: string;
   fieldSublabel: string;
   fieldContinuation: string;
   fieldPalette: Record<string, string>;
+  resolveCssColor?: (name: string, fallback: string) => string;
 };
 
 export type DiagramThemeMode = "follow-ui" | "light" | "dark";
@@ -28,6 +30,7 @@ const DEFAULT_THEME: DiagramExportTheme = {
   rowOdd: "#fbfcfe",
   rulerTick: "#667085",
   rulerLabel: "#475467",
+  accent: "#2563eb",
   fieldStroke: "#344054",
   fieldLabel: "#101828",
   fieldSublabel: "#344054",
@@ -64,6 +67,10 @@ function xmlEscape(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
+function xmlAttribute(value: string): string {
+  return xmlEscape(value);
+}
+
 function resolveToken(field: Field): string {
   if (field.category && CATEGORY_TO_TOKEN[field.category]) {
     return CATEGORY_TO_TOKEN[field.category];
@@ -76,7 +83,8 @@ function fieldFill(field: Field, theme: DiagramExportTheme): string {
   if (theme.fieldPalette[token]) return theme.fieldPalette[token];
   const cssVariable = token.match(/^var\((--[^)]+)\)$/);
   return cssVariable
-    ? cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate)
+    ? (theme.resolveCssColor?.(cssVariable[1], DEFAULT_THEME.fieldPalette.slate) ??
+        cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate))
     : token;
 }
 
@@ -151,13 +159,40 @@ function renderSubfields(
       const width = (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - 8;
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
-        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="#ffffff" fill-opacity="0.52" stroke="${theme.fieldStroke}" stroke-width="0.8" />`,
+        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
         label
-          ? `<text x="${x + 6}" y="${y + 12}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${theme.fieldLabel}">${label}</text>`
+          ? `<text x="${x + 6}" y="${y + 12}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}">${label}</text>`
           : "",
       ].join("");
     })
     .join("");
+}
+
+function renderLockBadge(x: number, y: number, size: number, color: string): string {
+  const scale = size / 16;
+  return [
+    `<g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${xmlAttribute(color)}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`,
+    '<rect x="3" y="7" width="10" height="7" rx="1.5" />',
+    '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />',
+    "</g>",
+  ].join("");
+}
+
+function renderCellBadges(cell: Cell, x: number, y: number, width: number, height: number, theme: DiagramExportTheme): string {
+  if (!cell.isFirst) return "";
+  const badges: string[] = [];
+  if (cell.encrypted === true) {
+    badges.push(renderLockBadge(x + width - 20, y + 6, 14, theme.accent));
+  }
+  if (cell.encryptedParentId) {
+    badges.push(renderLockBadge(x + width - 14, y + height - 14, 10, theme.accent));
+  }
+  if (cell.headerProtected === true) {
+    badges.push(
+      `<text x="${x + width - 28}" y="${y + height - 6}" font-size="9" font-weight="700" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.accent)}">HP</text>`,
+    );
+  }
+  return badges.join("");
 }
 
 export function buildDiagramSvg(
@@ -169,6 +204,7 @@ export function buildDiagramSvg(
   const bitWidth = options.bitWidth ?? 24;
   const transparentBackground = options.transparentBackground === true;
   const rows = rowsFor(layout);
+  const packetFieldsById = new Map(packet.fields.map((field) => [field.id, field]));
   const width = LAYOUT.padding * 2 + packet.rowBits * bitWidth;
   const height =
     LAYOUT.padding * 2 +
@@ -184,7 +220,7 @@ export function buildDiagramSvg(
     const label = bit % 4 === 0
       ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${theme.rulerLabel}">${bit}</text>`
       : "";
-    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${theme.rulerTick}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
+    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
   }).join("");
 
   const body = rows
@@ -192,20 +228,23 @@ export function buildDiagramSvg(
       const y = rowY(rowIndex);
       const band = transparentBackground
         ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd}" />`;
+        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${xmlAttribute(rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd)}" />`;
       const renderedCells = cells
         .map((cell) => {
           const { x, y: cy, width: cw, height: ch } = cellGeometry(cell, bitWidth);
           const { title, subtitle } = textForCell(cell);
           const escapedTitle = xmlEscape(title);
           const escapedSubtitle = xmlEscape(subtitle);
-          const fill = fieldFill(cell.field, theme);
+          const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
+          const fill = fieldFill(exportField, theme);
           const dash = cell.encrypted ? ' stroke-dasharray="5 3"' : "";
+          const stroke = cell.encryptedParentId ? theme.accent : theme.fieldStroke;
           const clipId = clipPathIdForCell(cell);
           return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${fill}" stroke="${theme.fieldStroke}" stroke-width="1"${dash} />`,
-            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${cell.isFirst ? theme.fieldLabel : theme.fieldContinuation}">${escapedTitle}</text>`,
-            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${theme.fieldSublabel}">${escapedSubtitle}</text>`,
+            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
+            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}">${escapedTitle}</text>`,
+            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}">${escapedSubtitle}</text>`,
+            renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(cell.subCells, cell, bitWidth, theme),
           ].join("");
         })
@@ -226,7 +265,7 @@ export function buildDiagramSvg(
     `<defs>${clipPaths}</defs>`,
     transparentBackground
       ? ""
-      : `<rect width="${width}" height="${height}" fill="${theme.background}" />`,
+      : `<rect width="${width}" height="${height}" fill="${xmlAttribute(theme.background)}" />`,
     ruler,
     body,
     "</svg>",
@@ -244,38 +283,65 @@ function cssColor(name: string, fallback: string): string {
   return color;
 }
 
-function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
-  const cssColorFromRoot = (name: string, fallback: string): string => {
-    if (typeof document === "undefined") return fallback;
-    const probe = document.createElement("span");
-    probe.style.color = `var(${name})`;
-    probe.style.display = "none";
-    root.appendChild(probe);
-    const color = getComputedStyle(probe).color || fallback;
-    probe.remove();
-    return color;
-  };
+function readCssColorFromRoot(root: ParentNode, name: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const probe = document.createElement("span");
+  probe.style.color = `var(${name})`;
+  probe.style.display = "none";
+  root.appendChild(probe);
+  const color = getComputedStyle(probe).color || fallback;
+  probe.remove();
+  return color;
+}
 
+function buildTheme(resolveCssColor: (name: string, fallback: string) => string): DiagramExportTheme {
   return {
-    background: cssColorFromRoot("--bg-elevated", DEFAULT_THEME.background),
-    rowEven: cssColorFromRoot("--row-band-even", DEFAULT_THEME.rowEven),
-    rowOdd: cssColorFromRoot("--row-band-odd", DEFAULT_THEME.rowOdd),
-    rulerTick: cssColorFromRoot("--ruler-tick", DEFAULT_THEME.rulerTick),
-    rulerLabel: cssColorFromRoot("--ruler-label", DEFAULT_THEME.rulerLabel),
-    fieldStroke: cssColorFromRoot("--field-stroke", DEFAULT_THEME.fieldStroke),
-    fieldLabel: cssColorFromRoot("--field-label", DEFAULT_THEME.fieldLabel),
-    fieldSublabel: cssColorFromRoot("--field-sublabel", DEFAULT_THEME.fieldSublabel),
-    fieldContinuation: cssColorFromRoot(
+    background: resolveCssColor("--bg-elevated", DEFAULT_THEME.background),
+    rowEven: resolveCssColor("--row-band-even", DEFAULT_THEME.rowEven),
+    rowOdd: resolveCssColor("--row-band-odd", DEFAULT_THEME.rowOdd),
+    rulerTick: resolveCssColor("--ruler-tick", DEFAULT_THEME.rulerTick),
+    rulerLabel: resolveCssColor("--ruler-label", DEFAULT_THEME.rulerLabel),
+    accent: resolveCssColor("--accent", DEFAULT_THEME.accent),
+    fieldStroke: resolveCssColor("--field-stroke", DEFAULT_THEME.fieldStroke),
+    fieldLabel: resolveCssColor("--field-label", DEFAULT_THEME.fieldLabel),
+    fieldSublabel: resolveCssColor("--field-sublabel", DEFAULT_THEME.fieldSublabel),
+    fieldContinuation: resolveCssColor(
       "--field-continuation",
       DEFAULT_THEME.fieldContinuation,
     ),
     fieldPalette: Object.fromEntries(
       Object.keys(DEFAULT_THEME.fieldPalette).map((token) => [
         token,
-        cssColorFromRoot(`--field-${token}`, DEFAULT_THEME.fieldPalette[token]),
+        resolveCssColor(`--field-${token}`, DEFAULT_THEME.fieldPalette[token]),
       ]),
     ),
+    resolveCssColor,
   };
+}
+
+function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
+  const resolveCssColor = (name: string, fallback: string): string =>
+    readCssColorFromRoot(root, name, fallback);
+
+  return buildTheme(resolveCssColor);
+}
+
+function withThemeProbe<T>(
+  mode: Exclude<DiagramThemeMode, "follow-ui">,
+  read: (root: HTMLDivElement) => T,
+): T {
+  if (typeof document === "undefined" || !document.body) {
+    throw new Error("Themed color resolution requires a document body.");
+  }
+  const root = document.createElement("div");
+  root.setAttribute("data-theme", mode);
+  root.style.display = "none";
+  document.body.appendChild(root);
+  try {
+    return read(root);
+  } finally {
+    root.remove();
+  }
 }
 
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
@@ -283,18 +349,10 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
     return readDiagramThemeFromDocument();
   }
 
-  const root = document.documentElement;
-  const previousTheme = root.getAttribute("data-theme");
-  root.setAttribute("data-theme", mode);
-  try {
-    return readDiagramThemeFromDocument();
-  } finally {
-    if (previousTheme === null) {
-      root.removeAttribute("data-theme");
-    } else {
-      root.setAttribute("data-theme", previousTheme);
-    }
-  }
+  const resolveCssColor = (name: string, fallback: string): string =>
+    withThemeProbe(mode, (root) => readCssColorFromRoot(root, name, fallback));
+
+  return buildTheme(resolveCssColor);
 }
 
 export function readDiagramThemeFromDocument(): DiagramExportTheme {
