@@ -32,6 +32,7 @@
 - ブランチを新しく切る場合の目安は `feat/<short-slug>` `fix/<short-slug>` `docs/<short-slug>` とし、`refactor/` `test/` `chore/` なども必要に応じて使ってよい。
 - コミットメッセージに厳密な規約はないため、変更内容が読みやすく伝わる要約を優先する。
 - PR を作る前提の変更では、関連 issue、変更点、テスト方法を説明できる状態にまとめる。
+- PR を作成するときは `.github/PULL_REQUEST_TEMPLATE.md` を参照し、記載項目に沿って内容を整理する。
 
 ## 利用可能なスキル
 
