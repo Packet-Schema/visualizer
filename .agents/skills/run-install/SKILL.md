@@ -10,17 +10,20 @@ description: packet-view リポジトリで依存関係をインストールし�
 ## 実行手順
 
 1. `web/package-lock.json` があるため、パッケージマネージャーは `npm` を使う。
-2. `web` ディレクトリで `npm install` を実行する。
-3. インストール後にロックファイルや依存関係の差分が出た場合は、更新内容を確認して簡潔に共有する。
+2. 既存 lockfile に従って依存関係を復元するだけなら `web` ディレクトリで `npm ci` を使う。
+3. 依存関係の追加や更新を伴う場合だけ `npm install` を使う。
+4. インストール後にロックファイルや依存関係の差分が出た場合は、更新内容を確認して簡潔に共有する。
 
 ## コマンド
 
 ```bash
 cd /workspaces/packet-view/web
+npm ci
 npm install
 ```
 
 ## 補足
 
+- 通常の環境再現では `npm ci` を優先し、`npm install` は依存追加・更新や lockfile 更新が必要なときに限る。
 - 依存関係追加や更新の影響確認が必要なら `git status --short` や `git diff --stat` を使う。
 - インストール失敗時は、主要なエラー内容と原因候補を要約して共有する。

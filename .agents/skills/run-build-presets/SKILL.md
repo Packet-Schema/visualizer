@@ -11,7 +11,7 @@ description: packet-view リポジトリで preset 生成を実行したいと�
 
 1. `web` ディレクトリへ移動する。
 2. `npm run build:presets` を実行する。
-3. 生成後は `web/lib/psml/presets.generated.ts` を含む差分を確認し、必要なら要約して共有する。
+3. 生成後はコマンド成功、生成物の更新時刻やファイル内容、必要に応じた比較結果を確認し、要点を共有する。
 
 ## コマンド
 
@@ -24,4 +24,6 @@ npm run build:presets
 
 - `web/package-lock.json` があるため、パッケージマネージャーは `npm` を使う。
 - `data/presets/*.psml.yaml` `schemas/psml.schema.json` `web/scripts/build-presets.ts` を変更した場合は、このスキルを優先して使う。
-- 生成後の確認には `git status --short` `git diff -- web/lib/psml/presets.generated.ts` などを使う。
+- `web/lib/psml/presets.generated.ts` は gitignore 対象なので、通常の `git diff` では確認できない前提で扱う。
+- 生成後の確認には `ls -l web/lib/psml/presets.generated.ts` や `sed -n '1,40p' web/lib/psml/presets.generated.ts` などで内容と生成結果を確認する。
+- 生成前後の比較が必要なら、旧ファイルを一時退避して `diff --no-index` で比較する。
