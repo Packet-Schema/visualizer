@@ -258,6 +258,9 @@ export default function ImportExportDrawer({
 
   const handleDownload = useCallback(() => {
     try {
+      if (format === "svg" || format === "png") {
+        throw new Error("Image formats use the image export controls.");
+      }
       const ext = formatToExtension(format);
       const filename = `${slugify(packet.name)}.${ext}`;
       const mime = format === "json" ? "application/json" : "text/plain";

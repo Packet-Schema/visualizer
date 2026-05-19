@@ -61,10 +61,16 @@ describe("share URL params", () => {
   it("treats invalid psml and unknown preset values defensively", () => {
     const badPsml = parseShareParams("?psml=not-valid", BUILT_INS);
     expect(badPsml.kind).toBe("none");
+    if (badPsml.kind !== "none") {
+      throw new Error("Expected none result for invalid PSML");
+    }
     expect(badPsml.error).toMatch(/Invalid shared PSML payload/);
 
     const unknownPreset = parseShareParams("?preset=nope", BUILT_INS);
     expect(unknownPreset.kind).toBe("none");
+    if (unknownPreset.kind !== "none") {
+      throw new Error("Expected none result for unknown preset");
+    }
     expect(unknownPreset.error).toMatch(/Unknown preset/);
   });
 });
