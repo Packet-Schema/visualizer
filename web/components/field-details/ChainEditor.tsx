@@ -22,10 +22,7 @@ const FINAL_PROTOS: Array<{ v: number; name: string }> = [
 
 type Props = {
   field: Field;
-  onChange: (next: {
-    instances: ChainInstance[];
-    finalProto?: number;
-  }) => void;
+  onChange: (next: { instances: ChainInstance[]; finalProto?: number }) => void;
 };
 
 export default function ChainEditor({ field, onChange }: Props) {
@@ -81,16 +78,10 @@ export default function ChainEditor({ field, onChange }: Props) {
 
   return (
     <div>
-      <h3
-        className="m-0 mb-2 text-[15px]"
-        style={{ color: "var(--fg)" }}
-      >
+      <h3 className="m-0 mb-2 text-[15px]" style={{ color: "var(--fg)" }}>
         {field.name} — chain
       </h3>
-      <p
-        className="text-[12px] m-0 mb-2"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <p className="text-[12px] m-0 mb-2" style={{ color: "var(--fg-muted)" }}>
         Attach IPv6 extension headers in order. The final Next Header is the
         upper-layer protocol.
       </p>

@@ -145,9 +145,10 @@ export function resolveChain(packet: Packet): ChainBlock[] {
   const out: ChainBlock[] = [];
   for (const field of packet.fields) {
     if (!field.chainCatalog || !field.chainInstances) continue;
-    const catalogByProto = new Map<number, NonNullable<Field["chainCatalog"]>[number]>(
-      field.chainCatalog.map((c) => [c.proto, c]),
-    );
+    const catalogByProto = new Map<
+      number,
+      NonNullable<Field["chainCatalog"]>[number]
+    >(field.chainCatalog.map((c) => [c.proto, c]));
     for (let i = 0; i < field.chainInstances.length; i++) {
       const inst = field.chainInstances[i];
       const entry = catalogByProto.get(inst.proto);
@@ -239,9 +240,10 @@ export function tlvRecordBits(
 }
 
 /** Total bit width of all instances + optional padding. */
-export function tlvTotalBits(
-  field: Field,
-): { totalBits: number; paddedBits: number } {
+export function tlvTotalBits(field: Field): {
+  totalBits: number;
+  paddedBits: number;
+} {
   if (!field.tlv) return { totalBits: 0, paddedBits: 0 };
   const { catalog, instances, padToBoundary } = field.tlv;
   const byKind = new Map(catalog.map((c) => [c.kind, c]));

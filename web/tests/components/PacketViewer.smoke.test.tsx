@@ -45,9 +45,8 @@ describe("PacketViewer (smoke)", () => {
   it("adds a field via the reducer when in edit mode", async () => {
     // Import the reducer pieces directly; we drive the same state shape the
     // component uses so we don't depend on internal UI affordances.
-    const { editReducer, makeInitialState } = await import(
-      "@/lib/psml/edit-reducer"
-    );
+    const { editReducer, makeInitialState } =
+      await import("@/lib/psml/edit-reducer");
     const initial = makeInitialState(PRESETS.ipv4);
     const baseline = initial.packet.body.length;
     const next = editReducer(initial, {

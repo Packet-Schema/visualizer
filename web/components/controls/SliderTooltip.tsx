@@ -37,7 +37,12 @@ export default function SliderTooltip({
 
   if (!visible) return null;
   return (
-    <span ref={ref} className="slider-tooltip" style={{ left }} aria-hidden="true">
+    <span
+      ref={ref}
+      className="slider-tooltip"
+      style={{ left }}
+      aria-hidden="true"
+    >
       {value}
     </span>
   );

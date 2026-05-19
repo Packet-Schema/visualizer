@@ -20,10 +20,7 @@ import {
 } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
-import {
-  editReducer,
-  makeInitialState,
-} from "@/lib/psml/edit-reducer";
+import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
 import {
   loadCustomPresets,
   saveCustomPreset,
@@ -398,7 +395,9 @@ export default function PacketViewer() {
         }
         setCustomPresets(loadCustomPresets());
         if (typeof window !== "undefined") {
-          window.alert(`Imported ${imported} preset${imported === 1 ? "" : "s"}.`);
+          window.alert(
+            `Imported ${imported} preset${imported === 1 ? "" : "s"}.`,
+          );
         }
       } catch (err) {
         if (typeof window !== "undefined") {
@@ -428,27 +427,24 @@ export default function PacketViewer() {
     () => [
       {
         title: "Welcome to Packet View",
-        body:
-          "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
+        body: "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
       },
       {
         title: "The bit ruler",
-        body:
-          "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
-        target: () => diagramRef.current?.querySelector(".diagram-ruler") ?? null,
+        body: "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
+        target: () =>
+          diagramRef.current?.querySelector(".diagram-ruler") ?? null,
         placement: "bottom",
       },
       {
         title: "Click any field",
-        body:
-          "Cells are interactive. Click one to see its size, category, and full description in the field detail panel.",
+        body: "Cells are interactive. Click one to see its size, category, and full description in the field detail panel.",
         target: () => diagramRef.current?.querySelector(".field-cell") ?? null,
         placement: "bottom",
       },
       {
         title: "Drag to grow",
-        body:
-          "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
+        body: "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
         target: () =>
           controlsRef.current?.querySelector('input[type="range"]') ?? null,
         placement: "top",
@@ -706,7 +702,9 @@ export default function PacketViewer() {
             >
               Controls
             </h2>
-            <div ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}>
+            <div
+              ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}
+            >
               <ControlsPanel
                 packet={packet}
                 controllers={controllers}
@@ -760,10 +758,7 @@ export default function PacketViewer() {
       />
 
       {tourOpen ? (
-        <OnboardingTour
-          steps={tourSteps}
-          onClose={() => setTourOpen(false)}
-        />
+        <OnboardingTour steps={tourSteps} onClose={() => setTourOpen(false)} />
       ) : null}
 
       {showSaveDialog ? (

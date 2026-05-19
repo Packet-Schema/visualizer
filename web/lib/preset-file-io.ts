@@ -173,10 +173,7 @@ export function isMyPresetsBundle(value: unknown): value is MyPresetsBundle {
  * custom-presets store. Returns a fresh key derived from `desired` by
  * appending `-2`, `-3`, ... until it no longer collides with `existing`.
  */
-export function uniqueKey(
-  desired: string,
-  existing: Set<string>,
-): string {
+export function uniqueKey(desired: string, existing: Set<string>): string {
   if (!existing.has(desired)) return desired;
   for (let i = 2; ; i++) {
     const candidate = `${desired}-${i}`;

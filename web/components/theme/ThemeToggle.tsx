@@ -10,7 +10,9 @@ type Theme = "light" | "dark";
  *  the bounce animation when appropriate. */
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  );
 }
 
 export default function ThemeToggle() {
