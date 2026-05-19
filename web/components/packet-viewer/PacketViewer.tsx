@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useReducer,
@@ -71,6 +72,12 @@ import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
 import StudioPanel from "./StudioPanel";
 import { cssEscape, findRowNeighbor } from "./navigation";
+import {
+  useAutoClearStatus,
+  useDelayedOnce,
+  useIsWideViewport,
+  useUndoRedoShortcuts,
+} from "./hooks";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
@@ -224,7 +231,7 @@ export default function PacketViewer() {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
-  const [isWideViewport, setIsWideViewport] = useState(false);
+  const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
   const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   // Hex strip is hidden by default on narrow viewports so phones aren't
@@ -317,52 +324,13 @@ export default function PacketViewer() {
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
   }
 
-  // Keyboard shortcuts while editing. Skip when focus is on an input/textarea
-  // so the browser's native text-undo still works inside FieldRow inputs.
-  useEffect(() => {
-    if (!editMode) return;
-    function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
-          return;
-        }
-      }
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: "undo" });
-      } else if ((key === "z" && e.shiftKey) || key === "y") {
-        e.preventDefault();
-        dispatch({ type: "redo" });
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editMode]);
+  useUndoRedoShortcuts({
+    enabled: editMode,
+    onUndo: () => dispatch({ type: "undo" }),
+    onRedo: () => dispatch({ type: "redo" }),
+  });
 
-  // Auto-launch the tour on first visit. Delay slightly so the diagram is
-  // mounted and target elements are visible.
-  useEffect(() => {
-    if (hasSeenTour()) return;
-    const id = window.setTimeout(() => setTourOpen(true), 350);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  // Track viewport width to gate the popover affordance. Read on mount and on
-  // resize; SSR sees `false` so the markup matches the initial client render.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    function update() {
-      setIsWideViewport(window.innerWidth >= POPOVER_MIN_WIDTH);
-    }
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+  useDelayedOnce(!hasSeenTour(), 350, () => setTourOpen(true));
 
   // Default the hex strip on for wide viewports the first time we know the
   // viewport size. Once the user toggles, leave their preference alone.
@@ -648,11 +616,7 @@ export default function PacketViewer() {
     }
   }, [buildCurrentShareUrl, urlHydrated]);
 
-  useEffect(() => {
-    if (!shareStatus) return;
-    const id = window.setTimeout(() => setShareStatus(null), 2400);
-    return () => window.clearTimeout(id);
-  }, [shareStatus]);
+  useAutoClearStatus(shareStatus, 2400, () => setShareStatus(null));
 
   const handleShare = useCallback(() => {
     try {
@@ -707,6 +671,13 @@ export default function PacketViewer() {
     [],
   );
 
+  // Slider input feeds `controllers` synchronously so the range thumb stays
+  // glued to the pointer, but the diagram layout is allowed to lag one frame
+  // behind via `useDeferredValue`. On large packets the resolveLayout call
+  // dominates the frame budget, so deferring it keeps drags fluid without
+  // changing perceived behaviour.
+  const deferredControllers = useDeferredValue(controllers);
+
   const layout = useMemo(() => {
     // Every preset is PSML now — route the diagram through resolveLayout so
     // Encrypted-container decoration and viewMode toggling are uniform.
@@ -714,7 +685,7 @@ export default function PacketViewer() {
     // lift it back to PSML on demand (lossy for variable-length payloads
     // without TLV metadata, which is acceptable for layout purposes).
     const env = new Map(
-      Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
+      Object.entries(deferredControllers).map(([k, v]) => [k, Number(v)] as const),
     );
     // Derive secondary repeat-count keys for presets whose UI slider drives a
     // bytes-counter rather than the PSML count ref. Each TLV editor sets
@@ -759,7 +730,7 @@ export default function PacketViewer() {
   }, [
     packet,
     packetKey,
-    controllers,
+    deferredControllers,
     viewMode,
     editMode,
     studioState.packet,

@@ -31,6 +31,8 @@
 
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
+import { composeDescription, humanize, sanitizeId } from "./common";
+
 import type {
   Container,
   Encrypted,
@@ -614,22 +616,6 @@ function switchOnToContainer(
   };
 }
 
-function composeDescription(
-  doc: unknown,
-  docRef: unknown,
-): string | undefined {
-  const parts: string[] = [];
-  if (typeof doc === "string" && doc.trim().length > 0) parts.push(doc.trim());
-  if (Array.isArray(docRef)) {
-    for (const r of docRef) {
-      if (typeof r === "string" && r.trim().length > 0) parts.push(`See: ${r.trim()}`);
-    }
-  } else if (typeof docRef === "string" && docRef.trim().length > 0) {
-    parts.push(`See: ${docRef.trim()}`);
-  }
-  return parts.length > 0 ? parts.join("\n\n") : undefined;
-}
-
 function mergeRegistries(a: TypeRegistry, b: TypeRegistry): TypeRegistry {
   const out = new Map(a);
   for (const [k, v] of b) out.set(k, v);
@@ -642,13 +628,6 @@ function mergeEnums(a: EnumRegistry, b: EnumRegistry): EnumRegistry {
   return out;
 }
 
-function humanize(id: string): string {
-  return id
-    .replace(/[_\-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
-}
 
 /* ------------------------------------------------------------------ *
  * Exporter — internals
@@ -869,9 +848,5 @@ function exprToString(e: Expr): string {
 }
 
 function toKsyId(name: string): string {
-  const out = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return out.length > 0 ? out : "packet";
+  return sanitizeId(name, "packet");
 }

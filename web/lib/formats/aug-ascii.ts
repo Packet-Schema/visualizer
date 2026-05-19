@@ -27,6 +27,8 @@ import type {
   Packet as PsmlPacket,
 } from "../psml/types";
 
+import { sanitizeId } from "./common";
+
 type RawCell = { label: string; bits: number; startBit: number };
 type MergedCell = { label: string; bits: number };
 type WhereEntry = {
@@ -293,9 +295,5 @@ function matchWhereMeta(label: string, entries: WhereEntry[]): WhereEntry | null
 }
 
 function makeId(name: string, idx: number): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return base || `field${idx}`;
+  return sanitizeId(name, `field${idx}`);
 }

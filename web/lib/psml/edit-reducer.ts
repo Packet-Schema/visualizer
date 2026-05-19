@@ -32,21 +32,21 @@
 import type {
   Constraint,
   Container,
-  Encrypted,
   Field,
-  Group,
   Packet,
   PsmlPacket,
-  Repeat,
-  Struct,
-  Switch,
 } from "./types";
+import {
+  describeKind,
+  resolveParent,
+  type Path,
+} from "./path-resolver";
 
 /* ------------------------------------------------------------------ *
  * Public types
  * ------------------------------------------------------------------ */
 
-export type Path = (string | number)[];
+export type { Path } from "./path-resolver";
 
 export type EditAction =
   | { type: "add-field"; at: Path; field: Field }
@@ -92,146 +92,6 @@ function commit(state: EditState, next: PsmlPacket): EditState {
   const history = state.history.concat([state.packet]);
   while (history.length > HISTORY_LIMIT) history.shift();
   return { packet: next, history, future: [] };
-}
-
-/* ------------------------------------------------------------------ *
- * Path resolution
- * ------------------------------------------------------------------ */
-
-/**
- * Walk a path, returning the parent array and the final index. Throws on
- * a malformed path (no final numeric index) so callers can rely on the
- * tuple shape. Operates on a packet that the caller has already deep-cloned.
- */
-function resolveParent(
-  packet: PsmlPacket,
-  path: Path,
-): { parent: Container[]; index: number } {
-  if (path.length === 0) {
-    throw new Error("path must address a slot inside the packet body");
-  }
-  const last = path[path.length - 1];
-  if (typeof last !== "number") {
-    throw new Error(
-      `path must end with a numeric slot index; got ${String(last)}`,
-    );
-  }
-  const head = path.slice(0, -1);
-  let parent: Container[] = packet.body;
-  for (let i = 0; i < head.length; i++) {
-    const token = head[i];
-    if (typeof token === "number") {
-      const node = parent[token];
-      if (node === undefined) {
-        throw new Error(`path token ${i} (${token}) is out of range`);
-      }
-      // Numeric token alone means "step *into* this container's primary
-      // child array". We only descend if the *next* token is a string slot
-      // name, otherwise this number is the final slot index handled above.
-      const nextToken = head[i + 1];
-      if (typeof nextToken !== "string") {
-        throw new Error(
-          `path token ${i + 1} must be a slot name (e.g. 'fields', 'children')`,
-        );
-      }
-      i += 1; // consume the slot name
-      parent = descendNamed(node, nextToken);
-    } else {
-      throw new Error(
-        `path expects (index, slot-name) pairs; got string ${token} at position ${i}`,
-      );
-    }
-  }
-  return { parent, index: last };
-}
-
-/**
- * Step into a container's named child array. Recognized slot names:
- *   'field'    — return the container itself as a single-element array
- *                (used only by code that wants the Field object; we don't
- *                support descending further so this is treated as a no-op).
- *   'children' — Group.children
- *   'fields'   — Struct.fields (used inside element/plaintext/cases)
- *   'element'  — Repeat.element (returns its `fields` array directly so the
- *                next token may be a numeric index).
- *   'plaintext'— Encrypted.plaintext (same: returns `.fields`).
- *   'cases'    — Switch.cases (the caller must provide the case key next,
- *                followed by 'fields').
- *   'default'  — Switch.default (returns its `.fields`).
- */
-function descendNamed(node: Container, slot: string): Container[] {
-  switch (slot) {
-    case "field":
-      throw new Error(
-        "'field' is a terminal marker and cannot be descended into",
-      );
-    case "children": {
-      const group = node as Group;
-      if (group.kind !== "group") {
-        throw new Error(`expected group at path; got ${describeKind(node)}`);
-      }
-      return group.children;
-    }
-    case "fields": {
-      // node here is a Struct, not a Container. We tolerate that by checking
-      // for `.fields`.
-      const s = node as unknown as Struct;
-      if (!Array.isArray(s.fields)) {
-        throw new Error("expected struct with 'fields' array");
-      }
-      return s.fields;
-    }
-    case "element": {
-      const r = node as Repeat;
-      if (r.kind !== "repeat") {
-        throw new Error(`expected repeat at path; got ${describeKind(node)}`);
-      }
-      // Cast through unknown — the caller must specify 'fields' next.
-      return r.element as unknown as Container[];
-    }
-    case "plaintext": {
-      const e = node as Encrypted;
-      if (e.kind !== "encrypted") {
-        throw new Error(`expected encrypted at path; got ${describeKind(node)}`);
-      }
-      return e.plaintext as unknown as Container[];
-    }
-    case "default": {
-      const sw = node as Switch;
-      if (sw.kind !== "switch" || !sw.default) {
-        throw new Error("expected switch with a default case at path");
-      }
-      return sw.default as unknown as Container[];
-    }
-    default: {
-      // Switch case lookup: parent token is 'cases', this token is the key.
-      // To support this, the caller writes [..., i, 'cases', key, 'fields', j].
-      // We reach here when slot is the case key — but we've lost the context
-      // that the parent step was 'cases'. To keep resolution simple, we use
-      // a sentinel: callers must write 'cases:<key>' as a single token.
-      if (slot.startsWith("cases:")) {
-        const sw = node as Switch;
-        if (sw.kind !== "switch") {
-          throw new Error(
-            `expected switch at path; got ${describeKind(node)}`,
-          );
-        }
-        const key = slot.slice("cases:".length);
-        const variant = sw.cases[key];
-        if (!variant) {
-          throw new Error(`switch has no case with key ${key}`);
-        }
-        return variant as unknown as Container[];
-      }
-      throw new Error(`unknown path slot name: ${slot}`);
-    }
-  }
-}
-
-function describeKind(node: Container): string {
-  if (!node || typeof node !== "object") return String(node);
-  if ("kind" in node && node.kind) return String(node.kind);
-  return "field";
 }
 
 /* ------------------------------------------------------------------ *
