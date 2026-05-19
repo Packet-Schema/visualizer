@@ -326,21 +326,24 @@ function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
   return buildTheme(resolveCssColor);
 }
 
-function withThemeProbe<T>(
+function withDocumentTheme<T>(
   mode: Exclude<DiagramThemeMode, "follow-ui">,
-  read: (root: HTMLDivElement) => T,
+  read: () => T,
 ): T {
   if (typeof document === "undefined" || !document.body) {
     throw new Error("Themed color resolution requires a document body.");
   }
-  const root = document.createElement("div");
+  const root = document.documentElement;
+  const previousTheme = root.getAttribute("data-theme");
   root.setAttribute("data-theme", mode);
-  root.style.display = "none";
-  document.body.appendChild(root);
   try {
-    return read(root);
+    return read();
   } finally {
-    root.remove();
+    if (previousTheme === null) {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", previousTheme);
+    }
   }
 }
 
@@ -350,7 +353,7 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
   }
 
   const resolveCssColor = (name: string, fallback: string): string =>
-    withThemeProbe(mode, (root) => readCssColorFromRoot(root, name, fallback));
+    withDocumentTheme(mode, () => readCssColorFromRoot(document.body, name, fallback));
 
   return buildTheme(resolveCssColor);
 }
