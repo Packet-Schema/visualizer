@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
   useMemo,
   useReducer,
@@ -650,13 +649,14 @@ export default function PacketViewer() {
     [],
   );
 
-  // Slider input feeds `controllers` synchronously so the range thumb stays
-  // glued to the pointer, but the diagram layout is allowed to lag one frame
-  // behind via `useDeferredValue`. On large packets the resolveLayout call
-  // dominates the frame budget, so deferring it keeps drags fluid without
-  // changing perceived behaviour.
-  const deferredControllers = useDeferredValue(controllers);
-
+  // NOTE: an earlier revision wrapped `controllers` in `useDeferredValue` to
+  // smooth slider drags. That breaks preset switches: when `packetKey`
+  // changes, `controllers` is replaced with the new preset's defaults
+  // synchronously, but a deferred copy keeps the *previous* preset's keys
+  // alive for one or more frames — so e.g. switching from IPv4 to IPv6
+  // leaves a stale `ihl` in the env, and the IPv6 diagram is laid out as
+  // if IHL were still active. We need `packet`-and-`controllers` to stay
+  // in lockstep, so the synchronous value is the only safe choice.
   const layout = useMemo(() => {
     // Every preset is PSML now — route the diagram through resolveLayout so
     // Encrypted-container decoration and viewMode toggling are uniform.
@@ -664,9 +664,7 @@ export default function PacketViewer() {
     // lift it back to PSML on demand (lossy for variable-length payloads
     // without TLV metadata, which is acceptable for layout purposes).
     const env = new Map(
-      Object.entries(deferredControllers).map(
-        ([k, v]) => [k, Number(v)] as const,
-      ),
+      Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
     );
     // Derive secondary repeat-count keys for presets whose UI slider drives a
     // bytes-counter rather than the PSML count ref. Each TLV editor sets
@@ -711,7 +709,7 @@ export default function PacketViewer() {
   }, [
     packet,
     packetKey,
-    deferredControllers,
+    controllers,
     viewMode,
     editMode,
     studioState.packet,
