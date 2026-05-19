@@ -428,11 +428,14 @@ describe("toAscii — invariants vs normalize", () => {
       const text = toAscii(pkt, env);
       // Cheap sanity: count the field lines (one per row excluding the
       // header trio) and compare against ceil(total/rowBits) row count.
+      // PSML 0.4 Optional placeholder rows (`~ (Optional X) ~`) do not consume
+      // any bits, so they're filtered out of the row-count comparison.
       const rowCount = Math.ceil(total / pkt.rowBits);
       const fieldLines = text
         .split("\n")
         .slice(3)
-        .filter((_, i) => i % 2 === 0);
+        .filter((_, i) => i % 2 === 0)
+        .filter((line) => !line.includes("(Optional"));
       expect(fieldLines.length, key).toBe(rowCount);
     }
   });
