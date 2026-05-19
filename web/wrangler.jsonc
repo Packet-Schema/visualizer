@@ -4,11 +4,11 @@
   "compatibility_date": "2026-05-16",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "assets": {
     // Next.js static export (`next build` with output: 'export' writes here).
     "directory": "./out",
-    "not_found_handling": "404-page"
-  }
+    "not_found_handling": "404-page",
+  },
 }

@@ -44,7 +44,8 @@ export const GLOSSARY: Record<string, string> = {
   RA: "Recursion Available — DNS header bit indicating the server supports recursive queries.",
   Z: "Z — reserved DNS header bits; must be zero (parts later reused for DNSSEC AD/CD).",
   RCODE: "Response Code — 4-bit DNS result; 0=NOERROR, 3=NXDOMAIN, etc.",
-  EtherType: "EtherType — 16-bit value in an Ethernet frame identifying the upper-layer protocol (e.g. 0x0800 = IPv4).",
+  EtherType:
+    "EtherType — 16-bit value in an Ethernet frame identifying the upper-layer protocol (e.g. 0x0800 = IPv4).",
   NLRI: "Network Layer Reachability Information — BGP term for the set of IP prefixes advertised in an UPDATE.",
   AS: "Autonomous System — a network under a single routing administration, identified by an AS Number.",
   AAD: "Augmented ASCII Diagram — text format (RFC 8792-style) used by IETF to draw packet headers.",

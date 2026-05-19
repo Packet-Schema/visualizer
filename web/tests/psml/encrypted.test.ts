@@ -116,17 +116,19 @@ describe("normalize — Encrypted (semantic mode)", () => {
         {
           kind: "group",
           id: "outer",
-          children: [
-            { id: "header", name: "Header", type: bits(8) },
-            enc,
-          ],
+          children: [{ id: "header", name: "Header", type: bits(8) }, enc],
         },
       ],
     };
     const w = normalize(p);
     expect(w.fields.map((f) => f.id)).toEqual(["header", "enc"]);
     const s = normalize(p, new Map(), { viewMode: "semantic" });
-    expect(s.fields.map((f) => f.id)).toEqual(["header", "pn", "frame_type", "body"]);
+    expect(s.fields.map((f) => f.id)).toEqual([
+      "header",
+      "pn",
+      "frame_type",
+      "body",
+    ]);
     expect(s.fields[0].encryptedParentId).toBeUndefined();
     expect(s.fields[1].encryptedParentId).toBe("enc");
   });
@@ -167,27 +169,43 @@ describe("validatePsmlPacket — Encrypted", () => {
 
   it("rejects empty plaintext", () => {
     const enc = mkEncrypted({ plaintext: { id: "p", fields: [] } });
-    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(/at least one field/);
+    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(
+      /at least one field/,
+    );
   });
 
   it("rejects missing plaintext", () => {
-    const enc = { ...mkEncrypted(), plaintext: undefined } as unknown as Encrypted;
-    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(/missing plaintext/);
+    const enc = {
+      ...mkEncrypted(),
+      plaintext: undefined,
+    } as unknown as Encrypted;
+    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(
+      /missing plaintext/,
+    );
   });
 
   it("rejects non-Struct plaintext (no fields array)", () => {
-    const enc = { ...mkEncrypted(), plaintext: { id: "p" } } as unknown as Encrypted;
+    const enc = {
+      ...mkEncrypted(),
+      plaintext: { id: "p" },
+    } as unknown as Encrypted;
     expect(() => validatePsmlPacket(mkPacket(enc))).toThrow();
   });
 
   it("rejects a headerProtected id that doesn't appear inside plaintext", () => {
     const enc = mkEncrypted({ headerProtected: ["does_not_exist"] });
-    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(/does not name a field/);
+    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(
+      /does not name a field/,
+    );
   });
 
   it("rejects a malformed wireBits expression", () => {
-    const enc = mkEncrypted({ wireBits: { kind: "bogus" } as unknown as never });
-    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(/wireBits is malformed/);
+    const enc = mkEncrypted({
+      wireBits: { kind: "bogus" } as unknown as never,
+    });
+    expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(
+      /wireBits is malformed/,
+    );
   });
 
   it("rejects an empty contextNote", () => {
@@ -196,7 +214,10 @@ describe("validatePsmlPacket — Encrypted", () => {
   });
 
   it("rejects a non-array headerProtected", () => {
-    const enc = { ...mkEncrypted(), headerProtected: "pn" } as unknown as Encrypted;
+    const enc = {
+      ...mkEncrypted(),
+      headerProtected: "pn",
+    } as unknown as Encrypted;
     expect(() => validatePsmlPacket(mkPacket(enc))).toThrow(/must be an array/);
   });
 });

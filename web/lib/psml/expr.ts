@@ -24,7 +24,9 @@ export const cond = (test: Expr, t: Expr, f: Expr): Expr => ({
   f,
 });
 export const peek = (bits: number, offset?: Expr): Expr =>
-  offset === undefined ? { kind: "peek", bits } : { kind: "peek", bits, offset };
+  offset === undefined
+    ? { kind: "peek", bits }
+    : { kind: "peek", bits, offset };
 
 /** Synthetic env key for a `peek` expression: `__peek__<offset>__<bits>`. */
 export function peekEnvKey(offset: number, bits: number): string {
@@ -92,7 +94,8 @@ export function evalExpr(expr: Expr, env: PacketEnv): number {
       // is expected to seed `__peek__<offset>__<bits>` (or just
       // `__peek__<bits>` when offset is 0/absent). Falls back to 0 so layout
       // can still proceed with the default Switch case.
-      const offsetVal = expr.offset !== undefined ? evalExpr(expr.offset, env) : 0;
+      const offsetVal =
+        expr.offset !== undefined ? evalExpr(expr.offset, env) : 0;
       const key = `__peek__${offsetVal}__${expr.bits}`;
       const v = env.get(key);
       return v ?? 0;

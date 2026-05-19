@@ -209,8 +209,16 @@ describe("toJson / fromJson — PSML 0.3 Encrypted Container", () => {
           plaintext: {
             id: "plain",
             fields: [
-              { id: "pn", name: "Packet Number", type: { kind: "bits", n: 32 } },
-              { id: "frame_type", name: "Frame Type", type: { kind: "bits", n: 8 } },
+              {
+                id: "pn",
+                name: "Packet Number",
+                type: { kind: "bits", n: 32 },
+              },
+              {
+                id: "frame_type",
+                name: "Frame Type",
+                type: { kind: "bits", n: 8 },
+              },
             ],
           },
           wireBits: { kind: "lit", value: 128 },
@@ -270,7 +278,13 @@ describe("toJson / fromJson — PSML 0.3 Encrypted Container", () => {
               id: "body",
               plaintext: {
                 id: "p",
-                fields: [{ id: "secret", name: "Secret", type: { kind: "bits", n: 64 } }],
+                fields: [
+                  {
+                    id: "secret",
+                    name: "Secret",
+                    type: { kind: "bits", n: 64 },
+                  },
+                ],
               },
               contextNote: "session key",
             },
@@ -319,12 +333,22 @@ describe("fromJson — error paths", () => {
   it("requires integer rowBits > 0", () => {
     expect(() =>
       fromJson(
-        JSON.stringify({ format: "psml", version: "0.2", name: "x", rowBits: 0 }),
+        JSON.stringify({
+          format: "psml",
+          version: "0.2",
+          name: "x",
+          rowBits: 0,
+        }),
       ),
     ).toThrow(/rowBits/);
     expect(() =>
       fromJson(
-        JSON.stringify({ format: "psml", version: "0.2", name: "x", rowBits: 1.5 }),
+        JSON.stringify({
+          format: "psml",
+          version: "0.2",
+          name: "x",
+          rowBits: 1.5,
+        }),
       ),
     ).toThrow(/rowBits/);
   });
@@ -367,14 +391,24 @@ describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
     expect(toJson(round.packet, round.env)).toBe(text1);
     // Optional structure survives unchanged.
     const obj = JSON.parse(text1);
-    expect(obj.body[0]).toMatchObject({ kind: "optional", when: { kind: "ref", field: "present" } });
+    expect(obj.body[0]).toMatchObject({
+      kind: "optional",
+      when: { kind: "ref", field: "present" },
+    });
   });
 
   it("berLength Type", () => {
     const pkt: Packet = {
       name: "Ber",
       rowBits: 8,
-      body: [{ id: "len", name: "BER", type: { kind: "berLength" }, category: "length" }],
+      body: [
+        {
+          id: "len",
+          name: "BER",
+          type: { kind: "berLength" },
+          category: "length",
+        },
+      ],
     };
     const text1 = toJson(pkt);
     expect(toJson(fromJson(text1).packet, fromJson(text1).env)).toBe(text1);
@@ -391,7 +425,10 @@ describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
           id: "byPeek",
           on: { kind: "peek", bits: 16 },
           cases: {
-            "1": { id: "one", fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }] },
+            "1": {
+              id: "one",
+              fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }],
+            },
           },
         },
       ],
@@ -407,7 +444,12 @@ describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
       name: "BO",
       rowBits: 16,
       body: [
-        { id: "a", name: "A", type: { kind: "int", bits: 16 }, byteOrder: "LE" },
+        {
+          id: "a",
+          name: "A",
+          type: { kind: "int", bits: 16 },
+          byteOrder: "LE",
+        },
       ],
     };
     const text1 = toJson(pkt);
@@ -417,7 +459,11 @@ describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
 });
 
 describe("toJson / fromJson — PSML 0.4 demo presets round-trip", () => {
-  for (const key of ["http2FrameHeader", "tlsExtensionsBlock", "pcieTlpFragment"]) {
+  for (const key of [
+    "http2FrameHeader",
+    "tlsExtensionsBlock",
+    "pcieTlpFragment",
+  ]) {
     it(`${key}: byte-identical after one round-trip`, () => {
       const pkt = ALL_PRESETS[key];
       const env = initialEnv(pkt);

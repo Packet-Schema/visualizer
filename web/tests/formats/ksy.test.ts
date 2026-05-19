@@ -16,7 +16,10 @@ import { initialEnv, normalize } from "../../lib/psml/normalize";
 const here = path.resolve(__dirname, "../..");
 const KSY_DIR = path.join(here, "data", "ksy-examples");
 const ipv4MinText = readFileSync(path.join(KSY_DIR, "ipv4_min.ksy"), "utf8");
-const bmpHeaderText = readFileSync(path.join(KSY_DIR, "bmp_header.ksy"), "utf8");
+const bmpHeaderText = readFileSync(
+  path.join(KSY_DIR, "bmp_header.ksy"),
+  "utf8",
+);
 
 describe("fromKsy — file fixtures", () => {
   it("ipv4_min.ksy: totalBits=160, warnings ≤ 2, expected ids present", () => {
@@ -80,7 +83,8 @@ seq:
     const { packet, warnings } = fromKsy(text);
     expect(warnings).toEqual([]);
     const types = packet.body.map(
-      (c) => (c as { type: { kind: string; bits: number; signed?: boolean } }).type,
+      (c) =>
+        (c as { type: { kind: string; bits: number; signed?: boolean } }).type,
     );
     expect(types[0]).toEqual({ kind: "int", bits: 8 });
     expect(types[1]).toEqual({ kind: "int", bits: 16 });
@@ -153,7 +157,11 @@ seq:
   - { id: name, type: str, size: 8, encoding: ascii }
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[0] as { type: { kind: string; n: { kind: string; value: number } } }).type;
+    const t = (
+      packet.body[0] as {
+        type: { kind: string; n: { kind: string; value: number } };
+      }
+    ).type;
     expect(t.kind).toBe("bytes");
     expect(t.n.value).toBe(8);
   });
@@ -185,7 +193,9 @@ seq:
   - { id: chunk, size: 16 }
 `;
     const { packet } = fromKsy(text);
-    expect((packet.body[0] as { type: { kind: string } }).type.kind).toBe("bytes");
+    expect((packet.body[0] as { type: { kind: string } }).type.kind).toBe(
+      "bytes",
+    );
   });
 
   it("size: <ref> becomes a bytes with ref expression", () => {
@@ -196,7 +206,9 @@ seq:
   - { id: data, size: hdrLen }
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[1] as { type: { n: { kind: string; field: string } } }).type;
+    const t = (
+      packet.body[1] as { type: { n: { kind: string; field: string } } }
+    ).type;
     expect(t.n.kind).toBe("ref");
     expect(t.n.field).toBe("hdrLen");
   });
@@ -218,7 +230,9 @@ seq:
   - { id: rest, size-eos: true }
 `;
     const { warnings } = fromKsy(text);
-    expect(warnings.some((w) => /size-eos used as 0-byte placeholder/.test(w))).toBe(true);
+    expect(
+      warnings.some((w) => /size-eos used as 0-byte placeholder/.test(w)),
+    ).toBe(true);
   });
 
   it("contents (magic bytes) becomes a fixed-size bytes type", () => {
@@ -229,8 +243,12 @@ seq:
   - { id: arr, contents: [0x42, 0x4D] }
 `;
     const { packet } = fromKsy(text);
-    expect((packet.body[0] as { type: { n: { value: number } } }).type.n.value).toBe(2);
-    expect((packet.body[1] as { type: { n: { value: number } } }).type.n.value).toBe(2);
+    expect(
+      (packet.body[0] as { type: { n: { value: number } } }).type.n.value,
+    ).toBe(2);
+    expect(
+      (packet.body[1] as { type: { n: { value: number } } }).type.n.value,
+    ).toBe(2);
   });
 });
 
@@ -242,7 +260,10 @@ seq:
   - { id: words, type: u2, repeat: expr, repeat-expr: 3 }
 `;
     const { packet } = fromKsy(text);
-    const c = packet.body[0] as { kind: string; count: { kind: string; value: number } };
+    const c = packet.body[0] as {
+      kind: string;
+      count: { kind: string; value: number };
+    };
     expect(c.kind).toBe("repeat");
     expect(c.count.value).toBe(3);
   });
@@ -374,7 +395,10 @@ seq:
       switch-on: kind
 `;
     const { packet } = fromKsy(text);
-    const c = packet.body[0] as { kind: string; cases: Record<string, unknown> };
+    const c = packet.body[0] as {
+      kind: string;
+      cases: Record<string, unknown>;
+    };
     expect(c.kind).toBe("switch");
     expect(c.cases).toEqual({});
   });
@@ -475,7 +499,10 @@ types:
     expect(warnings).toEqual([]);
     // Outer group contains an "inner" sub-group with one leaf field, plus the
     // enum-typed tag.
-    const outer = packet.body[0] as { kind: string; children: Array<{ kind?: string; type?: { kind: string } }> };
+    const outer = packet.body[0] as {
+      kind: string;
+      children: Array<{ kind?: string; type?: { kind: string } }>;
+    };
     expect(outer.kind).toBe("group");
     expect(outer.children).toHaveLength(2);
     expect(outer.children[0].kind).toBe("group");
@@ -523,9 +550,11 @@ enums:
     2: beta
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[0] as {
-      type: { kind: string; bits: number; variants: Record<number, string> };
-    }).type;
+    const t = (
+      packet.body[0] as {
+        type: { kind: string; bits: number; variants: Record<number, string> };
+      }
+    ).type;
     expect(t.kind).toBe("enum");
     expect(t.bits).toBe(8);
     expect(t.variants).toEqual({ 1: "alpha", 2: "beta" });
@@ -564,7 +593,8 @@ enums:
     2: beta
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } })
+      .type;
     expect(t.variants[1]).toBe("alpha");
     expect(t.variants[2]).toBe("beta");
   });
@@ -593,7 +623,9 @@ enums:
 `;
     const { packet, warnings } = fromKsy(text);
     expect(warnings).toEqual([]);
-    expect((packet.body[0] as { type: { kind: string } }).type.kind).toBe("bytes");
+    expect((packet.body[0] as { type: { kind: string } }).type.kind).toBe(
+      "bytes",
+    );
   });
 
   it("non-mapping user type is ignored with a warning", () => {
@@ -616,7 +648,9 @@ describe("fromKsy — meta fields, doc, doc-ref", () => {
   });
 
   it("meta.title overrides id", () => {
-    const { packet } = fromKsy(`meta: { id: foo, title: "Foo Format" }\nseq: []`);
+    const { packet } = fromKsy(
+      `meta: { id: foo, title: "Foo Format" }\nseq: []`,
+    );
     expect(packet.name).toBe("Foo Format");
   });
 
@@ -639,7 +673,9 @@ seq: []
   });
 
   it("doc-ref as a single string also surfaces", () => {
-    const { packet } = fromKsy(`meta: { id: t }\ndoc-ref: "https://example.com"\nseq: []`);
+    const { packet } = fromKsy(
+      `meta: { id: t }\ndoc-ref: "https://example.com"\nseq: []`,
+    );
     expect(packet.description).toContain("https://example.com");
   });
 
@@ -729,7 +765,9 @@ seq:
   - { size-eos: true }
 `;
     const { warnings } = fromKsy(text);
-    expect(warnings.some((w) => /size-eos used as 0-byte placeholder/.test(w))).toBe(true);
+    expect(
+      warnings.some((w) => /size-eos used as 0-byte placeholder/.test(w)),
+    ).toBe(true);
   });
 
   it("seq entry with no id at all uses fallback fN id and warns about untyped", () => {
@@ -764,7 +802,8 @@ enums:
     2: alpha
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } })
+      .type;
     expect(t.variants[1]).toBeUndefined();
     expect(t.variants[2]).toBe("alpha");
   });
@@ -780,7 +819,8 @@ enums:
     2: alpha
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } })
+      .type;
     expect(t.variants[1]).toBeUndefined();
     expect(t.variants[2]).toBe("alpha");
   });
@@ -796,7 +836,8 @@ enums:
     bogus: ignored
 `;
     const { packet } = fromKsy(text);
-    const t = (packet.body[0] as { type: { variants: Record<number, string> } }).type;
+    const t = (packet.body[0] as { type: { variants: Record<number, string> } })
+      .type;
     expect(t.variants[1]).toBe("alpha");
     // Non-integer key not present
     expect(Object.keys(t.variants)).toEqual(["1"]);
@@ -1191,9 +1232,7 @@ describe("toKsy — exporter", () => {
     const yaml = toKsy({
       name: "T",
       rowBits: 32,
-      body: [
-        { id: "x", name: "X", type: { kind: "int", bits: 17 } },
-      ],
+      body: [{ id: "x", name: "X", type: { kind: "int", bits: 17 } }],
     });
     expect(yaml).toMatch(/odd int width 17/);
     expect(yamlParse(yaml).seq[0].type).toBe("b17");
@@ -1310,7 +1349,9 @@ describe("toKsy — PSML 0.3 Varint type", () => {
         ],
       });
       expect(yaml).toMatch(
-        new RegExp(`# psml-only:.*varint \\(${encoding}\\) lowered to u1 placeholder`),
+        new RegExp(
+          `# psml-only:.*varint \\(${encoding}\\) lowered to u1 placeholder`,
+        ),
       );
       const obj = yamlParse(yaml);
       expect(obj.seq[0].type).toBe("u1");
@@ -1359,9 +1400,7 @@ describe("toKsy — PSML 0.4 primitives", () => {
     const out = toKsy({
       name: "Ber",
       rowBits: 8,
-      body: [
-        { id: "len", name: "Length", type: { kind: "berLength" } },
-      ],
+      body: [{ id: "len", name: "Length", type: { kind: "berLength" } }],
     });
     expect(out).toMatch(/# psml-only: .*berLength/);
     expect(out).toMatch(/type:\s*u1/);
@@ -1377,7 +1416,10 @@ describe("toKsy — PSML 0.4 primitives", () => {
           id: "s",
           on: { kind: "peek", bits: 16 },
           cases: {
-            "0": { id: "z", fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }] },
+            "0": {
+              id: "z",
+              fields: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }],
+            },
           },
         },
       ],
@@ -1390,8 +1432,18 @@ describe("toKsy — PSML 0.4 primitives", () => {
       name: "BO",
       rowBits: 16,
       body: [
-        { id: "le", name: "LE", type: { kind: "int", bits: 16 }, byteOrder: "LE" },
-        { id: "be", name: "BE", type: { kind: "int", bits: 16 }, byteOrder: "BE" },
+        {
+          id: "le",
+          name: "LE",
+          type: { kind: "int", bits: 16 },
+          byteOrder: "LE",
+        },
+        {
+          id: "be",
+          name: "BE",
+          type: { kind: "int", bits: 16 },
+          byteOrder: "BE",
+        },
       ],
     });
     expect(out).toMatch(/endian:\s*le/);

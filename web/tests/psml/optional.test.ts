@@ -60,9 +60,21 @@ describe("normalize — Optional", () => {
 
   it("`when` can be a compound op expression", () => {
     const o = mkOptional({ when: op("-", ref("a"), ref("b")) });
-    const present = normalize(mkPacket(o), new Map([["a", 5], ["b", 2]]));
+    const present = normalize(
+      mkPacket(o),
+      new Map([
+        ["a", 5],
+        ["b", 2],
+      ]),
+    );
     expect(present.fields.length).toBe(1);
-    const absent = normalize(mkPacket(o), new Map([["a", 3], ["b", 3]]));
+    const absent = normalize(
+      mkPacket(o),
+      new Map([
+        ["a", 3],
+        ["b", 3],
+      ]),
+    );
     expect(absent.fields.length).toBe(0);
   });
 
@@ -107,9 +119,13 @@ describe("normalize — Optional", () => {
         ],
       },
     };
-    const n = normalize({ name: "EncOpt", rowBits: 32, body: [enc] }, new Map(), {
-      viewMode: "semantic",
-    });
+    const n = normalize(
+      { name: "EncOpt", rowBits: 32, body: [enc] },
+      new Map(),
+      {
+        viewMode: "semantic",
+      },
+    );
     expect(n.fields.map((f) => f.id)).toEqual(["hdr", "opt"]);
     expect(n.fields[1].encryptedParentId).toBe("enc");
   });
@@ -121,13 +137,20 @@ describe("validatePsmlPacket — Optional", () => {
   });
 
   it("rejects a malformed `when` expression", () => {
-    const bad = { ...mkOptional(), when: { kind: "nope" } } as unknown as Optional;
-    expect(() => validatePsmlPacket(mkPacket(bad))).toThrow(/'when' expression/);
+    const bad = {
+      ...mkOptional(),
+      when: { kind: "nope" },
+    } as unknown as Optional;
+    expect(() => validatePsmlPacket(mkPacket(bad))).toThrow(
+      /'when' expression/,
+    );
   });
 
   it("rejects a missing inner field", () => {
     const bad = { ...mkOptional(), field: undefined } as unknown as Optional;
-    expect(() => validatePsmlPacket(mkPacket(bad))).toThrow(/missing inner field/);
+    expect(() => validatePsmlPacket(mkPacket(bad))).toThrow(
+      /missing inner field/,
+    );
   });
 
   it("rejects an inner field with no type", () => {
