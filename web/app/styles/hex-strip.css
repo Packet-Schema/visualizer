@@ -1,0 +1,95 @@
+/* ==========================================================================
+   Hex byte strip (B3)
+   ========================================================================== */
+
+.hex-strip {
+  width: 100%;
+  contain: layout style;
+}
+
+.hex-strip-row {
+  min-width: 0;
+}
+
+.hex-byte {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--field-stroke);
+  border-radius: 4px;
+  background: var(--field-slate);
+  color: oklch(20% 0.02 270);
+  font-family: var(--font-mono, ui-monospace), monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    border-color var(--pv-fast) var(--pv-ease),
+    box-shadow var(--pv-fast) var(--pv-ease),
+    transform var(--pv-fast) var(--pv-ease),
+    filter var(--pv-fast) var(--pv-ease);
+}
+
+.hex-byte:hover,
+.hex-byte:focus-visible {
+  border-color: var(--field-stroke-selected);
+  z-index: 2;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.hex-byte.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.hex-byte-text {
+  background: oklch(99% 0 0 / 0.55);
+  padding: 0 3px;
+  border-radius: 3px;
+  pointer-events: none;
+  font-size: 10px;
+}
+
+[data-theme="dark"] .hex-byte-text {
+  background: oklch(15% 0.02 270 / 0.55);
+  color: oklch(96% 0.012 270);
+}
+
+[data-theme="dark"] .hex-byte {
+  color: oklch(96% 0.012 270);
+}
+
+/* ---- bidirectional highlight (B3 hex strip ⇄ B4 dependency overlay share this) ---- */
+
+.diagram-shell[data-highlighted-field] .cell.field-cell,
+.diagram-shell[data-highlighted-field] .subfield-cell,
+.diagram-shell[data-highlighted-field] .hex-byte {
+  filter: saturate(0.55) brightness(0.96);
+  opacity: 0.78;
+  transition:
+    filter var(--pv-fast) var(--pv-ease),
+    opacity var(--pv-fast) var(--pv-ease);
+}
+
+/* `.hex-match.hex-match` doubles the class to raise specificity above the
+   other cell-state selectors (e.g. `.cell.field-cell.selected`) without
+   reaching for `!important`. The repeated class matches exactly the same
+   element — it's purely a specificity nudge, not a runtime requirement. */
+.diagram-shell .cell.field-cell.hex-match.hex-match,
+.diagram-shell .subfield-cell.hex-match.hex-match,
+.diagram-shell .hex-byte.hex-match.hex-match {
+  filter: none;
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 12px -2px var(--accent-glow);
+  z-index: 3;
+}
