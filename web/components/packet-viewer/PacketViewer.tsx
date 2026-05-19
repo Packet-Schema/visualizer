@@ -357,6 +357,13 @@ export default function PacketViewer() {
       if (next) setControllers(initialState(next));
       setSelectedFieldId(null);
       setPopoverAnchor(null);
+      // If the user was in the studio editing a different preset, drop edit
+      // mode on swap. Otherwise `targetPsml` would briefly fall back to
+      // `studioState.packet` (still pointing at the previous preset) and the
+      // diagram would render mixed cells until the next render cycle commits
+      // the studio reducer replay.
+      setEditMode(false);
+      setShowJsonPane(false);
     },
     [customPresets, importedPackets, renderedPresets],
   );
