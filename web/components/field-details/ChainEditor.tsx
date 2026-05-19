@@ -89,7 +89,7 @@ export default function ChainEditor({ field, onChange }: Props) {
         {field.name} — chain
       </h3>
       <p
-        className="text-[12px] m-0 mb-2 text-fg-muted"
+        className="text-xs m-0 mb-2 text-fg-muted"
       >
         Attach IPv6 extension headers in order. The final Next Header is the
         upper-layer protocol.
@@ -104,7 +104,7 @@ export default function ChainEditor({ field, onChange }: Props) {
       >
         {instances.length === 0 ? (
           <p
-            className="m-0 px-3 py-2 text-[12px] text-fg-faint"
+            className="m-0 px-3 py-2 text-xs text-fg-faint"
           >
             No extension headers attached.
           </p>
@@ -177,13 +177,13 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px] text-fg-muted">
+        <label className="text-xs text-fg-muted">
           Add extension header:
         </label>
         <select
           value={addProto}
           onChange={(e) => setAddProto(e.target.value)}
-          className="px-2 py-1 rounded border text-[12px]"
+          className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",
@@ -201,7 +201,7 @@ export default function ChainEditor({ field, onChange }: Props) {
           type="button"
           onClick={handleAdd}
           disabled={!addProto}
-          className="text-[12px] px-2.5 py-1 rounded border"
+          className="text-xs px-2.5 py-1 rounded border"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--accent)",
@@ -214,13 +214,13 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px] text-fg-muted">
+        <label className="text-xs text-fg-muted">
           Final upper-layer protocol:
         </label>
         <select
           value={finalProto ?? ""}
           onChange={(e) => handleFinalChange(e.target.value)}
-          className="px-2 py-1 rounded border text-[12px]"
+          className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",

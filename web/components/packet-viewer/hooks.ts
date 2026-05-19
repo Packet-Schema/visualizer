@@ -5,7 +5,9 @@
 // They take callbacks rather than touching state directly, so PacketViewer
 // keeps its single source of truth.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { cssEscape } from "./navigation";
 
 /**
  * Returns `true` when `window.innerWidth >= breakpoint`. SSR-safe: defaults
@@ -99,4 +101,46 @@ export function useAutoClearStatus<T>(
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, delayMs]);
+}
+
+/**
+ * Imperative bridge for diagram ↔ hex strip hover highlighting.
+ *
+ * Returns a setter that paints `.hex-match` onto cells matching `fieldId`
+ * and mirrors the id on the root via `data-highlighted-field`. The work
+ * runs outside React's render cycle on purpose: hover events fire dozens
+ * of times per second and we don't want each one to trigger a re-render
+ * of the entire packet tree. The hook contains the side effect so the
+ * call site stays declarative — "give me a highlighter for this DOM
+ * subtree" instead of two dozen lines of DOM queries.
+ */
+export function useFieldHighlight(
+  rootRef: React.RefObject<HTMLElement | null>,
+): (fieldId: string | null) => void {
+  return useCallback(
+    (fieldId: string | null) => {
+      const root = rootRef.current;
+      if (!root) return;
+      // Always clear the previous highlight first so rapid hover transitions
+      // don't leave stale classes behind.
+      for (const el of root.querySelectorAll<HTMLElement>(".hex-match")) {
+        el.classList.remove("hex-match");
+      }
+      if (!fieldId) {
+        root.removeAttribute("data-highlighted-field");
+        return;
+      }
+      root.setAttribute("data-highlighted-field", fieldId);
+      // Subfield ids look like "parent:sub". Highlight both the subfield
+      // itself and the parent field cell so the relationship is unambiguous.
+      const parentId = fieldId.includes(":") ? fieldId.split(":")[0] : null;
+      const matches = root.querySelectorAll<HTMLElement>(
+        parentId
+          ? `[data-field-id="${cssEscape(fieldId)}"], .field-cell[data-field-id="${cssEscape(parentId)}"]`
+          : `[data-field-id="${cssEscape(fieldId)}"]`,
+      );
+      for (const el of matches) el.classList.add("hex-match");
+    },
+    [rootRef],
+  );
 }

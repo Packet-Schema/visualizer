@@ -48,14 +48,7 @@ function StatusBadge({
   }
   if (result.state === "ok") {
     return (
-      <span
-        className="text-xs px-2 py-0.5 rounded border"
-        style={{
-          background: "var(--field-green)",
-          color: "var(--accent-fg)",
-          borderColor: "var(--border-strong)",
-        }}
-      >
+      <span className="text-xs px-2 py-0.5 rounded border bg-field-green text-accent-fg border-border-strong">
         ok
       </span>
     );
@@ -63,12 +56,7 @@ function StatusBadge({
   return (
     <span
       title={result.message}
-      className="text-xs px-2 py-0.5 rounded border"
-      style={{
-        background: "var(--field-rose)",
-        color: "var(--accent-fg)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="text-xs px-2 py-0.5 rounded border bg-field-rose text-accent-fg border-border-strong"
     >
       conflict
     </span>

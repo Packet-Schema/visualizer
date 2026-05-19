@@ -103,7 +103,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         {field.name}
       </h3>
       <p
-        className="text-[12px] m-0 mb-2 text-fg-muted"
+        className="text-xs m-0 mb-2 text-fg-muted"
       >
         Recursive TLV container. Add typed records below; the total length
         drives{" "}
@@ -120,7 +120,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       >
         {instances.length === 0 ? (
           <p
-            className="m-0 px-3 py-2 text-[12px] text-fg-faint"
+            className="m-0 px-3 py-2 text-xs text-fg-faint"
           >
             No options attached yet.
           </p>
@@ -186,7 +186,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                   </div>
                 </div>
                 {vc ? (
-                  <div className="mt-1.5 text-[12px] flex items-center gap-2">
+                  <div className="mt-1.5 text-xs flex items-center gap-2">
                     <label
                       className="flex items-center gap-1.5 text-fg-muted"
                     >
@@ -199,7 +199,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                         onChange={(e) =>
                           handleExtraChange(i, vc.key, e.target.value)
                         }
-                        className="w-14 px-1.5 py-0.5 rounded border font-mono tabular-nums text-[12px]"
+                        className="w-14 px-1.5 py-0.5 rounded border font-mono tabular-nums text-xs"
                         style={{
                           borderColor: "var(--border-strong)",
                           background: "var(--bg-elevated)",
@@ -223,13 +223,13 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px] text-fg-muted">
+        <label className="text-xs text-fg-muted">
           Add option:
         </label>
         <select
           value={addKind}
           onChange={(e) => setAddKind(e.target.value)}
-          className="px-2 py-1 rounded border text-[12px]"
+          className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",
@@ -247,7 +247,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
           type="button"
           onClick={handleAdd}
           disabled={!addKind}
-          className="text-[12px] px-2.5 py-1 rounded border"
+          className="text-xs px-2.5 py-1 rounded border"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--accent)",
@@ -260,7 +260,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <p
-        className="text-[12px] mt-2.5 mb-0 text-fg-muted"
+        className="text-xs mt-2.5 mb-0 text-fg-muted"
       >
         Total:{" "}
         <span className="font-mono tabular-nums">{summary.totalBits} b</span>

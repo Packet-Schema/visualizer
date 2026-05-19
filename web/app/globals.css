@@ -138,6 +138,19 @@
   --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
+  /* Category color tokens — exposed to Tailwind so the editor and badges can
+     write `bg-field-rose`, `text-field-green`, etc. without dropping back to
+     an inline style. The raw `--field-*` variables stay in place because the
+     diagram cell fill uses them directly through `var(--cell-fill)`. */
+  --color-field-blue: var(--field-blue);
+  --color-field-indigo: var(--field-indigo);
+  --color-field-violet: var(--field-violet);
+  --color-field-teal: var(--field-teal);
+  --color-field-green: var(--field-green);
+  --color-field-amber: var(--field-amber);
+  --color-field-orange: var(--field-orange);
+  --color-field-rose: var(--field-rose);
+  --color-field-slate: var(--field-slate);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
@@ -831,15 +844,19 @@ input.pv-slider::-moz-range-thumb {
     opacity var(--pv-fast) var(--pv-ease);
 }
 
-.diagram-shell .cell.field-cell.hex-match,
-.diagram-shell .subfield-cell.hex-match,
-.diagram-shell .hex-byte.hex-match {
+/* `.hex-match.hex-match` doubles the class to raise specificity above the
+   other cell-state selectors (e.g. `.cell.field-cell.selected`) without
+   reaching for `!important`. The repeated class matches exactly the same
+   element — it's purely a specificity nudge, not a runtime requirement. */
+.diagram-shell .cell.field-cell.hex-match.hex-match,
+.diagram-shell .subfield-cell.hex-match.hex-match,
+.diagram-shell .hex-byte.hex-match.hex-match {
   filter: none;
   opacity: 1;
-  border-color: var(--accent) !important;
+  border-color: var(--accent);
   box-shadow:
     0 0 0 2px var(--accent),
-    0 0 12px -2px var(--accent-glow) !important;
+    0 0 12px -2px var(--accent-glow);
   z-index: 3;
 }
 

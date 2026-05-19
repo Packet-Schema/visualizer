@@ -224,7 +224,7 @@ export default function OnboardingTour({ steps, onClose }: Props) {
           <button
             type="button"
             onClick={finish}
-            className="text-[12px] px-3 py-1.5 rounded border"
+            className="text-xs px-3 py-1.5 rounded border"
             style={{
               borderColor: "var(--border-strong)",
               background: "var(--bg-base)",
@@ -237,7 +237,7 @@ export default function OnboardingTour({ steps, onClose }: Props) {
             ref={nextBtnRef}
             type="button"
             onClick={advance}
-            className="text-[12px] px-3 py-1.5 rounded border font-semibold"
+            className="text-xs px-3 py-1.5 rounded border font-semibold"
             style={{
               borderColor: "var(--accent)",
               background: "var(--accent)",

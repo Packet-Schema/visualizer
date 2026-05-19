@@ -552,19 +552,17 @@ function DrawerInner({
           />
         </div>
         <div
-          className="text-xs min-h-[1.25rem]"
+          className={`text-xs min-h-[1.25rem] ${
+            status?.kind === "error"
+              ? "text-field-rose"
+              : status?.kind === "warn"
+                ? "text-field-amber"
+                : status?.kind === "ok"
+                  ? "text-field-green"
+                  : "text-fg-muted"
+          }`}
           role="status"
           aria-live="polite"
-          style={{
-            color:
-              status?.kind === "error"
-                ? "var(--field-rose)"
-                : status?.kind === "warn"
-                  ? "var(--field-amber)"
-                  : status?.kind === "ok"
-                    ? "var(--field-green)"
-                    : "var(--fg-muted)",
-          }}
         >
           {status?.msg ?? ""}
         </div>

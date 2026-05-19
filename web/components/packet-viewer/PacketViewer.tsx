@@ -71,10 +71,11 @@ import OnboardingTour, {
 import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
 import StudioPanel from "./StudioPanel";
-import { cssEscape, findRowNeighbor } from "./navigation";
+import { findRowNeighbor } from "./navigation";
 import {
   useAutoClearStatus,
   useDelayedOnce,
+  useFieldHighlight,
   useIsWideViewport,
   useUndoRedoShortcuts,
 } from "./hooks";
@@ -340,33 +341,11 @@ export default function PacketViewer() {
   }, [isWideViewport]);
 
   // Bidirectional highlight wiring. Both the diagram cells and the hex strip
-  // call this; we mirror the active fieldId to the diagram root and tag any
-  // matching elements with `.hex-match`. CSS can't compare two attribute
-  // values, so we apply the class imperatively — zero re-render churn during
-  // hover and the styling rules stay declarative in globals.css.
-  const handleFieldHover = useCallback((fieldId: string | null) => {
-    const root = diagramRef.current;
-    if (!root) return;
-    // Always clear the previous highlight first so rapid hover transitions
-    // don't leave stale classes behind.
-    for (const el of root.querySelectorAll<HTMLElement>(".hex-match")) {
-      el.classList.remove("hex-match");
-    }
-    if (!fieldId) {
-      root.removeAttribute("data-highlighted-field");
-      return;
-    }
-    root.setAttribute("data-highlighted-field", fieldId);
-    // Subfield ids look like "parent:sub". Highlight both the subfield itself
-    // and the parent field cell so the relationship is unambiguous.
-    const parentId = fieldId.includes(":") ? fieldId.split(":")[0] : null;
-    const matches = root.querySelectorAll<HTMLElement>(
-      parentId
-        ? `[data-field-id="${cssEscape(fieldId)}"], .field-cell[data-field-id="${cssEscape(parentId)}"]`
-        : `[data-field-id="${cssEscape(fieldId)}"]`,
-    );
-    for (const el of matches) el.classList.add("hex-match");
-  }, []);
+  // call this; the hook paints `.hex-match` on matching cells and mirrors
+  // the active id on the diagram root via `data-highlighted-field`.
+  // Implemented imperatively on purpose (hover fires dozens of times per
+  // second; re-rendering the entire packet tree each time is wasteful).
+  const handleFieldHover = useFieldHighlight(diagramRef);
 
   const handlePacketChange = useCallback(
     (nextKey: string) => {
@@ -829,22 +808,23 @@ export default function PacketViewer() {
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
           shareStatus={shareStatus}
-          onPacketChange={handlePacketChange}
-          onExportCustomPresets={handleExportCustomPresets}
-          onImportCustomPresets={handleImportCustomPresetsClick}
-          onOpenImport={() => setDrawerMode("import")}
-          onOpenExport={() => setDrawerMode("export")}
-          onShare={handleShare}
-          onToggleHexStrip={() => {
-            hexStripUserSetRef.current = true;
-            setHexStripVisible((v) => !v);
+          actions={{
+            onPacketChange: handlePacketChange,
+            onExportCustomPresets: handleExportCustomPresets,
+            onImportCustomPresets: handleImportCustomPresetsClick,
+            onOpenImport: () => setDrawerMode("import"),
+            onOpenExport: () => setDrawerMode("export"),
+            onShare: handleShare,
+            onToggleHexStrip: () => {
+              hexStripUserSetRef.current = true;
+              setHexStripVisible((v) => !v);
+            },
+            onToggleDependencies: () => setDependenciesVisible((v) => !v),
+            onToggleViewMode: () =>
+              setViewMode((v) => (v === "semantic" ? "wire" : "semantic")),
+            onToggleEditMode: () => setEditMode((v) => !v),
+            onDeleteCustomPreset: handleDeleteCustomPreset,
           }}
-          onToggleDependencies={() => setDependenciesVisible((v) => !v)}
-          onToggleViewMode={() =>
-            setViewMode((v) => (v === "semantic" ? "wire" : "semantic"))
-          }
-          onToggleEditMode={() => setEditMode((v) => !v)}
-          onDeleteCustomPreset={handleDeleteCustomPreset}
         />
         <input
           ref={bulkImportInputRef}

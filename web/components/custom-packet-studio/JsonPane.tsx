@@ -53,19 +53,12 @@ export default function JsonPane({ packet, dispatch }: Props) {
         value={text}
         onChange={onChange}
         rows={20}
-        className="text-xs font-mono px-2 py-2 rounded border w-full"
-        style={{
-          background: "var(--bg-subtle)",
-          color: "var(--fg)",
-          borderColor: error ? "var(--field-rose)" : "var(--border-strong)",
-        }}
+        className={`text-xs font-mono px-2 py-2 rounded border w-full bg-bg-subtle text-fg ${
+          error ? "border-field-rose" : "border-border-strong"
+        }`}
       />
       {error && (
-        <p
-          role="alert"
-          className="text-xs"
-          style={{ color: "var(--field-rose)" }}
-        >
+        <p role="alert" className="text-xs text-field-rose">
           JSON parse error: {error}
         </p>
       )}
