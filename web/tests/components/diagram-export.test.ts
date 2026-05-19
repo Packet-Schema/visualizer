@@ -435,8 +435,7 @@ describe("diagram export helpers", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const themedAncestor = (element as HTMLElement).closest("[data-theme]");
-      const explicitTheme = themedAncestor?.getAttribute("data-theme");
+      const explicitTheme = document.documentElement.getAttribute("data-theme");
       const color = (element as HTMLElement).style.color;
       if (color === "var(--bg-elevated)" && explicitTheme === "light") {
         return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
@@ -467,8 +466,7 @@ describe("diagram export helpers", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const themedAncestor = (element as HTMLElement).closest("[data-theme]");
-      const explicitTheme = themedAncestor?.getAttribute("data-theme") ?? "dark";
+      const explicitTheme = document.documentElement.getAttribute("data-theme") ?? "dark";
       const color = (element as HTMLElement).style.color;
       if (color === "var(--custom-fill)" && explicitTheme === "light") {
         return { color: "rgb(240, 240, 240)" } as CSSStyleDeclaration;
@@ -518,6 +516,25 @@ describe("diagram export helpers", () => {
 
     expect(svg).toContain('fill="rgb(240, 240, 240)"');
     expect(svg).not.toContain('fill="rgb(15, 15, 15)"');
+  });
+
+  it("restores the current UI theme after resolving an explicit export theme", () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const explicitTheme = document.documentElement.getAttribute("data-theme");
+      const color = (element as HTMLElement).style.color;
+      if (color === "var(--bg-elevated)" && explicitTheme === "light") {
+        return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
+      }
+      if (color === "var(--bg-elevated)" && explicitTheme === "dark") {
+        return { color: "rgb(15, 15, 15)" } as CSSStyleDeclaration;
+      }
+      return { color: "" } as CSSStyleDeclaration;
+    });
+
+    expect(readDiagramTheme("light").background).toBe("rgb(250, 250, 250)");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
   it("downloads text and blob files through temporary anchors", () => {

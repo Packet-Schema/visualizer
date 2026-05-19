@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import ExportDialog from "./ExportDialog";
 
@@ -11,6 +11,9 @@ type Props = {
 
 export default function ExportButton({ packet, layout }: Props) {
   const [open, setOpen] = useState(false);
+  const handleClose = useCallback(() => {
+    setOpen(false);
+  }, []);
 
   return (
     <>
@@ -31,7 +34,7 @@ export default function ExportButton({ packet, layout }: Props) {
         packet={packet}
         layout={layout}
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={handleClose}
       />
     </>
   );
