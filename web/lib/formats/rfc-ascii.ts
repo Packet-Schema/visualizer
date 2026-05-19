@@ -151,10 +151,25 @@ export function toAscii(
   }
 
   // PSML 0.4 — render any Optional whose `when` evaluates falsy as a single
-  // `~ (Optional <fieldName>) ~` placeholder row so the reader sees the slot
-  // exists in the schema even when it's absent on this wire.
-  for (const opt of absentOptionals) {
-    lines.push(`~ (Optional ${opt.field.name}) ~`);
+  // `|~ Optional <fieldName> ~|` placeholder row so the reader sees the slot
+  // exists in the schema even when it's absent on this wire. The interior is
+  // padded to the ruler width so the row aligns with every other field-line
+  // (i.e. ends with "|"); a trailing separator keeps the alternating
+  // field-line / separator pattern that downstream consumers expect.
+  if (absentOptionals.length > 0) {
+    const interiorWidth = 2 * packet.rowBits - 1;
+    for (const opt of absentOptionals) {
+      const label = `~ (Optional ${opt.field.name}) ~`;
+      // Pad to the ruler width when the label fits, otherwise keep the full
+      // label intact (the row will be wider than rowBits — readers prefer a
+      // truthful label to a truncated one).
+      const interior =
+        label.length < interiorWidth
+          ? label + " ".repeat(interiorWidth - label.length)
+          : label;
+      lines.push(`|${interior}|`);
+      lines.push(separator(packet.rowBits));
+    }
   }
 
   return lines.join("\n");
