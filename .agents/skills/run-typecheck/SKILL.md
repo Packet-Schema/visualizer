@@ -17,7 +17,7 @@ description: packet-view リポジトリで TypeScript の型チェックを実�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run build:presets
 npm exec tsc -- --noEmit
 ```

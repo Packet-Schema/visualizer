@@ -16,7 +16,7 @@ description: packet-view リポジトリで preset 生成を実行したいと�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run build:presets
 ```
 

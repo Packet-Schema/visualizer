@@ -16,7 +16,7 @@ description: packet-view リポジトリでテストを実行したいときに�
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run test
 ```
 

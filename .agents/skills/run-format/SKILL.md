@@ -17,7 +17,7 @@ description: web フロントエンドのコード整形を実行したいとき
 ## コマンド
 
 ```bash
-cd /workspaces/packet-view/web
+cd web
 npm run format:check
 npm run format
 ```
