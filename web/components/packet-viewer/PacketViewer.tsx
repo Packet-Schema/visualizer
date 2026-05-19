@@ -124,6 +124,15 @@ export default function PacketViewer() {
   const [editMode, setEditMode] = useState(false);
   const [showJsonPane, setShowJsonPane] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  // Export must follow the same source of truth as the live diagram. While the
+  // studio is open, layout is derived from in-progress PSML edits rather than
+  // the last selected preset/import, so lower that edited packet for consumers
+  // that still need renderer metadata such as `name` and `rowBits`.
+  const exportPacket = useMemo(
+    () => (editMode ? psmlToRenderer(studioState.packet) : packet),
+    [editMode, packet, studioState.packet],
+  );
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
   const [isWideViewport, setIsWideViewport] = useState(false);
@@ -594,7 +603,7 @@ export default function PacketViewer() {
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
           extraControls={
-            <ExportButton packet={packet} layout={layout} />
+            <ExportButton packet={exportPacket} layout={layout} />
           }
           onPacketChange={handlePacketChange}
           onExportCustomPresets={handleExportCustomPresets}

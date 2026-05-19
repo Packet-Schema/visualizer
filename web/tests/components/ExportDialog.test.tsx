@@ -49,10 +49,12 @@ const layout: ResolvedLayout = {
   ],
 };
 
-async function renderDialog(onClose = vi.fn()) {
+async function renderDialog(
+  onClose = vi.fn(),
+): Promise<{ container: HTMLDivElement; onClose: typeof onClose; root: Root }> {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  let root: Root | null = null;
+  let root!: Root;
   await act(async () => {
     root = createRoot(container);
     root.render(
@@ -112,7 +114,7 @@ describe("ExportDialog", () => {
     expect(container.textContent).not.toContain("PNG resolution");
     expect(container.textContent).toContain("Save SVG");
 
-    await act(async () => root?.unmount());
+    await act(async () => root.unmount());
   });
 
   it("shows PNG-only controls and changes the save label when PNG is selected", async () => {
@@ -132,7 +134,7 @@ describe("ExportDialog", () => {
     expect(inputByLabel(container, "PNG resolution").getAttribute("step")).toBe("1");
     expect(inputByLabel(container, "PNG resolution").className).toBe("pv-slider");
 
-    await act(async () => root?.unmount());
+    await act(async () => root.unmount());
   });
 
   it("routes the single save action to the selected format", async () => {
@@ -161,7 +163,7 @@ describe("ExportDialog", () => {
     expect(svgToPngBlob).toHaveBeenCalledTimes(1);
     expect(downloadBlobFile).toHaveBeenCalledTimes(1);
 
-    await act(async () => root?.unmount());
+    await act(async () => root.unmount());
   });
 
   it("keeps PNG errors visible after a failed save", async () => {
@@ -184,7 +186,7 @@ describe("ExportDialog", () => {
       "PNG export failed. Please try SVG or another browser.",
     );
 
-    await act(async () => root?.unmount());
+    await act(async () => root.unmount());
   });
 
   it("ignores stale PNG completions after the dialog is closed and reopened", async () => {
@@ -270,7 +272,7 @@ describe("ExportDialog", () => {
         transparentBackground: true,
       });
 
-    await act(async () => root?.unmount());
+    await act(async () => root.unmount());
 
     const remounted = await renderDialog();
     expect(selectByLabel(remounted.container, "Format").value).toBe("png");
@@ -281,6 +283,6 @@ describe("ExportDialog", () => {
     );
     expect(inputByLabel(remounted.container, "PNG resolution").value).toBe("7");
 
-    await act(async () => remounted.root?.unmount());
+    await act(async () => remounted.root.unmount());
   });
 });

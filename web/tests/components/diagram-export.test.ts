@@ -107,6 +107,7 @@ describe("buildDiagramSvg", () => {
     expect(svg).toContain("Type");
     expect(svg).toContain("Body");
     expect(svg).toContain('stroke-dasharray="5 3"');
+    expect(svg).toContain("<path d=\"M5.5 7V5a2.5 2.5 0 0 1 5 0v2\" />");
   });
 
   it("reflects the supplied layout shape, so callers can export the current view mode", () => {
@@ -145,6 +146,201 @@ describe("buildDiagramSvg", () => {
     expect(transparent).not.toContain("<rect width=");
     expect(transparent).not.toContain('fill="#f5f7fb"');
     expect(transparent).not.toContain('fill="#fbfcfe"');
+  });
+
+  it("renders semantic encryption badges and themed subfield backgrounds", () => {
+    const themed = buildDiagramSvg(packet, {
+      totalBits: 8,
+      cells: [
+        {
+          field: packet.fields[0],
+          bitsTotal: 8,
+          row: 0,
+          startBit: 0,
+          endBit: 7,
+          segmentIndex: 0,
+          totalSegments: 1,
+          isFirst: true,
+          isLast: true,
+          fieldStartOffset: 0,
+          fieldEndOffset: 7,
+          encryptedParentId: "ciphertext",
+          headerProtected: true,
+          subCells: [
+            {
+              id: "kind",
+              parentField: packet.fields[0],
+              subfield: { id: "kind", name: "Kind", bits: 8 },
+              startBit: 0,
+              endBit: 7,
+              isFirst: true,
+              isLast: true,
+              bitsTotal: 8,
+            },
+          ],
+        },
+      ],
+    }, {
+      theme: {
+        background: "#111111",
+        rowEven: "#222222",
+        rowOdd: "#333333",
+        rulerTick: "#444444",
+        rulerLabel: "#555555",
+        accent: "#abcdef",
+        fieldStroke: "#666666",
+        fieldLabel: "#777777",
+        fieldSublabel: "#888888",
+        fieldContinuation: "#999999",
+        fieldPalette: { type: "#aaaaaa" },
+      },
+    });
+
+    expect(themed).toContain('fill="#111111" fill-opacity="0.52"');
+    expect(themed).toContain('stroke="#abcdef"');
+    expect(themed).toContain('fill="#abcdef">HP</text>');
+  });
+
+  it("resolves CSS-variable field fills through the supplied export theme", () => {
+    const svg = buildDiagramSvg(
+      {
+        ...packet,
+        fields: [{ id: "custom", name: "Custom", bits: 8, color: "var(--custom-fill)" as never }],
+      },
+      {
+        totalBits: 8,
+        cells: [
+          {
+            field: {
+              id: "custom",
+              name: "Custom",
+              bits: 8,
+              color: "var(--custom-fill)" as never,
+            },
+            bitsTotal: 8,
+            row: 0,
+            startBit: 0,
+            endBit: 7,
+            segmentIndex: 0,
+            totalSegments: 1,
+            isFirst: true,
+            isLast: true,
+            fieldStartOffset: 0,
+            fieldEndOffset: 7,
+          },
+        ],
+      },
+      {
+        theme: {
+          background: "#111111",
+          rowEven: "#222222",
+          rowOdd: "#333333",
+          rulerTick: "#444444",
+          rulerLabel: "#555555",
+          accent: "#abcdef",
+          fieldStroke: "#666666",
+          fieldLabel: "#777777",
+          fieldSublabel: "#888888",
+          fieldContinuation: "#999999",
+          fieldPalette: {},
+          resolveCssColor: () => "#fedcba",
+        },
+      },
+    );
+
+    expect(svg).toContain('fill="#fedcba"');
+  });
+
+  it("preserves renderer-only field colors when layout cells omit the color fallback", () => {
+    const svg = buildDiagramSvg(
+      {
+        ...packet,
+        fields: [{ id: "custom", name: "Custom", bits: 8, color: "amber" }],
+      },
+      {
+        totalBits: 8,
+        cells: [
+          {
+            field: {
+              id: "custom",
+              name: "Custom",
+              bits: 8,
+            },
+            bitsTotal: 8,
+            row: 0,
+            startBit: 0,
+            endBit: 7,
+            segmentIndex: 0,
+            totalSegments: 1,
+            isFirst: true,
+            isLast: true,
+            fieldStartOffset: 0,
+            fieldEndOffset: 7,
+          },
+        ],
+      },
+      {
+        theme: {
+          background: "#111111",
+          rowEven: "#222222",
+          rowOdd: "#333333",
+          rulerTick: "#444444",
+          rulerLabel: "#555555",
+          accent: "#abcdef",
+          fieldStroke: "#666666",
+          fieldLabel: "#777777",
+          fieldSublabel: "#888888",
+          fieldContinuation: "#999999",
+          fieldPalette: { amber: "#f3d77e" },
+        },
+      },
+    );
+
+    expect(svg).toContain('fill="#f3d77e"');
+  });
+
+  it("escapes untrusted field colors before embedding them into SVG attributes", () => {
+    const svg = buildDiagramSvg(
+      {
+        ...packet,
+        fields: [
+          {
+            id: "custom",
+            name: "Custom",
+            bits: 8,
+            color: 'red" /><script>alert(1)</script><rect fill="' as never,
+          },
+        ],
+      },
+      {
+        totalBits: 8,
+        cells: [
+          {
+            field: {
+              id: "custom",
+              name: "Custom",
+              bits: 8,
+              color: 'red" /><script>alert(1)</script><rect fill="' as never,
+            },
+            bitsTotal: 8,
+            row: 0,
+            startBit: 0,
+            endBit: 7,
+            segmentIndex: 0,
+            totalSegments: 1,
+            isFirst: true,
+            isLast: true,
+            fieldStartOffset: 0,
+            fieldEndOffset: 7,
+          },
+        ],
+      },
+    );
+
+    expect(svg).toContain(
+      'fill="red&quot; /&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;rect fill=&quot;"',
+    );
+    expect(svg).not.toContain("<script>");
   });
 
   it("centers ruler labels and clips field text to each cell", () => {
@@ -220,6 +416,8 @@ describe("diagram export helpers", () => {
         color:
           color === "var(--bg-elevated)"
             ? "rgb(1, 2, 3)"
+            : color === "var(--accent)"
+              ? "rgb(7, 8, 9)"
             : color === "var(--field-blue)"
               ? "rgb(4, 5, 6)"
               : "",
@@ -229,6 +427,7 @@ describe("diagram export helpers", () => {
     const theme = readDiagramThemeFromDocument();
 
     expect(theme.background).toBe("rgb(1, 2, 3)");
+    expect(theme.accent).toBe("rgb(7, 8, 9)");
     expect(theme.fieldPalette.blue).toBe("rgb(4, 5, 6)");
   });
 
@@ -262,6 +461,63 @@ describe("diagram export helpers", () => {
     });
 
     expect(readDiagramTheme("follow-ui").background).toBe("rgb(20, 21, 22)");
+  });
+
+  it("resolves custom CSS-variable fills against the explicit export theme", () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const themedAncestor = (element as HTMLElement).closest("[data-theme]");
+      const explicitTheme = themedAncestor?.getAttribute("data-theme") ?? "dark";
+      const color = (element as HTMLElement).style.color;
+      if (color === "var(--custom-fill)" && explicitTheme === "light") {
+        return { color: "rgb(240, 240, 240)" } as CSSStyleDeclaration;
+      }
+      if (color === "var(--custom-fill)" && explicitTheme === "dark") {
+        return { color: "rgb(15, 15, 15)" } as CSSStyleDeclaration;
+      }
+      if (color === "var(--bg-elevated)" && explicitTheme === "light") {
+        return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
+      }
+      if (color === "var(--bg-elevated)" && explicitTheme === "dark") {
+        return { color: "rgb(20, 20, 20)" } as CSSStyleDeclaration;
+      }
+      return { color: "" } as CSSStyleDeclaration;
+    });
+
+    const svg = buildDiagramSvg(
+      {
+        ...packet,
+        fields: [{ id: "custom", name: "Custom", bits: 8, color: "var(--custom-fill)" as never }],
+      },
+      {
+        totalBits: 8,
+        cells: [
+          {
+            field: {
+              id: "custom",
+              name: "Custom",
+              bits: 8,
+              color: "var(--custom-fill)" as never,
+            },
+            bitsTotal: 8,
+            row: 0,
+            startBit: 0,
+            endBit: 7,
+            segmentIndex: 0,
+            totalSegments: 1,
+            isFirst: true,
+            isLast: true,
+            fieldStartOffset: 0,
+            fieldEndOffset: 7,
+          },
+        ],
+      },
+      { theme: readDiagramTheme("light") },
+    );
+
+    expect(svg).toContain('fill="rgb(240, 240, 240)"');
+    expect(svg).not.toContain('fill="rgb(15, 15, 15)"');
   });
 
   it("downloads text and blob files through temporary anchors", () => {
@@ -310,7 +566,7 @@ describe("diagram export helpers", () => {
         }),
         toBlob: (callback: BlobCallback) =>
           callback(new Blob(["png"], { type: "image/png" })),
-      } as HTMLCanvasElement;
+      } as unknown as HTMLCanvasElement;
     }) as typeof document.createElement);
 
     class MockImage {
