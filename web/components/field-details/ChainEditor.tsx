@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 
+import { useListItemKeys } from "@/lib/use-list-item-keys";
 import type {
   ChainCatalogEntry,
   ChainInstance,
@@ -37,6 +38,7 @@ export default function ChainEditor({ field, onChange }: Props) {
   const catalogByProto = new Map<number, ChainCatalogEntry>(
     catalog.map((c) => [c.proto, c]),
   );
+  const itemKeys = useListItemKeys(instances);
 
   const emit = (
     nextList: ChainInstance[],
@@ -82,14 +84,12 @@ export default function ChainEditor({ field, onChange }: Props) {
   return (
     <div>
       <h3
-        className="m-0 mb-2 text-[15px]"
-        style={{ color: "var(--fg)" }}
+        className="m-0 mb-2 text-[15px] text-fg"
       >
         {field.name} — chain
       </h3>
       <p
-        className="text-[12px] m-0 mb-2"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-[12px] m-0 mb-2 text-fg-muted"
       >
         Attach IPv6 extension headers in order. The final Next Header is the
         upper-layer protocol.
@@ -104,8 +104,7 @@ export default function ChainEditor({ field, onChange }: Props) {
       >
         {instances.length === 0 ? (
           <p
-            className="m-0 px-3 py-2 text-[12px]"
-            style={{ color: "var(--fg-faint)" }}
+            className="m-0 px-3 py-2 text-[12px] text-fg-faint"
           >
             No extension headers attached.
           </p>
@@ -116,9 +115,8 @@ export default function ChainEditor({ field, onChange }: Props) {
             const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
             return (
               <div
-                key={i}
-                className="px-3 py-2"
-                style={{ borderColor: "var(--border)" }}
+                key={itemKeys[i]}
+                className="px-3 py-2 border-border"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -132,14 +130,12 @@ export default function ChainEditor({ field, onChange }: Props) {
                     proto {entry.proto}
                   </span>
                   <span
-                    className="text-[13px] font-semibold"
-                    style={{ color: "var(--fg)" }}
+                    className="text-[13px] font-semibold text-fg"
                   >
                     {entry.name}
                   </span>
                   <span
-                    className="text-[11px] font-mono tabular-nums"
-                    style={{ color: "var(--fg-muted)" }}
+                    className="text-[11px] font-mono tabular-nums text-fg-muted"
                   >
                     {bits} b / {bits / 8} B
                   </span>
@@ -174,8 +170,7 @@ export default function ChainEditor({ field, onChange }: Props) {
                 </div>
                 {entry.description ? (
                   <p
-                    className="m-0 mt-1 text-[11px]"
-                    style={{ color: "var(--fg-faint)" }}
+                    className="m-0 mt-1 text-[11px] text-fg-faint"
                   >
                     {entry.description}
                   </p>
@@ -187,7 +182,7 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+        <label className="text-[12px] text-fg-muted">
           Add extension header:
         </label>
         <select
@@ -224,7 +219,7 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+        <label className="text-[12px] text-fg-muted">
           Final upper-layer protocol:
         </label>
         <select

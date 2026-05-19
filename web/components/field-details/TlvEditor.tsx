@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 
 import { tlvRecordBits, tlvTotalBits } from "@/lib/psml/renderer-helpers";
+import { useListItemKeys } from "@/lib/use-list-item-keys";
 import type {
   ControllerState,
   Field,
@@ -28,15 +29,21 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
 
   const summary = useMemo(() => tlvTotalBits(field), [field]);
 
+  const instances = tlv?.instances || [];
+  const itemKeys = useListItemKeys(instances);
+
   if (!tlv) return null;
 
-  const instances = tlv.instances || [];
   const catalogByKind = new Map<number, TlvCatalogEntry>(
     tlv.catalog.map((c) => [c.kind, c]),
   );
 
+  // Shallow-copy the array so React sees a new reference, but keep each
+  // instance object's identity stable across mutations that don't touch its
+  // fields. That lets `useListItemKeys` track rows through reorder/remove
+  // without remounting them.
   const update = (mutator: (list: TlvInstance[]) => TlvInstance[]) => {
-    onChange(mutator(instances.map((i) => ({ ...i, extras: i.extras ? { ...i.extras } : undefined }))));
+    onChange(mutator(instances.slice()));
   };
 
   const handleRemove = (idx: number) =>
@@ -91,14 +98,12 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
   return (
     <div>
       <h3
-        className="m-0 mb-2 text-[15px]"
-        style={{ color: "var(--fg)" }}
+        className="m-0 mb-2 text-[15px] text-fg"
       >
         {field.name}
       </h3>
       <p
-        className="text-[12px] m-0 mb-2"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-[12px] m-0 mb-2 text-fg-muted"
       >
         Recursive TLV container. Add typed records below; the total length
         drives{" "}
@@ -115,8 +120,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       >
         {instances.length === 0 ? (
           <p
-            className="m-0 px-3 py-2 text-[12px]"
-            style={{ color: "var(--fg-faint)" }}
+            className="m-0 px-3 py-2 text-[12px] text-fg-faint"
           >
             No options attached yet.
           </p>
@@ -132,10 +136,9 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
             };
             return (
               <div
-                key={i}
+                key={itemKeys[i]}
                 role="listitem"
-                className="px-3 py-2"
-                style={{ borderColor: "var(--border)" }}
+                className="px-3 py-2 border-border"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -149,14 +152,12 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                     kind {entry.kind}
                   </span>
                   <span
-                    className="text-[13px] font-semibold"
-                    style={{ color: "var(--fg)" }}
+                    className="text-[13px] font-semibold text-fg"
                   >
                     {entry.name}
                   </span>
                   <span
-                    className="text-[11px] font-mono tabular-nums"
-                    style={{ color: "var(--fg-muted)" }}
+                    className="text-[11px] font-mono tabular-nums text-fg-muted"
                   >
                     {bits} b / {bits / 8} B
                   </span>
@@ -192,8 +193,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                 {vc ? (
                   <div className="mt-1.5 text-[12px] flex items-center gap-2">
                     <label
-                      className="flex items-center gap-1.5"
-                      style={{ color: "var(--fg-muted)" }}
+                      className="flex items-center gap-1.5 text-fg-muted"
                     >
                       {vc.label || vc.key}:
                       <input
@@ -216,8 +216,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                 ) : null}
                 {entry.description ? (
                   <p
-                    className="m-0 mt-1 text-[11px]"
-                    style={{ color: "var(--fg-faint)" }}
+                    className="m-0 mt-1 text-[11px] text-fg-faint"
                   >
                     {entry.description}
                   </p>
@@ -229,7 +228,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+        <label className="text-[12px] text-fg-muted">
           Add option:
         </label>
         <select
@@ -266,8 +265,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <p
-        className="text-[12px] mt-2.5 mb-0"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-[12px] mt-2.5 mb-0 text-fg-muted"
       >
         Total:{" "}
         <span className="font-mono tabular-nums">{summary.totalBits} b</span>

@@ -22,6 +22,7 @@ import {
   syncTlvControllers,
 } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
+import { updatePacketField } from "@/lib/psml/packet-update";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
 import {
@@ -177,10 +178,9 @@ export default function PacketViewer() {
   // and are lowered to the renderer shape on demand.
   const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
   // The renderer-shape mirror of every built-in PSML preset. Lowered once on
-  // mount; TLV/Chain mutations mutate the field object identity in-place so
-  // the mirror is stable across re-renders (the format hub re-lifts back to
-  // PSML at export time).
-  const [renderedPresets] = useState<PacketRegistry>(() => {
+  // mount; TLV/Chain edits replace the relevant packet entry immutably via
+  // `updatePacketField` (the format hub re-lifts back to PSML at export time).
+  const [renderedPresets, setRenderedPresets] = useState<PacketRegistry>(() => {
     const out: PacketRegistry = {};
     for (const [k, v] of Object.entries(PRESETS)) {
       out[k] = psmlToRenderer(v);
@@ -304,11 +304,18 @@ export default function PacketViewer() {
     );
   }, [packetKey, customPresets, importedPackets]);
 
-  // When the user changes preset, reseed the reducer so undo doesn't span
-  // unrelated packets.
-  useEffect(() => {
+  // Re-seed the studio reducer in-place when the active PSML packet swaps
+  // (preset change, custom preset selection, import). Detecting the change
+  // during render and dispatching synchronously is the React-recommended
+  // alternative to a useEffect — it keeps `studioState.packet` aligned with
+  // `activePsmlPacket` on the same render that observed the change, avoiding
+  // a flash of stale state.
+  // See: https://react.dev/learn/you-might-not-need-an-effect
+  const lastReducerPacketRef = useRef(activePsmlPacket);
+  if (lastReducerPacketRef.current !== activePsmlPacket) {
+    lastReducerPacketRef.current = activePsmlPacket;
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
-  }, [activePsmlPacket]);
+  }
 
   // Keyboard shortcuts while editing. Skip when focus is on an input/textarea
   // so the browser's native text-undo still works inside FieldRow inputs.
@@ -438,16 +445,42 @@ export default function PacketViewer() {
     [],
   );
 
-  // TLV edits mutate the field's `tlv.instances` array (matching legacy
-  // behaviour where the catalog data is shared with the resolver). We
-  // re-sync TLV-driven controllers afterwards.
+  // Swap whichever registry currently owns `packetKey` (built-in mirror /
+  // imported / custom) for a new Packet. Keeps TLV/Chain edits visible
+  // across preset switches without mutating shared field objects.
+  const replaceActivePacket = useCallback(
+    (nextPacket: Packet) => {
+      if (renderedPresets[packetKey]) {
+        setRenderedPresets((prev) => ({ ...prev, [packetKey]: nextPacket }));
+      } else if (importedPackets[packetKey]) {
+        setImportedPackets((prev) => ({ ...prev, [packetKey]: nextPacket }));
+      } else {
+        // Custom presets are stored as PSML; lift the renderer-shape edit back
+        // to PSML and persist into customPresets so the change survives a
+        // preset switch.
+        setCustomPresets((prev) => ({
+          ...prev,
+          [packetKey]: rendererToPsml(nextPacket),
+        }));
+      }
+    },
+    [packetKey, renderedPresets, importedPackets],
+  );
+
+  // TLV edits replace the field's `tlv.instances` immutably and re-sync
+  // TLV-driven controllers afterwards.
   const handleTlvChange = useCallback(
     (field: Field, next: TlvInstance[]) => {
       if (!field.tlv) return;
-      field.tlv.instances = next;
-      setControllers((prev) => syncTlvControllers(packet, prev));
+      const tlv = field.tlv;
+      const nextPacket = updatePacketField(packet, field.id, (f) => ({
+        ...f,
+        tlv: { ...tlv, instances: next },
+      }));
+      replaceActivePacket(nextPacket);
+      setControllers((prev) => syncTlvControllers(nextPacket, prev));
     },
-    [packet],
+    [packet, replaceActivePacket],
   );
 
   const handleChainChange = useCallback(
@@ -455,14 +488,18 @@ export default function PacketViewer() {
       field: Field,
       next: { instances: ChainInstance[]; finalProto?: number },
     ) => {
-      field.chainInstances = next.instances;
-      if (typeof next.finalProto === "number") {
-        field.chainFinalProto = next.finalProto;
-      }
-      // Force a re-render even though we mutated the field directly.
-      setControllers((prev) => syncChainControllers(packet, { ...prev }));
+      const nextPacket = updatePacketField(packet, field.id, (f) => ({
+        ...f,
+        chainInstances: next.instances,
+        chainFinalProto:
+          typeof next.finalProto === "number"
+            ? next.finalProto
+            : f.chainFinalProto,
+      }));
+      replaceActivePacket(nextPacket);
+      setControllers((prev) => syncChainControllers(nextPacket, prev));
     },
-    [packet],
+    [packet, replaceActivePacket],
   );
 
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
@@ -850,19 +887,16 @@ export default function PacketViewer() {
 
         {packet.description ? (
           <p
-            className="text-[13px] mx-0.5 mt-2 mb-1"
-            style={{ color: "var(--fg-muted)" }}
+            className="text-[13px] mx-0.5 mt-2 mb-1 text-fg-muted"
           >
             {packet.description}
           </p>
         ) : null}
         <p
-          className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5"
-          style={{ color: "var(--fg-faint)" }}
+          className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5 text-fg-faint"
         >
           <span
-            className="not-italic font-bold"
-            style={{ color: "var(--accent)" }}
+            className="not-italic font-bold text-accent"
             aria-hidden="true"
           >
             ↦
@@ -931,8 +965,7 @@ export default function PacketViewer() {
             }}
           >
             <h2
-              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
-              style={{ color: "var(--fg-muted)" }}
+              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted"
             >
               Controls
             </h2>
@@ -956,8 +989,7 @@ export default function PacketViewer() {
             }}
           >
             <h2
-              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
-              style={{ color: "var(--fg-muted)" }}
+              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted"
             >
               Field detail
             </h2>

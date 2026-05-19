@@ -208,17 +208,15 @@ export default function OnboardingTour({ steps, onClose }: Props) {
         }}
       >
         <h3
-          className="m-0 mb-1.5 text-[15px] font-semibold"
-          style={{ color: "var(--fg)" }}
+          className="m-0 mb-1.5 text-[15px] font-semibold text-fg"
         >
           {step.title}
         </h3>
-        <p className="m-0 text-[13px]" style={{ color: "var(--fg-muted)" }}>
+        <p className="m-0 text-[13px] text-fg-muted">
           {step.body}
         </p>
         <div
-          className="mt-2 text-[11px] uppercase tracking-wider"
-          style={{ color: "var(--fg-faint)" }}
+          className="mt-2 text-[11px] uppercase tracking-wider text-fg-faint"
         >
           Step {idx + 1} of {steps.length}
         </div>

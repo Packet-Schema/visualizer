@@ -99,8 +99,7 @@ export default function PresetPicker({
       </select>
       {showBulkButtons ? (
         <span
-          className="flex items-center gap-1 text-xs font-normal"
-          style={{ color: "var(--fg-muted)" }}
+          className="flex items-center gap-1 text-xs font-normal text-fg-muted"
         >
           <span aria-hidden="true">My presets:</span>
           {onExportCustomPresets ? (

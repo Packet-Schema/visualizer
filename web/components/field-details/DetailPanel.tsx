@@ -41,7 +41,7 @@ export default function DetailPanel({
 }: Props) {
   if (!selectedFieldId) {
     return (
-      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+      <p className="m-0 text-[13px] text-fg-faint">
         Click a field in the diagram to see its details.
       </p>
     );
@@ -73,13 +73,11 @@ export default function DetailPanel({
     return (
       <div>
         <h3
-          className="m-0 mb-2.5 text-[15px]"
-          style={{ color: "var(--fg)" }}
+          className="m-0 mb-2.5 text-[15px] text-fg"
         >
           {sub.name}{" "}
           <span
-            className="text-[11px] font-normal"
-            style={{ color: "var(--fg-muted)" }}
+            className="text-[11px] font-normal text-fg-muted"
           >
             (subfield of {parent.name})
           </span>
@@ -99,7 +97,7 @@ export default function DetailPanel({
 
   if (selectedFieldId.includes(":")) {
     return (
-      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+      <p className="m-0 text-[13px] text-fg-faint">
         Subfield not found.
       </p>
     );
@@ -108,7 +106,7 @@ export default function DetailPanel({
   const field = packet.fields.find((f) => f.id === selectedFieldId);
   if (!field) {
     return (
-      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+      <p className="m-0 text-[13px] text-fg-faint">
         Field not found.
       </p>
     );
@@ -157,8 +155,7 @@ export default function DetailPanel({
         <span className="font-mono tabular-nums">{sizeStr}</span>
         {field.variable ? (
           <em
-            className="not-italic ml-1"
-            style={{ color: "var(--fg-muted)" }}
+            className="not-italic ml-1 text-fg-muted"
           >
             (variable)
           </em>
@@ -191,8 +188,7 @@ export default function DetailPanel({
             )
             {drivenByTlv ? (
               <em
-                className="not-italic ml-2 text-[11px]"
-                style={{ color: "var(--fg-muted)" }}
+                className="not-italic ml-2 text-[11px] text-fg-muted"
               >
                 — synced from TLV editor
               </em>
@@ -221,8 +217,7 @@ export default function DetailPanel({
   return (
     <div>
       <h3
-        className="m-0 mb-2.5 text-[15px]"
-        style={{ color: "var(--fg)" }}
+        className="m-0 mb-2.5 text-[15px] text-fg"
       >
         {field.name}
       </h3>
@@ -249,12 +244,11 @@ function DefList({
       {filtered.map(([term, value]) => (
         <div key={term} className="contents">
           <dt
-            className="font-semibold m-0"
-            style={{ color: "var(--fg-muted)" }}
+            className="font-semibold m-0 text-fg-muted"
           >
             {term}
           </dt>
-          <dd className="m-0" style={{ color: "var(--fg)" }}>
+          <dd className="m-0 text-fg">
             {value}
           </dd>
         </div>

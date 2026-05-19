@@ -15,6 +15,7 @@
 // driving the Options length) evaluate sensibly on a fresh packet.
 
 import { evalExpr } from "./expr";
+import { isField } from "./utils";
 import type {
   Container,
   Encrypted,
@@ -30,13 +31,6 @@ import type {
   Type,
   ViewMode,
 } from "./types";
-
-function isField(c: Container): c is Field {
-  // A Field has a `type` property; Repeat/Switch/Group/Encrypted all have a
-  // `kind` discriminator. Treat anything without a kind (or kind === 'field')
-  // as a Field.
-  return !("kind" in c) || c.kind === "field";
-}
 
 /**
  * Compute the bit width of a Type given the current env.

@@ -38,15 +38,10 @@ export default function JsonPane({ packet, dispatch }: Props) {
   return (
     <section
       aria-label="JSON editor"
-      className="flex flex-col gap-1 p-2 border-t"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="flex flex-col gap-1 p-2 border-t bg-bg-elevated border-border-strong"
     >
       <label
-        className="text-xs"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-xs text-fg-muted"
         htmlFor="psml-json-pane"
       >
         Packet JSON

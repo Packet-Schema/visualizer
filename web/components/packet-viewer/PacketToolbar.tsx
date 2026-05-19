@@ -132,8 +132,7 @@ export default function PacketToolbar({
         </div>
       ) : null}
       <div
-        className="ml-auto text-[13px] font-mono tabular-nums"
-        style={{ color: "var(--fg-muted)" }}
+        className="ml-auto text-[13px] font-mono tabular-nums text-fg-muted"
       >
         Header size: {headerSizeLabel}
       </div>

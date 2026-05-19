@@ -25,6 +25,7 @@
 //     single renderer Field with subfields[].
 
 import { evalExpr, MissingRefError } from "./expr";
+import { isField } from "./utils";
 import type {
   Container,
   Field as PsmlField,
@@ -46,10 +47,6 @@ import type {
 // Local aliases for inline references.
 type ChainCatalogEntry = RendererChainCatalogEntry;
 type TlvCatalogEntry = RendererTlvCatalogEntry;
-
-function isField(c: Container): c is PsmlField {
-  return !("kind" in c) || c.kind === "field";
-}
 
 function typeBits(type: PsmlField["type"]): number {
   switch (type.kind) {

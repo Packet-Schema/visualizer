@@ -48,8 +48,7 @@ export default function Legend({ categories }: Props) {
       }}
     >
       <h2
-        className="text-[11px] m-0 mb-2 uppercase tracking-wider font-bold"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-[11px] m-0 mb-2 uppercase tracking-wider font-bold text-fg-muted"
       >
         Legend
       </h2>
@@ -60,8 +59,7 @@ export default function Legend({ categories }: Props) {
           return (
             <li
               key={cat}
-              className="legend-item flex items-center gap-2 text-xs"
-              style={{ color: "var(--fg)" }}
+              className="legend-item flex items-center gap-2 text-xs text-fg"
               onMouseEnter={handleEnter(cat)}
               onMouseLeave={handleLeave}
               onFocus={handleEnter(cat)}

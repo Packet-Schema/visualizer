@@ -18,7 +18,7 @@ export default function ControlsPanel({
 
   if (controllerFields.length === 0) {
     return (
-      <p className="text-[13px] m-0" style={{ color: "var(--fg-faint)" }}>
+      <p className="text-[13px] m-0 text-fg-faint">
         This packet has no variable-length controllers.
       </p>
     );
@@ -70,8 +70,7 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
         className="block mb-1 control-label"
       >
         <span
-          className="font-semibold text-[13px]"
-          style={{ color: "var(--fg)" }}
+          className="font-semibold text-[13px] text-fg"
         >
           {field.name}
         </span>
@@ -79,8 +78,7 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
       {field.description ? (
         <span
           id={hintId}
-          className="block text-[11px] mb-1.5"
-          style={{ color: "var(--fg-faint)" }}
+          className="block text-[11px] mb-1.5 text-fg-faint"
         >
           {field.description}
         </span>

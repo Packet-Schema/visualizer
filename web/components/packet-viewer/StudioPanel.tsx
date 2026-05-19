@@ -40,8 +40,7 @@ export default function StudioPanel({
       }}
     >
       <h2
-        className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted"
       >
         Custom Packet Studio
       </h2>

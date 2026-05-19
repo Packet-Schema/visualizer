@@ -180,8 +180,7 @@ export default function HexStrip({
       aria-label="Header bytes (placeholder values)"
     >
       <div
-        className="hex-strip-label text-[11px] uppercase tracking-wider font-bold mb-1.5"
-        style={{ color: "var(--fg-muted)" }}
+        className="hex-strip-label text-[11px] uppercase tracking-wider font-bold mb-1.5 text-fg-muted"
       >
         Bytes ({byteOwners.length})
       </div>

@@ -105,11 +105,7 @@ export default function Toolbar({
     <div
       role="toolbar"
       aria-label="Custom Packet Studio toolbar"
-      className="flex flex-wrap items-center gap-1.5 p-2 border-b"
-      style={{
-        background: "var(--bg-subtle)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="flex flex-wrap items-center gap-1.5 p-2 border-b bg-bg-subtle border-border-strong"
     >
       <button
         type="button"

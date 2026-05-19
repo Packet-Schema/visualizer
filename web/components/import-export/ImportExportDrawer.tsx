@@ -270,12 +270,10 @@ export default function ImportExportDrawer({
 
   const handleCopy = useCallback(async () => {
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else if (textareaRef.current) {
-        textareaRef.current.select();
-        document.execCommand?.("copy");
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is not available in this browser.");
       }
+      await navigator.clipboard.writeText(text);
       setStatus({ msg: "Copied to clipboard.", kind: "ok" });
     } catch (e) {
       setStatus({ msg: `Copy failed: ${(e as Error).message}`, kind: "error" });
@@ -438,8 +436,7 @@ function DrawerInner({
   return (
     <>
       <header
-        className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: "var(--border)" }}
+        className="flex items-center justify-between px-4 py-3 border-b border-border"
       >
         <h2 className="text-base font-semibold m-0">
           {currentMode === "import" ? "Import packet" : "Export packet"}
@@ -461,7 +458,7 @@ function DrawerInner({
 
       <div className="px-4 py-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-medium">
-          <span style={{ color: "var(--fg-muted)" }}>Mode:</span>
+          <span className="text-fg-muted">Mode:</span>
           <select
             value={currentMode}
             onChange={(e) => onModeChange(e.target.value as DrawerMode)}
@@ -477,7 +474,7 @@ function DrawerInner({
           </select>
         </label>
         <label className="flex items-center gap-2 text-sm font-medium">
-          <span style={{ color: "var(--fg-muted)" }}>Format:</span>
+          <span className="text-fg-muted">Format:</span>
           <select
             value={format}
             onChange={(e) => onFormatChange(e.target.value as FormatKey)}
@@ -512,7 +509,7 @@ function DrawerInner({
             >
               Upload file
             </button>
-            <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+            <span className="text-xs text-fg-muted">
               or drop a file on the textarea
             </span>
             <input
@@ -574,8 +571,7 @@ function DrawerInner({
       </div>
 
       <footer
-        className="flex items-center justify-end gap-2 px-4 py-3 border-t"
-        style={{ borderColor: "var(--border)" }}
+        className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border"
       >
         <button
           type="button"
@@ -593,12 +589,7 @@ function DrawerInner({
           <button
             type="button"
             onClick={onApply}
-            className="text-sm px-3 py-1.5 rounded-md border font-semibold"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-fg)",
-              borderColor: "var(--accent)",
-            }}
+            className="text-sm px-3 py-1.5 rounded-md border font-semibold bg-accent text-accent-fg border-accent"
           >
             Apply
           </button>
@@ -619,12 +610,7 @@ function DrawerInner({
             <button
               type="button"
               onClick={onDownload}
-              className="text-sm px-3 py-1.5 rounded-md border font-semibold"
-              style={{
-                background: "var(--accent)",
-                color: "var(--accent-fg)",
-                borderColor: "var(--accent)",
-              }}
+              className="text-sm px-3 py-1.5 rounded-md border font-semibold bg-accent text-accent-fg border-accent"
             >
               Download
             </button>

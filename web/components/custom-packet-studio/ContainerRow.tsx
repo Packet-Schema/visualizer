@@ -104,15 +104,10 @@ function Frame({
     <div
       role="group"
       aria-label={`${kind} container`}
-      className="flex flex-col gap-2 p-2 border-b"
-      style={{
-        background: "var(--bg-subtle)",
-        borderColor: "var(--border)",
-      }}
+      className="flex flex-col gap-2 p-2 border-b bg-bg-subtle border-border"
     >
       <div
-        className="text-xs uppercase tracking-wide"
-        style={{ color: "var(--fg-muted)" }}
+        className="text-xs uppercase tracking-wide text-fg-muted"
       >
         {kind}
       </div>
@@ -252,7 +247,7 @@ function SwitchEditor({
         className="text-sm px-2 py-1 rounded border w-60"
         style={inputStyle()}
       />
-      <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
+      <label className="text-xs text-fg-muted">
         on
       </label>
       <ExprBuilder
@@ -261,7 +256,7 @@ function SwitchEditor({
         onChange={setOn}
       />
       <div className="flex flex-col gap-1">
-        <div className="text-xs" style={{ color: "var(--fg-muted)" }}>
+        <div className="text-xs text-fg-muted">
           cases
         </div>
         {Object.entries(container.cases).map(([k, v]) => (
@@ -272,7 +267,7 @@ function SwitchEditor({
             >
               {k}
             </span>
-            <span style={{ color: "var(--fg-muted)" }}>→</span>
+            <span className="text-fg-muted">→</span>
             <input
               type="text"
               value={v.name ?? v.id}
@@ -367,7 +362,7 @@ function EncryptedEditor({
         className="text-sm px-2 py-1 rounded border w-60"
         style={inputStyle()}
       />
-      <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
+      <label className="text-xs text-fg-muted">
         wireBits
       </label>
       <ExprBuilder
@@ -375,7 +370,7 @@ function EncryptedEditor({
         fieldIds={siblingFieldIds}
         onChange={(e) => patch({ wireBits: e })}
       />
-      <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
+      <label className="text-xs text-fg-muted">
         contextNote
       </label>
       <textarea
@@ -386,12 +381,12 @@ function EncryptedEditor({
         className="text-sm px-2 py-1 rounded border"
         style={inputStyle()}
       />
-      <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
+      <label className="text-xs text-fg-muted">
         headerProtected
       </label>
       <div className="flex flex-wrap gap-2">
         {plaintextIds.length === 0 && (
-          <span className="text-xs" style={{ color: "var(--fg-faint)" }}>
+          <span className="text-xs text-fg-faint">
             (no plaintext fields)
           </span>
         )}

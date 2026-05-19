@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { validate } from "@/lib/psml/constraint";
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import type { Constraint, Expr, PacketEnv } from "@/lib/psml/types";
+import { useListItemKeys } from "@/lib/use-list-item-keys";
 
 import ExprBuilder from "./ExprBuilder";
 
@@ -39,12 +40,7 @@ function StatusBadge({
   if (result.state === "unknown") {
     return (
       <span
-        className="text-xs px-2 py-0.5 rounded border"
-        style={{
-          background: "var(--bg-subtle)",
-          color: "var(--fg-muted)",
-          borderColor: "var(--border)",
-        }}
+        className="text-xs px-2 py-0.5 rounded border bg-bg-subtle text-fg-muted border-border"
       >
         cannot verify
       </span>
@@ -97,17 +93,15 @@ export default function ConstraintEditor({
     setDraftRhs({ kind: "lit", value: 0 });
   };
 
+  const itemKeys = useListItemKeys(constraints);
+
   return (
     <section
       aria-label="Constraints"
-      className="flex flex-col gap-3 p-3 border-t"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="flex flex-col gap-3 p-3 border-t bg-bg-elevated border-border-strong"
     >
       <header className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold" style={{ color: "var(--fg)" }}>
+        <h3 className="text-sm font-semibold text-fg">
           Constraints
         </h3>
         <StatusBadge constraints={constraints} env={env} />
@@ -115,12 +109,8 @@ export default function ConstraintEditor({
       <ul className="flex flex-col gap-2">
         {constraints.map((c, i) => (
           <li
-            key={i}
-            className="flex items-start gap-2 p-2 rounded border"
-            style={{
-              background: "var(--bg-subtle)",
-              borderColor: "var(--border)",
-            }}
+            key={itemKeys[i]}
+            className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border"
           >
             <ExprBuilder
               value={c.lhs}
@@ -134,8 +124,7 @@ export default function ConstraintEditor({
               }
             />
             <span
-              className="self-center px-1 font-mono"
-              style={{ color: "var(--fg-muted)" }}
+              className="self-center px-1 font-mono text-fg-muted"
             >
               ==
             </span>
@@ -165,11 +154,7 @@ export default function ConstraintEditor({
         ))}
       </ul>
       <div
-        className="flex items-start gap-2 p-2 rounded border"
-        style={{
-          background: "var(--bg-subtle)",
-          borderColor: "var(--border)",
-        }}
+        className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border"
       >
         <ExprBuilder
           value={draftLhs}
@@ -177,8 +162,7 @@ export default function ConstraintEditor({
           onChange={setDraftLhs}
         />
         <span
-          className="self-center px-1 font-mono"
-          style={{ color: "var(--fg-muted)" }}
+          className="self-center px-1 font-mono text-fg-muted"
         >
           ==
         </span>
