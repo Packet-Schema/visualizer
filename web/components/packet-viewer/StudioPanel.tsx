@@ -52,7 +52,7 @@ export default function StudioPanel({
         futureLength={state.future.length}
         jsonOpen={showJsonPane}
         onToggleJson={onToggleJsonPane}
-        onSaveAs={() => onSaveAs()}
+        onSaveAs={onSaveAs}
         onDiscard={onDiscard}
       />
       <ol className="mt-3 flex flex-col gap-2 list-none p-0">
