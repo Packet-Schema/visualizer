@@ -179,9 +179,7 @@ export default function HexStrip({
       role="group"
       aria-label="Header bytes (placeholder values)"
     >
-      <div
-        className="hex-strip-label text-[11px] uppercase tracking-wider font-bold mb-1.5 text-fg-muted"
-      >
+      <div className="hex-strip-label text-[11px] uppercase tracking-wider font-bold mb-1.5 text-fg-muted">
         Bytes ({byteOwners.length})
       </div>
       <div className="hex-strip-row flex flex-wrap gap-[3px]">

@@ -39,9 +39,7 @@ export default function StudioPanel({
         boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
       }}
     >
-      <h2
-        className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted"
-      >
+      <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
         Custom Packet Studio
       </h2>
       <Toolbar

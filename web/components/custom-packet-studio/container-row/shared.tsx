@@ -47,7 +47,9 @@ export function Frame({
       aria-label={`${kind} container`}
       className="flex flex-col gap-2 p-2 border-b bg-bg-subtle border-border"
     >
-      <div className="text-xs uppercase tracking-wide text-fg-muted">{kind}</div>
+      <div className="text-xs uppercase tracking-wide text-fg-muted">
+        {kind}
+      </div>
       {children}
     </div>
   );

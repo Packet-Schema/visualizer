@@ -98,9 +98,7 @@ export default function PresetPicker({
         ) : null}
       </select>
       {showBulkButtons ? (
-        <span
-          className="flex items-center gap-1 text-xs font-normal text-fg-muted"
-        >
+        <span className="flex items-center gap-1 text-xs font-normal text-fg-muted">
           <span aria-hidden="true">My presets:</span>
           {onExportCustomPresets ? (
             <button

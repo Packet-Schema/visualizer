@@ -69,17 +69,10 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
         id={labelId}
         className="block mb-1 control-label"
       >
-        <span
-          className="font-semibold text-[13px] text-fg"
-        >
-          {field.name}
-        </span>
+        <span className="font-semibold text-[13px] text-fg">{field.name}</span>
       </label>
       {field.description ? (
-        <span
-          id={hintId}
-          className="block text-[11px] mb-1.5 text-fg-faint"
-        >
+        <span id={hintId} className="block text-[11px] mb-1.5 text-fg-faint">
           {field.description}
         </span>
       ) : null}

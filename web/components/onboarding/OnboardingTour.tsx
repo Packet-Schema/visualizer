@@ -5,7 +5,13 @@
 // dim everything except the spotlight area. Tooltip floats next to the
 // spotlight with Next / Skip buttons. Esc closes.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 const SEEN_KEY = "packet-view-tour-seen";
 
@@ -135,8 +141,14 @@ export default function OnboardingTour({ steps, onClose }: Props) {
         position: "fixed",
         left: Math.max(4, rect.left - pad),
         top: Math.max(4, rect.top - pad),
-        width: Math.min(viewport.w - Math.max(4, rect.left - pad) - 4, rect.width + pad * 2),
-        height: Math.min(viewport.h - Math.max(4, rect.top - pad) - 4, rect.height + pad * 2),
+        width: Math.min(
+          viewport.w - Math.max(4, rect.left - pad) - 4,
+          rect.width + pad * 2,
+        ),
+        height: Math.min(
+          viewport.h - Math.max(4, rect.top - pad) - 4,
+          rect.height + pad * 2,
+        ),
         borderRadius: 8,
         boxShadow: "0 0 0 9999px rgba(15, 22, 50, 0.55)",
         pointerEvents: "none",
@@ -151,7 +163,9 @@ export default function OnboardingTour({ steps, onClose }: Props) {
   if (rect) {
     const sy = Math.max(4, rect.top - pad);
     const sh = Math.min(viewport.h - sy - 4, rect.height + pad * 2);
-    const place = step.placement || (viewport.h - rect.top - rect.height > rect.top ? "bottom" : "top");
+    const place =
+      step.placement ||
+      (viewport.h - rect.top - rect.height > rect.top ? "bottom" : "top");
     const left = Math.min(
       viewport.w - ttW - 12,
       Math.max(12, rect.left + rect.width / 2 - ttW / 2),
@@ -207,17 +221,11 @@ export default function OnboardingTour({ steps, onClose }: Props) {
           boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
         }}
       >
-        <h3
-          className="m-0 mb-1.5 text-[15px] font-semibold text-fg"
-        >
+        <h3 className="m-0 mb-1.5 text-[15px] font-semibold text-fg">
           {step.title}
         </h3>
-        <p className="m-0 text-[13px] text-fg-muted">
-          {step.body}
-        </p>
-        <div
-          className="mt-2 text-[11px] uppercase tracking-wider text-fg-faint"
-        >
+        <p className="m-0 text-[13px] text-fg-muted">{step.body}</p>
+        <div className="mt-2 text-[11px] uppercase tracking-wider text-fg-faint">
           Step {idx + 1} of {steps.length}
         </div>
         <div className="mt-3 flex items-center justify-end gap-2">

@@ -40,8 +40,18 @@ describe("per-field byteOrder", () => {
   });
 
   it("mixes BE and LE fields in the same packet", () => {
-    const beField: Field = { id: "be", name: "BE", type: bits(16), byteOrder: "BE" };
-    const leField: Field = { id: "le", name: "LE", type: bits(16), byteOrder: "LE" };
+    const beField: Field = {
+      id: "be",
+      name: "BE",
+      type: bits(16),
+      byteOrder: "BE",
+    };
+    const leField: Field = {
+      id: "le",
+      name: "LE",
+      type: bits(16),
+      byteOrder: "LE",
+    };
     const plainField: Field = { id: "x", name: "X", type: bits(16) };
     const p: Packet = {
       name: "Mixed",
@@ -51,7 +61,11 @@ describe("per-field byteOrder", () => {
     const n = normalize(p);
     expect(n.fields.map((f) => f.byteOrder)).toEqual(["BE", "LE", undefined]);
     const layout = resolveLayout(p);
-    expect(layout.cells.map((c) => c.byteOrder)).toEqual(["BE", "LE", undefined]);
+    expect(layout.cells.map((c) => c.byteOrder)).toEqual([
+      "BE",
+      "LE",
+      undefined,
+    ]);
   });
 
   it("validator rejects an invalid byteOrder string", () => {
@@ -67,6 +81,8 @@ describe("per-field byteOrder", () => {
         },
       ],
     };
-    expect(() => validatePsmlPacket(p)).toThrow(/byteOrder must be 'BE' or 'LE'/);
+    expect(() => validatePsmlPacket(p)).toThrow(
+      /byteOrder must be 'BE' or 'LE'/,
+    );
   });
 });

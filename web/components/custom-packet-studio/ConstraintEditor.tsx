@@ -39,9 +39,7 @@ function StatusBadge({
 
   if (result.state === "unknown") {
     return (
-      <span
-        className="text-xs px-2 py-0.5 rounded border bg-bg-subtle text-fg-muted border-border"
-      >
+      <span className="text-xs px-2 py-0.5 rounded border bg-bg-subtle text-fg-muted border-border">
         cannot verify
       </span>
     );
@@ -89,9 +87,7 @@ export default function ConstraintEditor({
       className="flex flex-col gap-3 p-3 border-t bg-bg-elevated border-border-strong"
     >
       <header className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-fg">
-          Constraints
-        </h3>
+        <h3 className="text-sm font-semibold text-fg">Constraints</h3>
         <StatusBadge constraints={constraints} env={env} />
       </header>
       <ul className="flex flex-col gap-2">
@@ -111,11 +107,7 @@ export default function ConstraintEditor({
                 })
               }
             />
-            <span
-              className="self-center px-1 font-mono text-fg-muted"
-            >
-              ==
-            </span>
+            <span className="self-center px-1 font-mono text-fg-muted">==</span>
             <ExprBuilder
               value={c.rhs}
               fieldIds={fieldIds}
@@ -130,9 +122,7 @@ export default function ConstraintEditor({
             <button
               type="button"
               aria-label={`Delete constraint ${i + 1}`}
-              onClick={() =>
-                dispatch({ type: "delete-constraint", index: i })
-              }
+              onClick={() => dispatch({ type: "delete-constraint", index: i })}
               className="text-sm px-2 py-1 rounded border self-center"
               style={inputStyle()}
             >
@@ -141,19 +131,13 @@ export default function ConstraintEditor({
           </li>
         ))}
       </ul>
-      <div
-        className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border"
-      >
+      <div className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border">
         <ExprBuilder
           value={draftLhs}
           fieldIds={fieldIds}
           onChange={setDraftLhs}
         />
-        <span
-          className="self-center px-1 font-mono text-fg-muted"
-        >
-          ==
-        </span>
+        <span className="self-center px-1 font-mono text-fg-muted">==</span>
         <ExprBuilder
           value={draftRhs}
           fieldIds={fieldIds}

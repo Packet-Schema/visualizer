@@ -40,10 +40,7 @@ export default function JsonPane({ packet, dispatch }: Props) {
       aria-label="JSON editor"
       className="flex flex-col gap-1 p-2 border-t bg-bg-elevated border-border-strong"
     >
-      <label
-        className="text-xs text-fg-muted"
-        htmlFor="psml-json-pane"
-      >
+      <label className="text-xs text-fg-muted" htmlFor="psml-json-pane">
         Packet JSON
       </label>
       <textarea

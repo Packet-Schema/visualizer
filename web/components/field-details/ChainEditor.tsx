@@ -23,10 +23,7 @@ const FINAL_PROTOS: Array<{ v: number; name: string }> = [
 
 type Props = {
   field: Field;
-  onChange: (next: {
-    instances: ChainInstance[];
-    finalProto?: number;
-  }) => void;
+  onChange: (next: { instances: ChainInstance[]; finalProto?: number }) => void;
 };
 
 export default function ChainEditor({ field, onChange }: Props) {
@@ -83,14 +80,8 @@ export default function ChainEditor({ field, onChange }: Props) {
 
   return (
     <div>
-      <h3
-        className="m-0 mb-2 text-[15px] text-fg"
-      >
-        {field.name} — chain
-      </h3>
-      <p
-        className="text-xs m-0 mb-2 text-fg-muted"
-      >
+      <h3 className="m-0 mb-2 text-[15px] text-fg">{field.name} — chain</h3>
+      <p className="text-xs m-0 mb-2 text-fg-muted">
         Attach IPv6 extension headers in order. The final Next Header is the
         upper-layer protocol.
       </p>
@@ -103,9 +94,7 @@ export default function ChainEditor({ field, onChange }: Props) {
         }}
       >
         {instances.length === 0 ? (
-          <p
-            className="m-0 px-3 py-2 text-xs text-fg-faint"
-          >
+          <p className="m-0 px-3 py-2 text-xs text-fg-faint">
             No extension headers attached.
           </p>
         ) : (
@@ -114,24 +103,15 @@ export default function ChainEditor({ field, onChange }: Props) {
             if (!entry) return null;
             const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
             return (
-              <div
-                key={itemKeys[i]}
-                className="px-3 py-2 border-border"
-              >
+              <div key={itemKeys[i]} className="px-3 py-2 border-border">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border"
-                  >
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
                     proto {entry.proto}
                   </span>
-                  <span
-                    className="text-[13px] font-semibold text-fg"
-                  >
+                  <span className="text-[13px] font-semibold text-fg">
                     {entry.name}
                   </span>
-                  <span
-                    className="text-[11px] font-mono tabular-nums text-fg-muted"
-                  >
+                  <span className="text-[11px] font-mono tabular-nums text-fg-muted">
                     {bits} b / {bits / 8} B
                   </span>
                   <div className="ml-auto flex items-center gap-1">
@@ -164,9 +144,7 @@ export default function ChainEditor({ field, onChange }: Props) {
                   </div>
                 </div>
                 {entry.description ? (
-                  <p
-                    className="m-0 mt-1 text-[11px] text-fg-faint"
-                  >
+                  <p className="m-0 mt-1 text-[11px] text-fg-faint">
                     {entry.description}
                   </p>
                 ) : null}
@@ -177,9 +155,7 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-xs text-fg-muted">
-          Add extension header:
-        </label>
+        <label className="text-xs text-fg-muted">Add extension header:</label>
         <select
           value={addProto}
           onChange={(e) => setAddProto(e.target.value)}

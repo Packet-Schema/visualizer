@@ -118,7 +118,9 @@ export function descendNamed(node: Container, slot: string): Container[] {
     case "plaintext": {
       const e = node as Encrypted;
       if (e.kind !== "encrypted") {
-        throw new Error(`expected encrypted at path; got ${describeKind(node)}`);
+        throw new Error(
+          `expected encrypted at path; got ${describeKind(node)}`,
+        );
       }
       return e.plaintext as unknown as Container[];
     }
@@ -133,9 +135,7 @@ export function descendNamed(node: Container, slot: string): Container[] {
       if (slot.startsWith("cases:")) {
         const sw = node as Switch;
         if (sw.kind !== "switch") {
-          throw new Error(
-            `expected switch at path; got ${describeKind(node)}`,
-          );
+          throw new Error(`expected switch at path; got ${describeKind(node)}`);
         }
         const key = slot.slice("cases:".length);
         const variant = sw.cases[key];

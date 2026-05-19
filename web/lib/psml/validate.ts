@@ -54,7 +54,12 @@ export function isValidExpr(expr: unknown): expr is Expr {
     case "peek": {
       // PSML 0.4 — bits 1..64, optional offset must validate when present.
       const p = expr as { bits?: unknown; offset?: unknown };
-      if (typeof p.bits !== "number" || !Number.isInteger(p.bits) || p.bits < 1 || p.bits > 64) {
+      if (
+        typeof p.bits !== "number" ||
+        !Number.isInteger(p.bits) ||
+        p.bits < 1 ||
+        p.bits > 64
+      ) {
         return false;
       }
       if (p.offset !== undefined && !isValidExpr(p.offset)) return false;
@@ -69,12 +74,16 @@ function validateType(type: Type, ctx: string): void {
   switch (type.kind) {
     case "int":
       if (!Number.isInteger(type.bits) || type.bits <= 0) {
-        throw new Error(`${ctx}: int type must have positive integer bits, got ${type.bits}.`);
+        throw new Error(
+          `${ctx}: int type must have positive integer bits, got ${type.bits}.`,
+        );
       }
       return;
     case "bits":
       if (!Number.isInteger(type.n) || type.n <= 0) {
-        throw new Error(`${ctx}: bits type must have positive integer n, got ${type.n}.`);
+        throw new Error(
+          `${ctx}: bits type must have positive integer n, got ${type.n}.`,
+        );
       }
       return;
     case "bytes":
@@ -84,12 +93,17 @@ function validateType(type: Type, ctx: string): void {
       return;
     case "enum":
       if (!Number.isInteger(type.bits) || type.bits <= 0) {
-        throw new Error(`${ctx}: enum type must have positive integer bits, got ${type.bits}.`);
+        throw new Error(
+          `${ctx}: enum type must have positive integer bits, got ${type.bits}.`,
+        );
       }
       return;
     case "varint": {
       const enc = (type as { encoding: unknown }).encoding;
-      if (typeof enc !== "string" || !(VARINT_ENCODINGS as readonly string[]).includes(enc)) {
+      if (
+        typeof enc !== "string" ||
+        !(VARINT_ENCODINGS as readonly string[]).includes(enc)
+      ) {
         throw new Error(
           `${ctx}: varint encoding must be one of ${VARINT_ENCODINGS.join(", ")}, got ${String(enc)}.`,
         );
@@ -116,7 +130,11 @@ function validateField(field: Field, ctx: string): void {
     throw new Error(`${ctx}: field "${field.id}" is missing a type.`);
   }
   validateType(field.type, `${ctx}/${field.id}`);
-  if (field.byteOrder !== undefined && field.byteOrder !== "BE" && field.byteOrder !== "LE") {
+  if (
+    field.byteOrder !== undefined &&
+    field.byteOrder !== "BE" &&
+    field.byteOrder !== "LE"
+  ) {
     throw new Error(
       `${ctx}/${field.id}: byteOrder must be 'BE' or 'LE', got "${String(field.byteOrder)}".`,
     );
@@ -210,13 +228,17 @@ function collectIdsFromContainer(c: Container, into: Set<string>): void {
 function validateEncrypted(e: Encrypted, ctx: string): void {
   const sub = `${ctx}/${e.id}`;
   if (typeof e.contextNote !== "string" || e.contextNote.length === 0) {
-    throw new Error(`${sub}: encrypted container must have a non-empty contextNote.`);
+    throw new Error(
+      `${sub}: encrypted container must have a non-empty contextNote.`,
+    );
   }
   if (!e.plaintext || typeof e.plaintext !== "object") {
     throw new Error(`${sub}: encrypted container is missing plaintext struct.`);
   }
   if (!Array.isArray(e.plaintext.fields) || e.plaintext.fields.length === 0) {
-    throw new Error(`${sub}: encrypted plaintext must be a Struct with at least one field.`);
+    throw new Error(
+      `${sub}: encrypted plaintext must be a Struct with at least one field.`,
+    );
   }
   validateStruct(e.plaintext, sub);
   if (e.wireBits !== undefined && !isValidExpr(e.wireBits)) {
@@ -230,7 +252,9 @@ function validateEncrypted(e: Encrypted, ctx: string): void {
     collectFieldIds(e.plaintext, ids);
     for (const id of e.headerProtected) {
       if (typeof id !== "string") {
-        throw new Error(`${sub}: encrypted headerProtected ids must be strings.`);
+        throw new Error(
+          `${sub}: encrypted headerProtected ids must be strings.`,
+        );
       }
       if (!ids.has(id)) {
         throw new Error(

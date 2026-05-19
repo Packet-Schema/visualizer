@@ -162,10 +162,7 @@ export default function Toolbar({
         + Encrypted
       </button>
 
-      <span
-        aria-hidden
-        className="mx-1 h-5 w-px bg-border-strong"
-      />
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
 
       <button
         type="button"
@@ -188,10 +185,7 @@ export default function Toolbar({
         Redo
       </button>
 
-      <span
-        aria-hidden
-        className="mx-1 h-5 w-px bg-border-strong"
-      />
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
 
       <button
         type="button"
@@ -212,10 +206,7 @@ export default function Toolbar({
         Discard
       </button>
 
-      <span
-        aria-hidden
-        className="mx-1 h-5 w-px bg-border-strong"
-      />
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
 
       <button
         type="button"

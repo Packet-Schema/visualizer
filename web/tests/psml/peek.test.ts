@@ -68,7 +68,9 @@ describe("isValidExpr — peek", () => {
   });
 
   it("accepts peek with a valid offset expression", () => {
-    expect(isValidExpr({ kind: "peek", bits: 8, offset: { kind: "lit", value: 4 } })).toBe(true);
+    expect(
+      isValidExpr({ kind: "peek", bits: 8, offset: { kind: "lit", value: 4 } }),
+    ).toBe(true);
   });
 
   it("rejects bits = 0", () => {
@@ -84,6 +86,8 @@ describe("isValidExpr — peek", () => {
   });
 
   it("rejects a malformed offset expression", () => {
-    expect(isValidExpr({ kind: "peek", bits: 8, offset: { kind: "nope" } })).toBe(false);
+    expect(
+      isValidExpr({ kind: "peek", bits: 8, offset: { kind: "nope" } }),
+    ).toBe(false);
   });
 });

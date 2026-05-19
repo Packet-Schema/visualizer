@@ -35,13 +35,13 @@
 
   --accent: oklch(62% 0.18 265);
   --accent-fg: oklch(99% 0 0);
-  --accent-glow: oklch(65% 0.20 265 / 0.45);
+  --accent-glow: oklch(65% 0.2 265 / 0.45);
 
   /* Diagram surface */
   --row-band-even: oklch(98% 0.008 260);
   --row-band-odd: oklch(99.5% 0.005 260);
   --grid-major: oklch(85% 0.014 260);
-  --grid-minor: oklch(93% 0.010 260);
+  --grid-minor: oklch(93% 0.01 260);
   --ruler-tick: oklch(58% 0.02 270);
   --ruler-label: oklch(42% 0.02 270);
   --field-stroke: oklch(38% 0.04 270);
@@ -78,7 +78,7 @@
 [data-theme="dark"] {
   --bg: oklch(18% 0.025 270);
   --bg-elevated: oklch(22% 0.028 270);
-  --bg-subtle: oklch(26% 0.030 270);
+  --bg-subtle: oklch(26% 0.03 270);
   --bg-header: linear-gradient(
     135deg,
     oklch(22% 0.06 270) 0%,
@@ -91,7 +91,7 @@
   --fg-muted: oklch(72% 0.02 270);
   --fg-faint: oklch(58% 0.02 270);
 
-  --border: oklch(32% 0.030 270);
+  --border: oklch(32% 0.03 270);
   --border-strong: oklch(40% 0.035 270);
   --focus-ring: oklch(72% 0.16 265);
 
@@ -99,16 +99,16 @@
   --accent-fg: oklch(18% 0.025 270);
   --accent-glow: oklch(72% 0.16 265 / 0.55);
 
-  --row-band-even: oklch(24% 0.030 270);
+  --row-band-even: oklch(24% 0.03 270);
   --row-band-odd: oklch(22% 0.028 270);
   --grid-major: oklch(40% 0.034 270);
   --grid-minor: oklch(30% 0.028 270);
   --ruler-tick: oklch(60% 0.025 270);
   --ruler-label: oklch(78% 0.02 270);
-  --field-stroke: oklch(28% 0.030 270);
+  --field-stroke: oklch(28% 0.03 270);
   --field-stroke-selected: oklch(96% 0.012 270);
   --field-label: oklch(18% 0.025 270);
-  --field-sublabel: oklch(22% 0.030 270);
+  --field-sublabel: oklch(22% 0.03 270);
   --field-continuation: oklch(85% 0.015 270);
   --field-fill-opacity: 0.85;
   --field-fill-opacity-hover: 1;
@@ -353,14 +353,13 @@ code,
 
 .cell.field-cell.variable {
   /* Diagonal stripe pattern overlay for variable-length fields. */
-  background-image:
-    repeating-linear-gradient(
-      45deg,
-      transparent 0px,
-      transparent 6px,
-      var(--variable-stripe) 6px,
-      var(--variable-stripe) 7px
-    );
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0px,
+    transparent 6px,
+    var(--variable-stripe) 6px,
+    var(--variable-stripe) 7px
+  );
 }
 
 .cell.field-cell.continuation {
@@ -430,8 +429,7 @@ html[data-hovered-category="addressing"]
   .cell.field-cell[data-category="addressing"],
 html[data-hovered-category="identifier"]
   .cell.field-cell[data-category="identifier"],
-html[data-hovered-category="length"]
-  .cell.field-cell[data-category="length"],
+html[data-hovered-category="length"] .cell.field-cell[data-category="length"],
 html[data-hovered-category="type"] .cell.field-cell[data-category="type"],
 html[data-hovered-category="flags"] .cell.field-cell[data-category="flags"],
 html[data-hovered-category="reserved"]
@@ -775,7 +773,9 @@ input.pv-slider::-moz-range-thumb {
   contain: layout style;
 }
 
-.hex-strip-row { min-width: 0; }
+.hex-strip-row {
+  min-width: 0;
+}
 
 .hex-byte {
   position: relative;
@@ -877,7 +877,9 @@ input.pv-slider::-moz-range-thumb {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--accent-glow);
-  transition: outline-color 120ms, box-shadow 120ms;
+  transition:
+    outline-color 120ms,
+    box-shadow 120ms;
 }
 
 /* ==========================================================================
@@ -897,14 +899,13 @@ input.pv-slider::-moz-range-thumb {
 .cell.field-cell[data-encrypted="true"] {
   /* Heavier stripe than the variable-length pattern so the two are
      visually distinguishable when both appear in the same packet. */
-  background-image:
-    repeating-linear-gradient(
-      135deg,
-      transparent 0px,
-      transparent 5px,
-      color-mix(in oklch, var(--fg-muted) 35%, transparent) 5px,
-      color-mix(in oklch, var(--fg-muted) 35%, transparent) 6px
-    );
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0px,
+    transparent 5px,
+    color-mix(in oklch, var(--fg-muted) 35%, transparent) 5px,
+    color-mix(in oklch, var(--fg-muted) 35%, transparent) 6px
+  );
   opacity: 0.65;
 }
 

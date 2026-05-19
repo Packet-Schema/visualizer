@@ -9,7 +9,9 @@ import { useRef } from "react";
  * Falls back to `idx-${i}` for primitives — those have no identity, so we
  * cannot do better than index-based keying.
  */
-export function useListItemKeys<T extends object>(items: readonly T[]): string[] {
+export function useListItemKeys<T extends object>(
+  items: readonly T[],
+): string[] {
   const ids = useRef(new WeakMap<T, string>());
   const counter = useRef(0);
   return items.map((item) => {

@@ -91,7 +91,11 @@ export default function ExprBuilder({
         marginLeft: depth > 0 ? 4 : 0,
       }}
     >
-      <div role="tablist" aria-label="Expression kind" className="flex gap-1 flex-wrap">
+      <div
+        role="tablist"
+        aria-label="Expression kind"
+        className="flex gap-1 flex-wrap"
+      >
         {(["lit", "ref", "op", "cond", "peek"] as ExprKind[]).map((k) => (
           <button
             key={k}
@@ -148,7 +152,9 @@ export default function ExprBuilder({
           <select
             value={value.op}
             aria-label="Operator"
-            onChange={(e) => onChange({ ...value, op: e.target.value as BinOp })}
+            onChange={(e) =>
+              onChange({ ...value, op: e.target.value as BinOp })
+            }
             className="text-sm px-2 py-1 rounded border"
             style={inputStyle()}
           >
@@ -169,27 +175,21 @@ export default function ExprBuilder({
 
       {value.kind === "cond" && (
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-fg-muted">
-            test
-          </label>
+          <label className="text-xs text-fg-muted">test</label>
           <ExprBuilder
             value={value.test}
             fieldIds={fieldIds}
             depth={depth + 1}
             onChange={(test) => onChange({ ...value, test })}
           />
-          <label className="text-xs text-fg-muted">
-            then
-          </label>
+          <label className="text-xs text-fg-muted">then</label>
           <ExprBuilder
             value={value.t}
             fieldIds={fieldIds}
             depth={depth + 1}
             onChange={(t) => onChange({ ...value, t })}
           />
-          <label className="text-xs text-fg-muted">
-            else
-          </label>
+          <label className="text-xs text-fg-muted">else</label>
           <ExprBuilder
             value={value.f}
             fieldIds={fieldIds}

@@ -38,7 +38,10 @@ type WhereEntry = {
   description: string;
 };
 
-export function fromAad(text: string): { packet: PsmlPacket; warnings: string[] } {
+export function fromAad(text: string): {
+  packet: PsmlPacket;
+  warnings: string[];
+} {
   const warnings: string[] = [];
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
 
@@ -104,9 +107,9 @@ export function fromAad(text: string): { packet: PsmlPacket; warnings: string[] 
   const packet: PsmlPacket = {
     name: title || "Imported Packet",
     rowBits,
-    description: `Imported from Augmented ASCII diagram (${body.length} fields, ${
-      sumLeafBits(body)
-    } bits).`,
+    description: `Imported from Augmented ASCII diagram (${body.length} fields, ${sumLeafBits(
+      body,
+    )} bits).`,
     body,
   };
   return { packet, warnings };
@@ -222,7 +225,9 @@ function parseRow(line: string, rowBits: number): RawCell[] {
   }
   /* v8 ignore start */ // defensive: rows that reach here always sum exactly to rowBits
   if (bitPos !== rowBits) {
-    throw new Error(`Row width mismatch: got ${bitPos} bits, expected ${rowBits}`);
+    throw new Error(
+      `Row width mismatch: got ${bitPos} bits, expected ${rowBits}`,
+    );
   }
   /* v8 ignore stop */
   return cells;
@@ -281,7 +286,10 @@ function parseWhereBlock(lines: string[]): {
   return { entries, unsupported };
 }
 
-function matchWhereMeta(label: string, entries: WhereEntry[]): WhereEntry | null {
+function matchWhereMeta(
+  label: string,
+  entries: WhereEntry[],
+): WhereEntry | null {
   if (!label) return null;
   const norm = label.trim().toLowerCase();
   for (const e of entries) {

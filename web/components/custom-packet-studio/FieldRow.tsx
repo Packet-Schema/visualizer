@@ -253,9 +253,7 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
                 }
               }}
             />
-            <div
-              className="border-t my-1 border-border"
-            />
+            <div className="border-t my-1 border-border" />
             {(
               ["struct", "group", "repeat", "switch", "encrypted"] as const
             ).map((kind) => (

@@ -97,17 +97,10 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
 
   return (
     <div>
-      <h3
-        className="m-0 mb-2 text-[15px] text-fg"
-      >
-        {field.name}
-      </h3>
-      <p
-        className="text-xs m-0 mb-2 text-fg-muted"
-      >
+      <h3 className="m-0 mb-2 text-[15px] text-fg">{field.name}</h3>
+      <p className="text-xs m-0 mb-2 text-fg-muted">
         Recursive TLV container. Add typed records below; the total length
-        drives{" "}
-        <code className="font-mono">{tlv.drivesController || ""}</code>.
+        drives <code className="font-mono">{tlv.drivesController || ""}</code>.
       </p>
 
       <div
@@ -119,9 +112,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         role="list"
       >
         {instances.length === 0 ? (
-          <p
-            className="m-0 px-3 py-2 text-xs text-fg-faint"
-          >
+          <p className="m-0 px-3 py-2 text-xs text-fg-faint">
             No options attached yet.
           </p>
         ) : (
@@ -141,19 +132,13 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                 className="px-3 py-2 border-border"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border"
-                  >
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
                     kind {entry.kind}
                   </span>
-                  <span
-                    className="text-[13px] font-semibold text-fg"
-                  >
+                  <span className="text-[13px] font-semibold text-fg">
                     {entry.name}
                   </span>
-                  <span
-                    className="text-[11px] font-mono tabular-nums text-fg-muted"
-                  >
+                  <span className="text-[11px] font-mono tabular-nums text-fg-muted">
                     {bits} b / {bits / 8} B
                   </span>
                   <div className="ml-auto flex items-center gap-1">
@@ -187,9 +172,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                 </div>
                 {vc ? (
                   <div className="mt-1.5 text-xs flex items-center gap-2">
-                    <label
-                      className="flex items-center gap-1.5 text-fg-muted"
-                    >
+                    <label className="flex items-center gap-1.5 text-fg-muted">
                       {vc.label || vc.key}:
                       <input
                         type="number"
@@ -210,9 +193,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                   </div>
                 ) : null}
                 {entry.description ? (
-                  <p
-                    className="m-0 mt-1 text-[11px] text-fg-faint"
-                  >
+                  <p className="m-0 mt-1 text-[11px] text-fg-faint">
                     {entry.description}
                   </p>
                 ) : null}
@@ -223,9 +204,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-xs text-fg-muted">
-          Add option:
-        </label>
+        <label className="text-xs text-fg-muted">Add option:</label>
         <select
           value={addKind}
           onChange={(e) => setAddKind(e.target.value)}
@@ -259,19 +238,18 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         </button>
       </div>
 
-      <p
-        className="text-xs mt-2.5 mb-0 text-fg-muted"
-      >
+      <p className="text-xs mt-2.5 mb-0 text-fg-muted">
         Total:{" "}
-        <span className="font-mono tabular-nums">{summary.totalBits} b</span>
-        ; padded to{" "}
+        <span className="font-mono tabular-nums">{summary.totalBits} b</span>;
+        padded to{" "}
         <span className="font-mono tabular-nums">{summary.paddedBits} b</span>{" "}
         (= {summary.paddedBits / 8} B).
         {tlv.drivesController ? (
           <>
             {" "}
-            Drives{" "}
-            <code className="font-mono">{tlv.drivesController}</code> ={" "}
+            Drives <code className="font-mono">
+              {tlv.drivesController}
+            </code> ={" "}
             <span className="font-mono tabular-nums">
               {controllers[tlv.drivesController]}
             </span>

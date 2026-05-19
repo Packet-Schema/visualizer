@@ -54,8 +54,7 @@ export function toKsy(packet: Packet): string {
   });
 
   if (psmlOnly.length > 0) {
-    const header =
-      psmlOnly.map((m) => `# psml-only: ${m}`).join("\n") + "\n";
+    const header = psmlOnly.map((m) => `# psml-only: ${m}`).join("\n") + "\n";
     yamlText = header + yamlText;
   }
   return yamlText;
@@ -83,7 +82,11 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       // Hoist the first field of the element as the entry's "type" if it's a
       // single field; otherwise create a synthetic user type.
       const child = c.element.fields[0];
-      if (c.element.fields.length === 1 && child && (!("kind" in child) || child.kind === "field")) {
+      if (
+        c.element.fields.length === 1 &&
+        child &&
+        (!("kind" in child) || child.kind === "field")
+      ) {
         const f = child as Field;
         const proxy = fieldToKsy(f, ctx);
         Object.assign(entry, proxy, { id: c.id });
@@ -94,10 +97,17 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
         };
         entry.type = typeName;
       }
-      if (typeof c.count === "object" && c.count !== null && "kind" in c.count) {
+      if (
+        typeof c.count === "object" &&
+        c.count !== null &&
+        "kind" in c.count
+      ) {
         entry.repeat = "expr";
         entry["repeat-expr"] = exprToString(c.count);
-      } else if (typeof c.count === "object" && "until" in (c.count as object)) {
+      } else if (
+        typeof c.count === "object" &&
+        "until" in (c.count as object)
+      ) {
         entry.repeat = "until";
         entry["repeat-until"] = exprToString(
           (c.count as { until: Expr }).until,
@@ -164,7 +174,8 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
 
 function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
   const entry: KsySeqEntry = { id: toKsyId(f.id) };
-  if (f.category) ctx.psmlOnly.push(`Field "${f.id}" category "${f.category}" dropped`);
+  if (f.category)
+    ctx.psmlOnly.push(`Field "${f.id}" category "${f.category}" dropped`);
   switch (f.type.kind) {
     case "int": {
       const sig = f.type.signed ? "s" : "u";
@@ -175,7 +186,9 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
           : null;
       if (code) entry.type = code;
       else {
-        ctx.psmlOnly.push(`Field "${f.id}" odd int width ${f.type.bits} → b${f.type.bits}`);
+        ctx.psmlOnly.push(
+          `Field "${f.id}" odd int width ${f.type.bits} → b${f.type.bits}`,
+        );
         entry.type = `b${f.type.bits}`;
       }
       break;
@@ -211,9 +224,7 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
       // PSML 0.4 — Kaitai has no BER-length primitive. Emit a u1 placeholder
       // and surface a psml-only comment so the reader knows to hand-roll
       // the proper BER definite-length decoder.
-      ctx.psmlOnly.push(
-        `Field "${f.id}" berLength lowered to u1 placeholder`,
-      );
+      ctx.psmlOnly.push(`Field "${f.id}" berLength lowered to u1 placeholder`);
       entry.type = "u1";
       break;
     }

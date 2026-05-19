@@ -32,9 +32,7 @@ import {
 } from "./types";
 
 /** Parse .ksy YAML text into a PSML packet plus non-fatal warnings. */
-export function fromKsy(
-  text: string,
-): { packet: Packet; warnings: string[] } {
+export function fromKsy(text: string): { packet: Packet; warnings: string[] } {
   const warnings: string[] = [];
   let raw: unknown;
   try {
@@ -48,7 +46,9 @@ export function fromKsy(
   const root = raw as KsyRoot;
   const meta = root.meta ?? {};
   const id =
-    typeof meta.id === "string" && meta.id.length > 0 ? meta.id : "kaitai_packet";
+    typeof meta.id === "string" && meta.id.length > 0
+      ? meta.id
+      : "kaitai_packet";
   const title = typeof meta.title === "string" ? meta.title : undefined;
 
   const byteOrder = endianToByteOrder(meta.endian, warnings);
@@ -109,7 +109,8 @@ function entryToContainer(
   idx: number,
   ctx: WalkCtx,
 ): Container | null {
-  const id = typeof entry.id === "string" && entry.id.length > 0 ? entry.id : `f${idx}`;
+  const id =
+    typeof entry.id === "string" && entry.id.length > 0 ? entry.id : `f${idx}`;
   const name = humanize(id);
 
   // Detect unsupported keys early — list but don't fail.
@@ -122,7 +123,11 @@ function entryToContainer(
   }
 
   // Resolve the type. Most entries are simple. switch-on becomes a Switch.
-  if (entry.type && typeof entry.type === "object" && !Array.isArray(entry.type)) {
+  if (
+    entry.type &&
+    typeof entry.type === "object" &&
+    !Array.isArray(entry.type)
+  ) {
     return switchOnToContainer(id, name, entry, ctx);
   }
 
@@ -415,7 +420,10 @@ function switchOnToContainer(
   entry: KsySeqEntry,
   ctx: WalkCtx,
 ): Container | null {
-  const obj = entry.type as { "switch-on"?: unknown; cases?: Record<string, unknown> };
+  const obj = entry.type as {
+    "switch-on"?: unknown;
+    cases?: Record<string, unknown>;
+  };
   const onRaw = obj["switch-on"];
   const cases = obj.cases ?? {};
   const on = typeof onRaw === "string" ? simpleRefOrLit(onRaw) : null;

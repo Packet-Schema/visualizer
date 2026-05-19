@@ -103,7 +103,10 @@ export function collectEnums(
   return reg;
 }
 
-export function mergeRegistries(a: TypeRegistry, b: TypeRegistry): TypeRegistry {
+export function mergeRegistries(
+  a: TypeRegistry,
+  b: TypeRegistry,
+): TypeRegistry {
   const out = new Map(a);
   for (const [k, v] of b) out.set(k, v);
   return out;

@@ -664,7 +664,9 @@ export default function PacketViewer() {
     // lift it back to PSML on demand (lossy for variable-length payloads
     // without TLV metadata, which is acceptable for layout purposes).
     const env = new Map(
-      Object.entries(deferredControllers).map(([k, v]) => [k, Number(v)] as const),
+      Object.entries(deferredControllers).map(
+        ([k, v]) => [k, Number(v)] as const,
+      ),
     );
     // Derive secondary repeat-count keys for presets whose UI slider drives a
     // bytes-counter rather than the PSML count ref. Each TLV editor sets
@@ -682,9 +684,9 @@ export default function PacketViewer() {
     // ので、 ref fallback seed を一箇所に集約できる。
     const targetPsml: PsmlPacket = editMode
       ? studioState.packet
-      : PRESETS[packetKey] ??
+      : (PRESETS[packetKey] ??
         customPresets[packetKey] ??
-        rendererToPsml(packet);
+        rendererToPsml(packet));
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、
@@ -837,19 +839,12 @@ export default function PacketViewer() {
         />
 
         {packet.description ? (
-          <p
-            className="text-[13px] mx-0.5 mt-2 mb-1 text-fg-muted"
-          >
+          <p className="text-[13px] mx-0.5 mt-2 mb-1 text-fg-muted">
             {packet.description}
           </p>
         ) : null}
-        <p
-          className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5 text-fg-faint"
-        >
-          <span
-            className="not-italic font-bold text-accent"
-            aria-hidden="true"
-          >
+        <p className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5 text-fg-faint">
+          <span className="not-italic font-bold text-accent" aria-hidden="true">
             ↦
           </span>
           {packet.byteOrder || DEFAULT_BYTE_ORDER}
@@ -915,9 +910,7 @@ export default function PacketViewer() {
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
           >
-            <h2
-              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted"
-            >
+            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Controls
             </h2>
             <div
@@ -939,9 +932,7 @@ export default function PacketViewer() {
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
           >
-            <h2
-              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted"
-            >
+            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Field detail
             </h2>
             <DetailPanel

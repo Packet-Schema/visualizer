@@ -223,12 +223,10 @@ function plainFieldToRenderer(f: PsmlField): RendererField {
  * shape is found, return `{ fromId: fieldA, controlsName: fieldB }` so the
  * caller can tag fieldA's renderer Field with `controlsLength: fieldB`.
  */
-function constraintToController(
-  constraint: {
-    lhs: { kind: string; field?: string; op?: string; a?: unknown; b?: unknown };
-    rhs: { kind: string; field?: string; op?: string; a?: unknown; b?: unknown };
-  },
-): { fromId: string; controlsName: string } | null {
+function constraintToController(constraint: {
+  lhs: { kind: string; field?: string; op?: string; a?: unknown; b?: unknown };
+  rhs: { kind: string; field?: string; op?: string; a?: unknown; b?: unknown };
+}): { fromId: string; controlsName: string } | null {
   const tryMatch = (
     mul: typeof constraint.lhs,
     target: typeof constraint.rhs,
@@ -249,7 +247,10 @@ function constraintToController(
     }
     return null;
   };
-  return tryMatch(constraint.lhs, constraint.rhs) ?? tryMatch(constraint.rhs, constraint.lhs);
+  return (
+    tryMatch(constraint.lhs, constraint.rhs) ??
+    tryMatch(constraint.rhs, constraint.lhs)
+  );
 }
 
 /**
@@ -309,7 +310,9 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
   // step is responsible for deriving any downstream Repeat counts from it.
   if (packet.constraints) {
     for (const c of packet.constraints) {
-      const match = constraintToController(c as Parameters<typeof constraintToController>[0]);
+      const match = constraintToController(
+        c as Parameters<typeof constraintToController>[0],
+      );
       if (!match) continue;
       const target = fields.find((f) => f.id === match.fromId);
       if (target && !target.controlsLength) {
@@ -357,8 +360,12 @@ function rendererSubfieldsToGroup(field: RendererField): Group {
   };
 }
 
-function tlvCatalogEntryToStruct(parentId: string, entry: TlvCatalogEntry): Struct {
-  const baseFields = entry.fields ??
+function tlvCatalogEntryToStruct(
+  parentId: string,
+  entry: TlvCatalogEntry,
+): Struct {
+  const baseFields =
+    entry.fields ??
     (entry.bits
       ? [{ id: "raw", name: entry.name, bits: entry.bits } as TlvCatalogField]
       : []);
@@ -401,7 +408,10 @@ function tlvFieldToRepeat(field: RendererField): Repeat {
   };
 }
 
-function chainEntryToStruct(parentId: string, entry: ChainCatalogEntry): Struct {
+function chainEntryToStruct(
+  parentId: string,
+  entry: ChainCatalogEntry,
+): Struct {
   return {
     id: `${parentId}_proto_${entry.proto}`,
     name: entry.name,
@@ -449,7 +459,9 @@ function rendererFieldToPsml(field: RendererField): Container[] {
       type: { kind: "bits", n: field.bits ?? 8 },
       ...(field.category ? { category: field.category } : {}),
       ...(field.description ? { doc: field.description } : {}),
-      ...(field.defaultValue !== undefined ? { defaultValue: field.defaultValue } : {}),
+      ...(field.defaultValue !== undefined
+        ? { defaultValue: field.defaultValue }
+        : {}),
     };
     return [base, chainFieldToRepeat(field)];
   }
@@ -466,7 +478,9 @@ function rendererFieldToPsml(field: RendererField): Container[] {
       type: { kind: "bits", n: field.bits ?? 0 },
       ...(field.category ? { category: field.category } : {}),
       ...(field.description ? { doc: field.description } : {}),
-      ...(field.defaultValue !== undefined ? { defaultValue: field.defaultValue } : {}),
+      ...(field.defaultValue !== undefined
+        ? { defaultValue: field.defaultValue }
+        : {}),
     },
   ];
 }

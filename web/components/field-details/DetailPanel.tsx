@@ -72,13 +72,9 @@ export default function DetailPanel({
     const { parent, sub } = subPair;
     return (
       <div>
-        <h3
-          className="m-0 mb-2.5 text-[15px] text-fg"
-        >
+        <h3 className="m-0 mb-2.5 text-[15px] text-fg">
           {sub.name}{" "}
-          <span
-            className="text-[11px] font-normal text-fg-muted"
-          >
+          <span className="text-[11px] font-normal text-fg-muted">
             (subfield of {parent.name})
           </span>
         </h3>
@@ -87,7 +83,10 @@ export default function DetailPanel({
             ["Size", `${sub.bits} bit${sub.bits === 1 ? "" : "s"}`],
             ["Parent", parent.name],
             sub.description
-              ? ["Description", <EnrichedText key="desc" text={sub.description} />]
+              ? [
+                  "Description",
+                  <EnrichedText key="desc" text={sub.description} />,
+                ]
               : null,
           ]}
         />
@@ -96,20 +95,12 @@ export default function DetailPanel({
   }
 
   if (selectedFieldId.includes(":")) {
-    return (
-      <p className="m-0 text-[13px] text-fg-faint">
-        Subfield not found.
-      </p>
-    );
+    return <p className="m-0 text-[13px] text-fg-faint">Subfield not found.</p>;
   }
 
   const field = packet.fields.find((f) => f.id === selectedFieldId);
   if (!field) {
-    return (
-      <p className="m-0 text-[13px] text-fg-faint">
-        Field not found.
-      </p>
-    );
+    return <p className="m-0 text-[13px] text-fg-faint">Field not found.</p>;
   }
 
   // TLV editor.
@@ -154,11 +145,7 @@ export default function DetailPanel({
       <span key="size">
         <span className="font-mono tabular-nums">{sizeStr}</span>
         {field.variable ? (
-          <em
-            className="not-italic ml-1 text-fg-muted"
-          >
-            (variable)
-          </em>
+          <em className="not-italic ml-1 text-fg-muted">(variable)</em>
         ) : null}
       </span>,
     ],
@@ -187,9 +174,7 @@ export default function DetailPanel({
             </span>
             )
             {drivenByTlv ? (
-              <em
-                className="not-italic ml-2 text-[11px] text-fg-muted"
-              >
+              <em className="not-italic ml-2 text-[11px] text-fg-muted">
                 — synced from TLV editor
               </em>
             ) : null}
@@ -216,21 +201,13 @@ export default function DetailPanel({
 
   return (
     <div>
-      <h3
-        className="m-0 mb-2.5 text-[15px] text-fg"
-      >
-        {field.name}
-      </h3>
+      <h3 className="m-0 mb-2.5 text-[15px] text-fg">{field.name}</h3>
       <DefList rows={rows} />
     </div>
   );
 }
 
-function DefList({
-  rows,
-}: {
-  rows: Array<[string, React.ReactNode] | null>;
-}) {
+function DefList({ rows }: { rows: Array<[string, React.ReactNode] | null> }) {
   const filtered = rows.filter(
     (r): r is [string, React.ReactNode] => r !== null,
   );
@@ -243,14 +220,8 @@ function DefList({
     >
       {filtered.map(([term, value]) => (
         <div key={term} className="contents">
-          <dt
-            className="font-semibold m-0 text-fg-muted"
-          >
-            {term}
-          </dt>
-          <dd className="m-0 text-fg">
-            {value}
-          </dd>
+          <dt className="font-semibold m-0 text-fg-muted">{term}</dt>
+          <dd className="m-0 text-fg">{value}</dd>
         </div>
       ))}
     </dl>

@@ -47,9 +47,7 @@ export default function Legend({ categories }: Props) {
         boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
       }}
     >
-      <h2
-        className="text-[11px] m-0 mb-2 uppercase tracking-wider font-bold text-fg-muted"
-      >
+      <h2 className="text-[11px] m-0 mb-2 uppercase tracking-wider font-bold text-fg-muted">
         Legend
       </h2>
       <ul className="list-none m-0 p-0 grid gap-1">

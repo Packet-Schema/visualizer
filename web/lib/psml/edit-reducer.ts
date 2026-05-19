@@ -29,18 +29,8 @@
 // reverse. Packets are deep-cloned via `structuredClone` on every mutation
 // so callers can hold references to historical entries safely.
 
-import type {
-  Constraint,
-  Container,
-  Field,
-  Packet,
-  PsmlPacket,
-} from "./types";
-import {
-  describeKind,
-  resolveParent,
-  type Path,
-} from "./path-resolver";
+import type { Constraint, Container, Field, Packet, PsmlPacket } from "./types";
+import { describeKind, resolveParent, type Path } from "./path-resolver";
 
 /* ------------------------------------------------------------------ *
  * Public types

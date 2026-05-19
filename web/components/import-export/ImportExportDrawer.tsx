@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fromAad } from "@/lib/formats/aug-ascii";
 import { fromJson, toJson } from "@/lib/formats/json";
@@ -115,7 +109,10 @@ export default function ImportExportDrawer({
       }
       setStatus(null);
     } catch (e) {
-      setStatus({ msg: `Export failed: ${(e as Error).message}`, kind: "error" });
+      setStatus({
+        msg: `Export failed: ${(e as Error).message}`,
+        kind: "error",
+      });
     }
   }, [open, currentMode, format, packet, controllers]);
 
@@ -221,7 +218,10 @@ export default function ImportExportDrawer({
         throw new Error(`Format "${format}" cannot be imported.`);
       }
     } catch (e) {
-      setStatus({ msg: `Import failed: ${(e as Error).message}`, kind: "error" });
+      setStatus({
+        msg: `Import failed: ${(e as Error).message}`,
+        kind: "error",
+      });
     }
   }, [format, text, onImport]);
 
@@ -233,26 +233,35 @@ export default function ImportExportDrawer({
       downloadBlob(filename, mime, text);
       setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
     } catch (e) {
-      setStatus({ msg: `Download failed: ${(e as Error).message}`, kind: "error" });
+      setStatus({
+        msg: `Download failed: ${(e as Error).message}`,
+        kind: "error",
+      });
     }
   }, [format, packet.name, text]);
 
   // Shared file ingestion used by both the file picker and DnD. Reads the
   // file as text, drops it into the textarea, and snaps the format selector
   // to whatever the extension implies.
-  const handleFileSelected = useCallback(async (file: File) => {
-    try {
-      const content = await readFileAsText(file);
-      setText(content);
-      const detected = extensionToFormat(file.name);
-      if (detected && availableFormats.includes(detected)) {
-        setFormat(detected);
+  const handleFileSelected = useCallback(
+    async (file: File) => {
+      try {
+        const content = await readFileAsText(file);
+        setText(content);
+        const detected = extensionToFormat(file.name);
+        if (detected && availableFormats.includes(detected)) {
+          setFormat(detected);
+        }
+        setStatus({ msg: `Loaded ${file.name}.`, kind: "ok" });
+      } catch (e) {
+        setStatus({
+          msg: `Upload failed: ${(e as Error).message}`,
+          kind: "error",
+        });
       }
-      setStatus({ msg: `Loaded ${file.name}.`, kind: "ok" });
-    } catch (e) {
-      setStatus({ msg: `Upload failed: ${(e as Error).message}`, kind: "error" });
-    }
-  }, [availableFormats]);
+    },
+    [availableFormats],
+  );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const handleUploadClick = useCallback(() => {
@@ -435,9 +444,7 @@ function DrawerInner({
   );
   return (
     <>
-      <header
-        className="flex items-center justify-between px-4 py-3 border-b border-border"
-      >
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="text-base font-semibold m-0">
           {currentMode === "import" ? "Import packet" : "Export packet"}
         </h2>
@@ -568,9 +575,7 @@ function DrawerInner({
         </div>
       </div>
 
-      <footer
-        className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border"
-      >
+      <footer className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
         <button
           type="button"
           onClick={onClose}
@@ -621,12 +626,12 @@ function DrawerInner({
 
 function getFocusables(root: HTMLElement | null): HTMLElement[] {
   if (!root) return [];
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => {
-      if (el.hidden) return false;
-      const style = window.getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden") return false;
-      return true;
-    },
-  );
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((el) => {
+    if (el.hidden) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    return true;
+  });
 }

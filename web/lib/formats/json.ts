@@ -56,7 +56,9 @@ export type JsonPsmlPacket = {
 };
 
 /** Convert a PacketEnv (Map) to a plain JSON object. */
-function envToObject(env: PacketEnv | undefined): Record<string, number> | undefined {
+function envToObject(
+  env: PacketEnv | undefined,
+): Record<string, number> | undefined {
   if (!env || env.size === 0) return undefined;
   const out: Record<string, number> = {};
   for (const [k, v] of env) out[k] = v;
@@ -112,7 +114,11 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
   if (typeof r.name !== "string" || r.name.length === 0) {
     throw new Error("PSML JSON missing string `name`");
   }
-  if (typeof r.rowBits !== "number" || !Number.isInteger(r.rowBits) || r.rowBits <= 0) {
+  if (
+    typeof r.rowBits !== "number" ||
+    !Number.isInteger(r.rowBits) ||
+    r.rowBits <= 0
+  ) {
     throw new Error("PSML JSON requires integer `rowBits`");
   }
   if (!Array.isArray(r.body)) {
@@ -123,8 +129,12 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
     rowBits: r.rowBits,
     body: r.body as Packet["body"],
     ...(typeof r.byteOrder === "string" ? { byteOrder: r.byteOrder } : {}),
-    ...(typeof r.description === "string" ? { description: r.description } : {}),
-    ...(Array.isArray(r.constraints) ? { constraints: r.constraints as Packet["constraints"] } : {}),
+    ...(typeof r.description === "string"
+      ? { description: r.description }
+      : {}),
+    ...(Array.isArray(r.constraints)
+      ? { constraints: r.constraints as Packet["constraints"] }
+      : {}),
   };
   const env = objectToEnv(r.env as Record<string, unknown> | undefined);
   return { packet, env };
