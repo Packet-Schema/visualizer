@@ -47,18 +47,29 @@ export default function DetailPanel({
     );
   }
 
-  // Subfield selection: `parentId:subfieldId`.
-  if (selectedFieldId.includes(":")) {
-    const [parentId, subId] = selectedFieldId.split(":");
-    const parent = packet.fields.find((f) => f.id === parentId);
-    const sub = parent?.subfields?.find((s) => s.id === subId);
-    if (!parent || !sub) {
-      return (
-        <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
-          Subfield not found.
-        </p>
-      );
+  // Subfield resolution. Two shapes feed in here:
+  //   * `parentId:subfieldId` — emitted by `HybridDiagram.onSubfieldClick`.
+  //   * bare `subfieldId` — emitted by `onFieldClick` when a group's child is
+  //     rendered as its own top-level cell (the layout adapter flattens
+  //     groups, but `psmlToRenderer` collapses the group into a parent field
+  //     with `subfields[]`). In that case we look the id up across every
+  //     parent's subfields and present the same "subfield of …" UI.
+  const subPair = (() => {
+    if (selectedFieldId.includes(":")) {
+      const [parentId, subId] = selectedFieldId.split(":");
+      const parent = packet.fields.find((f) => f.id === parentId);
+      const sub = parent?.subfields?.find((s) => s.id === subId);
+      return parent && sub ? { parent, sub } : null;
     }
+    for (const parent of packet.fields) {
+      const sub = parent.subfields?.find((s) => s.id === selectedFieldId);
+      if (sub) return { parent, sub };
+    }
+    return null;
+  })();
+
+  if (subPair) {
+    const { parent, sub } = subPair;
     return (
       <div>
         <h3
@@ -83,6 +94,14 @@ export default function DetailPanel({
           ]}
         />
       </div>
+    );
+  }
+
+  if (selectedFieldId.includes(":")) {
+    return (
+      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+        Subfield not found.
+      </p>
     );
   }
 
