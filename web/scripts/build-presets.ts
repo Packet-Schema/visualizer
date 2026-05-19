@@ -13,7 +13,7 @@
 // and re-run `npm run build:presets`. No TS edits required.
 
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -49,7 +49,7 @@ function listYamlFiles(): string[] {
 }
 
 function keyFromFilename(path: string): string {
-  const base = path.split("/").pop() ?? path;
+  const base = basename(path);
   return base.replace(/\.psml\.yaml$/, "");
 }
 
