@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   buildDiagramSvg,
@@ -74,7 +81,9 @@ function loadSettings(): DiagramExportSettings {
       return DEFAULT_SETTINGS;
     }
     return {
-      format: isSaveFormat(parsed.format) ? parsed.format : DEFAULT_SETTINGS.format,
+      format: isSaveFormat(parsed.format)
+        ? parsed.format
+        : DEFAULT_SETTINGS.format,
       exportThemeMode: isExportThemeMode(parsed.exportThemeMode)
         ? parsed.exportThemeMode
         : DEFAULT_SETTINGS.exportThemeMode,
@@ -103,12 +112,7 @@ function saveSettings(settings: DiagramExportSettings): void {
   }
 }
 
-export default function ExportDialog({
-  packet,
-  layout,
-  open,
-  onClose,
-}: Props) {
+export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const [settings, setSettings] = useState<DiagramExportSettings>(loadSettings);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +134,9 @@ export default function ExportDialog({
     setBusy(false);
     setError(null);
     previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     firstControlRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -366,13 +372,19 @@ export default function ExportDialog({
                     className="pv-slider"
                   />
                 </div>
-                <output className="min-w-10 text-right">{settings.pngScale}x</output>
+                <output className="min-w-10 text-right">
+                  {settings.pngScale}x
+                </output>
               </div>
             </label>
           </div>
         ) : null}
         {error ? (
-          <p className="mb-0 mt-3 text-xs" role="alert" style={{ color: "#b42318" }}>
+          <p
+            className="mb-0 mt-3 text-xs"
+            role="alert"
+            style={{ color: "#b42318" }}
+          >
             {error}
           </p>
         ) : null}
@@ -392,7 +404,11 @@ export default function ExportDialog({
             className="h-9 rounded-md border px-3 text-xs disabled:opacity-60"
             style={{ borderColor: "var(--border)" }}
           >
-            {settings.format === "svg" ? "Save SVG" : busy ? "Saving…" : "Save PNG"}
+            {settings.format === "svg"
+              ? "Save SVG"
+              : busy
+                ? "Saving…"
+                : "Save PNG"}
           </button>
         </div>
       </div>
