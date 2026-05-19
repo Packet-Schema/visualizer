@@ -145,4 +145,4 @@ body:
                 type: { kind: bytes, n: { kind: ref, field: sctpChunkValueBytes } }
                 category: variable
                 doc: Opaque payload of an SCTP chunk whose type is not catalogued in this preset. Common unmodelled types include 2 (INIT-ACK), 5 (HEARTBEAT-ACK), 8 (SHUTDOWN-ACK), 9 (ERROR), 10 (COOKIE-ECHO), 11 (COOKIE-ACK), 12 (ECNE), 13 (CWR), 14 (SHUTDOWN-COMPLETE).
-    count: { kind: ref, field: sctpChunkCount }
+    count: { kind: ref, field: chunks_count }

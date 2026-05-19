@@ -233,4 +233,4 @@ body:
                 type: { kind: bytes, n: { kind: ref, field: tlvLength } }
                 category: variable
                 doc: Opaque payload of an IS-IS TLV whose type is not catalogued in this preset. Common unmodelled types include 128 (IP Internal Reachability), 130 (IP External Reachability), 135 (Extended IP Reachability, RFC 5305), 232 (IPv6 Interface Address, RFC 5308), 236 (IPv6 Reachability), and 242 (IS-IS Capability, RFC 4971).
-    count: { kind: ref, field: isisLspTlvCount }
+    count: { kind: ref, field: tlvs_count }

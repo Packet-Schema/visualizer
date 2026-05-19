@@ -177,7 +177,7 @@ body:
                       type: { kind: bytes, n: { kind: ref, field: coapOptValueBytes } }
                       category: variable
                       doc: Option Value, `optLengthRaw` bytes long. Format is option-specific (empty, uint, opaque, or UTF-8 string per RFC 7252 §3.2). [RFC 7252 §3.1]
-    count: { kind: ref, field: coapOptionCount }
+    count: { kind: ref, field: options_count }
   - kind: optional
     when: { kind: ref, field: coapHasPayload }
     field:

@@ -227,4 +227,4 @@ body:
                 type: { kind: bytes, n: { kind: ref, field: optionLength } }
                 category: variable
                 doc: Opaque payload of a DHCP option whose code is not catalogued in this preset. Common unmodelled codes include 2 (Time Offset), 15 (Domain Name), 28 (Broadcast Address), 33 (Static Route), 42 (NTP Servers), 50 (Requested IP Address), 52 (Option Overload), 58 (Renewal T1), 59 (Rebinding T2), 60 (Vendor Class Identifier), 61 (Client Identifier), 82 (Relay Agent Information). [RFC 2132 / IANA DHCP and BOOTP Parameters]
-    count: { kind: ref, field: dhcpOptionCount }
+    count: { kind: ref, field: options_count }
