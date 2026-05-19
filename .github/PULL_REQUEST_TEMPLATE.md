@@ -26,4 +26,3 @@
 - [ ] `npm run build` 通る
 - [ ] `lib/formats/` の coverage 100% を維持 (該当 PR の場合)
 - [ ] 関連 docs を更新した (該当する場合)
-- [ ] スクリーンショット / GIF 添付 (UI 変更の場合)

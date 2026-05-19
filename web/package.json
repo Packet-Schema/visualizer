@@ -18,10 +18,13 @@
     "test:format": "vitest run tests/formats"
   },
   "dependencies": {
+    "copy-to-clipboard": "^4.0.2",
+    "lz-string": "^1.5.0",
     "motion": "^12.38.0",
     "next": "^15.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "safe-stable-stringify": "^2.5.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

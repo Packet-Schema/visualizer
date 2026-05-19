@@ -88,6 +88,7 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
       <div className="flex items-center gap-2.5">
         <span className="pv-slider-wrap flex-1">
           <input
+            suppressHydrationWarning
             ref={inputRef}
             id={sliderId}
             type="range"
@@ -112,6 +113,7 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
           />
         </span>
         <input
+          suppressHydrationWarning
           id={numberId}
           type="number"
           min={min}
