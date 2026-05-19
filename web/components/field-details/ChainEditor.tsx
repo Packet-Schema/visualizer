@@ -1,5 +1,3 @@
-"use client";
-
 // IPv6 extension-header chain editor.
 //
 // Ported from `renderChainDetail` in app.js. Lists each chain block and

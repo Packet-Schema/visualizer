@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback } from "react";
 
 import type { BinOp, Expr } from "@/lib/psml/types";
