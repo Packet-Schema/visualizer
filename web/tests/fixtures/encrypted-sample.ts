@@ -20,7 +20,8 @@ import type { Encrypted, Packet } from "../../lib/psml/types";
 export const ENCRYPTED_SAMPLE_PLAINTEXT_BITS = 16 + 64; // msg_id + body
 export const ENCRYPTED_SAMPLE_WIRE_BITS = 64;
 export const ENCRYPTED_SAMPLE_WIRE_TOTAL = 8 + 8 + ENCRYPTED_SAMPLE_WIRE_BITS;
-export const ENCRYPTED_SAMPLE_SEMANTIC_TOTAL = 8 + 8 + ENCRYPTED_SAMPLE_PLAINTEXT_BITS;
+export const ENCRYPTED_SAMPLE_SEMANTIC_TOTAL =
+  8 + 8 + ENCRYPTED_SAMPLE_PLAINTEXT_BITS;
 
 export const ENCRYPTED_SAMPLE_BODY: Encrypted = {
   kind: "encrypted",

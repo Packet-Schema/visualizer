@@ -104,15 +104,24 @@ describe("evalExpr — error paths", () => {
   });
 
   it("throws on division by zero", () => {
-    expect(() => evalExpr(op("/", lit(1), lit(0)), env)).toThrow(/division by zero/);
+    expect(() => evalExpr(op("/", lit(1), lit(0)), env)).toThrow(
+      /division by zero/,
+    );
   });
 
   it("throws on modulo by zero", () => {
-    expect(() => evalExpr(op("%", lit(1), lit(0)), env)).toThrow(/modulo by zero/);
+    expect(() => evalExpr(op("%", lit(1), lit(0)), env)).toThrow(
+      /modulo by zero/,
+    );
   });
 
   it("throws on an unknown operator", () => {
-    const bogus = { kind: "op", op: "??", a: lit(1), b: lit(1) } as unknown as Expr;
+    const bogus = {
+      kind: "op",
+      op: "??",
+      a: lit(1),
+      b: lit(1),
+    } as unknown as Expr;
     expect(() => evalExpr(bogus, env)).toThrow(/unknown operator/);
   });
 
@@ -136,11 +145,19 @@ describe("exprRefs", () => {
   });
 
   it("collects refs from conditionals", () => {
-    expect(exprRefs(cond(ref("t"), ref("y"), ref("n")))).toEqual(["t", "y", "n"]);
+    expect(exprRefs(cond(ref("t"), ref("y"), ref("n")))).toEqual([
+      "t",
+      "y",
+      "n",
+    ]);
   });
 
   it("collects refs from deep nesting", () => {
-    const e = op("*", cond(ref("x"), ref("y"), op("+", ref("z"), lit(1))), lit(2));
+    const e = op(
+      "*",
+      cond(ref("x"), ref("y"), op("+", ref("z"), lit(1))),
+      lit(2),
+    );
     expect(exprRefs(e)).toEqual(["x", "y", "z"]);
   });
 });

@@ -1,12 +1,65 @@
 # AGENTS.md
 
-## Setup commands
+## Review guidelines
 
-- Install deps: `npm install`
-- Start dev server: `npm run dev`
-- Run tests: `npm run test`
+- レビューは必ず日本語で行う。
 
-## Code style
+## 目的
 
-- TypeScript strict mode
-- Double quotes
+- このリポジトリでは、主なアプリケーションコードは `web` 配下にある。
+- ユーザーへの回答は日本語で行う。
+
+## 文字コード
+
+- 文字コードは `utf-8` を使う。
+- 改行コードは `\n` を使う。
+
+## Node.js
+
+- Node.js 20 系を想定する。
+- `web` 配下の依存管理とスクリプト実行は必ず `npm` を使う。
+- 新規に Node.js 関連のコマンドや手順を書く場合も `npm` を前提にする。
+
+## コードスタイル
+
+- TypeScript では strict mode を前提にし、型安全性を下げる変更は避ける。
+- 文字列クォートはダブルクォートを使い、既存の整形設定がある場合はそれに従う。
+
+## 作業ディレクトリ
+
+- フロントエンド関連のコマンドは `web` ディレクトリで実行する。
+- ルートでコマンドを実行する前に、対象が `web` 直下かどうかを確認する。
+
+## Git 運用
+
+- Git 操作が必要な場合は、まず既存差分を確認し、ユーザーや他作業者の変更を壊さないように進める。
+- ブランチ作成、コミット、PR 準備の具体的な進め方は `git-workflow` を参照する。
+
+## 利用可能なスキル
+
+- 依存関係のインストール・開発サーバー・フォーマット・Lint・テスト・型チェックの具体的な実行手順は、それぞれ対応するスキルの `SKILL.md` を参照する。
+- Git 操作、ブランチ作成、コミット、PR 準備の具体的な進め方は `git-workflow` を参照する。
+- 変更内容に応じた検証方針や実行順の判断は `verify-change` を参照する。
+
+- `git-workflow`: Git 操作、ブランチ作成、コミット、PR 準備を行うときに使う。
+- `run-build`: 本番ビルドを実行するときに使う。
+- `run-build-presets`: preset 生成を実行するときに使う。
+- `run-install`: 依存関係をインストールするときに使う。
+- `run-dev`: 開発サーバーを起動するときに使う。
+- `run-format`: Prettier を実行するときに使う。
+- `run-lint`: ESLint を実行するときに使う。
+- `run-test`: Vitest を実行するときに使う。
+- `run-typecheck`: TypeScript の型チェックを実行するときに使う。
+- `verify-change`: 変更内容に応じた検証方針を決めるときに使う。
+
+## 検証の進め方
+
+- 整形は `run-format`、Lint は `run-lint`、テストは `run-test`、型チェックは `run-typecheck`、preset 生成は `run-build-presets` を使う。
+- 変更内容に応じた検証順序や領域別の注意点は `verify-change` を参照する。
+- 変更が軽微でも、少なくとも何を検証して何を未実施にしたかは明示する。
+
+## 参照ドキュメント
+
+- PSML の概要や詳細は `docs/psml-cheatsheet.md` と `docs/psml-0.4.md` を参照する。
+- リポジトリ構成や実装場所の把握には `docs/architecture.md` を参照する。
+- テストの書き方や方針は `docs/testing.md` を参照する。

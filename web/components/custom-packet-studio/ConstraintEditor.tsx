@@ -153,9 +153,7 @@ export default function ConstraintEditor({
             <button
               type="button"
               aria-label={`Delete constraint ${i + 1}`}
-              onClick={() =>
-                dispatch({ type: "delete-constraint", index: i })
-              }
+              onClick={() => dispatch({ type: "delete-constraint", index: i })}
               className="text-sm px-2 py-1 rounded border self-center"
               style={inputStyle()}
             >
