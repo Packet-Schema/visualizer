@@ -52,8 +52,7 @@ export function parseShareParams(
   input: string | URLSearchParams,
   builtInKeys: Iterable<string>,
 ): ParsedShareParams {
-  const params =
-    typeof input === "string" ? new URLSearchParams(input) : input;
+  const params = typeof input === "string" ? new URLSearchParams(input) : input;
   const controllers = parseControllers(params);
   const psml = params.get("psml");
 
