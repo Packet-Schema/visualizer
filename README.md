@@ -87,7 +87,3 @@ npm run test:coverage
 
 CI runs linting, build verification, and coverage checks on pushes and pull
 requests.
-
-## License
-
-MIT.
