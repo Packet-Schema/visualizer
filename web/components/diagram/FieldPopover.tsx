@@ -153,7 +153,9 @@ export default function FieldPopover({
       <span
         className={`field-popover-arrow ${placement === "above" ? "arrow-down" : "arrow-up"}`}
         aria-hidden="true"
-        style={{ left: Math.max(12, Math.min(POPOVER_WIDTH - 12, centerX - left)) }}
+        style={{
+          left: Math.max(12, Math.min(POPOVER_WIDTH - 12, centerX - left)),
+        }}
       />
       {resolved.kind === "field" ? (
         <FieldBody field={resolved.field} bits={resolved.bits} />

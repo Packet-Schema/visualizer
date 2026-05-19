@@ -13,7 +13,7 @@
 // and re-run `npm run build:presets`. No TS edits required.
 
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -49,7 +49,7 @@ function listYamlFiles(): string[] {
 }
 
 function keyFromFilename(path: string): string {
-  const base = path.split("/").pop() ?? path;
+  const base = basename(path);
   return base.replace(/\.psml\.yaml$/, "");
 }
 
@@ -81,15 +81,23 @@ function emit(presets: Record<string, PresetDoc>): string {
     'import type { PsmlPacket } from "./types";\n\n' +
     "export const PRESETS: Record<string, PsmlPacket> = {\n";
   const body = Object.entries(presets)
-    .map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v, null, 2).replace(/\n/g, "\n  ")} as PsmlPacket,`)
+    .map(
+      ([k, v]) =>
+        `  ${JSON.stringify(k)}: ${JSON.stringify(v, null, 2).replace(/\n/g, "\n  ")} as PsmlPacket,`,
+    )
     .join("\n");
-  const footer = "\n};\n\nexport const PRESET_KEYS: string[] = Object.keys(PRESETS);\n";
+  const footer =
+    "\n};\n\nexport const PRESET_KEYS: string[] = Object.keys(PRESETS);\n";
   return banner + header + body + footer;
 }
 
 function formatAjvErrors(file: string, errors: unknown[]): string {
   const lines = errors.map((e) => {
-    const err = e as { instancePath?: string; message?: string; params?: unknown };
+    const err = e as {
+      instancePath?: string;
+      message?: string;
+      params?: unknown;
+    };
     const path = err.instancePath || "(root)";
     return `  ${path}: ${err.message ?? "validation error"} ${JSON.stringify(err.params ?? {})}`;
   });
@@ -100,8 +108,11 @@ function main(): void {
   const schema = loadSchema();
   // ajv-formats publishes both default and named exports; tolerate both via
   // a runtime check so the script works under tsx (ESM) and node (CJS).
-  const addFormatsFn = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
-  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const addFormatsFn =
+    (addFormats as unknown as { default?: typeof addFormats }).default ??
+    addFormats;
+  const AjvCtor =
+    (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
   const ajv = new AjvCtor({ allErrors: true, strict: false });
   addFormatsFn(ajv);
   const validate = ajv.compile(schema as object);
@@ -121,12 +132,18 @@ function main(): void {
     try {
       raw = parseYaml(text) as PresetDoc;
     } catch (err) {
-      console.error(`YAML parse error in ${relative(REPO_ROOT, file)}: ${(err as Error).message}`);
+      console.error(
+        `YAML parse error in ${relative(REPO_ROOT, file)}: ${(err as Error).message}`,
+      );
       failed = true;
       continue;
     }
     const stripped = stripValidationFields(raw);
-    const forValidation: PresetDoc = { format: FORMAT_TAG, version: FORMAT_VERSION, ...stripped };
+    const forValidation: PresetDoc = {
+      format: FORMAT_TAG,
+      version: FORMAT_VERSION,
+      ...stripped,
+    };
     if (!validate(forValidation)) {
       console.error(formatAjvErrors(file, validate.errors ?? []));
       failed = true;
@@ -141,7 +158,9 @@ function main(): void {
 
   mkdirSync(dirname(OUT_PATH), { recursive: true });
   writeFileSync(OUT_PATH, emit(presets), "utf8");
-  console.log(`Wrote ${relative(REPO_ROOT, OUT_PATH)} (${files.length} presets).`);
+  console.log(
+    `Wrote ${relative(REPO_ROOT, OUT_PATH)} (${files.length} presets).`,
+  );
 }
 
 main();

@@ -9,9 +9,12 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import copy from "copy-to-clipboard";
+import stableStringify from "safe-stable-stringify";
 
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
+import { initialEnv } from "@/lib/psml/normalize";
 import {
   initialState,
   packetCategories,
@@ -20,10 +23,7 @@ import {
 } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
-import {
-  editReducer,
-  makeInitialState,
-} from "@/lib/psml/edit-reducer";
+import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
 import {
   loadCustomPresets,
   saveCustomPreset,
@@ -36,6 +36,12 @@ import {
   readFileAsText,
   uniqueKey,
 } from "@/lib/preset-file-io";
+import {
+  buildShareUrl,
+  parseShareParams,
+  shareUrlByteLength,
+  SHARE_URL_WARN_BYTES,
+} from "@/lib/share-url";
 import type {
   ChainInstance,
   ControllerState,
@@ -44,7 +50,7 @@ import type {
   PacketRegistry,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
+import type { Expr, PsmlPacket, ViewMode } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
@@ -67,10 +73,103 @@ import StudioPanel from "./StudioPanel";
 import { cssEscape, findRowNeighbor } from "./navigation";
 
 const DEFAULT_PACKET_KEY = "ipv4";
+const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
+const CUSTOM_PRESET_NAME_MAX = 80;
+const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 
 // Width threshold at which the floating field popover is enabled. Below this
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
+
+// PSML packet 内で参照されている ref フィールド名を全て集める。
+// PacketViewer の env 構築で controllers に無い ref を 0 で fallback seed
+// するために使う。 PSML 0.4 の全 Container kind (group / switch / repeat /
+// encrypted / optional) を再帰的に walk する。
+//
+// 動機: 既存設計では preset ごとに PacketViewer.tsx の `if (packetKey ===
+// "ipv4")` のような手動 seed を必要としていた (ipv4OptionsCount /
+// tcpOptionsCount 等)。 issue #91 で 8 個の preset を追加した時にこの
+// wiring を全部 PacketViewer に書くと脆くなるので、 packet 側の式を walk
+// して env を自動で補う形に汎化する。
+function collectPsmlRefs(packet: PsmlPacket): Set<string> {
+  const out = new Set<string>();
+  const visit = (e: Expr): void => {
+    switch (e.kind) {
+      case "lit":
+        return;
+      case "ref":
+        out.add(e.field);
+        return;
+      case "op":
+        visit(e.a);
+        visit(e.b);
+        return;
+      case "cond":
+        visit(e.test);
+        visit(e.t);
+        visit(e.f);
+        return;
+      case "peek":
+        // peek.bits は定数 (number) で ref を含まない一方、
+        // peek.offset は Expr なので ref を含み得る (例: offset を
+        // 同 packet の長さ field で動かす lookahead パターン)。
+        // ここを walk しないと該当パケットが MissingRefError で落ちる
+        // (Codex P2 指摘)。
+        if (e.offset) visit(e.offset);
+        return;
+    }
+  };
+  type AnyNode = {
+    kind?: string;
+    type?: { kind: string; n?: Expr };
+    children?: AnyNode[];
+    element?: { fields: AnyNode[] };
+    cases?: Record<string, { fields: AnyNode[] }>;
+    default?: { fields: AnyNode[] };
+    on?: Expr;
+    count?: Expr | string | { until: Expr };
+    plaintext?: { fields: AnyNode[] };
+    wireBits?: Expr;
+    when?: Expr;
+    field?: AnyNode;
+  };
+  const walk = (containers: AnyNode[]): void => {
+    for (const c of containers) {
+      if (!c.kind || c.kind === "field") {
+        if (c.type?.kind === "bytes" && c.type.n) visit(c.type.n);
+        continue;
+      }
+      if (c.kind === "group" && c.children) walk(c.children);
+      if (c.kind === "switch") {
+        if (c.on) visit(c.on);
+        for (const v of Object.values(c.cases ?? {})) walk(v.fields);
+        if (c.default) walk(c.default.fields);
+      }
+      if (c.kind === "repeat") {
+        if (c.count && typeof c.count === "object" && "kind" in c.count) {
+          visit(c.count as Expr);
+        } else if (
+          c.count &&
+          typeof c.count === "object" &&
+          "until" in c.count
+        ) {
+          visit(c.count.until);
+        }
+        if (c.element) walk(c.element.fields);
+      }
+      if (c.kind === "encrypted") {
+        if (c.wireBits) visit(c.wireBits);
+        if (c.plaintext) walk(c.plaintext.fields);
+      }
+      if (c.kind === "optional") {
+        if (c.when) visit(c.when);
+        if (c.field) walk([c.field]);
+      }
+    }
+  };
+  walk(packet.body as AnyNode[]);
+  return out;
+}
 
 export default function PacketViewer() {
   const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
@@ -149,15 +248,58 @@ export default function PacketViewer() {
   // resolver with encrypted blocks; for now the toggle threads state through
   // and HybridDiagram decorates any cell that already carries the flags.
   const [viewMode, setViewMode] = useState<ViewMode>("wire");
+  const [urlHydrated, setUrlHydrated] = useState(false);
+  const [shareStatus, setShareStatus] = useState<{
+    msg: string;
+    kind: "ok" | "error";
+  } | null>(null);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLElement | null>(null);
 
-  // Pull user-saved presets from localStorage on mount. Refreshed after
-  // save/delete so the picker stays in sync.
+  // Pull user-saved presets from localStorage, then apply shared URL state.
+  // URL hydration is one-shot; later state changes update the address bar.
   useEffect(() => {
-    setCustomPresets(loadCustomPresets());
-  }, []);
+    const stored = loadCustomPresets();
+    if (typeof window === "undefined") {
+      setCustomPresets(stored);
+      setUrlHydrated(true);
+      return;
+    }
+
+    const parsed = parseShareParams(
+      window.location.search,
+      BUILT_IN_PRESET_KEYS,
+    );
+    if (parsed.kind === "psml") {
+      const { key, presets } = persistSharedCustomPreset(parsed.packet, stored);
+      setCustomPresets(presets);
+      setPacketKey(key);
+      setControllers({
+        ...initialState(psmlToRenderer(parsed.packet)),
+        ...parsed.controllers,
+      });
+    } else if (parsed.kind === "preset") {
+      setCustomPresets(stored);
+      setPacketKey(parsed.presetKey);
+      setControllers({
+        ...initialState(renderedPresets[parsed.presetKey]),
+        ...parsed.controllers,
+      });
+    } else {
+      setCustomPresets(stored);
+      if (Object.keys(parsed.controllers).length > 0) {
+        setControllers({
+          ...initialState(renderedPresets[DEFAULT_PACKET_KEY]),
+          ...parsed.controllers,
+        });
+      }
+      if (parsed.error) {
+        console.warn(`Packet View ignored share URL: ${parsed.error}`);
+      }
+    }
+    setUrlHydrated(true);
+  }, [renderedPresets]);
 
   // The active PSML packet for the studio reducer. Prefers built-in PSML,
   // then a custom preset, then a lifted version of the imported renderer
@@ -338,12 +480,12 @@ export default function PacketViewer() {
   // imports so the picker can group them cleanly.
   const handleSaveAsPreset = useCallback(
     (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const key = `custom:${trimmed}`;
+      if (!name.trim()) return;
+      const normalizedName = normalizeCustomPresetName(name);
+      const key = `custom:${normalizedName}`;
       const packetToSave: PsmlPacket = {
         ...studioState.packet,
-        name: studioState.packet.name || trimmed,
+        name: normalizedName,
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
@@ -408,7 +550,9 @@ export default function PacketViewer() {
         }
         setCustomPresets(loadCustomPresets());
         if (typeof window !== "undefined") {
-          window.alert(`Imported ${imported} preset${imported === 1 ? "" : "s"}.`);
+          window.alert(
+            `Imported ${imported} preset${imported === 1 ? "" : "s"}.`,
+          );
         }
       } catch (err) {
         if (typeof window !== "undefined") {
@@ -434,31 +578,100 @@ export default function PacketViewer() {
     setEditMode(false);
   }, [packetKey, customPresets]);
 
+  const buildCurrentShareUrl = useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const builtInPsml = PRESETS[packetKey];
+    const sharePacket = editMode
+      ? studioState.packet
+      : (builtInPsml ?? customPresets[packetKey] ?? rendererToPsml(packet));
+    const defaultControllers = builtInPsml
+      ? initialState(psmlToRenderer(builtInPsml))
+      : undefined;
+
+    return buildShareUrl({
+      baseUrl: window.location.href,
+      packetKey,
+      packet: sharePacket,
+      controllers,
+      builtInKeys: BUILT_IN_PRESET_KEYS,
+      defaultPacketKey: DEFAULT_PACKET_KEY,
+      defaultControllers,
+      forcePsml: editMode || !builtInPsml,
+    });
+  }, [
+    controllers,
+    customPresets,
+    editMode,
+    packet,
+    packetKey,
+    studioState.packet,
+  ]);
+
+  useEffect(() => {
+    if (!urlHydrated || typeof window === "undefined") return;
+    try {
+      const nextUrl = buildCurrentShareUrl();
+      if (nextUrl && nextUrl !== window.location.href) {
+        window.history.replaceState(null, "", nextUrl);
+      }
+    } catch (err) {
+      console.warn(
+        `Packet View could not update the share URL: ${(err as Error).message}`,
+      );
+    }
+  }, [buildCurrentShareUrl, urlHydrated]);
+
+  useEffect(() => {
+    if (!shareStatus) return;
+    const id = window.setTimeout(() => setShareStatus(null), 2400);
+    return () => window.clearTimeout(id);
+  }, [shareStatus]);
+
+  const handleShare = useCallback(() => {
+    try {
+      const url = buildCurrentShareUrl();
+      const bytes = shareUrlByteLength(url);
+      if (bytes > SHARE_URL_WARN_BYTES) {
+        console.warn(
+          `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
+        );
+      }
+      const ok = copy(url);
+      if (!ok) throw new Error("Clipboard copy was not available.");
+      if (typeof window !== "undefined" && window.location.href !== url) {
+        window.history.replaceState(null, "", url);
+      }
+      setShareStatus({ msg: "Share URL copied.", kind: "ok" });
+    } catch (err) {
+      setShareStatus({
+        msg: `Share failed: ${(err as Error).message}`,
+        kind: "error",
+      });
+    }
+  }, [buildCurrentShareUrl]);
+
   const tourSteps: TourStep[] = useMemo(
     () => [
       {
         title: "Welcome to Packet View",
-        body:
-          "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
+        body: "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
       },
       {
         title: "The bit ruler",
-        body:
-          "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
-        target: () => diagramRef.current?.querySelector(".diagram-ruler") ?? null,
+        body: "Each row is 32 bits wide. The numbers across the top mark bit positions — useful for matching up with RFC diagrams.",
+        target: () =>
+          diagramRef.current?.querySelector(".diagram-ruler") ?? null,
         placement: "bottom",
       },
       {
         title: "Click any field",
-        body:
-          "Cells are interactive. Click one to see its size, category, and full description in the field detail panel.",
+        body: "Cells are interactive. Click one to see its size, category, and full description in the field detail panel.",
         target: () => diagramRef.current?.querySelector(".field-cell") ?? null,
         placement: "bottom",
       },
       {
         title: "Drag to grow",
-        body:
-          "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
+        body: "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
         target: () =>
           controlsRef.current?.querySelector('input[type="range"]') ?? null,
         placement: "top",
@@ -481,26 +694,41 @@ export default function PacketViewer() {
     // {opts}_count directly via syncTlvControllers; this fallback covers the
     // IHL / Data Offset slider path where the user grows the header without
     // touching the TLV editor.
-    if (packetKey === "ipv4") {
-      const ihl = env.get("ihl") ?? 5;
-      env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
+    // We compute these generically based on the environment so that custom
+    // presets (with different packetKeys) can still resolve their layout refs.
+    const ihl = env.get("ihl") ?? 5;
+    env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
+    const off = env.get("dataOffset") ?? 5;
+    env.set("tcpOptionsCount", Math.max(0, off - 5));
+    // 描画対象の PSML packet を一旦変数で持つ — editMode / built-in /
+    // custom / imported のいずれも resolveLayout には PsmlPacket を渡す
+    // ので、 ref fallback seed を一箇所に集約できる。
+    const targetPsml: PsmlPacket = editMode
+      ? studioState.packet
+      : (PRESETS[packetKey] ??
+        customPresets[packetKey] ??
+        rendererToPsml(packet));
+    // Default value seed: packet が宣言する Field.defaultValue を env に
+    // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
+    // 入力を上書きしない)。 これを fallback seed より先にやらないと、
+    // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
+    // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
+    // 既存 preset の variable-length field が zero-length に描かれる
+    // regression を起こす (Codex P1 指摘)。
+    const packetDefaults = initialEnv(targetPsml);
+    for (const [k, v] of packetDefaults) {
+      if (!env.has(k)) env.set(k, v);
     }
-    if (packetKey === "tcp") {
-      const off = env.get("dataOffset") ?? 5;
-      env.set("tcpOptionsCount", Math.max(0, off - 5));
+    // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
+    // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
+    // PacketViewer 側が手動で seed しない限り `resolveLayout` が
+    // MissingRefError で throw → React render が落ちて "Application error"
+    // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
+    // と命名が一致しない ref をまとめて吸収する。
+    for (const r of collectPsmlRefs(targetPsml)) {
+      if (!env.has(r)) env.set(r, 0);
     }
-    // In edit mode the studio's packet is the source of truth so the diagram
-    // reflects in-progress edits live.
-    if (editMode) {
-      return resolveLayout(studioState.packet, { env, viewMode });
-    }
-    const psml = PRESETS[packetKey] ?? customPresets[packetKey] ?? null;
-    if (psml) {
-      return resolveLayout(psml, { env, viewMode });
-    }
-    // Imported packet — lift renderer → PSML, then resolve.
-    const lifted = rendererToPsml(packet);
-    return resolveLayout(lifted, { env, viewMode });
+    return resolveLayout(targetPsml, { env, viewMode });
   }, [
     packet,
     packetKey,
@@ -605,11 +833,13 @@ export default function PacketViewer() {
           extraControls={
             <ExportButton packet={exportPacket} layout={layout} />
           }
+          shareStatus={shareStatus}
           onPacketChange={handlePacketChange}
           onExportCustomPresets={handleExportCustomPresets}
           onImportCustomPresets={handleImportCustomPresetsClick}
           onOpenImport={() => setDrawerMode("import")}
           onOpenExport={() => setDrawerMode("export")}
+          onShare={handleShare}
           onToggleHexStrip={() => {
             hexStripUserSetRef.current = true;
             setHexStripVisible((v) => !v);
@@ -719,7 +949,9 @@ export default function PacketViewer() {
             >
               Controls
             </h2>
-            <div ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}>
+            <div
+              ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}
+            >
               <ControlsPanel
                 packet={packet}
                 controllers={controllers}
@@ -773,10 +1005,7 @@ export default function PacketViewer() {
       />
 
       {tourOpen ? (
-        <OnboardingTour
-          steps={tourSteps}
-          onClose={() => setTourOpen(false)}
-        />
+        <OnboardingTour steps={tourSteps} onClose={() => setTourOpen(false)} />
       ) : null}
 
       {showSaveDialog ? (
@@ -788,4 +1017,54 @@ export default function PacketViewer() {
       ) : null}
     </>
   );
+}
+
+function persistSharedCustomPreset(
+  packet: PsmlPacket,
+  stored: Record<string, PsmlPacket>,
+): { key: string; presets: Record<string, PsmlPacket> } {
+  const normalizedPacket: PsmlPacket = {
+    ...packet,
+    name: normalizeCustomPresetName(packet.name),
+  };
+  const desired = `custom:${normalizedPacket.name}`;
+
+  for (const [key, candidate] of Object.entries(stored)) {
+    const normalizedStoredPacket: PsmlPacket = {
+      ...candidate,
+      name: normalizeCustomPresetName(candidate.name),
+    };
+    if (samePsmlPacket(normalizedStoredPacket, normalizedPacket)) {
+      if (!samePsmlPacket(candidate, normalizedStoredPacket)) {
+        saveCustomPreset(key, normalizedStoredPacket);
+        const presets = loadCustomPresets();
+        return {
+          key,
+          presets: presets[key]
+            ? presets
+            : { ...stored, [key]: normalizedStoredPacket },
+        };
+      }
+      return { key, presets: stored };
+    }
+  }
+
+  const existing = new Set(Object.keys(stored));
+  const key = stored[desired] ? uniqueKey(desired, existing) : desired;
+  saveCustomPreset(key, normalizedPacket);
+  const presets = loadCustomPresets();
+  return {
+    key,
+    presets: presets[key] ? presets : { ...stored, [key]: normalizedPacket },
+  };
+}
+
+function normalizeCustomPresetName(name: string): string {
+  const normalized = name.trim().replace(/\s+/g, " ");
+  if (normalized.length === 0) return SHARED_CUSTOM_PRESET_FALLBACK_NAME;
+  return normalized.slice(0, CUSTOM_PRESET_NAME_MAX).trimEnd();
+}
+
+function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {
+  return stableStringify(a) === stableStringify(b);
 }

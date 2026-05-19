@@ -175,7 +175,11 @@ function RepeatEditor({
         className="text-sm px-2 py-1 rounded border w-60"
         style={inputStyle()}
       />
-      <div role="tablist" aria-label="Repeat count source" className="flex gap-1">
+      <div
+        role="tablist"
+        aria-label="Repeat count source"
+        className="flex gap-1"
+      >
         {(["literal", "ref", "eos", "until"] as RepeatCountTab[]).map((t) => (
           <button
             key={t}
@@ -199,7 +203,9 @@ function RepeatEditor({
             value={container.count.value}
             aria-label="Repeat literal count"
             onChange={(e) =>
-              patch({ count: { kind: "lit", value: Number(e.target.value) || 0 } })
+              patch({
+                count: { kind: "lit", value: Number(e.target.value) || 0 },
+              })
             }
             className="text-sm px-2 py-1 rounded border w-24"
             style={inputStyle()}
@@ -278,7 +284,10 @@ function SwitchEditor({
               value={v.name ?? v.id}
               aria-label={`Case ${k} struct name`}
               onChange={(e) => {
-                const next = { ...container.cases, [k]: { ...v, name: e.target.value } };
+                const next = {
+                  ...container.cases,
+                  [k]: { ...v, name: e.target.value },
+                };
                 updateCases(next);
               }}
               className="text-sm px-2 py-1 rounded border flex-1"

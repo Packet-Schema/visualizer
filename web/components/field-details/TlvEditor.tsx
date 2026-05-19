@@ -36,7 +36,14 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
   );
 
   const update = (mutator: (list: TlvInstance[]) => TlvInstance[]) => {
-    onChange(mutator(instances.map((i) => ({ ...i, extras: i.extras ? { ...i.extras } : undefined }))));
+    onChange(
+      mutator(
+        instances.map((i) => ({
+          ...i,
+          extras: i.extras ? { ...i.extras } : undefined,
+        })),
+      ),
+    );
   };
 
   const handleRemove = (idx: number) =>
@@ -90,19 +97,12 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
 
   return (
     <div>
-      <h3
-        className="m-0 mb-2 text-[15px]"
-        style={{ color: "var(--fg)" }}
-      >
+      <h3 className="m-0 mb-2 text-[15px]" style={{ color: "var(--fg)" }}>
         {field.name}
       </h3>
-      <p
-        className="text-[12px] m-0 mb-2"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <p className="text-[12px] m-0 mb-2" style={{ color: "var(--fg-muted)" }}>
         Recursive TLV container. Add typed records below; the total length
-        drives{" "}
-        <code className="font-mono">{tlv.drivesController || ""}</code>.
+        drives <code className="font-mono">{tlv.drivesController || ""}</code>.
       </p>
 
       <div
@@ -270,15 +270,16 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         style={{ color: "var(--fg-muted)" }}
       >
         Total:{" "}
-        <span className="font-mono tabular-nums">{summary.totalBits} b</span>
-        ; padded to{" "}
+        <span className="font-mono tabular-nums">{summary.totalBits} b</span>;
+        padded to{" "}
         <span className="font-mono tabular-nums">{summary.paddedBits} b</span>{" "}
         (= {summary.paddedBits / 8} B).
         {tlv.drivesController ? (
           <>
             {" "}
-            Drives{" "}
-            <code className="font-mono">{tlv.drivesController}</code> ={" "}
+            Drives <code className="font-mono">
+              {tlv.drivesController}
+            </code> ={" "}
             <span className="font-mono tabular-nums">
               {controllers[tlv.drivesController]}
             </span>

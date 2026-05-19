@@ -48,7 +48,14 @@ describe("propagate — operator inversion coverage", () => {
   it("inverts addition (left operand unknown)", () => {
     // unknown + 3 == y  =>  unknown = y - 3
     const c: Constraint = { lhs: op("+", ref("x"), lit(3)), rhs: ref("y") };
-    const r = propagate([c], new Map([["x", 0], ["y", 10]]), "y");
+    const r = propagate(
+      [c],
+      new Map([
+        ["x", 0],
+        ["y", 10],
+      ]),
+      "y",
+    );
     if ("conflict" in r) throw new Error(r.conflict);
     expect(r.ok.get("x")).toBe(7);
   });
@@ -56,21 +63,42 @@ describe("propagate — operator inversion coverage", () => {
   it("inverts subtraction (right operand unknown)", () => {
     // 10 - unknown == y  =>  unknown = 10 - y
     const c: Constraint = { lhs: op("-", lit(10), ref("x")), rhs: ref("y") };
-    const r = propagate([c], new Map([["x", 0], ["y", 4]]), "y");
+    const r = propagate(
+      [c],
+      new Map([
+        ["x", 0],
+        ["y", 4],
+      ]),
+      "y",
+    );
     if ("conflict" in r) throw new Error(r.conflict);
     expect(r.ok.get("x")).toBe(6);
   });
 
   it("inverts shift", () => {
     const c: Constraint = { lhs: op("<<", ref("x"), lit(3)), rhs: ref("y") };
-    const r = propagate([c], new Map([["x", 1], ["y", 64]]), "y");
+    const r = propagate(
+      [c],
+      new Map([
+        ["x", 1],
+        ["y", 64],
+      ]),
+      "y",
+    );
     if ("conflict" in r) throw new Error(r.conflict);
     expect(r.ok.get("x")).toBe(8);
   });
 
   it("declines to invert modulo (no-op write to the dependent ref)", () => {
     const c: Constraint = { lhs: op("%", ref("x"), lit(3)), rhs: ref("y") };
-    const r = propagate([c], new Map([["x", 5], ["y", 99]]), "y");
+    const r = propagate(
+      [c],
+      new Map([
+        ["x", 5],
+        ["y", 99],
+      ]),
+      "y",
+    );
     if ("conflict" in r) throw new Error(r.conflict);
     // unchanged because % is not invertible
     expect(r.ok.get("x")).toBe(5);
@@ -103,25 +131,51 @@ describe("propagate — conflict detection", () => {
   });
 
   it("validate() returns ok when both sides agree (or one side is unknown)", () => {
-    expect(validate([ihlConstraint], new Map([["ihl", 5], ["headerBytes", 20]])))
-      .toEqual({ ok: true });
+    expect(
+      validate(
+        [ihlConstraint],
+        new Map([
+          ["ihl", 5],
+          ["headerBytes", 20],
+        ]),
+      ),
+    ).toEqual({ ok: true });
     // One side missing → silently ok.
-    expect(validate([ihlConstraint], new Map([["ihl", 5]]))).toEqual({ ok: true });
+    expect(validate([ihlConstraint], new Map([["ihl", 5]]))).toEqual({
+      ok: true,
+    });
   });
 });
 
 describe("propagate — non-invertible inverse path", () => {
   it("symmetric write when the changed key is on the RHS and LHS is a single ref", () => {
     const c: Constraint = { lhs: ref("a"), rhs: op("+", ref("b"), lit(2)) };
-    const r = propagate([c], new Map([["a", 0], ["b", 5]]), "b");
+    const r = propagate(
+      [c],
+      new Map([
+        ["a", 0],
+        ["b", 5],
+      ]),
+      "b",
+    );
     if ("conflict" in r) throw new Error(r.conflict);
     expect(r.ok.get("a")).toBe(7);
   });
 
   it("symmetric inversion when the changed key is on the LHS as a non-ref expression", () => {
     // unknown changed; lhs has the unknown wrapped
-    const c: Constraint = { lhs: op("*", ref("ihl"), lit(4)), rhs: ref("headerBytes") };
-    const r = propagate([c], new Map([["ihl", 5], ["headerBytes", 0]]), "headerBytes");
+    const c: Constraint = {
+      lhs: op("*", ref("ihl"), lit(4)),
+      rhs: ref("headerBytes"),
+    };
+    const r = propagate(
+      [c],
+      new Map([
+        ["ihl", 5],
+        ["headerBytes", 0],
+      ]),
+      "headerBytes",
+    );
     if ("conflict" in r) throw new Error(r.conflict);
     expect(r.ok.get("ihl")).toBe(0);
   });

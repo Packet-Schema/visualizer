@@ -28,9 +28,12 @@ function mkPacket(encoding: TypeVarint["encoding"] | string): Packet {
 }
 
 describe("validatePsmlPacket — Varint encoding", () => {
-  it.each(["quic", "protobuf", "cbor"] as const)("accepts encoding=%s", (enc) => {
-    expect(() => validatePsmlPacket(mkPacket(enc))).not.toThrow();
-  });
+  it.each(["quic", "protobuf", "cbor"] as const)(
+    "accepts encoding=%s",
+    (enc) => {
+      expect(() => validatePsmlPacket(mkPacket(enc))).not.toThrow();
+    },
+  );
 
   it("rejects an unknown encoding", () => {
     expect(() => validatePsmlPacket(mkPacket("leb128"))).toThrow(

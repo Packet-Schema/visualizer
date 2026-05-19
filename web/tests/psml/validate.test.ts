@@ -46,7 +46,9 @@ describe("validatePacket — structural rules", () => {
         subfields: [{ id: "x", name: "X", bits: 1 }],
       },
     ]);
-    expect(() => validatePacket(p)).toThrow(/variable-length and cannot have subfields/);
+    expect(() => validatePacket(p)).toThrow(
+      /variable-length and cannot have subfields/,
+    );
   });
 
   it("throws when subfields and TLV catalog co-exist", () => {
@@ -68,7 +70,10 @@ describe("validatePacket — structural rules", () => {
         id: "flags",
         name: "Flags",
         bits: 8,
-        subfields: [{ id: "z", name: "Z", bits: 8 }, { id: "y", name: "Y", bits: 0 }],
+        subfields: [
+          { id: "z", name: "Z", bits: 8 },
+          { id: "y", name: "Y", bits: 0 },
+        ],
       },
     ]);
     expect(() => validatePacket(p)).toThrow(/positive integer bits/);

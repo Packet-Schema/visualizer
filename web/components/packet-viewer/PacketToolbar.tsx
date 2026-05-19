@@ -14,11 +14,13 @@ type Props = {
   viewMode: ViewMode;
   headerSizeLabel: string;
   extraControls?: ReactNode;
+  shareStatus: { msg: string; kind: "ok" | "error" } | null;
   onPacketChange: (nextKey: string) => void;
   onExportCustomPresets: () => void;
   onImportCustomPresets: () => void;
   onOpenImport: () => void;
   onOpenExport: () => void;
+  onShare: () => void;
   onToggleHexStrip: () => void;
   onToggleDependencies: () => void;
   onToggleViewMode: () => void;
@@ -36,11 +38,13 @@ export default function PacketToolbar({
   viewMode,
   headerSizeLabel,
   extraControls,
+  shareStatus,
   onPacketChange,
   onExportCustomPresets,
   onImportCustomPresets,
   onOpenImport,
   onOpenExport,
+  onShare,
   onToggleHexStrip,
   onToggleDependencies,
   onToggleViewMode,
@@ -68,6 +72,9 @@ export default function PacketToolbar({
         <ToolbarButton onClick={onOpenImport}>Import</ToolbarButton>
         <ToolbarButton onClick={onOpenExport}>Export</ToolbarButton>
         {extraControls}
+        <ToolbarButton onClick={onShare} ariaLabel="Copy share URL">
+          Share
+        </ToolbarButton>
         <ToolbarButton
           onClick={onToggleHexStrip}
           pressed={hexStripVisible}
@@ -113,6 +120,21 @@ export default function PacketToolbar({
           </ToolbarButton>
         ) : null}
       </div>
+      {shareStatus ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="text-xs font-medium"
+          style={{
+            color:
+              shareStatus.kind === "error"
+                ? "var(--field-rose)"
+                : "var(--field-green)",
+          }}
+        >
+          {shareStatus.msg}
+        </div>
+      ) : null}
       <div
         className="ml-auto text-[13px] font-mono tabular-nums"
         style={{ color: "var(--fg-muted)" }}

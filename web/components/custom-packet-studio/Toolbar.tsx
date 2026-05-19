@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import type { Container, Field } from "@/lib/psml/types";
 
@@ -11,7 +9,7 @@ type Props = {
   futureLength: number;
   jsonOpen: boolean;
   onToggleJson: () => void;
-  onSaveAs: (name: string) => void;
+  onSaveAs: () => void;
   onDiscard: () => void;
 };
 
@@ -89,9 +87,6 @@ export default function Toolbar({
   onSaveAs,
   onDiscard,
 }: Props) {
-  const [savePromptOpen, setSavePromptOpen] = useState(false);
-  const [presetName, setPresetName] = useState("");
-
   const addField = () =>
     dispatch({ type: "add-field", at: insertPath, field: makeField() });
   const addContainer = (
@@ -171,7 +166,11 @@ export default function Toolbar({
         + Encrypted
       </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px" style={{ background: "var(--border-strong)" }} />
+      <span
+        aria-hidden
+        className="mx-1 h-5 w-px"
+        style={{ background: "var(--border-strong)" }}
+      />
 
       <button
         type="button"
@@ -194,62 +193,21 @@ export default function Toolbar({
         Redo
       </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px" style={{ background: "var(--border-strong)" }} />
+      <span
+        aria-hidden
+        className="mx-1 h-5 w-px"
+        style={{ background: "var(--border-strong)" }}
+      />
 
-      {savePromptOpen ? (
-        <span className="flex items-center gap-1">
-          <input
-            type="text"
-            value={presetName}
-            onChange={(e) => setPresetName(e.target.value)}
-            placeholder="preset name"
-            aria-label="Preset name"
-            className="text-sm px-2 py-1 rounded border"
-            style={{
-              background: "var(--bg-elevated)",
-              color: "var(--fg)",
-              borderColor: "var(--border-strong)",
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (presetName.trim()) {
-                onSaveAs(presetName.trim());
-                setPresetName("");
-                setSavePromptOpen(false);
-              }
-            }}
-            aria-label="Confirm save preset"
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-            style={btnStyle()}
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPresetName("");
-              setSavePromptOpen(false);
-            }}
-            aria-label="Cancel save preset"
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-            style={btnStyle()}
-          >
-            Cancel
-          </button>
-        </span>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setSavePromptOpen(true)}
-          aria-label="Save as my preset"
-          className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-          style={btnStyle()}
-        >
-          Save as my preset
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onSaveAs}
+        aria-label="Save as my preset"
+        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+        style={btnStyle()}
+      >
+        Save as my preset
+      </button>
       <button
         type="button"
         onClick={onDiscard}
@@ -260,7 +218,11 @@ export default function Toolbar({
         Discard
       </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px" style={{ background: "var(--border-strong)" }} />
+      <span
+        aria-hidden
+        className="mx-1 h-5 w-px"
+        style={{ background: "var(--border-strong)" }}
+      />
 
       <button
         type="button"

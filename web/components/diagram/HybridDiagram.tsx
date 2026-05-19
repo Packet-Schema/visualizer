@@ -1,6 +1,13 @@
 import type { CSSProperties } from "react";
 
-import type { Cell, Field, Packet, ResolvedLayout, SubCell, SubField } from "@/lib/psml/renderer";
+import type {
+  Cell,
+  Field,
+  Packet,
+  ResolvedLayout,
+  SubCell,
+  SubField,
+} from "@/lib/psml/renderer";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
 type Props = {
@@ -27,9 +34,7 @@ function resolveFieldColor(field: Field): string {
 function formatBitsLabel(bits: number, field: Field): string {
   if (field.variable) return `${bits} bits (var)`;
   const bytes = bits / 8;
-  return Number.isInteger(bytes)
-    ? `${bits} bits / ${bytes}B`
-    : `${bits} bits`;
+  return Number.isInteger(bytes) ? `${bits} bits / ${bytes}B` : `${bits} bits`;
 }
 
 /**
@@ -192,9 +197,7 @@ function FieldCell({
           onFieldClick(cell.field, e.currentTarget);
         }
       }}
-      onMouseOver={
-        onFieldHover ? () => onFieldHover(cell.field.id) : undefined
-      }
+      onMouseOver={onFieldHover ? () => onFieldHover(cell.field.id) : undefined}
       onMouseOut={onFieldHover ? () => onFieldHover(null) : undefined}
       onFocus={onFieldHover ? () => onFieldHover(cell.field.id) : undefined}
       onBlur={onFieldHover ? () => onFieldHover(null) : undefined}
