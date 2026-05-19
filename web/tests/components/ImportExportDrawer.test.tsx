@@ -135,4 +135,48 @@ describe("ImportExportDrawer image export", () => {
     expect(write).toHaveBeenCalledTimes(1);
     await act(async () => root.unmount());
   });
+
+  it("ignores a stale PNG export result after the drawer closes", async () => {
+    let resolvePng!: (blob: Blob) => void;
+    const pending = new Promise<Blob>((resolve) => {
+      resolvePng = resolve;
+    });
+    vi.mocked(svgToPngBlob).mockReturnValue(pending);
+
+    const { container, root } = await renderDrawer();
+    const format = formatSelect(container);
+    await act(async () => {
+      format.value = "png";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await act(async () => {
+      [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "Download")
+        ?.click();
+    });
+
+    await act(async () => {
+      root.render(
+        <ImportExportDrawer
+          open={false}
+          mode="export"
+          packet={packet}
+          controllers={{}}
+          layout={layout}
+          onClose={vi.fn()}
+          onImport={vi.fn()}
+        />,
+      );
+    });
+
+    await act(async () => {
+      resolvePng(new Blob(["png"], { type: "image/png" }));
+      await pending;
+    });
+
+    expect(container.textContent).not.toContain("Downloaded");
+    expect(container.textContent).not.toContain("Image export failed");
+    await act(async () => root.unmount());
+  });
 });
