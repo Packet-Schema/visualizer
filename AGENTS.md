@@ -28,16 +28,16 @@
 
 ## Git 運用
 
-- Git 操作が必要な場合は、まず `git status` `git diff` などで既存差分を確認してから進める。
-- ブランチを新しく切る場合の目安は `feat/<short-slug>` `fix/<short-slug>` `docs/<short-slug>` とし、`refactor/` `test/` `chore/` なども必要に応じて使ってよい。
-- コミットメッセージに厳密な規約はないため、変更内容が読みやすく伝わる要約を優先する。
-- PR を作る前提の変更では、関連 issue、変更点、テスト方法を説明できる状態にまとめる。
-- PR を作成するときは `.github/PULL_REQUEST_TEMPLATE.md` を参照し、記載項目に沿って内容を整理する。
+- Git 操作が必要な場合は、まず既存差分を確認し、ユーザーや他作業者の変更を壊さないように進める。
+- ブランチ作成、コミット、PR 準備の具体的な進め方は `git-workflow` を参照する。
 
 ## 利用可能なスキル
 
 - 依存関係のインストール・開発サーバー・フォーマット・Lint・テスト・型チェックの具体的な実行手順は、それぞれ対応するスキルの `SKILL.md` を参照する。
+- Git 操作、ブランチ作成、コミット、PR 準備の具体的な進め方は `git-workflow` を参照する。
+- 変更内容に応じた検証方針や実行順の判断は `verify-change` を参照する。
 
+- `git-workflow`: Git 操作、ブランチ作成、コミット、PR 準備を行うときに使う。
 - `run-build`: 本番ビルドを実行するときに使う。
 - `run-build-presets`: preset 生成を実行するときに使う。
 - `run-install`: 依存関係をインストールするときに使う。
@@ -46,15 +46,13 @@
 - `run-lint`: ESLint を実行するときに使う。
 - `run-test`: Vitest を実行するときに使う。
 - `run-typecheck`: TypeScript の型チェックを実行するときに使う。
+- `verify-change`: 変更内容に応じた検証方針を決めるときに使う。
 
 ## 検証の進め方
 
 - 整形は `run-format`、Lint は `run-lint`、テストは `run-test`、型チェックは `run-typecheck`、preset 生成は `run-build-presets` を使う。
-- UI や TypeScript を変更した場合は、基本として `run-format` `run-lint` `run-test` `run-typecheck` の順で必要なものを実行する。どこまで回したかを最後に明記する。
-- `data/presets/*.psml.yaml` `schemas/psml.schema.json` `web/scripts/build-presets.ts` を変更した場合は、まず `run-build-presets` を使って生成物を更新し、その後に少なくとも `run-test` で整合性を確認する。必要に応じて `run-lint` も追加する。具体的なコマンドや自動実行の前提は各スキルの `SKILL.md` を参照する。
-- preset を追加・更新する場合は、preset 定義の編集、生成物更新、差分確認までを `run-build-presets` の手順に沿って進める。詳細は `docs/adding-a-preset.md` を参照する。
-- `web/lib/formats/` を変更する場合は、import/export を含む既存 contract を壊さないことを前提に、関連テストの維持または追加を意識して `run-test` を優先する。
-- 変更が軽微でも、少なくとも何を検証して何を未実施にしたかは明示する。未実施項目がある場合は理由も添える。
+- 変更内容に応じた検証順序や領域別の注意点は `verify-change` を参照する。
+- 変更が軽微でも、少なくとも何を検証して何を未実施にしたかは明示する。
 
 ## 参照ドキュメント
 
