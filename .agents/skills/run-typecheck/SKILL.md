@@ -12,16 +12,29 @@ description: packet-view リポジトリで TypeScript の型チェックを実�
 1. `web` ディレクトリへ移動する。
 2. 型チェックの前に `npm run format:check` で整形状態を確認する。
 3. `format:check` が失敗した場合は、先に `npm run format` で整形する。
-4. `npm run build:presets` を実行し、型チェックに必要な生成物を最新化する。
-5. `npm exec tsc -- --noEmit` を実行して型エラーの有無を確認する。
-6. エラーが出た場合は、主なファイル名とエラー内容を要約して共有する。
+4. 既存差分への影響が大きいなどの理由で `npm run format` を実行しない判断をした場合は、その理由を明記したうえで型チェックを続行してよい。
+5. `npm run build:presets` を実行し、型チェックに必要な生成物を最新化する。
+6. `npm exec tsc -- --noEmit` を実行して型エラーの有無を確認する。
+7. エラーが出た場合は、主なファイル名とエラー内容を要約して共有する。
 
 ## コマンド
 
 ```bash
 cd web
 npm run format:check
+```
+
+`format:check` が失敗し、既存差分への影響を確認したうえで書き換えてよい場合だけ実行します。
+
+```bash
+cd web
 npm run format
+```
+
+整形状態がそろってから生成物を更新し、型チェックを実行します。
+
+```bash
+cd web
 npm run build:presets
 npm exec tsc -- --noEmit
 ```
@@ -32,4 +45,4 @@ npm exec tsc -- --noEmit
 - `web/lib/psml/presets.generated.ts` は gitignore 対象の生成物なので、クリーン環境では型チェック前に生成が必要になる。
 - TypeScript は strict mode 前提で扱い、型エラー回避のために型安全性を下げる変更は避ける。
 - 将来的に型チェック専用スクリプトが追加されたら、そのスクリプトを優先して使う。
-- `npm run format` は `format:check` が失敗した場合に実行する想定で、整形が不要なら省略してよい。
+- `npm run format` は `format:check` が失敗した場合に実行する想定で、整形が不要なら省略してよい。既存差分を広く書き換えそうな場合は、整形未実施の理由と型チェック結果を分けて共有する。
