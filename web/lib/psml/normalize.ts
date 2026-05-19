@@ -117,6 +117,15 @@ type WalkState = {
   viewMode: ViewMode;
   /** Stack of Encrypted containers currently being expanded (semantic mode). */
   encryptedStack: EncryptedFrame[];
+  /**
+   * Active Repeat index when descending through a Repeat's element. Carried
+   * on the state so that nested constructs (Switch / Group / Encrypted) inside
+   * a Repeat still tag every emitted field with the parent repetition,
+   * producing unique synthesised ids like `type#0`, `type#1`, … Without this
+   * the cell layout would emit two fields with the same id, and React's key
+   * deduplication would silently drop or duplicate cells.
+   */
+  repeatIndex?: number;
 };
 
 type EmitExtra = Pick<NormalizedField, "repeatIndex" | "switchCase">;
@@ -128,11 +137,9 @@ function emit(
   extra: EmitExtra = {},
 ): void {
   const bits = typeBits(field.type, state.env, field.id);
+  const repeatIndex = extra.repeatIndex ?? state.repeatIndex;
   const nf: NormalizedField = {
-    id:
-      extra.repeatIndex !== undefined
-        ? `${field.id}#${extra.repeatIndex}`
-        : field.id,
+    id: repeatIndex !== undefined ? `${field.id}#${repeatIndex}` : field.id,
     name: field.name,
     bits,
     absoluteBitOffset: state.offset,
@@ -140,6 +147,7 @@ function emit(
     category: field.category,
     doc: field.doc,
     ...extra,
+    ...(repeatIndex !== undefined ? { repeatIndex } : {}),
   };
   // Apply Encrypted-parent tagging in semantic mode. We use the innermost
   // frame for parentId/contextNote (matches the nearest-encrypted ancestor),
@@ -208,10 +216,13 @@ function walkGroup(g: Group, path: string, state: WalkState): void {
 function walkRepeat(r: Repeat, path: string, state: WalkState): void {
   const sub = `${path}/${r.id}`;
   const count = resolveRepeatCount(r, state);
+  const prevRepeatIndex = state.repeatIndex;
   for (let i = 0; i < count; i++) {
     const innerPath = `${sub}[${i}]`;
-    // Mirror v1's TLV expansion behaviour: each repeat copy gets a synthesised
-    // id suffix so the cell layout can still address it by id.
+    // Tag the active repeat index on the walk state so any nested Switch /
+    // Group / Encrypted that emits fields inherits the suffix, not just the
+    // direct Field children handled in this loop.
+    state.repeatIndex = i;
     for (const child of r.element.fields) {
       if (isField(child)) {
         emit(state, child, innerPath, { repeatIndex: i });
@@ -220,6 +231,7 @@ function walkRepeat(r: Repeat, path: string, state: WalkState): void {
       }
     }
   }
+  state.repeatIndex = prevRepeatIndex;
 }
 
 function resolveRepeatCount(r: Repeat, state: WalkState): number {

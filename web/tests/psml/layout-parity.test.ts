@@ -222,9 +222,12 @@ describe("tlsExtensionsBlock — peek lookahead Switch", () => {
     const layout = resolveLayout(pkt, { env });
     // 16 (extensionType) + 16 (serverNameListLength) + 40 (5 bytes) = 72.
     expect(layout.totalBits).toBe(72);
-    expect(layout.cells.some((c) => c.field.id === "serverNameList")).toBe(
-      true,
-    );
+    // Fields emitted from inside a Repeat carry the repetition index as a
+    // suffix on their id (e.g. `serverNameList#0`) so each cell keeps a
+    // unique React key.
+    expect(
+      layout.cells.some((c) => c.field.id.startsWith("serverNameList")),
+    ).toBe(true);
   });
 });
 
