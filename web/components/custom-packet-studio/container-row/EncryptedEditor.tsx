@@ -15,11 +15,21 @@ import { Frame, inputStyle, type Patch } from "./shared";
  * this checkbox list (Copilot review).
  */
 function collectLeafFieldIds(containers: Container[]): string[] {
+  // De-dup via Set: a Switch fan-out can declare the same leaf id
+  // (`type`, `length`, …) in multiple case arms, and we'd otherwise
+  // render the checkbox twice. `validatePsmlPacket` resolves against a
+  // Set, so the editor mirrors that semantics — the first occurrence
+  // dictates checkbox order to keep the layout stable across renders
+  // (Copilot review).
+  const seen = new Set<string>();
   const out: string[] = [];
   const walk = (cs: Container[]): void => {
     for (const c of cs) {
       if (isField(c)) {
-        out.push(c.id);
+        if (!seen.has(c.id)) {
+          seen.add(c.id);
+          out.push(c.id);
+        }
         continue;
       }
       switch (c.kind) {

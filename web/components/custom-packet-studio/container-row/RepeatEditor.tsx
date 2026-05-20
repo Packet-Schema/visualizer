@@ -102,6 +102,24 @@ export function RepeatEditor({
             style={inputStyle()}
           />
         )}
+      {/* Counts coming from JSON edits / imports can be arbitrary Expr
+          shapes (`op`, `cond`, `peek`) that `repeatCountTab()` collapses
+          to "literal" since they aren't `ref` / `eos` / `until`. The
+          numeric input above only renders for `kind === "lit"`, so
+          without this branch those Exprs would be uneditable from the
+          UI. Fall through to `ExprBuilder` so the user can still adjust
+          them without round-tripping through JSON (Copilot review). */}
+      {tab === "literal" &&
+        container.count !== "eos" &&
+        "kind" in container.count &&
+        container.count.kind !== "lit" &&
+        container.count.kind !== "ref" && (
+          <ExprBuilder
+            value={container.count}
+            fieldIds={siblingFieldIds}
+            onChange={(e) => patch({ count: e })}
+          />
+        )}
       {tab === "ref" &&
         container.count !== "eos" &&
         "kind" in container.count &&
