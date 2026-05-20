@@ -17,6 +17,27 @@ import {
 
 let containers: HTMLDivElement[] = [];
 
+/**
+ * Build the small subset of `React.KeyboardEvent` that `useRovingTabindex`
+ * touches. Centralising the cast keeps the test bodies free of `as unknown`
+ * noise while still failing loudly if the hook starts depending on other
+ * SyntheticEvent fields.
+ */
+function mkKeyEvent(
+  key: string,
+  target: HTMLElement,
+): React.KeyboardEvent<HTMLDivElement> {
+  const preventDefault = () => {};
+  return {
+    key,
+    target,
+    preventDefault,
+  } as Pick<
+    React.KeyboardEvent<HTMLDivElement>,
+    "key" | "target" | "preventDefault"
+  > as React.KeyboardEvent<HTMLDivElement>;
+}
+
 function mount(node: React.ReactNode): {
   container: HTMLDivElement;
   root: Root;
@@ -130,11 +151,7 @@ describe("useRovingTabindex", () => {
     const target = rootEl.querySelector<HTMLElement>('[data-field-id="a"]')!;
     target.focus();
     act(() => {
-      onKey({
-        key: "ArrowRight",
-        target,
-        preventDefault: () => {},
-      } as unknown as React.KeyboardEvent<HTMLDivElement>);
+      onKey(mkKeyEvent("ArrowRight", target));
     });
 
     expect(
@@ -158,11 +175,7 @@ describe("useRovingTabindex", () => {
     const target = rootEl.querySelector<HTMLElement>('[data-field-id="a"]')!;
     target.focus();
     act(() => {
-      onKey({
-        key: "End",
-        target,
-        preventDefault: () => {},
-      } as unknown as React.KeyboardEvent<HTMLDivElement>);
+      onKey(mkKeyEvent("End", target));
     });
     expect(
       rootEl.querySelector('[data-field-id="c"]')?.getAttribute("tabindex"),

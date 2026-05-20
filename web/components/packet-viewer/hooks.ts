@@ -15,7 +15,39 @@ import {
 } from "react";
 
 import { highlightSelector } from "@/components/diagram/dom-query";
-import { findRowNeighbor } from "./navigation";
+
+/**
+ * Spatial Up/Down neighbour for the roving tabindex. Uses the
+ * `data-row` / `data-start-bit` / `data-end-bit` attributes the diagram
+ * cells already carry to find the cell directly above or below `current`.
+ *
+ * Falls back to the previous/next sibling in document order when the row
+ * attribute is missing (e.g. a malformed cell or test fixture).
+ */
+function findRowNeighbor(
+  cells: HTMLElement[],
+  current: HTMLElement,
+  direction: number,
+): HTMLElement | null {
+  const curRow = Number(current.dataset.row);
+  if (Number.isNaN(curRow)) {
+    const idx = cells.indexOf(current);
+    return (
+      cells[Math.max(0, Math.min(cells.length - 1, idx + direction))] ?? null
+    );
+  }
+  const curStart = Number(current.dataset.startBit);
+  const curEnd = Number(current.dataset.endBit);
+  const targetRow = curRow + direction;
+  const sameRow = cells.filter((c) => Number(c.dataset.row) === targetRow);
+  if (sameRow.length === 0) return null;
+  const overlap = sameRow.find((c) => {
+    const s = Number(c.dataset.startBit);
+    const en = Number(c.dataset.endBit);
+    return !(en < curStart || s > curEnd);
+  });
+  return overlap ?? sameRow[0] ?? null;
+}
 
 /**
  * Wrap `callback` in a ref-backed thunk whose identity is stable for the
