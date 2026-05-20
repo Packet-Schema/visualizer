@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { PacketRegistry } from "@/lib/psml/renderer";
 import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
 import PresetPicker from "@/components/presets/PresetPicker";
@@ -31,6 +32,7 @@ type Props = {
   editMode: boolean;
   viewMode: ViewMode;
   headerSizeLabel: string;
+  extraControls?: ReactNode;
   shareStatus: { msg: string; kind: "ok" | "error" } | null;
   actions: PacketToolbarActions;
 };
@@ -44,6 +46,7 @@ export default function PacketToolbar({
   editMode,
   viewMode,
   headerSizeLabel,
+  extraControls,
   shareStatus,
   actions,
 }: Props) {
@@ -80,6 +83,7 @@ export default function PacketToolbar({
       <div className="flex items-center gap-1.5 ml-2">
         <ToolbarButton onClick={onOpenImport}>Import</ToolbarButton>
         <ToolbarButton onClick={onOpenExport}>Export</ToolbarButton>
+        {extraControls}
         <ToolbarButton onClick={onShare} ariaLabel="Copy share URL">
           Share
         </ToolbarButton>
