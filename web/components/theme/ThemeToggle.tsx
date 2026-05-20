@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { THEME_STORAGE_KEY } from "@/lib/constants";
 
@@ -15,12 +15,26 @@ export default function ThemeToggle() {
   // see no movement at all (the global CSS override only shortens the
   // duration; this skips the bounce class entirely).
   const [bouncing, setBouncing] = useState(false);
+  // Track the in-flight RAF so unmount (route change, conditional
+  // render) can cancel it before `setBouncing(true)` fires against a
+  // gone component. Copilot flagged this as an "update on unmounted
+  // component" hazard on the bounce-retrigger path below.
+  const bounceRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const current = document.documentElement.getAttribute(
       "data-theme",
     ) as Theme | null;
     setTheme(current === "dark" ? "dark" : "light");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (bounceRafRef.current !== null) {
+        cancelAnimationFrame(bounceRafRef.current);
+        bounceRafRef.current = null;
+      }
+    };
   }, []);
 
   const toggle = () => {
@@ -49,7 +63,16 @@ export default function ThemeToggle() {
     // this Copilot-flagged edge case, double-clicking the toggle
     // animates only the first click.
     setBouncing(false);
-    requestAnimationFrame(() => setBouncing(true));
+    // Cancel any pending RAF from a previous toggle so a rapid double
+    // click doesn't queue two competing `setBouncing(true)` calls and
+    // so unmount cleanup has a single id to cancel.
+    if (bounceRafRef.current !== null) {
+      cancelAnimationFrame(bounceRafRef.current);
+    }
+    bounceRafRef.current = requestAnimationFrame(() => {
+      bounceRafRef.current = null;
+      setBouncing(true);
+    });
   };
 
   const isDark = theme === "dark";
