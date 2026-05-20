@@ -327,4 +327,77 @@ describe("ExportDialog", () => {
 
     await act(async () => remounted.root.unmount());
   });
+
+  it("closes when Escape is pressed", async () => {
+    const onClose = vi.fn();
+    const { root } = await renderDialog(onClose);
+
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("closes when the backdrop is clicked but not when the card is", async () => {
+    const onClose = vi.fn();
+    const { root } = await renderDialog(onClose);
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const card = dialog?.querySelector<HTMLElement>("div");
+    expect(dialog && card).toBeTruthy();
+
+    await act(async () => {
+      card?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      dialog?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("shows Saving… and disables the save button while PNG export is in flight", async () => {
+    const pending = deferred<Blob>();
+    vi.mocked(svgToPngBlob).mockReturnValue(pending.promise);
+    const { container, root } = await renderDialog();
+    const format = selectByLabel(container, "Format");
+
+    await act(async () => {
+      format.value = "png";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const saveButton = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Save PNG",
+    );
+    expect(saveButton?.hasAttribute("disabled")).toBe(false);
+
+    await act(async () => {
+      saveButton?.click();
+    });
+
+    const savingButton = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Saving…",
+    );
+    expect(savingButton).toBeDefined();
+    expect(savingButton?.hasAttribute("disabled")).toBe(true);
+
+    pending.resolve(new Blob(["png"], { type: "image/png" }));
+    await act(async () => {
+      await pending.promise;
+    });
+
+    await act(async () => root.unmount());
+  });
 });

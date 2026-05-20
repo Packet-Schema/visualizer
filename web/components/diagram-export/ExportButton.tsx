@@ -1,41 +1,19 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
-import ExportDialog from "./ExportDialog";
+import ToolbarButton from "@/components/packet-viewer/ToolbarButton";
 
 type Props = {
-  packet: Packet;
-  layout: ResolvedLayout;
+  onClick: () => void;
 };
 
-export default function ExportButton({ packet, layout }: Props) {
-  const [open, setOpen] = useState(false);
-  const handleClose = useCallback(() => {
-    setOpen(false);
-  }, []);
-
+export default function ExportButton({ onClick }: Props) {
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={{
-          background: "var(--bg-elevated)",
-          color: "var(--fg)",
-          borderColor: "var(--border-strong)",
-        }}
-      >
-        Save image
-      </button>
-      <ExportDialog
-        packet={packet}
-        layout={layout}
-        open={open}
-        onClose={handleClose}
-      />
-    </>
+    <ToolbarButton
+      onClick={onClick}
+      ariaLabel="Save diagram as image"
+      aria-haspopup="dialog"
+    >
+      Save image
+    </ToolbarButton>
   );
 }
