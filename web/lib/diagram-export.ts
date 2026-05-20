@@ -1,3 +1,19 @@
+// Image-export pipeline for the live diagram. Three primitives at a glance:
+//
+// - `buildDiagramSvg(packet, layout, opts)` — emits a standalone SVG string
+//   (no <style>, no external assets, all colors resolved to attributes) so
+//   it round-trips through `dangerouslySetInnerHTML` previews, file
+//   downloads, and the rasterizer below without picking up app CSS.
+// - `readDiagramTheme(mode)` — derives the palette from the running
+//   stylesheets (`:root` / `[data-theme="dark"]`) without mutating
+//   `document.documentElement`, so exporting "Light" while the UI is in
+//   Dark mode doesn't flash the page.
+// - `svgToPngBlob(svg, scale)` — rasterizes via `<img src=blob:>` → canvas
+//   → `toBlob`. Inputs are restricted to the self-contained SVGs above,
+//   which keeps the canvas un-tainted; if you add `<image href>`, `<use
+//   href>`, or `<foreignObject>` to the SVG, audit cross-origin handling
+//   here before extending the contract.
+
 import { CATEGORY_TO_TOKEN } from "./constants";
 import type {
   Cell,

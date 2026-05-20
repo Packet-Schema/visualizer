@@ -138,11 +138,19 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
 
   // Coalesce localStorage writes so a single slider drag (which can emit
   // 30-60 onChange events) doesn't trigger that many synchronous
-  // JSON.stringify + setItem cycles. The trailing 200ms timeout also
-  // collapses rapid select changes during a multi-step settings tweak.
+  // JSON.stringify + setItem cycles. Cleanup writes the pending settings
+  // synchronously so closing the dialog within the 200ms debounce window
+  // (or unmounting) still persists the user's latest tweak.
   useEffect(() => {
-    const handle = setTimeout(() => saveSettings(settings), 200);
-    return () => clearTimeout(handle);
+    let flushed = false;
+    const handle = setTimeout(() => {
+      flushed = true;
+      saveSettings(settings);
+    }, 200);
+    return () => {
+      clearTimeout(handle);
+      if (!flushed) saveSettings(settings);
+    };
   }, [settings]);
 
   // SVG generation is O(packet cells) — rebuild only when the inputs that
@@ -285,7 +293,9 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
               <option value={40}>Extra wide</option>
             </select>
           </label>
-          <label className="inline-flex cursor-pointer items-center gap-2 py-1 text-xs">
+          {/* min-h-11 gives the touch target 44px (WCAG 2.5.5) without
+              changing the visual switch metrics in slider.css. */}
+          <label className="inline-flex cursor-pointer items-center gap-2 py-1 text-xs min-h-11">
             <input
               type="checkbox"
               checked={settings.transparentBackground}
@@ -306,7 +316,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
             <label className="text-xs" htmlFor={pngScaleId}>
               PNG resolution
             </label>
-            <div className="mt-1 flex items-center gap-3">
+            <div className="mt-1 flex items-center gap-3 min-h-11">
               <div className="pv-slider-wrap flex-1">
                 <input
                   id={pngScaleId}
@@ -355,7 +365,6 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
             type="button"
             onClick={handleSave}
             disabled={settings.format === "png" && busy}
-            aria-disabled={settings.format === "png" && busy}
             className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-accent text-accent-fg border-accent disabled:cursor-not-allowed disabled:opacity-80"
           >
             {settings.format === "svg"

@@ -62,9 +62,12 @@
   --field-amber: oklch(82% 0.13 85);
   --field-orange: oklch(74% 0.14 50);
   --field-rose: oklch(72% 0.14 18);
-  /* Strong variant used for body text that needs WCAG AA on bg-elevated —
-     the standard --field-rose (~3:1) is fine for legend chips but too light
-     for prose like role="alert" error messages. */
+  /* Prose-only strong variant of `--field-rose`. Use through the
+     `text-field-rose-strong` Tailwind utility for `role="alert"` and
+     similar error text where the standard rose (~3:1) is fine for legend
+     chips but fails WCAG AA against `--bg-elevated`. Do NOT use as a
+     background (`bg-field-rose-strong`) — the chroma is calibrated for
+     foreground contrast, not as a fill surface. */
   --field-rose-strong: oklch(50% 0.18 18);
   --field-slate: oklch(72% 0.02 270);
 
