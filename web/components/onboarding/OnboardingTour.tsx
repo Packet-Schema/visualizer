@@ -102,6 +102,12 @@ export default function OnboardingTour({ steps, onClose }: Props) {
   }, [computeRect]);
 
   useEffect(() => {
+    // Capture the element that had focus before the tour opened so we
+    // can restore it on unmount. Without this, keyboard / screen-reader
+    // users get dropped at the top of the page after dismissing the
+    // tour — the focus trap below keeps focus inside the dialog while
+    // it's mounted but leaves the previous anchor lost on close.
+    const previouslyFocused = document.activeElement;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -155,6 +161,19 @@ export default function OnboardingTour({ steps, onClose }: Props) {
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", computeRect, true);
+      // Restore focus to wherever it was before the tour opened.
+      // Skip when the previous anchor is now detached from the DOM
+      // (e.g. the host re-rendered while the tour was open).
+      if (
+        previouslyFocused instanceof HTMLElement &&
+        document.contains(previouslyFocused)
+      ) {
+        try {
+          previouslyFocused.focus();
+        } catch {
+          /* ignore */
+        }
+      }
     };
   }, [advance, finish, computeRect]);
 

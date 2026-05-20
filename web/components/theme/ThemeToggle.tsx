@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { THEME_STORAGE_KEY } from "@/lib/constants";
 
@@ -13,7 +13,6 @@ export default function ThemeToggle() {
   // the same click animate again. `prefers-reduced-motion` is honoured by
   // the global override in globals.css so we don't need to gate here.
   const [bouncing, setBouncing] = useState(false);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const current = document.documentElement.getAttribute(
@@ -37,7 +36,6 @@ export default function ThemeToggle() {
   const isDark = theme === "dark";
   return (
     <button
-      ref={btnRef}
       type="button"
       onClick={toggle}
       onAnimationEnd={() => setBouncing(false)}

@@ -20,10 +20,16 @@ import { tlvFieldToRepeat } from "./tlv";
 function rendererFieldToPsml(field: RendererField): Container[] {
   if (field.tlv) return [tlvFieldToRepeat(field)];
   if (field.chainCatalog) {
+    // `repeatToChainField` sets bits: 0 on the placeholder it builds for
+    // the chain dispatcher field, but PSML validation requires bit
+    // widths > 0 (a bit-typed Field must occupy at least one wire bit).
+    // Treat non-positive as "unset" and fall back to the canonical
+    // IPv6 NextHeader / Protocol byte width of 8.
+    const baseBits = field.bits && field.bits > 0 ? field.bits : 8;
     const base: Container = {
       id: field.id,
       name: field.name,
-      type: { kind: "bits", n: field.bits ?? 8 },
+      type: { kind: "bits", n: baseBits },
       ...(field.category ? { category: field.category } : {}),
       ...(field.description ? { doc: field.description } : {}),
       ...(field.defaultValue !== undefined

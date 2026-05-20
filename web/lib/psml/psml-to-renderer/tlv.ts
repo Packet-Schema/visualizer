@@ -29,15 +29,20 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
     const kindNum = Number(key);
     if (!Number.isFinite(kindNum)) continue;
     const fields = structFieldsToTlvFields(struct);
-    const bitsTotal = fields.reduce((acc, f) => acc + f.bits, 0);
     const entry: TlvCatalogEntry = {
       kind: kindNum,
       name: struct.name ?? `kind ${kindNum}`,
-      fields,
     };
-    if (fields.length === 0) {
-      entry.bits = bitsTotal;
-    }
+    // `fields` is optional on the catalog type; omit it when empty so
+    // downstream helpers (which use fields-presence to decide whether
+    // to render a payload row) can take the empty-fields fast path.
+    // We don't synthesise a bits-only entry here — the previous code
+    // wrote `entry.bits = bitsTotal` in the empty branch, but
+    // `bitsTotal` is derived from `fields` and so was always 0; that
+    // branch only ever produced a useless `bits: 0`. Hand-crafted
+    // catalogs that need bits-only entries (EOL/NOP wire-marker
+    // shapes) supply the catalog directly, not via a PSML Switch.
+    if (fields.length > 0) entry.fields = fields;
     out.push(entry);
   }
   return out;
