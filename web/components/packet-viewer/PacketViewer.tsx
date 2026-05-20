@@ -887,7 +887,7 @@ export default function PacketViewer() {
               packet={packet}
               layout={layout}
               selectedFieldId={selectedFieldId}
-              onFieldClick={(field, elem) => handleFieldClick(field.id, elem)}
+              onFieldClick={handleFieldClick}
               onSubfieldClick={(parentField, subfield, elem) =>
                 handleFieldClick(`${parentField.id}:${subfield.id}`, elem)
               }
@@ -895,6 +895,7 @@ export default function PacketViewer() {
             />
             {hexStripVisible ? (
               <HexStrip
+                packet={packet}
                 layout={layout}
                 rowBits={packet.rowBits}
                 selectedFieldId={selectedFieldId}

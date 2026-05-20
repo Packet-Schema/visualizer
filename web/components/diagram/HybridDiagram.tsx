@@ -14,7 +14,7 @@ type Props = {
   packet: Packet;
   layout: ResolvedLayout;
   selectedFieldId: string | null;
-  onFieldClick: (field: Field, element: HTMLElement) => void;
+  onFieldClick: (fieldId: string, element: HTMLElement) => void;
   onSubfieldClick: (
     parentField: Field,
     subfield: SubField,
@@ -35,6 +35,18 @@ function formatBitsLabel(bits: number, field: Field): string {
   if (field.variable) return `${bits} bits (var)`;
   const bytes = bits / 8;
   return Number.isInteger(bytes) ? `${bits} bits / ${bytes}B` : `${bits} bits`;
+}
+
+function selectableFieldId(packet: Packet, field: Field): string {
+  if (packet.fields.some((f) => f.id === field.id)) return field.id;
+
+  for (const parent of packet.fields) {
+    if (parent.subfields?.some((sub) => sub.id === field.id)) {
+      return `${parent.id}:${field.id}`;
+    }
+  }
+
+  return field.id;
 }
 
 /**
@@ -94,6 +106,7 @@ export default function HybridDiagram({
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}
+                packet={packet}
                 cell={cell}
                 selectedFieldId={selectedFieldId}
                 onFieldClick={onFieldClick}
@@ -110,9 +123,10 @@ export default function HybridDiagram({
 }
 
 type FieldCellProps = {
+  packet: Packet;
   cell: Cell;
   selectedFieldId: string | null;
-  onFieldClick: (field: Field, element: HTMLElement) => void;
+  onFieldClick: (fieldId: string, element: HTMLElement) => void;
   onSubfieldClick: (
     parentField: Field,
     subfield: SubField,
@@ -123,6 +137,7 @@ type FieldCellProps = {
 };
 
 function FieldCell({
+  packet,
   cell,
   selectedFieldId,
   onFieldClick,
@@ -130,7 +145,8 @@ function FieldCell({
   onFieldHover,
   tabIndex,
 }: FieldCellProps) {
-  const isSelected = cell.field.id === selectedFieldId;
+  const fieldId = selectableFieldId(packet, cell.field);
+  const isSelected = fieldId === selectedFieldId;
   const span = cell.endBit - cell.startBit + 1;
   const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
   const variableNote = cell.field.variable ? ", variable-length" : "";
@@ -179,7 +195,7 @@ function FieldCell({
       tabIndex={tabIndex}
       aria-label={`${cell.field.name}, ${cell.bitsTotal} bits${variableNote}${isSelected ? ", selected" : ""}${isEncryptedBlock || isEncryptedChild ? ", encrypted" : ""}${isHeaderProtected ? ", header-protected" : ""}`}
       aria-selected={isSelected}
-      data-field-id={cell.field.id}
+      data-field-id={fieldId}
       data-row={cell.row}
       data-start-bit={cell.startBit}
       data-end-bit={cell.endBit}
@@ -190,16 +206,16 @@ function FieldCell({
       {...(isHeaderProtected ? { "data-header-protected": "true" } : {})}
       title={encryptionTitle}
       style={style}
-      onClick={(e) => onFieldClick(cell.field, e.currentTarget)}
+      onClick={(e) => onFieldClick(fieldId, e.currentTarget)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onFieldClick(cell.field, e.currentTarget);
+          onFieldClick(fieldId, e.currentTarget);
         }
       }}
-      onMouseOver={onFieldHover ? () => onFieldHover(cell.field.id) : undefined}
+      onMouseOver={onFieldHover ? () => onFieldHover(fieldId) : undefined}
       onMouseOut={onFieldHover ? () => onFieldHover(null) : undefined}
-      onFocus={onFieldHover ? () => onFieldHover(cell.field.id) : undefined}
+      onFocus={onFieldHover ? () => onFieldHover(fieldId) : undefined}
       onBlur={onFieldHover ? () => onFieldHover(null) : undefined}
     >
       <span className="cell-body">
@@ -326,20 +342,21 @@ function SubfieldRow({
       {subCells.map((sub) => {
         const subSpan = sub.endBit - sub.startBit + 1;
         const startCol = sub.startBit - parentStartBit + 1;
-        const isSubSelected = selectedFieldId === sub.id;
+        const subfieldId = `${parent.id}:${sub.subfield.id}`;
+        const isSubSelected = selectedFieldId === subfieldId;
         const subStyle: CSSProperties = {
           gridColumn: `${startCol} / span ${subSpan}`,
         };
         return (
           <span
-            key={`sub-${sub.id}`}
+            key={`sub-${subfieldId}`}
             role="button"
             tabIndex={-1}
             // .subfield-cell class kept so PacketViewer's roving keydown
             // handler can target it via querySelectorAll.
             className={`subfield-cell${isSubSelected ? " selected" : ""}${sub.isFirst ? "" : " continuation"}`}
             aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
-            data-field-id={`${parent.id}:${sub.subfield.id}`}
+            data-field-id={subfieldId}
             data-parent-field-id={parent.id}
             data-row={String(sub.startBit)}
             data-start-bit={sub.startBit}
@@ -364,7 +381,7 @@ function SubfieldRow({
               onFieldHover
                 ? (e) => {
                     e.stopPropagation();
-                    onFieldHover(`${parent.id}:${sub.subfield.id}`);
+                    onFieldHover(subfieldId);
                   }
                 : undefined
             }
