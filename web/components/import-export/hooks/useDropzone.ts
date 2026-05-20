@@ -8,8 +8,13 @@ export type DropzoneHandlers = {
 
 /**
  * File drag-and-drop handlers + a `dragActive` flag the caller can use to
- * style the drop target. `enabled = false` returns no-op handlers so the
- * same DOM tree can opt out of file ingestion (e.g. the Export pane).
+ * style the drop target. When `enabled = false` the hook returns
+ * `handlers: undefined` so the caller can spread it conditionally
+ * (`{...dropzone.handlers}`) and have the drop target opt out of file
+ * ingestion entirely — useful for the Export pane, which shares the
+ * same DOM tree but should not accept drops. (Earlier wording promised
+ * "no-op handlers"; the implementation has always omitted them, and a
+ * missing-spread form is cheaper than re-binding three no-op functions.)
  */
 export function useDropzone({
   enabled,

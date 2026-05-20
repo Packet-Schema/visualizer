@@ -5,7 +5,7 @@
 // (useFieldHighlight, useRovingTabindex) directly rather than going through
 // the full app shell.
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -53,10 +53,11 @@ function mount(node: React.ReactNode): {
   return entry;
 }
 
-beforeEach(() => {
-  // Unmount before detach so effects' cleanup callbacks fire; bare
-  // `container.remove()` would leak the previous test's timers /
-  // listeners into the next case (Copilot review).
+afterEach(() => {
+  // `afterEach` (not `beforeEach`) so the last test in the file also
+  // unmounts — a beforeEach-only cleanup leaves the final case's root
+  // mounted, which leaked listeners into other test files when Vitest
+  // batches them in the same worker (Copilot review).
   for (const { root, container } of mounted) {
     act(() => {
       root.unmount();

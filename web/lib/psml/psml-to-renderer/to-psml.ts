@@ -20,23 +20,19 @@ import { tlvFieldToRepeat } from "./tlv";
 function rendererFieldToPsml(field: RendererField): Container[] {
   if (field.tlv) return [tlvFieldToRepeat(field)];
   if (field.chainCatalog) {
-    // `repeatToChainField` sets bits: 0 on the placeholder it builds for
-    // the chain dispatcher field, but PSML validation requires bit
-    // widths > 0 (a bit-typed Field must occupy at least one wire bit).
-    // Treat non-positive as "unset" and fall back to the canonical
-    // IPv6 NextHeader / Protocol byte width of 8.
-    const baseBits = field.bits && field.bits > 0 ? field.bits : 8;
-    const base: Container = {
-      id: field.id,
-      name: field.name,
-      type: { kind: "bits", n: baseBits },
-      ...(field.category ? { category: field.category } : {}),
-      ...(field.description ? { doc: field.description } : {}),
-      ...(field.defaultValue !== undefined
-        ? { defaultValue: field.defaultValue }
-        : {}),
-    };
-    return [base, chainFieldToRepeat(field)];
+    // The chain Repeat alone reconstructs the on-wire shape. The source
+    // PSML kept a separate 8-bit NextHeader Field alongside its Repeat,
+    // but `psmlToRenderer` collapses both into a single chainCatalog-
+    // bearing Field with `id === r.id` (which already ends in
+    // `_chain`). Emitting a synthetic base Field here would:
+    //   1. duplicate the Repeat id (after `_chain` strip+append they
+    //      land on the same name), and
+    //   2. add a spurious 8-bit cell to the exported packet's wire
+    //      layout that wasn't in the original source PSML.
+    // Round-trip is lossy by design (see the file header); accept that
+    // NextHeader / Protocol byte vanishes on re-export rather than
+    // breaking every export with an id collision (Copilot review).
+    return [chainFieldToRepeat(field)];
   }
   if (field.subfields && field.subfields.length > 0) {
     return [rendererSubfieldsToGroup(field)];

@@ -83,10 +83,18 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
   for (const entry of field.chainCatalog ?? []) {
     cases[String(entry.proto)] = chainEntryToStruct(baseId, entry);
   }
+  // `repeatToChainField` carried the source Repeat name straight onto
+  // the renderer Field, so a PSML→renderer→PSML round-trip arrives
+  // here with `field.name` already ending in " (chain)". Don't double
+  // the suffix — preserving the existing label keeps round-trips
+  // idempotent (Copilot review).
+  const repeatName = field.name.endsWith(" (chain)")
+    ? field.name
+    : `${field.name} (chain)`;
   return {
     kind: "repeat",
     id: `${baseId}_chain`,
-    name: `${field.name} (chain)`,
+    name: repeatName,
     category: "type",
     doc: "IPv6 extension-header chain.",
     element: {
