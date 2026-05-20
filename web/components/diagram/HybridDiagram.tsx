@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 
 import type {
   Cell,
@@ -115,7 +115,24 @@ type FieldCellProps = {
   tabIndex: number;
 };
 
-function FieldCell({
+const FieldCell = memo(FieldCellImpl, (prev, next) => {
+  // Identity check is enough because `cell` comes from a useMemo (layout)
+  // and the parent rebuilds it only when `controllers` / `packet` change.
+  // We compare `selectedFieldId` separately because it changes on every
+  // click but should only invalidate cells that go in/out of the selection.
+  if (prev.cell !== next.cell) return false;
+  if (prev.tabIndex !== next.tabIndex) return false;
+  if (prev.onFieldClick !== next.onFieldClick) return false;
+  if (prev.onSubfieldClick !== next.onSubfieldClick) return false;
+  if (prev.onFieldHover !== next.onFieldHover) return false;
+  // Re-render only the cell that *was* selected and the cell that *is now*
+  // selected — everything else can skip.
+  const wasSelected = prev.cell.field.id === prev.selectedFieldId;
+  const isSelected = next.cell.field.id === next.selectedFieldId;
+  return wasSelected === isSelected;
+});
+
+function FieldCellImpl({
   cell,
   selectedFieldId,
   onFieldClick,

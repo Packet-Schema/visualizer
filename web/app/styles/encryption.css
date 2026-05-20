@@ -1,4 +1,5 @@
-/* ==========================================================================
+@layer components {
+  /* ==========================================================================
    Encryption decoration (PSML 0.3)
 
    Wire-mode encrypted blocks render as one opaque field with a diagonal
@@ -12,69 +13,70 @@
    are XOR-encrypted under QUIC's header protection.
    ========================================================================== */
 
-.cell.field-cell[data-encrypted="true"] {
-  /* Heavier stripe than the variable-length pattern so the two are
+  .cell.field-cell[data-encrypted="true"] {
+    /* Heavier stripe than the variable-length pattern so the two are
      visually distinguishable when both appear in the same packet. */
-  background-image: repeating-linear-gradient(
-    135deg,
-    transparent 0px,
-    transparent 5px,
-    color-mix(in oklch, var(--fg-muted) 35%, transparent) 5px,
-    color-mix(in oklch, var(--fg-muted) 35%, transparent) 6px
-  );
-  opacity: 0.65;
-}
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0px,
+      transparent 5px,
+      color-mix(in oklch, var(--fg-muted) 35%, transparent) 5px,
+      color-mix(in oklch, var(--fg-muted) 35%, transparent) 6px
+    );
+    opacity: 0.65;
+  }
 
-.cell.field-cell[data-encrypted="true"]:hover,
-.cell.field-cell[data-encrypted="true"]:focus-visible {
-  /* Lift opacity slightly on interaction so the label reads cleanly. */
-  opacity: 0.85;
-}
+  .cell.field-cell[data-encrypted="true"]:hover,
+  .cell.field-cell[data-encrypted="true"]:focus-visible {
+    /* Lift opacity slightly on interaction so the label reads cleanly. */
+    opacity: 0.85;
+  }
 
-.cell.field-cell[data-encrypted-child="true"] {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
+  .cell.field-cell[data-encrypted-child="true"] {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
 
-.cell.field-cell[data-header-protected="true"] {
-  /* The HP badge is positioned absolutely below the lock badge. The cell
+  .cell.field-cell[data-header-protected="true"] {
+    /* The HP badge is positioned absolutely below the lock badge. The cell
      itself stays unstyled here so it can still surface its category fill. */
-}
+  }
 
-.field-lock-icon {
-  position: absolute;
-  pointer-events: none;
-  color: var(--accent);
-  opacity: 0.85;
-}
+  .field-lock-icon {
+    position: absolute;
+    pointer-events: none;
+    color: var(--accent);
+    opacity: 0.85;
+  }
 
-.field-lock-icon--block {
-  top: 6px;
-  right: 6px;
-}
+  .field-lock-icon--block {
+    top: 6px;
+    right: 6px;
+  }
 
-.field-lock-icon--child {
-  bottom: 4px;
-  right: 4px;
-  opacity: 0.7;
-}
+  .field-lock-icon--child {
+    bottom: 4px;
+    right: 4px;
+    opacity: 0.7;
+  }
 
-.field-hp-badge {
-  position: absolute;
-  bottom: 4px;
-  right: 18px;
-  font-family: var(--font-mono, ui-monospace), monospace;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--accent);
-  pointer-events: none;
-  line-height: 1;
-}
+  .field-hp-badge {
+    position: absolute;
+    bottom: 4px;
+    right: 18px;
+    font-family: var(--font-mono, ui-monospace), monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    pointer-events: none;
+    line-height: 1;
+  }
 
-@media print {
-  .hex-strip,
-  .dependency-overlay {
-    display: none !important;
+  @media print {
+    .hex-strip,
+    .dependency-overlay {
+      display: none !important;
+    }
   }
 }

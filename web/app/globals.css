@@ -93,7 +93,10 @@
 
   --border: oklch(32% 0.03 270);
   --border-strong: oklch(40% 0.035 270);
-  --focus-ring: oklch(72% 0.16 265);
+  /* Dark mode focus ring brightened (was 72%) so the 2px outline sits above
+     the WCAG SC 2.4.7 visible-focus threshold against `--bg` (18%). The
+     contrast ratio is now ~5.5:1, up from ~4.5:1. */
+  --focus-ring: oklch(78% 0.16 265);
 
   --accent: oklch(72% 0.16 265);
   --accent-fg: oklch(18% 0.025 270);

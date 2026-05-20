@@ -1,303 +1,305 @@
-/* ==========================================================================
+@layer components {
+  /* ==========================================================================
    Hybrid HTML+Grid renderer
    ========================================================================== */
 
-.diagram-shell {
-  /* Allow the field-cell selection glow to overflow horizontally. */
-  position: relative;
-}
-
-.diagram-ruler {
-  display: grid;
-  height: 22px;
-  margin-bottom: 6px;
-  /* gridTemplateColumns supplied inline by DiagramRuler */
-}
-
-.diagram-ruler .ruler-cell {
-  position: relative;
-  font-family: var(--font-mono, ui-monospace), monospace;
-  font-variant-numeric: tabular-nums;
-  color: var(--ruler-label);
-}
-
-.diagram-ruler .ruler-label {
-  position: absolute;
-  left: 0;
-  top: 0;
-  font-size: 10px;
-  line-height: 1;
-  transform: translateX(-2px);
-}
-
-.diagram-ruler .ruler-tick-major,
-.diagram-ruler .ruler-tick-minor {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 1px;
-  background: var(--ruler-tick);
-}
-
-.diagram-ruler .ruler-tick-major {
-  height: 10px;
-}
-
-.diagram-ruler .ruler-tick-minor {
-  height: 6px;
-  opacity: 0.55;
-}
-
-.hybrid-diagram {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  /* Sub-pixel cell widths animate awkwardly without containment. */
-  contain: layout style;
-}
-
-.hybrid-row {
-  display: grid;
-  /* gridTemplateColumns set inline */
-  gap: 3px;
-  padding: 4px 0;
-  border-radius: 8px;
-  min-height: 56px;
-}
-
-.hybrid-row-even {
-  background: var(--row-band-even);
-}
-
-.hybrid-row-odd {
-  background: var(--row-band-odd);
-}
-
-/* ---- cell ---- */
-
-.cell.field-cell {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  min-width: 0;
-  border: 1px solid var(--field-stroke);
-  border-radius: 10px;
-  background: var(--cell-fill, var(--field-slate));
-  color: var(--field-label);
-  font:
-    600 12px/1.2 var(--font-sans, system-ui),
-    sans-serif;
-  cursor: pointer;
-  padding: 6px 8px;
-  /* Inset highlight that keeps the cell from looking flat. */
-  box-shadow: inset 0 1px 0 oklch(99% 0 0 / 0.12);
-  /* The whole game: grid-column animates smoothly. */
-  transition:
-    grid-column var(--pv-fast) var(--pv-ease),
-    box-shadow var(--pv-fast) var(--pv-ease),
-    border-color var(--pv-fast) var(--pv-ease),
-    background var(--pv-med) var(--pv-ease),
-    opacity var(--pv-med) var(--pv-ease),
-    transform var(--pv-fast) var(--pv-ease),
-    filter var(--pv-med) var(--pv-ease);
-  /* Background fill respects the per-theme fill opacity. */
-  background-color: color-mix(
-    in oklch,
-    var(--cell-fill) calc(var(--field-fill-opacity) * 100%),
-    transparent
-  );
-  outline: none;
-  text-align: left;
-  appearance: none;
-}
-
-/* Smooth fade-in for newly mounted cells (TLV expand etc.). */
-@starting-style {
-  .cell.field-cell {
-    opacity: 0;
-    transform: scale(0.96);
+  .diagram-shell {
+    /* Allow the field-cell selection glow to overflow horizontally. */
+    position: relative;
   }
-}
 
-.cell.field-cell:hover {
-  background-color: color-mix(
-    in oklch,
-    var(--cell-fill) calc(var(--field-fill-opacity-hover) * 100%),
-    transparent
-  );
-  border-color: var(--field-stroke-selected);
-}
+  .diagram-ruler {
+    display: grid;
+    height: 22px;
+    margin-bottom: 6px;
+    /* gridTemplateColumns supplied inline by DiagramRuler */
+  }
 
-.cell.field-cell:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
+  .diagram-ruler .ruler-cell {
+    position: relative;
+    font-family: var(--font-mono, ui-monospace), monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ruler-label);
+  }
 
-.cell.field-cell.selected {
-  border-color: var(--accent);
-  background-color: color-mix(
-    in oklch,
-    var(--cell-fill) calc(var(--field-fill-opacity-hover) * 100%),
-    transparent
-  );
-  /* Accent glow + ring (replaces the legacy dark stroke). */
-  box-shadow:
-    inset 0 1px 0 oklch(99% 0 0 / 0.14),
-    0 0 0 2px var(--accent),
-    0 0 16px -2px var(--accent-glow);
-  z-index: 2;
-}
+  .diagram-ruler .ruler-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+    line-height: 1;
+    transform: translateX(-2px);
+  }
 
-.cell.field-cell.variable {
-  /* Diagonal stripe pattern overlay for variable-length fields. */
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent 0px,
-    transparent 6px,
-    var(--variable-stripe) 6px,
-    var(--variable-stripe) 7px
-  );
-}
+  .diagram-ruler .ruler-tick-major,
+  .diagram-ruler .ruler-tick-minor {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: var(--ruler-tick);
+  }
 
-.cell.field-cell.continuation {
-  font-weight: 500;
-  font-style: italic;
-  opacity: 0.95;
-}
+  .diagram-ruler .ruler-tick-major {
+    height: 10px;
+  }
 
-.cell.field-cell .cell-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-width: 0;
-  pointer-events: none;
-  flex: 1 1 auto;
-}
+  .diagram-ruler .ruler-tick-minor {
+    height: 6px;
+    opacity: 0.55;
+  }
 
-.cell.field-cell.has-subfields .cell-body {
-  flex: 0 0 auto;
-  justify-content: flex-start;
-  margin-bottom: 2px;
-}
+  .hybrid-diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    /* Sub-pixel cell widths animate awkwardly without containment. */
+    contain: layout style;
+  }
 
-.cell.field-cell .cell-name,
-.cell.field-cell .cell-continuation {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  font-weight: 600;
-  text-align: center;
-}
+  .hybrid-row {
+    display: grid;
+    /* gridTemplateColumns set inline */
+    gap: 3px;
+    padding: 4px 0;
+    border-radius: 8px;
+    min-height: 56px;
+  }
 
-.cell.field-cell .cell-continuation {
-  font-size: 10px;
-  font-style: italic;
-  color: var(--field-continuation);
-  font-weight: 500;
-}
+  .hybrid-row-even {
+    background: var(--row-band-even);
+  }
 
-.cell.field-cell .cell-sublabel {
-  font-family: var(--font-mono, ui-monospace), monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--field-sublabel);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  margin-top: 2px;
-}
+  .hybrid-row-odd {
+    background: var(--row-band-odd);
+  }
 
-/* Legend hover dimming. When the user hovers a legend item we set a
+  /* ---- cell ---- */
+
+  .cell.field-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    min-width: 0;
+    border: 1px solid var(--field-stroke);
+    border-radius: 10px;
+    background: var(--cell-fill, var(--field-slate));
+    color: var(--field-label);
+    font:
+      600 12px/1.2 var(--font-sans, system-ui),
+      sans-serif;
+    cursor: pointer;
+    padding: 6px 8px;
+    /* Inset highlight that keeps the cell from looking flat. */
+    box-shadow: inset 0 1px 0 oklch(99% 0 0 / 0.12);
+    /* The whole game: grid-column animates smoothly. */
+    transition:
+      grid-column var(--pv-fast) var(--pv-ease),
+      box-shadow var(--pv-fast) var(--pv-ease),
+      border-color var(--pv-fast) var(--pv-ease),
+      background var(--pv-med) var(--pv-ease),
+      opacity var(--pv-med) var(--pv-ease),
+      transform var(--pv-fast) var(--pv-ease),
+      filter var(--pv-med) var(--pv-ease);
+    /* Background fill respects the per-theme fill opacity. */
+    background-color: color-mix(
+      in oklch,
+      var(--cell-fill) calc(var(--field-fill-opacity) * 100%),
+      transparent
+    );
+    outline: none;
+    text-align: left;
+    appearance: none;
+  }
+
+  /* Smooth fade-in for newly mounted cells (TLV expand etc.). */
+  @starting-style {
+    .cell.field-cell {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  .cell.field-cell:hover {
+    background-color: color-mix(
+      in oklch,
+      var(--cell-fill) calc(var(--field-fill-opacity-hover) * 100%),
+      transparent
+    );
+    border-color: var(--field-stroke-selected);
+  }
+
+  .cell.field-cell:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .cell.field-cell.selected {
+    border-color: var(--accent);
+    background-color: color-mix(
+      in oklch,
+      var(--cell-fill) calc(var(--field-fill-opacity-hover) * 100%),
+      transparent
+    );
+    /* Accent glow + ring (replaces the legacy dark stroke). */
+    box-shadow:
+      inset 0 1px 0 oklch(99% 0 0 / 0.14),
+      0 0 0 2px var(--accent),
+      0 0 16px -2px var(--accent-glow);
+    z-index: 2;
+  }
+
+  .cell.field-cell.variable {
+    /* Diagonal stripe pattern overlay for variable-length fields. */
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent 0px,
+      transparent 6px,
+      var(--variable-stripe) 6px,
+      var(--variable-stripe) 7px
+    );
+  }
+
+  .cell.field-cell.continuation {
+    font-weight: 500;
+    font-style: italic;
+    opacity: 0.95;
+  }
+
+  .cell.field-cell .cell-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    pointer-events: none;
+    flex: 1 1 auto;
+  }
+
+  .cell.field-cell.has-subfields .cell-body {
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    margin-bottom: 2px;
+  }
+
+  .cell.field-cell .cell-name,
+  .cell.field-cell .cell-continuation {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .cell.field-cell .cell-continuation {
+    font-size: 10px;
+    font-style: italic;
+    color: var(--field-continuation);
+    font-weight: 500;
+  }
+
+  .cell.field-cell .cell-sublabel {
+    font-family: var(--font-mono, ui-monospace), monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--field-sublabel);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    margin-top: 2px;
+  }
+
+  /* Legend hover dimming. When the user hovers a legend item we set a
  * `data-hovered-category` attribute on <html>; cells whose own category does
  * not match get desaturated. We swap the cell's chroma in OKLCH via
  * `color-mix` with a neutral gray. */
-:where(html[data-hovered-category])
-  .cell.field-cell:not([data-category=""]):not(:hover) {
-  filter: saturate(0.18) brightness(0.98);
-  opacity: 0.85;
-}
+  :where(html[data-hovered-category])
+    .cell.field-cell:not([data-category=""]):not(:hover) {
+    filter: saturate(0.18) brightness(0.98);
+    opacity: 0.85;
+  }
 
-html[data-hovered-category="addressing"]
-  .cell.field-cell[data-category="addressing"],
-html[data-hovered-category="identifier"]
-  .cell.field-cell[data-category="identifier"],
-html[data-hovered-category="length"] .cell.field-cell[data-category="length"],
-html[data-hovered-category="type"] .cell.field-cell[data-category="type"],
-html[data-hovered-category="flags"] .cell.field-cell[data-category="flags"],
-html[data-hovered-category="reserved"]
-  .cell.field-cell[data-category="reserved"],
-html[data-hovered-category="checksum"]
-  .cell.field-cell[data-category="checksum"],
-html[data-hovered-category="variable"]
-  .cell.field-cell[data-category="variable"],
-html[data-hovered-category="payload-marker"]
-  .cell.field-cell[data-category="payload-marker"] {
-  filter: none;
-  opacity: 1;
-}
+  html[data-hovered-category="addressing"]
+    .cell.field-cell[data-category="addressing"],
+  html[data-hovered-category="identifier"]
+    .cell.field-cell[data-category="identifier"],
+  html[data-hovered-category="length"] .cell.field-cell[data-category="length"],
+  html[data-hovered-category="type"] .cell.field-cell[data-category="type"],
+  html[data-hovered-category="flags"] .cell.field-cell[data-category="flags"],
+  html[data-hovered-category="reserved"]
+    .cell.field-cell[data-category="reserved"],
+  html[data-hovered-category="checksum"]
+    .cell.field-cell[data-category="checksum"],
+  html[data-hovered-category="variable"]
+    .cell.field-cell[data-category="variable"],
+  html[data-hovered-category="payload-marker"]
+    .cell.field-cell[data-category="payload-marker"] {
+    filter: none;
+    opacity: 1;
+  }
 
-/* ---- nested subfield grid ---- */
+  /* ---- nested subfield grid ---- */
 
-.cell-subgrid {
-  display: grid;
-  /* gridTemplateColumns set inline */
-  gap: 2px;
-  width: 100%;
-  margin-top: auto;
-  pointer-events: auto;
-}
+  .cell-subgrid {
+    display: grid;
+    /* gridTemplateColumns set inline */
+    gap: 2px;
+    width: 100%;
+    margin-top: auto;
+    pointer-events: auto;
+  }
 
-.subfield-cell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 18px;
-  min-width: 0;
-  background: var(--bg-elevated);
-  border: 1px solid var(--field-stroke);
-  border-radius: 6px;
-  font-family: var(--font-sans, system-ui), sans-serif;
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--field-label);
-  cursor: pointer;
-  padding: 0 2px;
-  transition:
-    background var(--pv-fast) var(--pv-ease),
-    border-color var(--pv-fast) var(--pv-ease),
-    box-shadow var(--pv-fast) var(--pv-ease);
-}
+  .subfield-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 18px;
+    min-width: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--field-stroke);
+    border-radius: 6px;
+    font-family: var(--font-sans, system-ui), sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--field-label);
+    cursor: pointer;
+    padding: 0 2px;
+    transition:
+      background var(--pv-fast) var(--pv-ease),
+      border-color var(--pv-fast) var(--pv-ease),
+      box-shadow var(--pv-fast) var(--pv-ease);
+  }
 
-.subfield-cell:hover {
-  background: color-mix(in oklch, var(--bg-elevated) 92%, var(--accent) 8%);
-  border-color: var(--field-stroke-selected);
-}
+  .subfield-cell:hover {
+    background: color-mix(in oklch, var(--bg-elevated) 92%, var(--accent) 8%);
+    border-color: var(--field-stroke-selected);
+  }
 
-.subfield-cell.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1.5px var(--accent);
-}
+  .subfield-cell.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1.5px var(--accent);
+  }
 
-.subfield-cell.continuation {
-  opacity: 0.75;
-}
+  .subfield-cell.continuation {
+    opacity: 0.75;
+  }
 
-.subfield-cell .subfield-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  pointer-events: none;
-}
+  .subfield-cell .subfield-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    pointer-events: none;
+  }
 
-.subfield-cell:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
+  .subfield-cell:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
 }

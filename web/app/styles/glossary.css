@@ -1,63 +1,65 @@
-/* ==========================================================================
+@layer components {
+  /* ==========================================================================
    Enriched descriptions (glossary acronyms + RFC links)
    ========================================================================== */
 
-.enriched-text {
-  display: inline;
-}
+  .enriched-text {
+    display: inline;
+  }
 
-.acronym {
-  position: relative;
-  font-style: normal;
-  border-bottom: 1px dotted var(--fg-muted);
-  cursor: help;
-  padding-bottom: 0.5px;
-}
+  .acronym {
+    position: relative;
+    font-style: normal;
+    border-bottom: 1px dotted var(--fg-muted);
+    cursor: help;
+    padding-bottom: 0.5px;
+  }
 
-.acronym:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
+  .acronym:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
 
-.acronym::after {
-  content: attr(data-gloss);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 6px);
-  transform: translateX(-50%);
-  background: var(--fg);
-  color: var(--bg-elevated);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.4;
-  padding: 6px 8px;
-  border-radius: 6px;
-  width: max-content;
-  max-width: 260px;
-  white-space: normal;
-  text-align: left;
-  box-shadow: 0 4px 14px oklch(0% 0 0 / 0.18);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--pv-fast) var(--pv-ease);
-  z-index: 90;
-}
+  .acronym::after {
+    content: attr(data-gloss);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    background: var(--fg);
+    color: var(--bg-elevated);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    padding: 6px 8px;
+    border-radius: 6px;
+    width: max-content;
+    max-width: 260px;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 4px 14px oklch(0% 0 0 / 0.18);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--pv-fast) var(--pv-ease);
+    z-index: 90;
+  }
 
-.acronym:hover::after,
-.acronym:focus::after,
-.acronym:focus-visible::after {
-  opacity: 1;
-}
+  .acronym:hover::after,
+  .acronym:focus::after,
+  .acronym:focus-visible::after {
+    opacity: 1;
+  }
 
-.rfc-link {
-  color: var(--accent);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-}
+  .rfc-link {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+  }
 
-.rfc-link:hover,
-.rfc-link:focus-visible {
-  text-decoration-style: solid;
+  .rfc-link:hover,
+  .rfc-link:focus-visible {
+    text-decoration-style: solid;
+  }
 }
