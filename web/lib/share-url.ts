@@ -133,11 +133,24 @@ export function shareUrlByteLength(url: string): number {
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {
-  const out: ControllerState = {};
+  // `Object.create(null)` so an attacker-controlled URL containing
+  // `controllers.__proto__=N` can't mutate the map's prototype and
+  // leak into any iteration / merge downstream (Copilot security
+  // review). The dangerous-key skip below is belt-and-braces: even
+  // with the null prototype, surfacing a controller literally named
+  // `__proto__` in the UI would be confusing.
+  const out = Object.create(null) as ControllerState;
   for (const [key, raw] of params.entries()) {
     if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
     const controllerKey = key.slice(CONTROLLER_PARAM_PREFIX.length);
     if (!controllerKey) continue;
+    if (
+      controllerKey === "__proto__" ||
+      controllerKey === "constructor" ||
+      controllerKey === "prototype"
+    ) {
+      continue;
+    }
     const value = Number(raw);
     // Reject anything that's not a representable, finite *integer*.
     //  - `Number.isFinite` filters NaN / ±Infinity.

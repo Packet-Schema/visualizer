@@ -59,11 +59,23 @@ function readRaw(): PresetMap {
   // bulk-export bundle. Per-entry try/catch keeps a single bad packet
   // from wiping the whole user library: only the corrupt key is
   // dropped, the rest survive.
-  const out: PresetMap = {};
+  // `Object.create(null)` (cast to PresetMap) avoids prototype pollution
+  // from a tampered localStorage payload — a key like `__proto__` or
+  // `constructor` against a plain `{}` literal would otherwise mutate
+  // the map's prototype and leak into any merge/iteration downstream
+  // (Copilot security review).
+  const out = Object.create(null) as PresetMap;
   for (const [key, value] of Object.entries(
     parsed as Record<string, unknown>,
   )) {
     if (typeof key !== "string" || key.length === 0) continue;
+    // Explicit reject for dangerous keys — `Object.create(null)` already
+    // makes the map prototype-pollution-immune, but we'd still surface
+    // a confusing "preset" labelled `__proto__` in the picker if we
+    // didn't skip it here.
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
     try {
       validatePsmlPacket(value as PsmlPacket);
       out[key] = value as PsmlPacket;

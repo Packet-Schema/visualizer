@@ -497,6 +497,19 @@ export default function PacketViewer() {
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
+      // Drop any stale renderer-mirror cache for this key. The custom-
+      // edit path writes renderer packets into `renderedPresets[key]`
+      // for session-only persistence; without this evict, saving over
+      // an existing `custom:<name>` keeps the old renderer ahead of
+      // the freshly persisted PSML in `packet`'s resolution order and
+      // the UI shows stale data (Codex P2). The next render will
+      // re-derive from `customPresets[key]` → `customRenderer`.
+      setRenderedPresets((prev) => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
       setPacketKey(key);
       setControllers(initialState(psmlToRenderer(packetToSave)));
       uiDispatch({ type: "clear-selection" });
