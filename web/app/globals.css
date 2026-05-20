@@ -62,6 +62,10 @@
   --field-amber: oklch(82% 0.13 85);
   --field-orange: oklch(74% 0.14 50);
   --field-rose: oklch(72% 0.14 18);
+  /* Strong variant used for body text that needs WCAG AA on bg-elevated —
+     the standard --field-rose (~3:1) is fine for legend chips but too light
+     for prose like role="alert" error messages. */
+  --field-rose-strong: oklch(50% 0.18 18);
   --field-slate: oklch(72% 0.02 270);
 
   /* Chroma applied to non-matching cells while a legend item is hovered. */
@@ -125,6 +129,7 @@
   --field-amber: oklch(85% 0.14 85);
   --field-orange: oklch(78% 0.15 50);
   --field-rose: oklch(76% 0.15 18);
+  --field-rose-strong: oklch(82% 0.17 18);
   --field-slate: oklch(78% 0.02 270);
 
   color-scheme: dark;
@@ -153,6 +158,7 @@
   --color-field-amber: var(--field-amber);
   --color-field-orange: var(--field-orange);
   --color-field-rose: var(--field-rose);
+  --color-field-rose-strong: var(--field-rose-strong);
   --color-field-slate: var(--field-slate);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);

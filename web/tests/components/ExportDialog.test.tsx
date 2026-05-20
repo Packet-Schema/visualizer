@@ -95,7 +95,14 @@ function inputByLabel(
   const label = [...container.querySelectorAll("label")].find((candidate) =>
     candidate.textContent?.includes(labelText),
   );
-  const input = label?.querySelector("input");
+  if (!label) {
+    throw new Error(`Missing label for ${labelText}`);
+  }
+  let input: Element | null = label.querySelector("input");
+  if (!input) {
+    const forId = label.getAttribute("for");
+    if (forId) input = container.querySelector(`[id="${forId}"]`);
+  }
   if (!(input instanceof HTMLInputElement)) {
     throw new Error(`Missing input for ${labelText}`);
   }
@@ -300,6 +307,10 @@ describe("ExportDialog", () => {
       scale.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
+    // saveSettings is debounced (~200ms) to avoid hammering localStorage
+    // during slider drags. Wait for the trailing write before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
     expect(
       JSON.parse(
         localStorage.getItem("packet-view-diagram-export-settings-v1") ?? "",
@@ -400,4 +411,44 @@ describe("ExportDialog", () => {
 
     await act(async () => root.unmount());
   });
+
+  it.each([
+    ["invalid JSON", "{not json"],
+    [
+      "out-of-range pngScale",
+      JSON.stringify({
+        format: "svg",
+        exportThemeMode: "follow-ui",
+        pngScale: 999,
+        diagramWidth: 32,
+        transparentBackground: false,
+      }),
+    ],
+    ["array payload", JSON.stringify([1, 2, 3])],
+    [
+      "unknown format",
+      JSON.stringify({
+        format: "gif",
+        exportThemeMode: "neon",
+        pngScale: "two",
+        diagramWidth: 99,
+        transparentBackground: "yes",
+      }),
+    ],
+  ])(
+    "falls back to defaults when storage is corrupted (%s)",
+    async (_name, payload) => {
+      localStorage.setItem("packet-view-diagram-export-settings-v1", payload);
+      const { container, root } = await renderDialog();
+      expect(selectByLabel(container, "Format").value).toBe("svg");
+      expect(selectByLabel(container, "Theme for saved image").value).toBe(
+        "follow-ui",
+      );
+      expect(selectByLabel(container, "Width").value).toBe("32");
+      expect(
+        inputByLabel(container, "Transparent background").checked,
+      ).toBe(false);
+      await act(async () => root.unmount());
+    },
+  );
 });

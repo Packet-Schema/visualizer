@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   buildDiagramSvg,
@@ -114,33 +121,48 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  // Tracks the current open/busy lifecycle so an async PNG encode that
-  // resolves after the dialog has been closed (or re-opened) doesn't
-  // trigger a download or update state on the new session.
-  const openRef = useRef(open);
+  // Increments on every open/close transition. Used as the single source
+  // of truth for "is the in-flight PNG encode still relevant?" — see
+  // handlePngDownload.
   const exportSessionRef = useRef(0);
   const titleId = useId();
+  const pngScaleId = useId();
 
   useDrawerFocusTrap({ open, containerRef: cardRef, onClose });
 
   useEffect(() => {
-    openRef.current = open;
     exportSessionRef.current += 1;
     setBusy(false);
     if (open) setError(null);
   }, [open]);
 
+  // Coalesce localStorage writes so a single slider drag (which can emit
+  // 30-60 onChange events) doesn't trigger that many synchronous
+  // JSON.stringify + setItem cycles. The trailing 200ms timeout also
+  // collapses rapid select changes during a multi-step settings tweak.
   useEffect(() => {
-    saveSettings(settings);
+    const handle = setTimeout(() => saveSettings(settings), 200);
+    return () => clearTimeout(handle);
   }, [settings]);
 
-  const svg = open
-    ? buildDiagramSvg(packet, layout, {
-        theme: readDiagramTheme(settings.exportThemeMode),
-        bitWidth: settings.diagramWidth,
-        transparentBackground: settings.transparentBackground,
-      })
-    : null;
+  // SVG generation is O(packet cells) — rebuild only when the inputs that
+  // actually change the diagram change. `busy`/`error` etc. must not
+  // invalidate the memo.
+  const svg = useMemo(() => {
+    if (!open) return null;
+    return buildDiagramSvg(packet, layout, {
+      theme: readDiagramTheme(settings.exportThemeMode),
+      bitWidth: settings.diagramWidth,
+      transparentBackground: settings.transparentBackground,
+    });
+  }, [
+    open,
+    packet,
+    layout,
+    settings.exportThemeMode,
+    settings.diagramWidth,
+    settings.transparentBackground,
+  ]);
 
   const handleSvgDownload = useCallback(() => {
     if (!svg) return;
@@ -151,29 +173,26 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
 
   const handlePngDownload = useCallback(async () => {
     if (!svg) return;
+    // Use the session counter as the sole staleness gate. It increments on
+    // every open/close transition, so an in-flight PNG encode that resolves
+    // after the dialog has closed or been re-opened will see a session
+    // mismatch and bail out.
     const exportSession = exportSessionRef.current;
+    const isCurrent = () => exportSessionRef.current === exportSession;
     setBusy(true);
     setError(null);
     try {
       const png = await svgToPngBlob(svg, settings.pngScale);
-      if (!openRef.current || exportSessionRef.current !== exportSession) {
-        return;
-      }
+      if (!isCurrent()) return;
       const filename = `${slugify(packet.name)}-diagram-${settings.pngScale}x.png`;
       downloadBlobFile(filename, png);
-      if (openRef.current && exportSessionRef.current === exportSession) {
-        onClose();
-      }
+      onClose();
     } catch (caught) {
-      if (!openRef.current || exportSessionRef.current !== exportSession) {
-        return;
-      }
+      if (!isCurrent()) return;
       console.error("Failed to export diagram as PNG.", caught);
       setError("PNG export failed. Please try SVG or another browser.");
     } finally {
-      if (openRef.current && exportSessionRef.current === exportSession) {
-        setBusy(false);
-      }
+      if (isCurrent()) setBusy(false);
     }
   }, [packet.name, settings.pngScale, svg, onClose]);
 
@@ -284,34 +303,43 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
         </div>
         {settings.format === "png" ? (
           <div className="mt-3 rounded-lg border p-3 border-border">
-            <label className="text-xs">
+            <label className="text-xs" htmlFor={pngScaleId}>
               PNG resolution
-              <div className="mt-1 flex items-center gap-3">
-                <div className="pv-slider-wrap flex-1">
-                  <input
-                    type="range"
-                    min={PNG_SCALE_MIN}
-                    max={PNG_SCALE_MAX}
-                    step={PNG_SCALE_STEP}
-                    value={settings.pngScale}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        pngScale: Number(event.target.value),
-                      }))
-                    }
-                    className="pv-slider"
-                  />
-                </div>
-                <output className="min-w-10 text-right">
-                  {settings.pngScale}x
-                </output>
-              </div>
             </label>
+            <div className="mt-1 flex items-center gap-3">
+              <div className="pv-slider-wrap flex-1">
+                <input
+                  id={pngScaleId}
+                  type="range"
+                  min={PNG_SCALE_MIN}
+                  max={PNG_SCALE_MAX}
+                  step={PNG_SCALE_STEP}
+                  value={settings.pngScale}
+                  aria-valuetext={`${settings.pngScale} times`}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      pngScale: Number(event.target.value),
+                    }))
+                  }
+                  className="pv-slider"
+                />
+              </div>
+              <output
+                htmlFor={pngScaleId}
+                aria-live="polite"
+                className="min-w-10 text-right"
+              >
+                {settings.pngScale}x
+              </output>
+            </div>
           </div>
         ) : null}
         {error ? (
-          <p className="mb-0 mt-3 text-xs text-field-rose" role="alert">
+          <p
+            className="mb-0 mt-3 text-xs text-field-rose-strong"
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
@@ -327,7 +355,8 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
             type="button"
             onClick={handleSave}
             disabled={settings.format === "png" && busy}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-accent text-accent-fg border-accent disabled:opacity-60"
+            aria-disabled={settings.format === "png" && busy}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-accent text-accent-fg border-accent disabled:cursor-not-allowed disabled:opacity-80"
           >
             {settings.format === "svg"
               ? "Save SVG"
