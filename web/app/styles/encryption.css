@@ -26,6 +26,22 @@
     opacity: 0.65;
   }
 
+  /* Dark mode: `--fg-muted` lands around oklch(72%) on top of an
+     oklch(18%) cell, so a 35% mix only reaches ~2:1 contrast — below
+     WCAG 1.4.11's 3:1 minimum for meaningful UI graphics. Bump the
+     stripe alpha to 55% (and the band width to 1.25px) so the
+     "encrypted" decoration still reads at a glance against the dark
+     background. */
+  [data-theme="dark"] .cell.field-cell[data-encrypted="true"] {
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent 0px,
+      transparent 5px,
+      color-mix(in oklch, var(--fg-muted) 55%, transparent) 5px,
+      color-mix(in oklch, var(--fg-muted) 55%, transparent) 6.25px
+    );
+  }
+
   .cell.field-cell[data-encrypted="true"]:hover,
   .cell.field-cell[data-encrypted="true"]:focus-visible {
     /* Lift opacity slightly on interaction so the label reads cleanly. */

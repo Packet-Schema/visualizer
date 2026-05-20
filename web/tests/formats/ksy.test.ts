@@ -1312,6 +1312,78 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
     expect(ksyText).not.toMatch(/^\s*-\s*id:\s*frame\b/m);
   });
 
+  it("encrypted with wireBits=0 falls back to a 1-byte placeholder", () => {
+    // The exporter treats non-positive lit values as "size unknown" and
+    // emits a single byte rather than a zero-byte placeholder. Test
+    // covers the `litBits > 0` false branch added when we dropped the
+    // old `size: 0` form.
+    const yaml = toKsy({
+      name: "ZeroEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "zero_enc",
+          wireBits: { kind: "lit", value: 0 },
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+          contextNote: "empty payload",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe(1);
+  });
+
+  it("encrypted with non-literal wireBits falls back to a 1-byte placeholder", () => {
+    // Dynamic widths (ref / op) cannot be evaluated at export time
+    // without the runtime env, so the exporter degrades to the same
+    // 1-byte placeholder as the no-wireBits case. Covers the
+    // `kind === "lit"` false branch in `litBits` computation.
+    const yaml = toKsy({
+      name: "DynEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "dyn_enc",
+          wireBits: { kind: "ref", field: "payload_len" },
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+          contextNote: "dynamic length",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe(1);
+  });
+
+  it("encrypted with wireBits=16 emits a 2-byte placeholder", () => {
+    // Positive lit widths round up to the nearest byte. 16 bits → 2.
+    const yaml = toKsy({
+      name: "TwoByteEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "two_byte_enc",
+          wireBits: { kind: "lit", value: 16 },
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 16 } }],
+          },
+          contextNote: "fixed 16-bit width",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe(2);
+  });
+
   it("encrypted nested inside a Group still produces the placeholder", () => {
     const yaml = toKsy({
       name: "Nest",
