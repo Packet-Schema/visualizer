@@ -35,6 +35,15 @@ export function useDrawerFocusTrap({
   onClose: () => void;
 }): void {
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  // Keep the latest `onClose` in a ref so the effect below doesn't depend
+  // on it. An inline `onClose={() => ...}` from the caller (common in
+  // React) would otherwise mint a new function identity each render,
+  // re-firing the effect every time and clobbering `returnFocusRef` +
+  // re-focusing the first focusable on every parent re-render. That
+  // also broke focus restoration on close because the saved trigger
+  // got overwritten with the in-trap element (Copilot review).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -50,7 +59,7 @@ export function useDrawerFocusTrap({
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === "Tab" && containerRef.current) {
@@ -79,7 +88,10 @@ export function useDrawerFocusTrap({
     return () => {
       document.removeEventListener("keydown", handleKey);
     };
-  }, [open, onClose, containerRef]);
+    // `onClose` is captured via `onCloseRef`; including it here would
+    // re-run the effect on every parent render with an inline handler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, containerRef]);
 
   // Restore focus once we close.
   useEffect(() => {
