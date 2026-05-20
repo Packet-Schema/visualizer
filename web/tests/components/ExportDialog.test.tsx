@@ -445,9 +445,9 @@ describe("ExportDialog", () => {
         "follow-ui",
       );
       expect(selectByLabel(container, "Width").value).toBe("32");
-      expect(
-        inputByLabel(container, "Transparent background").checked,
-      ).toBe(false);
+      expect(inputByLabel(container, "Transparent background").checked).toBe(
+        false,
+      );
       await act(async () => root.unmount());
     },
   );
