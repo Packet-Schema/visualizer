@@ -637,4 +637,82 @@ describe("diagram export helpers", () => {
 
     await expect(svgToPngBlob("<svg />", 2)).resolves.toBeInstanceOf(Blob);
   });
+
+  it("rejects when the image fails to load", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:bad");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    class FailingImage {
+      width = 0;
+      height = 0;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onerror?.());
+      }
+    }
+    vi.stubGlobal("Image", FailingImage);
+
+    await expect(svgToPngBlob("<svg />", 2)).rejects.toBeDefined();
+  });
+
+  it("rejects when the canvas 2D context is unavailable", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:bad");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const createElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((
+      tagName: string,
+    ) => {
+      if (tagName !== "canvas") return createElement(tagName);
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => null,
+        toBlob: () => {},
+      } as unknown as HTMLCanvasElement;
+    }) as typeof document.createElement);
+
+    class OkImage {
+      width = 10;
+      height = 10;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("Image", OkImage);
+
+    await expect(svgToPngBlob("<svg />", 2)).rejects.toBeDefined();
+  });
+
+  it("rejects when canvas.toBlob yields no blob", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:bad");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const createElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((
+      tagName: string,
+    ) => {
+      if (tagName !== "canvas") return createElement(tagName);
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({ scale: vi.fn(), drawImage: vi.fn() }),
+        toBlob: (callback: BlobCallback) => callback(null),
+      } as unknown as HTMLCanvasElement;
+    }) as typeof document.createElement);
+
+    class OkImage {
+      width = 10;
+      height = 10;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("Image", OkImage);
+
+    await expect(svgToPngBlob("<svg />", 2)).rejects.toBeDefined();
+  });
 });
