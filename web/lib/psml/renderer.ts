@@ -22,6 +22,15 @@ export type SubField = {
   name: string;
   bits: number;
   description?: string;
+  /** Same override hooks as Field. Populated when a Group's child is the
+   *  discriminator / gate / data-dependent type — i.e. when the runtime
+   *  override surface lives inside a subfield rather than a top-level
+   *  Field (e.g. WebSocket's `payloadLength7` inside the byte-0 group). */
+  switchCases?: { value: number; label: string }[];
+  varintEncoding?: "quic" | "protobuf" | "cbor";
+  isBerLength?: boolean;
+  optionalGateFor?: string[];
+  defaultValue?: number;
 };
 
 /** A single field inside a TLV catalog entry's positional layout. */

@@ -5,6 +5,7 @@ import type {
   ControllerState,
   Field,
   Packet,
+  SubField,
   TlvInstance,
 } from "@/lib/psml/renderer";
 
@@ -49,13 +50,30 @@ export default function OverridePanel({
   if (r.kind === "empty") {
     return <EmptyState message="Select a cell to edit its override." />;
   }
-  if (r.kind === "subfield" || r.kind === "subfield-not-found") {
-    return (
-      <EmptyState message="Subfields share their parent's override. Select the parent cell." />
-    );
+  if (r.kind === "subfield-not-found") {
+    return <EmptyState message="Subfield not found." />;
   }
   if (r.kind === "field-not-found") {
     return <EmptyState message="Field not found." />;
+  }
+
+  // Subfields can carry the same override metadata as top-level fields
+  // (e.g. the discriminator of a Switch may live inside a Group). Render
+  // the matching widgets here; fall through to the parent's override
+  // when the subfield itself has no metadata.
+  if (r.kind === "subfield") {
+    const widgets = subfieldWidgets(
+      r.sub,
+      r.parent,
+      controllers,
+      onControllerChange,
+    );
+    if (widgets.length === 0) {
+      return (
+        <EmptyState message="Subfields share their parent's override. Select the parent cell." />
+      );
+    }
+    return <div className="space-y-4">{widgets}</div>;
   }
 
   const field = r.field;
@@ -80,11 +98,12 @@ export default function OverridePanel({
     );
   }
 
+  const fieldTarget = fieldAsTarget(field);
   if (field.switchCases && onControllerChange) {
     widgets.push(
       <SwitchDropdown
         key="switch"
-        field={field}
+        target={fieldTarget}
         controllers={controllers}
         onChange={onControllerChange}
       />,
@@ -95,7 +114,7 @@ export default function OverridePanel({
     widgets.push(
       <WidthPicker
         key="width"
-        field={field}
+        target={fieldTarget}
         controllers={controllers}
         onChange={onControllerChange}
       />,
@@ -106,7 +125,7 @@ export default function OverridePanel({
     widgets.push(
       <OptionalToggle
         key="optional"
-        field={field}
+        target={fieldTarget}
         controllers={controllers}
         onChange={onControllerChange}
       />,
@@ -137,9 +156,87 @@ export default function OverridePanel({
   return <div className="space-y-4">{widgets}</div>;
 }
 
+/** Build widgets for a subfield whose Group child carries override metadata
+ *  (the discriminator / gate / data-dependent type lives inside a Group,
+ *  not at the top level). The subfield's `id` is the env key, just like a
+ *  top-level field. */
+function subfieldWidgets(
+  sub: SubField,
+  parent: Field,
+  controllers: ControllerState,
+  onControllerChange: ((key: string, value: number) => void) | undefined,
+): React.ReactNode[] {
+  if (!onControllerChange) return [];
+  const target: WidgetTarget = {
+    id: sub.id,
+    name: `${sub.name} (in ${parent.name})`,
+    defaultValue: sub.defaultValue,
+    switchCases: sub.switchCases,
+    varintEncoding: sub.varintEncoding,
+    isBerLength: sub.isBerLength,
+    optionalGateFor: sub.optionalGateFor,
+  };
+  const out: React.ReactNode[] = [];
+  if (sub.switchCases) {
+    out.push(
+      <SwitchDropdown
+        key="switch"
+        target={target}
+        controllers={controllers}
+        onChange={onControllerChange}
+      />,
+    );
+  }
+  if (sub.varintEncoding || sub.isBerLength) {
+    out.push(
+      <WidthPicker
+        key="width"
+        target={target}
+        controllers={controllers}
+        onChange={onControllerChange}
+      />,
+    );
+  }
+  if (sub.optionalGateFor) {
+    out.push(
+      <OptionalToggle
+        key="optional"
+        target={target}
+        controllers={controllers}
+        onChange={onControllerChange}
+      />,
+    );
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Widgets
 // ---------------------------------------------------------------------------
+
+/** Minimal interface the override widgets need. Both top-level Field and
+ *  Group SubField implement this shape (the latter via `subfieldWidgets`). */
+type WidgetTarget = {
+  id: string;
+  name: string;
+  defaultValue?: number;
+  switchCases?: Field["switchCases"];
+  varintEncoding?: Field["varintEncoding"];
+  isBerLength?: Field["isBerLength"];
+  optionalGateFor?: Field["optionalGateFor"];
+};
+
+function fieldAsTarget(f: Field): WidgetTarget {
+  return {
+    id: f.id,
+    name: f.name,
+    defaultValue: f.defaultValue,
+    switchCases: f.switchCases,
+    varintEncoding: f.varintEncoding,
+    isBerLength: f.isBerLength,
+    optionalGateFor: f.optionalGateFor,
+  };
+}
 
 function WidgetLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -241,27 +338,27 @@ function OverrideSlider({
 }
 
 type WidgetProps = {
-  field: Field;
+  target: WidgetTarget;
   controllers: ControllerState;
   onChange: (key: string, value: number) => void;
 };
 
-function SwitchDropdown({ field, controllers, onChange }: WidgetProps) {
-  const cases = field.switchCases ?? [];
-  const selectId = `detail-switch-${field.id}`;
+function SwitchDropdown({ target, controllers, onChange }: WidgetProps) {
+  const cases = target.switchCases ?? [];
+  const selectId = `detail-switch-${target.id}`;
   const current =
-    controllers[field.id] ?? field.defaultValue ?? cases[0]?.value;
+    controllers[target.id] ?? target.defaultValue ?? cases[0]?.value;
   return (
     <div>
       <label htmlFor={selectId}>
-        <WidgetLabel>Switch case · sets {field.id}</WidgetLabel>
+        <WidgetLabel>Switch case · sets {target.id}</WidgetLabel>
       </label>
       <select
         id={selectId}
         value={current}
         onChange={(e) => {
           const v = Number(e.target.value);
-          if (Number.isFinite(v)) onChange(field.id, v);
+          if (Number.isFinite(v)) onChange(target.id, v);
         }}
         className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"
         style={{
@@ -280,18 +377,18 @@ function SwitchDropdown({ field, controllers, onChange }: WidgetProps) {
   );
 }
 
-function WidthPicker({ field, controllers, onChange }: WidgetProps) {
+function WidthPicker({ target, controllers, onChange }: WidgetProps) {
   // Valid widths in bits per encoding. The env override key is the field id
   // (PSML convention — see normalize.ts).
-  const widths = pickerWidths(field);
-  const current = controllers[field.id] ?? widths[0];
+  const widths = pickerWidths(target);
+  const current = controllers[target.id] ?? widths[0];
   return (
     <div>
       <WidgetLabel>
-        {field.varintEncoding
-          ? `Varint width (${field.varintEncoding})`
+        {target.varintEncoding
+          ? `Varint width (${target.varintEncoding})`
           : "BER length width"}{" "}
-        · sets <code className="font-mono normal-case">{field.id}</code>
+        · sets <code className="font-mono normal-case">{target.id}</code>
       </WidgetLabel>
       <div role="radiogroup" className="flex flex-wrap gap-1.5">
         {widths.map((w) => {
@@ -302,7 +399,7 @@ function WidthPicker({ field, controllers, onChange }: WidgetProps) {
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => onChange(field.id, w)}
+              onClick={() => onChange(target.id, w)}
               className="px-2.5 py-1 rounded-md border font-mono tabular-nums text-sm-tight cursor-pointer"
               style={{
                 borderColor: active ? "var(--accent)" : "var(--border-strong)",
@@ -319,9 +416,9 @@ function WidthPicker({ field, controllers, onChange }: WidgetProps) {
   );
 }
 
-function pickerWidths(field: Field): number[] {
-  if (field.isBerLength) return [8, 16, 24, 40, 72]; // 1/2/3/5/9 bytes
-  switch (field.varintEncoding) {
+function pickerWidths(target: WidgetTarget): number[] {
+  if (target.isBerLength) return [8, 16, 24, 40, 72]; // 1/2/3/5/9 bytes
+  switch (target.varintEncoding) {
     case "quic":
       return [8, 16, 32, 64];
     case "protobuf":
@@ -333,10 +430,10 @@ function pickerWidths(field: Field): number[] {
   }
 }
 
-function OptionalToggle({ field, controllers, onChange }: WidgetProps) {
-  const checked = (controllers[field.id] ?? field.defaultValue ?? 0) !== 0;
-  const checkboxId = `detail-optional-${field.id}`;
-  const gated = field.optionalGateFor ?? [];
+function OptionalToggle({ target, controllers, onChange }: WidgetProps) {
+  const checked = (controllers[target.id] ?? target.defaultValue ?? 0) !== 0;
+  const checkboxId = `detail-optional-${target.id}`;
+  const gated = target.optionalGateFor ?? [];
   return (
     <div>
       <WidgetLabel>Optional gate</WidgetLabel>
@@ -348,7 +445,7 @@ function OptionalToggle({ field, controllers, onChange }: WidgetProps) {
           id={checkboxId}
           type="checkbox"
           checked={checked}
-          onChange={(e) => onChange(field.id, e.target.checked ? 1 : 0)}
+          onChange={(e) => onChange(target.id, e.target.checked ? 1 : 0)}
           className="mt-0.5"
         />
         <span>

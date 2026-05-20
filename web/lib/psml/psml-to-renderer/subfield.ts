@@ -25,6 +25,9 @@ export function groupToSubfieldField(g: Group): RendererField | null {
     const bits = typeBits(child.type);
     const sf: SubField = { id: child.id, name: child.name, bits };
     if (child.doc) sf.description = child.doc;
+    if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
+    if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
+    if (child.type.kind === "berLength") sf.isBerLength = true;
     subs.push(sf);
     total += bits;
     if (child.category && !category) category = child.category;

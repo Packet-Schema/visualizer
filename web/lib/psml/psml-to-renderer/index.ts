@@ -145,41 +145,65 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
 
 /**
  * Walk top-level PSML containers and attach override metadata to the
- * renderer mirror fields:
+ * renderer mirror fields (or to a Group's subfields when the target lives
+ * inside a Group):
  *   * `Switch` whose `on` is `ref(X)` → `X.switchCases` carries the case
  *     list, so OverridePanel can render a dropdown when X is selected.
  *   * `Optional` whose `when` is `ref(X)` → push the inner field's name
  *     onto `X.optionalGateFor`, so OverridePanel can render a toggle.
- * Nested containers are not walked here — PSML usually surfaces these
- * primitives at the top level. Extend when a real preset needs deeper
- * lookup.
+ * Nested Repeat / Switch containers are not walked recursively — PSML
+ * idiomatically surfaces these primitives at the top level. Extend when
+ * a real preset needs deeper lookup.
  */
 function attachOverrideMetadata(
   body: PsmlPacket["body"],
   fields: RendererField[],
 ): void {
+  // The lookup target may be either a top-level Field or a SubField inside
+  // a Group-collapsed Field. We try the top level first, then fall back
+  // to a subfield scan.
+  const findTarget = (
+    id: string,
+  ):
+    | { kind: "field"; field: RendererField }
+    | { kind: "subfield"; sub: NonNullable<RendererField["subfields"]>[number] }
+    | null => {
+    const f = fields.find((x) => x.id === id);
+    if (f) return { kind: "field", field: f };
+    for (const parent of fields) {
+      const sub = parent.subfields?.find((s) => s.id === id);
+      if (sub) return { kind: "subfield", sub };
+    }
+    return null;
+  };
   for (const c of body) {
     if (c.kind === "switch") {
       const on = c.on;
       if (on.kind !== "ref") continue;
-      const target = fields.find((f) => f.id === on.field);
-      if (!target) continue;
+      const t = findTarget(on.field);
+      if (!t) continue;
       const cases: { value: number; label: string }[] = [];
       for (const [key, struct] of Object.entries(c.cases)) {
         const v = Number(key);
         if (!Number.isFinite(v)) continue;
         cases.push({ value: v, label: struct.name ?? `case ${key}` });
       }
-      if (cases.length > 0) target.switchCases = cases;
+      if (cases.length === 0) continue;
+      if (t.kind === "field") t.field.switchCases = cases;
+      else t.sub.switchCases = cases;
       continue;
     }
     if (c.kind === "optional") {
       const when = c.when;
       if (when.kind !== "ref") continue;
-      const target = fields.find((f) => f.id === when.field);
-      if (!target) continue;
+      const t = findTarget(when.field);
+      if (!t) continue;
       const gated = c.field.name || c.field.id;
-      target.optionalGateFor = [...(target.optionalGateFor ?? []), gated];
+      if (t.kind === "field") {
+        t.field.optionalGateFor = [...(t.field.optionalGateFor ?? []), gated];
+      } else {
+        t.sub.optionalGateFor = [...(t.sub.optionalGateFor ?? []), gated];
+      }
       continue;
     }
   }
