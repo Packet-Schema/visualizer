@@ -35,9 +35,11 @@ export type FormatAdapter = {
   extension: string;
   /** MIME type for `Blob` downloads. */
   mime: string;
-  /** Parse text into a PSML packet. Absent → import-only switch is hidden. */
+  /** Parse text into a PSML packet. Absent → the format is export-only
+   *  (the Import tab's selector hides it). */
   parse?: (text: string) => ImportResult;
-  /** Render a PSML packet to text. Absent → export-only switch is hidden. */
+  /** Render a PSML packet to text. Absent → the format is import-only
+   *  (the Export tab's selector hides it). */
   render?: (packet: PsmlPacket, env: PacketEnv) => string;
 };
 
