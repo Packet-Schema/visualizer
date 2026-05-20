@@ -61,7 +61,17 @@ export default function HybridDiagram({
   const overridableIds = useMemo(() => {
     const s = new Set<string>();
     for (const f of packet.fields) {
-      if (f.controlsLength || f.tlv || f.chainCatalog) s.add(f.id);
+      if (
+        f.controlsLength ||
+        f.tlv ||
+        f.chainCatalog ||
+        f.switchCases ||
+        f.varintEncoding ||
+        f.isBerLength ||
+        f.optionalGateFor
+      ) {
+        s.add(f.id);
+      }
     }
     return s;
   }, [packet]);

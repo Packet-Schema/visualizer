@@ -126,6 +126,28 @@ export type Field = {
   chainInstances?: ChainInstance[];
   /** Final next-header value when no extension headers are attached. */
   chainFinalProto?: number;
+  /**
+   * Case list when this field is the discriminator of a top-level PSML
+   * `Switch` whose `on` is `ref(<this field id>)`. Each entry pairs the
+   * discriminator value with a human-readable label (the case struct's
+   * `name` or the bare key). Populated by `psmlToRenderer`.
+   */
+  switchCases?: { value: number; label: string }[];
+  /**
+   * Encoding kind when this field's PSML type is `varint`. Drives the
+   * width picker in OverridePanel. The runtime width is the env value
+   * keyed by this field's id (the same convention PSML normalize uses).
+   */
+  varintEncoding?: "quic" | "protobuf" | "cbor";
+  /** True when this field's PSML type is `berLength`. Same env override
+   *  convention as `varintEncoding`. */
+  isBerLength?: boolean;
+  /**
+   * List of Optional containers whose `when` expression is
+   * `ref(<this field id>)`. Each entry is the inner field's name so the
+   * toggle UI can show what it gates. Populated by `psmlToRenderer`.
+   */
+  optionalGateFor?: string[];
 };
 
 export type Packet = {

@@ -50,6 +50,9 @@ export function plainFieldToRenderer(f: PsmlField): RendererField {
   if (f.category) out.category = f.category;
   if (f.doc) out.description = f.doc;
   if (f.defaultValue !== undefined) out.defaultValue = f.defaultValue;
+  // Data-dependent type widths get an env-override widget in OverridePanel.
+  if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
+  if (f.type.kind === "berLength") out.isBerLength = true;
   return out;
 }
 

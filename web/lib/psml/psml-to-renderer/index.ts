@@ -133,6 +133,7 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
       }
     }
   }
+  attachOverrideMetadata(packet.body, fields);
   return {
     name: packet.name,
     rowBits: packet.rowBits,
@@ -140,4 +141,46 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
     ...(packet.description ? { description: packet.description } : {}),
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
   };
+}
+
+/**
+ * Walk top-level PSML containers and attach override metadata to the
+ * renderer mirror fields:
+ *   * `Switch` whose `on` is `ref(X)` → `X.switchCases` carries the case
+ *     list, so OverridePanel can render a dropdown when X is selected.
+ *   * `Optional` whose `when` is `ref(X)` → push the inner field's name
+ *     onto `X.optionalGateFor`, so OverridePanel can render a toggle.
+ * Nested containers are not walked here — PSML usually surfaces these
+ * primitives at the top level. Extend when a real preset needs deeper
+ * lookup.
+ */
+function attachOverrideMetadata(
+  body: PsmlPacket["body"],
+  fields: RendererField[],
+): void {
+  for (const c of body) {
+    if (c.kind === "switch") {
+      const on = c.on;
+      if (on.kind !== "ref") continue;
+      const target = fields.find((f) => f.id === on.field);
+      if (!target) continue;
+      const cases: { value: number; label: string }[] = [];
+      for (const [key, struct] of Object.entries(c.cases)) {
+        const v = Number(key);
+        if (!Number.isFinite(v)) continue;
+        cases.push({ value: v, label: struct.name ?? `case ${key}` });
+      }
+      if (cases.length > 0) target.switchCases = cases;
+      continue;
+    }
+    if (c.kind === "optional") {
+      const when = c.when;
+      if (when.kind !== "ref") continue;
+      const target = fields.find((f) => f.id === when.field);
+      if (!target) continue;
+      const gated = c.field.name || c.field.id;
+      target.optionalGateFor = [...(target.optionalGateFor ?? []), gated];
+      continue;
+    }
+  }
 }
