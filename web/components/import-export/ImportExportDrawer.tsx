@@ -64,18 +64,26 @@ export default function ImportExportDrawer({
     [currentMode],
   );
 
+  // Snap `format` into the allowed list for the new mode, preserving the
+  // user's pick when it's still legal. Called from both the parent-driven
+  // re-open effect and the user-driven mode toggle so the two paths can't
+  // drift in what counts as a valid format for a given pane.
+  const snapFormatForMode = useCallback((next: DrawerMode) => {
+    const allowed =
+      next === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
+    setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
+  }, []);
+
   // Sync mode + reset transient state when the parent re-opens the drawer.
-  // Format is normalised against the new mode's allowed list so we don't
-  // need a second effect to "snap" an invalid format after the mode flip.
+  // Format normalisation lives in `snapFormatForMode` so we don't need a
+  // second effect to "snap" after the mode flip.
   useEffect(() => {
     if (!open) return;
     setCurrentMode(mode);
-    const allowed =
-      mode === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
-    setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
+    snapFormatForMode(mode);
     setText("");
     setStatus(null);
-  }, [open, mode]);
+  }, [open, mode, snapFormatForMode]);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
@@ -100,14 +108,15 @@ export default function ImportExportDrawer({
     }
   }, [open, currentMode, format, packet, controllers]);
 
-  const handleModeChange = useCallback((next: DrawerMode) => {
-    setCurrentMode(next);
-    const allowed =
-      next === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
-    setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
-    setText("");
-    setStatus(null);
-  }, []);
+  const handleModeChange = useCallback(
+    (next: DrawerMode) => {
+      setCurrentMode(next);
+      snapFormatForMode(next);
+      setText("");
+      setStatus(null);
+    },
+    [snapFormatForMode],
+  );
 
   const handleApply = useCallback(() => {
     try {

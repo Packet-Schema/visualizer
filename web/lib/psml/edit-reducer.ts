@@ -31,6 +31,7 @@
 
 import type { Constraint, Container, Field, Packet, PsmlPacket } from "./types";
 import { describeKind, resolveParent, type Path } from "./path-resolver";
+import { isField } from "./utils";
 
 /* ------------------------------------------------------------------ *
  * Public types
@@ -195,7 +196,15 @@ export function editReducer(state: EditState, action: EditAction): EditState {
       const { parent, index } = resolveParent(next, action.at);
       const existing = parent[index];
       if (!existing) return state;
-      parent[index] = { ...(existing as Field), ...action.patch } as Container;
+      if (!isField(existing)) {
+        // The `update-field` action only patches Field-shape props (name,
+        // doc, bits, type, …). Routing it at a Container slot would drop
+        // the kind discriminator on spread and silently corrupt the tree.
+        throw new Error(
+          `update-field expected a Field; got ${describeKind(existing)} at path ${action.at.join("/")}`,
+        );
+      }
+      parent[index] = { ...existing, ...action.patch };
       return commit(state, next);
     }
     case "wrap-in": {

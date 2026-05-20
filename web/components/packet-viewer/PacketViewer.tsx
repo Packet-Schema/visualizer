@@ -668,6 +668,25 @@ export default function PacketViewer() {
   // leaves a stale `ihl` in the env, and the IPv6 diagram is laid out as
   // if IHL were still active. We need `packet`-and-`controllers` to stay
   // in lockstep, so the synchronous value is the only safe choice.
+  // The PSML packet feeding `resolveLayout` — depends only on the active
+  // entry, never on the whole `customPresets` map. Pulling this out lets
+  // `psmlRefs` (an AST walk) re-run only when the body actually changes,
+  // not every time another preset is edited.
+  const targetPsml: PsmlPacket = useMemo(
+    () =>
+      editMode
+        ? studioState.packet
+        : (PRESETS[packetKey] ??
+          customPresets[packetKey] ??
+          rendererToPsml(packet)),
+    [editMode, studioState.packet, packetKey, customPresets, packet],
+  );
+
+  // Set of ref-names that the active packet expects in `env`. Cached against
+  // `targetPsml` so slider drag (which mutates `controllers` every frame but
+  // leaves the body untouched) does not re-walk the AST 60×/sec.
+  const psmlRefs = useMemo(() => collectPsmlRefs(targetPsml), [targetPsml]);
+
   const layout = useMemo(() => {
     // Every preset is PSML now — route the diagram through resolveLayout so
     // Encrypted-container decoration and viewMode toggling are uniform.
@@ -688,14 +707,6 @@ export default function PacketViewer() {
     env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
     const off = env.get("dataOffset") ?? 5;
     env.set("tcpOptionsCount", Math.max(0, off - 5));
-    // 描画対象の PSML packet を一旦変数で持つ — editMode / built-in /
-    // custom / imported のいずれも resolveLayout には PsmlPacket を渡す
-    // ので、 ref fallback seed を一箇所に集約できる。
-    const targetPsml: PsmlPacket = editMode
-      ? studioState.packet
-      : (PRESETS[packetKey] ??
-        customPresets[packetKey] ??
-        rendererToPsml(packet));
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、
@@ -713,19 +724,11 @@ export default function PacketViewer() {
     // MissingRefError で throw → React render が落ちて "Application error"
     // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
     // と命名が一致しない ref をまとめて吸収する。
-    for (const r of collectPsmlRefs(targetPsml)) {
+    for (const r of psmlRefs) {
       if (!env.has(r)) env.set(r, 0);
     }
     return resolveLayout(targetPsml, { env, viewMode });
-  }, [
-    packet,
-    packetKey,
-    controllers,
-    viewMode,
-    editMode,
-    studioState.packet,
-    customPresets,
-  ]);
+  }, [targetPsml, psmlRefs, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 

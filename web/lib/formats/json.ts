@@ -37,7 +37,12 @@
 // Color is intentionally not part of the wire shape — PSML carries
 // semantic category only.
 
-import type { Packet, PacketEnv } from "../psml/types";
+import type {
+  Constraint,
+  Container,
+  Packet,
+  PacketEnv,
+} from "../psml/types";
 
 const FORMAT_TAG = "psml";
 const FORMAT_VERSION = "0.2";
@@ -50,8 +55,8 @@ export type JsonPsmlPacket = {
   rowBits: number;
   byteOrder?: string;
   description?: string;
-  body: unknown[];
-  constraints?: unknown[];
+  body: Container[];
+  constraints?: Constraint[];
   env?: Record<string, number>;
 };
 
@@ -84,9 +89,9 @@ export function toJson(packet: Packet, env?: PacketEnv): string {
     rowBits: packet.rowBits,
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
     ...(packet.description ? { description: packet.description } : {}),
-    body: packet.body as unknown[],
+    body: packet.body,
     ...(packet.constraints && packet.constraints.length > 0
-      ? { constraints: packet.constraints as unknown[] }
+      ? { constraints: packet.constraints }
       : {}),
     ...(envToObject(env) ? { env: envToObject(env) } : {}),
   };
