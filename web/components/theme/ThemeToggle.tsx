@@ -54,21 +54,27 @@ export default function ThemeToggle() {
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) return;
+    // Cancel any pending bounce RAF from an earlier click before deciding
+    // what to do — without this, a RAF queued while reduce-motion was
+    // off could still fire after the user enables reduce-motion at the
+    // OS level and call `setBouncing(true)`, defeating the early
+    // return below (Copilot review).
+    if (bounceRafRef.current !== null) {
+      cancelAnimationFrame(bounceRafRef.current);
+      bounceRafRef.current = null;
+    }
+    if (reduceMotion) {
+      // Also force-clear any in-flight bounce so the user immediately
+      // stops seeing motion once they opted out.
+      setBouncing(false);
+      return;
+    }
     // Retrigger the bounce on rapid successive clicks: a plain
     // `setBouncing(true)` while already `true` keeps `data-bounce` at
     // "true" with no DOM change, so CSS doesn't restart the keyframe.
     // Flip to false first (which removes the attribute) and back to
-    // true on the next paint so the animation always replays — without
-    // this Copilot-flagged edge case, double-clicking the toggle
-    // animates only the first click.
+    // true on the next paint so the animation always replays.
     setBouncing(false);
-    // Cancel any pending RAF from a previous toggle so a rapid double
-    // click doesn't queue two competing `setBouncing(true)` calls and
-    // so unmount cleanup has a single id to cancel.
-    if (bounceRafRef.current !== null) {
-      cancelAnimationFrame(bounceRafRef.current);
-    }
     bounceRafRef.current = requestAnimationFrame(() => {
       bounceRafRef.current = null;
       setBouncing(true);

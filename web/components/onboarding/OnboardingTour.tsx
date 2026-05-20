@@ -101,13 +101,30 @@ export default function OnboardingTour({ steps, onClose }: Props) {
     computeRect();
   }, [computeRect]);
 
+  // Capture the element that had focus before the tour opened and
+  // restore it on **unmount only**. The earlier shape coupled this to
+  // the same effect that wires up key/resize/scroll listeners, so
+  // every step change (which mutates `computeRect`) ran the cleanup
+  // and briefly handed focus back to `previouslyFocused`, defeating
+  // the trap (Copilot review).
+  const previouslyFocusedRef = useRef<Element | null>(null);
   useEffect(() => {
-    // Capture the element that had focus before the tour opened so we
-    // can restore it on unmount. Without this, keyboard / screen-reader
-    // users get dropped at the top of the page after dismissing the
-    // tour — the focus trap below keeps focus inside the dialog while
-    // it's mounted but leaves the previous anchor lost on close.
-    const previouslyFocused = document.activeElement;
+    previouslyFocusedRef.current = document.activeElement;
+    return () => {
+      const el = previouslyFocusedRef.current;
+      if (el instanceof HTMLElement && document.contains(el)) {
+        try {
+          el.focus();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    // mount-only: focus restoration must not re-fire on every step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -154,33 +171,25 @@ export default function OnboardingTour({ steps, onClose }: Props) {
     document.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", onResize);
     window.addEventListener("scroll", computeRect, true);
-    // Move focus into the tour.
-    setTimeout(() => {
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", computeRect, true);
+    };
+  }, [advance, finish, computeRect]);
+
+  // Move focus into the tour once on mount; later step transitions
+  // shouldn't yank focus around because the user is already inside.
+  useEffect(() => {
+    const id = window.setTimeout(() => {
       try {
         nextBtnRef.current?.focus();
       } catch {
         /* ignore */
       }
     }, 0);
-    return () => {
-      document.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", computeRect, true);
-      // Restore focus to wherever it was before the tour opened.
-      // Skip when the previous anchor is now detached from the DOM
-      // (e.g. the host re-rendered while the tour was open).
-      if (
-        previouslyFocused instanceof HTMLElement &&
-        document.contains(previouslyFocused)
-      ) {
-        try {
-          previouslyFocused.focus();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-  }, [advance, finish, computeRect]);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const step = steps[idx];
   if (!step) return null;

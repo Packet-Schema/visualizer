@@ -9,11 +9,33 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
+function isElementVisible(el: HTMLElement): boolean {
+  // `offsetParent === null` covers `display: none` and detached nodes.
+  // The Tailwind `.hidden` utility used on `<input type="file">` inside
+  // the drawer triggers this, so without the check the focus trap
+  // included a non-tabbable hidden file picker as a "first/last
+  // focusable" — Tab from the visibly-last element would jump to the
+  // hidden one and effectively escape the modal (Codex P2). We also
+  // check `visibility` explicitly because `position: fixed` elements
+  // are kept off `offsetParent` even when visible.
+  if (el.hidden) return false;
+  if (typeof window !== "undefined") {
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+  }
+  // Fixed-position elements still have `offsetParent === null`, so fall
+  // back to the bounding-rect test (a zero-size box means the element
+  // can't receive focus visibly).
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return false;
+  return true;
+}
+
 function getFocusables(root: HTMLElement | null): HTMLElement[] {
   if (!root) return [];
   return Array.from(
     root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((el) => !el.hasAttribute("data-skip-focus"));
+  ).filter((el) => !el.hasAttribute("data-skip-focus") && isElementVisible(el));
 }
 
 /**

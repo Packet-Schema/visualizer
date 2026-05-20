@@ -584,6 +584,17 @@ export default function PacketViewer() {
     }
     deleteCustomPreset(packetKey);
     setCustomPresets(loadCustomPresets());
+    // Drop any cached renderer mirror for this custom key — `replace
+    // ActivePacket` writes edits into `renderedPresets[packetKey]` for
+    // custom presets, so a `custom:foo` re-created with the same name
+    // after deletion would otherwise re-bind to the stale cached
+    // renderer packet instead of the freshly imported one (Codex P2).
+    setRenderedPresets((prev) => {
+      if (!(packetKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[packetKey];
+      return next;
+    });
     setPacketKey(DEFAULT_PACKET_KEY);
     uiDispatch({ type: "set-edit-mode", editing: false });
   }, [packetKey, customPresets]);
@@ -1064,8 +1075,20 @@ function stableStringify(value: unknown): string {
   const keys = new Set<string>();
   // First pass: collect every property name reachable from the value so
   // the replacer-array form of JSON.stringify can sort them globally.
+  // The replacer's *first* invocation is the root call with key === ""
+  // and val === value, which we skip; every subsequent empty-string key
+  // is a legitimate object property (e.g. `switch.cases[""]`, which
+  // `validateSwitch` doesn't forbid) and must enter the Set, otherwise
+  // `samePsmlPacket` would treat two packets that differ only inside an
+  // empty-keyed sub-object as identical and `persistSharedCustomPreset`
+  // would silently dedupe them away (Codex P2).
+  let seenRoot = false;
   JSON.stringify(value, (key, val) => {
-    if (key) keys.add(key);
+    if (!seenRoot) {
+      seenRoot = true;
+      return val;
+    }
+    keys.add(key);
     return val;
   });
   return JSON.stringify(value, Array.from(keys).sort());
