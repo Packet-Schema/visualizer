@@ -13,6 +13,20 @@
     font-size: 13px;
     max-height: 60vh;
     overflow-y: auto;
+    /* Spring entry — CSS only, no Motion One runtime. The transition lands
+       once on mount thanks to `@starting-style`. Honouring
+       `prefers-reduced-motion` is handled by globals.css' global override. */
+    opacity: 1;
+    scale: 1;
+    transition:
+      opacity var(--pv-med, 220ms) var(--pv-ease, ease-out),
+      scale var(--pv-med, 220ms) var(--pv-ease, ease-out);
+  }
+  @starting-style {
+    .field-popover {
+      opacity: 0;
+      scale: 0.96;
+    }
   }
 
   .field-popover-title {
