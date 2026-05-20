@@ -10,7 +10,10 @@ import type {
 } from "@/lib/psml/renderer";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
-import { selectableFieldId } from "./selectableFieldId";
+import {
+  encodeSubfieldSelection,
+  selectableFieldId,
+} from "./selectableFieldId";
 
 type Props = {
   packet: Packet;
@@ -333,7 +336,7 @@ function SubfieldRow({
       {subCells.map((sub) => {
         const subSpan = sub.endBit - sub.startBit + 1;
         const startCol = sub.startBit - parentStartBit + 1;
-        const subfieldId = `${parent.id}:${sub.subfield.id}`;
+        const subfieldId = encodeSubfieldSelection(parent.id, sub.subfield.id);
         const isSubSelected = selectedFieldId === subfieldId;
         const subStyle: CSSProperties = {
           gridColumn: `${startCol} / span ${subSpan}`,

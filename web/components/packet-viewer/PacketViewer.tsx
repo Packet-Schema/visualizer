@@ -58,7 +58,10 @@ import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
-import { decodeSubfieldSelection } from "@/components/diagram/selectableFieldId";
+import {
+  decodeSubfieldSelection,
+  encodeSubfieldSelection,
+} from "@/components/diagram/selectableFieldId";
 import ImportExportDrawer, {
   type DrawerMode,
 } from "@/components/import-export/ImportExportDrawer";
@@ -890,7 +893,10 @@ export default function PacketViewer() {
               selectedFieldId={selectedFieldId}
               onFieldClick={handleFieldClick}
               onSubfieldClick={(parentField, subfield, elem) =>
-                handleFieldClick(`${parentField.id}:${subfield.id}`, elem)
+                handleFieldClick(
+                  encodeSubfieldSelection(parentField.id, subfield.id),
+                  elem,
+                )
               }
               onFieldHover={hexStripVisible ? handleFieldHover : undefined}
             />
