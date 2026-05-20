@@ -20,6 +20,7 @@ import { STORAGE_KEY } from "@/lib/psml/custom-presets";
 import { PRESETS } from "@/lib/psml/presets";
 import { encodePsmlParam } from "@/lib/share-url";
 import type { PsmlPacket } from "@/lib/psml/types";
+import { encodeSubfieldSelection } from "@/components/diagram/selectableFieldId";
 
 // The reducer module is a hard dependency for the integration; we import
 // the action shape lazily inside the test so the rest of the file still
@@ -87,7 +88,7 @@ describe("PacketViewer (smoke)", () => {
     const { container, cleanup } = await mountPacketViewer("/?preset=tcp");
     try {
       const ackCell = container.querySelector<HTMLElement>(
-        '[data-field-id="flagsBits:flags_ack"]',
+        `[data-field-id="${encodeSubfieldSelection("flagsBits", "flags_ack")}"]`,
       );
       expect(ackCell).not.toBeNull();
 
