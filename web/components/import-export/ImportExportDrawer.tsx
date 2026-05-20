@@ -124,6 +124,19 @@ export default function ImportExportDrawer({
     return () => observer.disconnect();
   }, []);
 
+  // Re-open can happen after the drawer subtree stayed hidden for a while.
+  // Re-read the root theme when opening so Follow UI preview always picks up
+  // the latest mode even if no mutation was observed while closed.
+  useEffect(() => {
+    if (!open) return;
+    if (typeof document === "undefined") return;
+    const next =
+      document.documentElement.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "light";
+    setUiTheme(next);
+  }, [open]);
+
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
   const availableFormats: FormatKey[] = useMemo(
