@@ -618,11 +618,20 @@ export default function PacketViewer() {
           `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
+      // Try the async Clipboard API first, then fall through to the
+      // legacy execCommand path if it's missing (non-secure context) *or*
+      // rejected at call time (Permissions-Policy / NotAllowedError on
+      // background tabs, iframes without `clipboard-write`, etc.).
+      let copied = false;
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-      } else {
-        // Fallback for non-secure contexts (HTTP deployments / older
-        // embedded webviews) where the async Clipboard API is unavailable.
+        try {
+          await navigator.clipboard.writeText(url);
+          copied = true;
+        } catch {
+          // Swallow the reject and let the fallback below try.
+        }
+      }
+      if (!copied) {
         // We can't reuse a page textarea like ImportExportDrawer does
         // because the share URL is not rendered anywhere, so spin up a
         // hidden one just for the execCommand call.
