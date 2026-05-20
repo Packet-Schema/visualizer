@@ -629,12 +629,21 @@ export default function PacketViewer() {
         const ta = document.createElement("textarea");
         ta.value = url;
         ta.setAttribute("readonly", "");
+        // Hide from assistive tech + tab order so screen readers don't
+        // announce the brief mount/unmount and keyboard users can't tab
+        // into the throwaway element.
+        ta.setAttribute("aria-hidden", "true");
+        ta.tabIndex = -1;
         // `position: fixed` + opacity 0 avoids the iOS / Android scroll
         // jump that a plain off-screen textarea would cause.
         ta.style.position = "fixed";
         ta.style.top = "0";
         ta.style.left = "0";
         ta.style.opacity = "0";
+        // `ta.select()` steals focus from whatever invoked the share,
+        // typically the Share button. Capture and restore it so the
+        // user's focus context doesn't jump after the copy.
+        const prevFocus = document.activeElement;
         document.body.appendChild(ta);
         ta.select();
         let ok = false;
@@ -642,6 +651,7 @@ export default function PacketViewer() {
           ok = document.execCommand("copy");
         } finally {
           document.body.removeChild(ta);
+          if (prevFocus instanceof HTMLElement) prevFocus.focus();
         }
         if (!ok) {
           throw new Error("Copy command was rejected by the browser.");
