@@ -63,7 +63,8 @@ function findTopLevelGroupSubfieldParentId(
 ): string | undefined {
   for (const container of packet.body) {
     if (!isGroup(container)) continue;
-    if (!field.originalContainerPath.endsWith(`/${container.id}`)) continue;
+    const pathParts = field.originalContainerPath.split("/");
+    if (pathParts.length !== 2 || pathParts[1] !== container.id) continue;
     if (
       container.children.some(
         (child) =>
