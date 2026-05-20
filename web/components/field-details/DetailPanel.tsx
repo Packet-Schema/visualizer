@@ -1,3 +1,5 @@
+import { useRef, useState } from "react";
+
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { enrichDescriptionHtml } from "@/lib/enrich";
 import type {
@@ -9,6 +11,7 @@ import type {
   TlvInstance,
 } from "@/lib/psml/renderer";
 
+import SliderTooltip from "../controls/SliderTooltip";
 import ChainEditor from "./ChainEditor";
 import TlvEditor from "./TlvEditor";
 
@@ -30,6 +33,7 @@ type Props = {
     field: Field,
     next: { instances: ChainInstance[]; finalProto?: number },
   ) => void;
+  onControllerChange?: (key: string, value: number) => void;
 };
 
 export default function DetailPanel({
@@ -38,6 +42,7 @@ export default function DetailPanel({
   controllers,
   onTlvChange,
   onChainChange,
+  onControllerChange,
 }: Props) {
   if (!selectedFieldId) {
     return (
@@ -47,6 +52,14 @@ export default function DetailPanel({
     );
   }
 
+  // Virtual cells emitted by `normalize.ts` carry a `#<repeatIndex>` suffix
+  // (e.g. `type#0` for the first IPv4 Option's Type cell). Strip it so the
+  // selection resolves back to the parent TLV / chain field; the editor
+  // (TlvEditor / ChainEditor) handles per-instance focus internally.
+  const baseId = selectedFieldId.includes("#")
+    ? selectedFieldId.split("#")[0]
+    : selectedFieldId;
+
   // Subfield resolution. Two shapes feed in here:
   //   * `parentId:subfieldId` — emitted by `HybridDiagram.onSubfieldClick`.
   //   * bare `subfieldId` — emitted by `onFieldClick` when a group's child is
@@ -55,14 +68,14 @@ export default function DetailPanel({
   //     with `subfields[]`). In that case we look the id up across every
   //     parent's subfields and present the same "subfield of …" UI.
   const subPair = (() => {
-    if (selectedFieldId.includes(":")) {
-      const [parentId, subId] = selectedFieldId.split(":");
+    if (baseId.includes(":")) {
+      const [parentId, subId] = baseId.split(":");
       const parent = packet.fields.find((f) => f.id === parentId);
       const sub = parent?.subfields?.find((s) => s.id === subId);
       return parent && sub ? { parent, sub } : null;
     }
     for (const parent of packet.fields) {
-      const sub = parent.subfields?.find((s) => s.id === selectedFieldId);
+      const sub = parent.subfields?.find((s) => s.id === baseId);
       if (sub) return { parent, sub };
     }
     return null;
@@ -94,13 +107,13 @@ export default function DetailPanel({
     );
   }
 
-  if (selectedFieldId.includes(":")) {
+  if (baseId.includes(":")) {
     return (
       <p className="m-0 text-sm-tight text-fg-faint">Subfield not found.</p>
     );
   }
 
-  const field = packet.fields.find((f) => f.id === selectedFieldId);
+  const field = packet.fields.find((f) => f.id === baseId);
   if (!field) {
     return <p className="m-0 text-sm-tight text-fg-faint">Field not found.</p>;
   }
@@ -133,8 +146,8 @@ export default function DetailPanel({
   const sizeStr = `${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}`;
 
   // Length controller note: when a TLV editor is driving this controller,
-  // the slider in ControlsPanel is read-only-ish (still editable, but the
-  // synced value will reset on next TLV edit). We surface that here.
+  // the override slider becomes effectively read-only (its value resets on
+  // the next TLV edit). Surface that as a hint next to the slider.
   const drivenByTlv = field.controlsLength
     ? packet.fields.some(
         (f) => f.tlv && f.tlv.drivesController === field.controlsLength,
@@ -165,24 +178,6 @@ export default function DetailPanel({
           </code>,
         ]
       : null,
-    field.controlsLength
-      ? [
-          "Controls",
-          <span key="controls">
-            <code className="font-mono">{field.controlsLength}</code>
-            {" (current: "}
-            <span className="font-mono tabular-nums">
-              {controllers[field.controlsLength]}
-            </span>
-            )
-            {drivenByTlv ? (
-              <em className="not-italic ml-2 text-3xs text-fg-muted">
-                — synced from TLV editor
-              </em>
-            ) : null}
-          </span>,
-        ]
-      : null,
     field.description
       ? ["Description", <EnrichedText key="desc" text={field.description} />]
       : null,
@@ -205,6 +200,14 @@ export default function DetailPanel({
     <div>
       <h3 className="m-0 mb-2.5 text-[15px] text-fg">{field.name}</h3>
       <DefList rows={rows} />
+      {field.controlsLength && onControllerChange ? (
+        <OverrideSlider
+          field={field}
+          controllers={controllers}
+          drivenByTlv={drivenByTlv}
+          onChange={onControllerChange}
+        />
+      ) : null}
     </div>
   );
 }
@@ -227,5 +230,99 @@ function DefList({ rows }: { rows: Array<[string, React.ReactNode] | null> }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+type OverrideSliderProps = {
+  field: Field;
+  controllers: ControllerState;
+  drivenByTlv: boolean;
+  onChange: (key: string, value: number) => void;
+};
+
+function OverrideSlider({
+  field,
+  controllers,
+  drivenByTlv,
+  onChange,
+}: OverrideSliderProps) {
+  const key = field.controlsLength!;
+  const value = controllers[key] ?? field.defaultValue ?? 0;
+  const min = field.min ?? 0;
+  const max =
+    field.max ?? (typeof field.bits === "number" ? 2 ** field.bits - 1 : 255);
+  const sliderId = `detail-ctrl-${field.id}-slider`;
+  const numberId = `detail-ctrl-${field.id}-number`;
+  const labelId = `detail-ctrl-${field.id}-label`;
+  const apply = (raw: string) => {
+    const n = Math.max(min, Math.min(max, Number(raw)));
+    if (Number.isFinite(n)) onChange(key, n);
+  };
+
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+
+  return (
+    <div
+      className="mt-3.5 pt-3 border-t"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <label
+        htmlFor={sliderId}
+        id={labelId}
+        className="block mb-1 text-3xs uppercase tracking-wider font-bold text-fg-muted"
+      >
+        Override · drives <code className="font-mono normal-case">{key}</code>
+      </label>
+      <div className="flex items-center gap-2.5">
+        <span className="pv-slider-wrap flex-1">
+          <input
+            suppressHydrationWarning
+            ref={inputRef}
+            id={sliderId}
+            type="range"
+            min={min}
+            max={max}
+            value={value}
+            onChange={(e) => apply(e.target.value)}
+            onPointerDown={() => setTooltipVisible(true)}
+            onPointerUp={() => setTooltipVisible(false)}
+            onPointerCancel={() => setTooltipVisible(false)}
+            onFocus={() => setTooltipVisible(true)}
+            onBlur={() => setTooltipVisible(false)}
+            className="pv-slider"
+            aria-labelledby={labelId}
+          />
+          <SliderTooltip
+            value={Number(value)}
+            min={min}
+            max={max}
+            visible={tooltipVisible}
+            inputRef={inputRef}
+          />
+        </span>
+        <input
+          suppressHydrationWarning
+          id={numberId}
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => apply(e.target.value)}
+          aria-labelledby={labelId}
+          className="w-16 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight"
+          style={{
+            borderColor: "var(--border-strong)",
+            background: "var(--bg-elevated)",
+            color: "var(--fg)",
+          }}
+        />
+      </div>
+      {drivenByTlv ? (
+        <p className="mt-1.5 text-3xs text-fg-muted m-0">
+          Synced from TLV editor — direct edits reset on the next TLV change.
+        </p>
+      ) : null}
+    </div>
   );
 }

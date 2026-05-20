@@ -50,7 +50,6 @@ import type {
   TlvInstance,
 } from "@/lib/psml/renderer";
 import type { Expr, PsmlPacket } from "@/lib/psml/types";
-import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
@@ -244,7 +243,6 @@ export default function PacketViewer() {
   const [urlHydrated, setUrlHydrated] = useState(false);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
-  const controlsRef = useRef<HTMLDivElement | null>(null);
 
   // Pull user-saved presets from localStorage, then apply shared URL state.
   // URL hydration must run exactly once at mount: subsequent edits flow
@@ -781,10 +779,12 @@ export default function PacketViewer() {
       },
       {
         title: "Drag to grow",
-        body: "Variable-length fields like IPv4 Options have a slider. Drag it to see the Options grow and the header reflow.",
+        body: "Cells with a dot in the corner expose a runtime knob. Click one (e.g. IHL on IPv4) and use the slider in the field detail panel to watch the header reflow.",
         target: () =>
-          controlsRef.current?.querySelector('input[type="range"]') ?? null,
-        placement: "top",
+          document.querySelector(
+            '.field-cell[data-overridable="true"]',
+          ) as HTMLElement | null,
+        placement: "bottom",
       },
     ],
     [],
@@ -973,27 +973,7 @@ export default function PacketViewer() {
           />
         ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <section
-            className="rounded-[10px] border px-4 py-3.5"
-            style={{
-              background: "var(--bg-elevated)",
-              borderColor: "var(--border)",
-              boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
-            }}
-          >
-            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
-              Controls
-            </h2>
-            <div ref={controlsRef}>
-              <ControlsPanel
-                packet={packet}
-                controllers={controllers}
-                onChange={handleControllerChange}
-              />
-            </div>
-          </section>
-
+        <div className="mt-4">
           <section
             className="rounded-[10px] border px-4 py-3.5"
             style={{
@@ -1011,6 +991,7 @@ export default function PacketViewer() {
               controllers={controllers}
               onTlvChange={handleTlvChange}
               onChainChange={handleChainChange}
+              onControllerChange={handleControllerChange}
             />
           </section>
         </div>

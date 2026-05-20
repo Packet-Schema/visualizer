@@ -182,6 +182,15 @@ function FieldCellImpl({
   const isEncryptedChild = !!cell.encryptedParentId;
   const isHeaderProtected = cell.headerProtected === true;
   const encryptionTitle = cell.encryptedContextNote ?? undefined;
+  // Override-capability marker. A cell is "overridable" when it (or its
+  // logical parent, surfaced via the renderer mirror) exposes a runtime
+  // override — today: a length controller (slider), a TLV catalog (list
+  // editor), or an IPv6 chain catalog (list editor). The marker is a
+  // visual hint only; the actual editing happens in DetailPanel.
+  const isOverridable =
+    !!cell.field.controlsLength ||
+    !!cell.field.tlv ||
+    !!cell.field.chainCatalog;
 
   // CSS custom properties drive the cell's column span (animatable) and
   // category fill color. The span class also hands `--cell-span` to CSS in
@@ -227,6 +236,7 @@ function FieldCellImpl({
       {...(isEncryptedBlock ? { "data-encrypted": "true" } : {})}
       {...(isEncryptedChild ? { "data-encrypted-child": "true" } : {})}
       {...(isHeaderProtected ? { "data-header-protected": "true" } : {})}
+      {...(isOverridable ? { "data-overridable": "true" } : {})}
       title={encryptionTitle}
       style={style}
       onClick={(e) => onFieldClick(cell.field, e.currentTarget)}

@@ -162,6 +162,36 @@
     );
   }
 
+  /* Overridable cells expose a runtime knob (length controller / TLV / chain
+     catalog). The marker is a small accent dot in the top-right corner — it
+     hints "this is interactive" without competing with category color or the
+     selection ring. Hidden in PNG/print exports because it's a UI affordance,
+     not a wire-format detail. */
+  .cell.field-cell[data-overridable="true"]::after {
+    content: "";
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.7;
+    pointer-events: none;
+    transition: opacity var(--pv-fast) var(--pv-ease);
+  }
+
+  .cell.field-cell[data-overridable="true"]:hover::after,
+  .cell.field-cell[data-overridable="true"].selected::after {
+    opacity: 1;
+  }
+
+  @media print {
+    .cell.field-cell[data-overridable="true"]::after {
+      display: none;
+    }
+  }
+
   .cell.field-cell.continuation {
     font-weight: 500;
     font-style: italic;

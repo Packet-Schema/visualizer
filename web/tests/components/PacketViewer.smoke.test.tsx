@@ -71,10 +71,19 @@ describe("PacketViewer (smoke)", () => {
     );
     try {
       const picker = container.querySelector("select");
-      const dataOffset = container.querySelector<HTMLInputElement>(
-        "#ctrl-dataOffset-number",
-      );
       expect(picker?.value).toBe("tcp");
+      // The override slider lives in DetailPanel and is only mounted when
+      // the corresponding cell is selected. Click the Data Offset cell to
+      // surface it, then verify the hydrated value.
+      const dataOffsetCell = container.querySelector<HTMLElement>(
+        '[data-field-id="dataOffset"]',
+      );
+      await act(async () => {
+        dataOffsetCell?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      const dataOffset = container.querySelector<HTMLInputElement>(
+        "#detail-ctrl-dataOffset-number",
+      );
       expect(dataOffset?.value).toBe("10");
       expect(window.location.search).toContain("preset=tcp");
       expect(window.location.search).toContain("controllers.dataOffset=10");
@@ -174,8 +183,16 @@ describe("PacketViewer (smoke)", () => {
       // Sanity check: starts on ipv4 and the diagram has an IHL controller.
       const picker = container.querySelector<HTMLSelectElement>("select");
       expect(picker?.value).toBe("ipv4");
-      const ihlBefore =
-        container.querySelector<HTMLInputElement>("#ctrl-ihl-number");
+      // Click IHL to surface the override slider in DetailPanel.
+      const ihlCell = container.querySelector<HTMLElement>(
+        '[data-field-id="ihl"]',
+      );
+      await act(async () => {
+        ihlCell?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      const ihlBefore = container.querySelector<HTMLInputElement>(
+        "#detail-ctrl-ihl-number",
+      );
       expect(ihlBefore?.value).toBe("8");
       const sourceCellBefore = container.querySelector(
         '[data-field-id="srcAddr"]',
@@ -200,7 +217,7 @@ describe("PacketViewer (smoke)", () => {
         container.querySelector('[data-field-id="srcAddr"]'),
       ).not.toBeNull();
       expect(
-        container.querySelector<HTMLInputElement>("#ctrl-ihl-number"),
+        container.querySelector<HTMLInputElement>("#detail-ctrl-ihl-number"),
       ).toBeNull();
       // No IPv4 option-cell leftovers (Type=0 etc.) — those use the
       // `${field.id}#${repeatIndex}` synthetic id from the Repeat expansion.
