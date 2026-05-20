@@ -113,7 +113,10 @@ function main(): void {
     addFormats;
   const AjvCtor =
     (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
-  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  // strict mode catches malformed schemas at compile time. We opted into
+  // strict: true once the schema confirmed clean — keeps build-time
+  // validation honest going forward.
+  const ajv = new AjvCtor({ allErrors: true, strict: true });
   addFormatsFn(ajv);
   const validate = ajv.compile(schema as object);
 

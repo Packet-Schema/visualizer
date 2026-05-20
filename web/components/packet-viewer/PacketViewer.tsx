@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import copy from "copy-to-clipboard";
 import stableStringify from "safe-stable-stringify";
 
 import { PRESETS } from "@/lib/psml/presets";
@@ -251,7 +250,7 @@ export default function PacketViewer() {
   } | null>(null);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
-  const controlsRef = useRef<HTMLElement | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
 
   // Pull user-saved presets from localStorage, then apply shared URL state.
   // URL hydration is one-shot; later state changes update the address bar.
@@ -602,7 +601,7 @@ export default function PacketViewer() {
 
   useAutoClearStatus(shareStatus, 2400, () => setShareStatus(null));
 
-  const handleShare = useCallback(() => {
+  const handleShare = useCallback(async () => {
     try {
       const url = buildCurrentShareUrl();
       const bytes = shareUrlByteLength(url);
@@ -611,8 +610,10 @@ export default function PacketViewer() {
           `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
-      const ok = copy(url);
-      if (!ok) throw new Error("Clipboard copy was not available.");
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is not available in this browser.");
+      }
+      await navigator.clipboard.writeText(url);
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }
@@ -850,9 +851,7 @@ export default function PacketViewer() {
             <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Controls
             </h2>
-            <div
-              ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}
-            >
+            <div ref={controlsRef}>
               <ControlsPanel
                 packet={packet}
                 controllers={controllers}
