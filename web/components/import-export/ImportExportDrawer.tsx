@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 
 import { fromAad } from "@/lib/formats/aug-ascii";
@@ -74,29 +73,6 @@ const FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
-
-function subscribeThemeChange(onStoreChange: () => void): () => void {
-  if (
-    typeof MutationObserver === "undefined" ||
-    typeof document === "undefined"
-  ) {
-    return () => {};
-  }
-  const observer = new MutationObserver(onStoreChange);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
-  });
-  return () => observer.disconnect();
-}
-
-function useDocumentThemeKey(): string {
-  return useSyncExternalStore(
-    subscribeThemeChange,
-    () => document.documentElement.getAttribute("data-theme") ?? "light",
-    () => "light",
-  );
-}
 
 export default function ImportExportDrawer({
   open,
@@ -382,27 +358,16 @@ export default function ImportExportDrawer({
   );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const documentThemeKey = useDocumentThemeKey();
   const isImageExportMode =
     currentMode === "export" && (format === "svg" || format === "png");
-  const previewSvg = useMemo(() => {
-    if (currentMode !== "export") return null;
-    if (format !== "svg" && format !== "png") return null;
-    return buildDiagramSvg(packet, layout, {
-      theme: readDiagramTheme(exportThemeMode),
-      bitWidth: diagramWidth,
-      transparentBackground,
-    });
-  }, [
-    currentMode,
-    diagramWidth,
-    exportThemeMode,
-    format,
-    layout,
-    packet,
-    transparentBackground,
-    documentThemeKey,
-  ]);
+  const previewSvg =
+    currentMode === "export" && (format === "svg" || format === "png")
+      ? buildDiagramSvg(packet, layout, {
+          theme: readDiagramTheme(exportThemeMode),
+          bitWidth: diagramWidth,
+          transparentBackground,
+        })
+      : null;
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
