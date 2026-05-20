@@ -501,6 +501,22 @@ describe("diagram export helpers", () => {
     expect(readDiagramTheme("dark").background).toBe("rgb(15,15,15)");
   });
 
+  it("does not throw when CSSLayerBlockRule is unavailable", () => {
+    installThemeStyles();
+    const original = globalThis.CSSLayerBlockRule;
+
+    // Older Safari/WebView builds do not expose CSSLayerBlockRule at all.
+    // readDiagramTheme("light" | "dark") should still parse accessible rules.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (globalThis as any).CSSLayerBlockRule;
+
+    try {
+      expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
+    } finally {
+      globalThis.CSSLayerBlockRule = original;
+    }
+  });
+
   it("uses the current UI theme when mode is follow-ui", () => {
     installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");

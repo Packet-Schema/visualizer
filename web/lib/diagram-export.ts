@@ -358,6 +358,8 @@ function collectThemeVariables(): ThemeVariableMaps {
     return { light, dark };
   }
 
+  const hasCssLayerBlockRule = typeof CSSLayerBlockRule !== "undefined";
+
   const visitRules = (rules: CSSRuleList): void => {
     for (const rule of Array.from(rules)) {
       if (rule instanceof CSSStyleRule) {
@@ -376,7 +378,10 @@ function collectThemeVariables(): ThemeVariableMaps {
         }
         continue;
       }
-      if (rule instanceof CSSMediaRule || rule instanceof CSSLayerBlockRule) {
+      if (
+        rule instanceof CSSMediaRule ||
+        (hasCssLayerBlockRule && rule instanceof CSSLayerBlockRule)
+      ) {
         visitRules(rule.cssRules);
       }
     }
