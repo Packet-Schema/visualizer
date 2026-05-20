@@ -98,7 +98,11 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "set-popover-anchor":
       return { ...state, popoverAnchor: action.anchor };
     case "open-drawer":
-      return { ...state, drawerMode: action.mode };
+      // Modal-class surfaces (drawer / image-export dialog) share the
+      // same z-index and global focus-trap keydown listener. Opening one
+      // implicitly closes the other so the two traps don't fight over Tab
+      // and Escape.
+      return { ...state, drawerMode: action.mode, showExportImageDialog: false };
     case "close-drawer":
       return { ...state, drawerMode: null };
     case "set-tour-open":
@@ -133,7 +137,8 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "close-save-dialog":
       return { ...state, showSaveDialog: false };
     case "open-export-image-dialog":
-      return { ...state, showExportImageDialog: true };
+      // See `open-drawer` comment — mirror the same mutual exclusion.
+      return { ...state, showExportImageDialog: true, drawerMode: null };
     case "close-export-image-dialog":
       return { ...state, showExportImageDialog: false };
     case "set-share-status":
@@ -147,6 +152,11 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         popoverAnchor: null,
         editMode: false,
         showJsonPane: false,
+        // Close any modal-class surface so it doesn't keep pointing at
+        // the previous preset's packet/layout after the swap.
+        drawerMode: null,
+        showSaveDialog: false,
+        showExportImageDialog: false,
         // hexStripUserSet intentionally preserved so the user's hex
         // visibility choice survives a preset change.
       };
