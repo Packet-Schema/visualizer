@@ -143,8 +143,15 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         // visibility choice survives a preset change.
       };
     default: {
+      // The `never` binding still gives tsc its exhaustiveness check at
+      // compile time (a new UiAction variant fails to assign to never).
+      // At runtime we fall back to the previous state instead of
+      // returning the raw action — an untyped caller dispatching a
+      // malformed object would otherwise corrupt the reducer state by
+      // replacing UiState with a free-form action object.
       const _exhaustive: never = action;
-      return _exhaustive;
+      void _exhaustive;
+      return state;
     }
   }
 }

@@ -256,8 +256,14 @@ export function editReducer(state: EditState, action: EditAction): EditState {
       return commit(state, next);
     }
     default: {
+      // Compile-time exhaustiveness (new EditAction variants fail to
+      // assign to `never`); at runtime we fall back to the previous
+      // state instead of returning the raw action object, so an
+      // untyped dispatch can't replace EditState with a free-form
+      // payload and corrupt history.
       const _exhaustive: never = action;
-      return _exhaustive;
+      void _exhaustive;
+      return state;
     }
   }
 }

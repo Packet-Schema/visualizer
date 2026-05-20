@@ -222,11 +222,13 @@ describe("tlsExtensionsBlock — peek lookahead Switch", () => {
     const layout = resolveLayout(pkt, { env });
     // 16 (extensionType) + 16 (serverNameListLength) + 40 (5 bytes) = 72.
     expect(layout.totalBits).toBe(72);
-    // Fields emitted from inside a Repeat carry the repetition index as a
-    // suffix on their id (e.g. `serverNameList#0`) so each cell keeps a
-    // unique React key.
+    // Fields emitted from inside a Repeat carry the repetition index as
+    // a suffix (e.g. `serverNameList#0`). Match exactly that shape — a
+    // bare `startsWith("serverNameList")` would also accept the
+    // sibling `serverNameListLength` field and let the regression slip
+    // through if the inner Repeat field got renamed.
     expect(
-      layout.cells.some((c) => c.field.id.startsWith("serverNameList")),
+      layout.cells.some((c) => /^serverNameList#\d+$/.test(c.field.id)),
     ).toBe(true);
   });
 });

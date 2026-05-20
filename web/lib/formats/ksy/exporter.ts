@@ -75,8 +75,13 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       // Splice inline (Kaitai has no group; the children are siblings).
       return c.children.flatMap((ch) => containerToKsy(ch, ctx));
     case "repeat": {
+      // Sanitize the PSML repeat id through the same `toKsyId` filter as
+      // every other seq entry. Without this an id containing `:` / `-`
+      // (legal in PSML, illegal in Kaitai identifiers) emitted invalid
+      // YAML that broke downstream `kaitai-struct-compiler` runs.
+      const sanitizedRepeatId = toKsyId(c.id);
       const entry: KsySeqEntry = {
-        id: c.id,
+        id: sanitizedRepeatId,
         repeat: "eos",
       };
       // Hoist the first field of the element as the entry's "type" if it's a
@@ -89,9 +94,12 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       ) {
         const f = child as Field;
         const proxy = fieldToKsy(f, ctx);
-        Object.assign(entry, proxy, { id: c.id });
+        Object.assign(entry, proxy, { id: sanitizedRepeatId });
       } else {
-        const typeName = `${c.id}_elem`;
+        // Synthetic user-type names share Kaitai's identifier rules with
+        // seq ids, so derive the type name from the sanitized repeat id
+        // (not the raw PSML id) and keep entry.type aligned.
+        const typeName = `${sanitizedRepeatId}_elem`;
         ctx.types[typeName] = {
           seq: c.element.fields.flatMap((ch) => containerToKsy(ch, ctx)),
         };

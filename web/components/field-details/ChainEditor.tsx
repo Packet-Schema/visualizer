@@ -73,6 +73,15 @@ export default function ChainEditor({ field, onChange }: Props) {
   };
 
   const handleFinalChange = (raw: string) => {
+    // Empty string means the user picked "(none)" — clear the final
+    // proto entirely instead of coercing it to 0. `Number("")` is 0 in
+    // JS, so without this guard the select would silently bind 0 (a
+    // valid IPv6 HBH next-header) to `chainFinalProto` and the chain
+    // editor would render that proto's row as the terminal protocol.
+    if (raw === "") {
+      emit(instances, undefined);
+      return;
+    }
     const v = Number(raw);
     if (!Number.isFinite(v)) return;
     emit(instances, v);
