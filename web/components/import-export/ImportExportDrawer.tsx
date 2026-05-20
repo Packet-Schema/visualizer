@@ -69,8 +69,7 @@ export default function ImportExportDrawer({
   // re-open effect and the user-driven mode toggle so the two paths can't
   // drift in what counts as a valid format for a given pane.
   const snapFormatForMode = useCallback((next: DrawerMode) => {
-    const allowed =
-      next === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
+    const allowed = next === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
     setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
   }, []);
 

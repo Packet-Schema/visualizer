@@ -37,12 +37,7 @@
 // Color is intentionally not part of the wire shape — PSML carries
 // semantic category only.
 
-import type {
-  Constraint,
-  Container,
-  Packet,
-  PacketEnv,
-} from "../psml/types";
+import type { Constraint, Container, Packet, PacketEnv } from "../psml/types";
 
 const FORMAT_TAG = "psml";
 const FORMAT_VERSION = "0.2";
