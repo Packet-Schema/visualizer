@@ -18,7 +18,7 @@ export default function ControlsPanel({
 
   if (controllerFields.length === 0) {
     return (
-      <p className="text-[13px] m-0 text-fg-faint">
+      <p className="text-sm-tight m-0 text-fg-faint">
         This packet has no variable-length controllers.
       </p>
     );
@@ -69,10 +69,12 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
         id={labelId}
         className="block mb-1 control-label"
       >
-        <span className="font-semibold text-[13px] text-fg">{field.name}</span>
+        <span className="font-semibold text-sm-tight text-fg">
+          {field.name}
+        </span>
       </label>
       {field.description ? (
-        <span id={hintId} className="block text-[11px] mb-1.5 text-fg-faint">
+        <span id={hintId} className="block text-3xs mb-1.5 text-fg-faint">
           {field.description}
         </span>
       ) : null}
@@ -113,7 +115,7 @@ function ControlRow({ field, controllers, onChange }: RowProps) {
           onChange={(e) => apply(e.target.value)}
           aria-labelledby={labelId}
           aria-describedby={field.description ? hintId : undefined}
-          className="w-16 px-2 py-1 rounded-md border font-mono tabular-nums text-[13px]"
+          className="w-16 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",

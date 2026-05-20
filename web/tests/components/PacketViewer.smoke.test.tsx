@@ -174,9 +174,8 @@ describe("PacketViewer (smoke)", () => {
       // Sanity check: starts on ipv4 and the diagram has an IHL controller.
       const picker = container.querySelector<HTMLSelectElement>("select");
       expect(picker?.value).toBe("ipv4");
-      const ihlBefore = container.querySelector<HTMLInputElement>(
-        "#ctrl-ihl-number",
-      );
+      const ihlBefore =
+        container.querySelector<HTMLInputElement>("#ctrl-ihl-number");
       expect(ihlBefore?.value).toBe("8");
       const sourceCellBefore = container.querySelector(
         '[data-field-id="srcAddr"]',

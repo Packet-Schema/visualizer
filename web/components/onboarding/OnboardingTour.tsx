@@ -56,6 +56,7 @@ export default function OnboardingTour({ steps, onClose }: Props) {
   });
   const tooltipRef = useRef<HTMLDivElement>(null);
   const nextBtnRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const finish = useCallback(() => {
     markTourSeen();
@@ -108,6 +109,31 @@ export default function OnboardingTour({ steps, onClose }: Props) {
       } else if (e.key === "Enter") {
         e.preventDefault();
         advance();
+      } else if (e.key === "Tab") {
+        // Simple focus trap: cycle between the dialog's tab stops so focus
+        // never escapes into the dimmed page behind the tour.
+        const root = dialogRef.current;
+        if (!root) return;
+        const focusables = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.hasAttribute("data-skip-focus"));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey) {
+          if (active === first || !root.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last || !root.contains(active)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
     const onResize = () => {
@@ -194,6 +220,7 @@ export default function OnboardingTour({ steps, onClose }: Props) {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="Onboarding tour"
@@ -224,8 +251,8 @@ export default function OnboardingTour({ steps, onClose }: Props) {
         <h3 className="m-0 mb-1.5 text-[15px] font-semibold text-fg">
           {step.title}
         </h3>
-        <p className="m-0 text-[13px] text-fg-muted">{step.body}</p>
-        <div className="mt-2 text-[11px] uppercase tracking-wider text-fg-faint">
+        <p className="m-0 text-sm-tight text-fg-muted">{step.body}</p>
+        <div className="mt-2 text-3xs uppercase tracking-wider text-fg-faint">
           Step {idx + 1} of {steps.length}
         </div>
         <div className="mt-3 flex items-center justify-end gap-2">

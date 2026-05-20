@@ -41,7 +41,7 @@ export default function DetailPanel({
 }: Props) {
   if (!selectedFieldId) {
     return (
-      <p className="m-0 text-[13px] text-fg-faint">
+      <p className="m-0 text-sm-tight text-fg-faint">
         Click a field in the diagram to see its details.
       </p>
     );
@@ -74,7 +74,7 @@ export default function DetailPanel({
       <div>
         <h3 className="m-0 mb-2.5 text-[15px] text-fg">
           {sub.name}{" "}
-          <span className="text-[11px] font-normal text-fg-muted">
+          <span className="text-3xs font-normal text-fg-muted">
             (subfield of {parent.name})
           </span>
         </h3>
@@ -95,12 +95,14 @@ export default function DetailPanel({
   }
 
   if (selectedFieldId.includes(":")) {
-    return <p className="m-0 text-[13px] text-fg-faint">Subfield not found.</p>;
+    return (
+      <p className="m-0 text-sm-tight text-fg-faint">Subfield not found.</p>
+    );
   }
 
   const field = packet.fields.find((f) => f.id === selectedFieldId);
   if (!field) {
-    return <p className="m-0 text-[13px] text-fg-faint">Field not found.</p>;
+    return <p className="m-0 text-sm-tight text-fg-faint">Field not found.</p>;
   }
 
   // TLV editor.
@@ -174,7 +176,7 @@ export default function DetailPanel({
             </span>
             )
             {drivenByTlv ? (
-              <em className="not-italic ml-2 text-[11px] text-fg-muted">
+              <em className="not-italic ml-2 text-3xs text-fg-muted">
                 — synced from TLV editor
               </em>
             ) : null}
@@ -213,7 +215,7 @@ function DefList({ rows }: { rows: Array<[string, React.ReactNode] | null> }) {
   );
   return (
     <dl
-      className="m-0 grid gap-y-1.5 gap-x-3.5 text-[13px]"
+      className="m-0 grid gap-y-1.5 gap-x-3.5 text-sm-tight"
       style={{
         gridTemplateColumns: "max-content 1fr",
       }}

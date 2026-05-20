@@ -105,13 +105,13 @@ export default function ChainEditor({ field, onChange }: Props) {
             return (
               <div key={itemKeys[i]} className="px-3 py-2 border-border">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
+                  <span className="text-2xs font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
                     proto {entry.proto}
                   </span>
-                  <span className="text-[13px] font-semibold text-fg">
+                  <span className="text-sm-tight font-semibold text-fg">
                     {entry.name}
                   </span>
-                  <span className="text-[11px] font-mono tabular-nums text-fg-muted">
+                  <span className="text-3xs font-mono tabular-nums text-fg-muted">
                     {bits} b / {bits / 8} B
                   </span>
                   <div className="ml-auto flex items-center gap-1">
@@ -132,7 +132,7 @@ export default function ChainEditor({ field, onChange }: Props) {
                     <button
                       type="button"
                       onClick={() => handleRemove(i)}
-                      className="text-[11px] px-2 py-0.5 rounded border"
+                      className="text-3xs px-2 py-0.5 rounded border"
                       style={{
                         borderColor: "var(--border-strong)",
                         color: "var(--fg)",
@@ -144,7 +144,7 @@ export default function ChainEditor({ field, onChange }: Props) {
                   </div>
                 </div>
                 {entry.description ? (
-                  <p className="m-0 mt-1 text-[11px] text-fg-faint">
+                  <p className="m-0 mt-1 text-3xs text-fg-faint">
                     {entry.description}
                   </p>
                 ) : null}
@@ -231,7 +231,7 @@ function IconBtn({
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className="text-[11px] w-6 h-6 rounded border font-mono"
+      className="text-3xs w-6 h-6 rounded border font-mono"
       style={{
         borderColor: "var(--border-strong)",
         background: "var(--bg-elevated)",

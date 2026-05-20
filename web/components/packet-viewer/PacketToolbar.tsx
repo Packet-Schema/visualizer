@@ -141,7 +141,7 @@ export default function PacketToolbar({
           {shareStatus.msg}
         </div>
       ) : null}
-      <div className="ml-auto text-[13px] font-mono tabular-nums text-fg-muted">
+      <div className="ml-auto text-sm-tight font-mono tabular-nums text-fg-muted">
         Header size: {headerSizeLabel}
       </div>
     </div>

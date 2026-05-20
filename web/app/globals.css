@@ -153,6 +153,16 @@
   --color-field-slate: var(--field-slate);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  /* Small typographic ramp — supplements Tailwind's default `text-xs` (12px)
+     with the half-step neighbours we use heavily in the diagram chrome.
+     Use these utilities so we stop sprinkling `text-[10px]` arbitrary
+     values across components. */
+  --text-2xs: 10px;
+  --text-2xs--line-height: 14px;
+  --text-3xs: 11px;
+  --text-3xs--line-height: 14px;
+  --text-sm-tight: 13px;
+  --text-sm-tight--line-height: 16px;
 }
 
 /* ---- base ---- */

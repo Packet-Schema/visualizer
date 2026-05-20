@@ -5,9 +5,33 @@
 // They take callbacks rather than touching state directly, so PacketViewer
 // keeps its single source of truth.
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
+} from "react";
 
 import { highlightSelector } from "@/components/diagram/dom-query";
+import { cssEscape, findRowNeighbor } from "./navigation";
+
+/**
+ * Wrap `callback` in a ref-backed thunk whose identity is stable for the
+ * lifetime of the host component but always reads the *latest* callback
+ * passed in. This is the “useEvent / useEventCallback” pattern that React's
+ * RFC describes and is the cleanest way to avoid `eslint-disable
+ * react-hooks/exhaustive-deps` in interval/timeout hooks.
+ */
+function useEventCallback<TArgs extends unknown[], TResult>(
+  callback: (...args: TArgs) => TResult,
+): (...args: TArgs) => TResult {
+  const ref = useRef(callback);
+  // Synchronously refresh on every render so we never run a stale closure.
+  ref.current = callback;
+  return useCallback((...args: TArgs) => ref.current(...args), []);
+}
 
 /**
  * Returns `true` when `window.innerWidth >= breakpoint`. SSR-safe: defaults
@@ -40,6 +64,10 @@ export function useUndoRedoShortcuts({
   onUndo: () => void;
   onRedo: () => void;
 }): void {
+  // Stabilise the handlers so the listener is bound once per `enabled`
+  // transition rather than on every render.
+  const onUndoStable = useEventCallback(onUndo);
+  const onRedoStable = useEventCallback(onRedo);
   useEffect(() => {
     if (!enabled) return;
     function onKey(e: KeyboardEvent) {
@@ -55,15 +83,15 @@ export function useUndoRedoShortcuts({
       const key = e.key.toLowerCase();
       if (key === "z" && !e.shiftKey) {
         e.preventDefault();
-        onUndo();
+        onUndoStable();
       } else if ((key === "z" && e.shiftKey) || key === "y") {
         e.preventDefault();
-        onRedo();
+        onRedoStable();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enabled, onUndo, onRedo]);
+  }, [enabled, onUndoStable, onRedoStable]);
 }
 
 /**
@@ -76,14 +104,12 @@ export function useDelayedOnce(
   delayMs: number,
   callback: () => void,
 ): void {
+  const callbackStable = useEventCallback(callback);
   useEffect(() => {
     if (!shouldRun) return;
-    const id = window.setTimeout(callback, delayMs);
+    const id = window.setTimeout(callbackStable, delayMs);
     return () => window.clearTimeout(id);
-    // Intentionally only depend on `shouldRun` — callback identity changes
-    // on every render and we don't want to retrigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldRun]);
+  }, [shouldRun, delayMs, callbackStable]);
 }
 
 /**
@@ -95,12 +121,12 @@ export function useAutoClearStatus<T>(
   delayMs: number,
   clear: () => void,
 ): void {
+  const clearStable = useEventCallback(clear);
   useEffect(() => {
     if (!status) return;
-    const id = window.setTimeout(clear, delayMs);
+    const id = window.setTimeout(clearStable, delayMs);
     return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, delayMs]);
+  }, [status, delayMs, clearStable]);
 }
 
 /**
@@ -114,8 +140,91 @@ export function useAutoClearStatus<T>(
  * call site stays declarative — "give me a highlighter for this DOM
  * subtree" instead of two dozen lines of DOM queries.
  */
+/**
+ * Roving-tabindex keyboard navigation across the hybrid diagram's flat list
+ * of `.field-cell` / `.subfield-cell` elements. The single tab stop moves to
+ * whichever cell the user lands on, so screen readers and keyboard users can
+ * step through the diagram with arrow keys + Home/End instead of Tab-storming
+ * every cell.
+ */
+export function useRovingTabindex(
+  rootRef: RefObject<HTMLElement | null>,
+): (e: ReactKeyboardEvent<HTMLDivElement>) => void {
+  return useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      const root = rootRef.current;
+      if (!root) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+
+      const isFieldCell = target.classList.contains("field-cell");
+      const isSubfieldCell = target.classList.contains("subfield-cell");
+      if (!isFieldCell && !isSubfieldCell) return;
+
+      const cells = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          isSubfieldCell ? ".subfield-cell" : ".field-cell",
+        ),
+      );
+      // Subfields navigate within their parent only.
+      const group = isSubfieldCell
+        ? cells.filter(
+            (c) =>
+              c.dataset.parentFieldId ===
+              (target as HTMLElement).dataset.parentFieldId,
+          )
+        : cells;
+
+      const idx = group.indexOf(target as HTMLElement);
+      if (idx === -1) return;
+
+      let next: HTMLElement | null = null;
+      switch (e.key) {
+        case "ArrowRight":
+          next = group[Math.min(group.length - 1, idx + 1)] ?? null;
+          break;
+        case "ArrowLeft":
+          next = group[Math.max(0, idx - 1)] ?? null;
+          break;
+        case "ArrowDown":
+          next = isSubfieldCell
+            ? null
+            : findRowNeighbor(group, target as HTMLElement, +1);
+          break;
+        case "ArrowUp":
+          next = isSubfieldCell
+            ? null
+            : findRowNeighbor(group, target as HTMLElement, -1);
+          break;
+        case "Home":
+          next = group[0] ?? null;
+          break;
+        case "End":
+          next = group[group.length - 1] ?? null;
+          break;
+        default:
+          return;
+      }
+
+      if (next && next !== target) {
+        e.preventDefault();
+        // Move the single tabindex=0 to the focused element.
+        for (const c of group) {
+          c.setAttribute("tabindex", c === next ? "0" : "-1");
+        }
+        next.focus();
+      }
+    },
+    [rootRef],
+  );
+}
+
+// `cssEscape` is re-exported for backwards compatibility with PacketViewer's
+// other DOM utilities; the function lives in `navigation.ts`.
+export { cssEscape };
+
 export function useFieldHighlight(
-  rootRef: React.RefObject<HTMLElement | null>,
+  rootRef: RefObject<HTMLElement | null>,
 ): (fieldId: string | null) => void {
   return useCallback(
     (fieldId: string | null) => {

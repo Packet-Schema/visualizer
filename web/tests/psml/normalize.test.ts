@@ -7,9 +7,11 @@ import { lit, op, ref } from "../../lib/psml/expr";
 import { initialEnv, normalize, typeBits } from "../../lib/psml/normalize";
 import type {
   Container,
+  Group,
   Packet,
   PacketEnv,
   Struct,
+  Switch,
 } from "../../lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
@@ -181,6 +183,54 @@ describe("normalize — Repeat", () => {
       },
     ]);
     expect(normalize(p).fields.length).toBe(0);
+  });
+
+  it("propagates repeatIndex through a nested Switch", () => {
+    // Regression: an earlier revision only suffixed direct Field children of
+    // a Repeat with their repeatIndex; Switch / Group children dropped the
+    // index, producing duplicate `id="type"` entries that crashed React's
+    // key reconciliation downstream.
+    const sw: Switch = {
+      kind: "switch",
+      id: "byKind",
+      on: lit(0),
+      cases: {
+        "0": {
+          id: "case-zero",
+          fields: [{ id: "type", name: "Type", type: bits(8) }],
+        },
+      },
+    };
+    const p = mk("rep-switch", [
+      {
+        kind: "repeat",
+        id: "options",
+        element: { id: "el", fields: [sw] },
+        count: lit(3),
+      },
+    ]);
+    const n = normalize(p);
+    expect(n.fields.length).toBe(3);
+    expect(n.fields.map((f) => f.id)).toEqual(["type#0", "type#1", "type#2"]);
+    expect(n.fields.map((f) => f.repeatIndex)).toEqual([0, 1, 2]);
+  });
+
+  it("propagates repeatIndex through a nested Group", () => {
+    const g: Group = {
+      kind: "group",
+      id: "g",
+      children: [{ id: "leaf", name: "Leaf", type: bits(8) }],
+    };
+    const p = mk("rep-group", [
+      {
+        kind: "repeat",
+        id: "outer",
+        element: { id: "el", fields: [g] },
+        count: lit(2),
+      },
+    ]);
+    const n = normalize(p);
+    expect(n.fields.map((f) => f.id)).toEqual(["leaf#0", "leaf#1"]);
   });
 });
 

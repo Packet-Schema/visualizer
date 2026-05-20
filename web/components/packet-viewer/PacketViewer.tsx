@@ -7,7 +7,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import copy from "copy-to-clipboard";
 import stableStringify from "safe-stable-stringify";
@@ -70,12 +69,12 @@ import OnboardingTour, {
 import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
 import StudioPanel from "./StudioPanel";
-import { findRowNeighbor } from "./navigation";
 import {
   useAutoClearStatus,
   useDelayedOnce,
   useFieldHighlight,
   useIsWideViewport,
+  useRovingTabindex,
   useUndoRedoShortcuts,
 } from "./hooks";
 
@@ -730,77 +729,10 @@ export default function PacketViewer() {
     ? `${bytes} bytes`
     : `${layout.totalBits} bits`;
 
-  // Roving tabindex keyboard navigation on the diagram. We treat field cells
-  // (and subfield cells) as a flat list keyed by document order, but Up/Down
-  // routes through `data-row` + `data-start-bit` for spatial behaviour.
-  const handleDiagramKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      const root = diagramRef.current;
-      if (!root) return;
-      const target = e.target as Element | null;
-      if (!target) return;
-
-      const isFieldCell = target.classList.contains("field-cell");
-      const isSubfieldCell = target.classList.contains("subfield-cell");
-      if (!isFieldCell && !isSubfieldCell) return;
-
-      // All cells are HTMLElements in the hybrid renderer.
-      const cells = Array.from(
-        root.querySelectorAll<HTMLElement>(
-          isSubfieldCell ? ".subfield-cell" : ".field-cell",
-        ),
-      );
-      // Subfields navigate within their parent only.
-      const group = isSubfieldCell
-        ? cells.filter(
-            (c) =>
-              c.dataset.parentFieldId ===
-              (target as HTMLElement).dataset.parentFieldId,
-          )
-        : cells;
-
-      const idx = group.indexOf(target as HTMLElement);
-      if (idx === -1) return;
-
-      let next: HTMLElement | null = null;
-      switch (e.key) {
-        case "ArrowRight":
-          next = group[Math.min(group.length - 1, idx + 1)] ?? null;
-          break;
-        case "ArrowLeft":
-          next = group[Math.max(0, idx - 1)] ?? null;
-          break;
-        case "ArrowDown":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, +1);
-          break;
-        case "ArrowUp":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, -1);
-          break;
-        case "Home":
-          next = group[0] ?? null;
-          break;
-        case "End":
-          next = group[group.length - 1] ?? null;
-          break;
-        default:
-          return;
-      }
-
-      if (next && next !== target) {
-        e.preventDefault();
-        // Move the single tabindex=0 to the focused element.
-        for (const c of group) {
-          c.setAttribute("tabindex", c === next ? "0" : "-1");
-        }
-        next.focus();
-      }
-    },
-    [],
-  );
+  // Roving tabindex keyboard navigation on the diagram. The hook owns the
+  // imperative DOM operations (`setAttribute("tabindex", …)` + focus()) so
+  // PacketViewer stays declarative.
+  const handleDiagramKeyDown = useRovingTabindex(diagramRef);
 
   return (
     <>
@@ -844,7 +776,7 @@ export default function PacketViewer() {
         />
 
         {packet.description ? (
-          <p className="text-[13px] mx-0.5 mt-2 mb-1 text-fg-muted">
+          <p className="text-sm-tight mx-0.5 mt-2 mb-1 text-fg-muted">
             {packet.description}
           </p>
         ) : null}

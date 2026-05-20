@@ -136,11 +136,18 @@ export default function FieldPopover({
       ? anchorRect.bottom + POPOVER_OFFSET
       : Math.max(8, anchorRect.top - POPOVER_OFFSET - 220);
 
+  // A non-modal dialog: it floats over the diagram but doesn't trap focus or
+  // block the backdrop, so we set `aria-modal="false"` to be explicit. The
+  // visible heading provides the label.
+  const titleId = `field-popover-title-${
+    resolved.kind === "field" ? resolved.field.id : resolved.sub.id
+  }`;
   return (
     <div
       ref={ref}
       role="dialog"
-      aria-label="Field detail"
+      aria-modal="false"
+      aria-labelledby={titleId}
       className="field-popover"
       style={{
         position: "fixed",
@@ -158,19 +165,37 @@ export default function FieldPopover({
         }}
       />
       {resolved.kind === "field" ? (
-        <FieldBody field={resolved.field} bits={resolved.bits} />
+        <FieldBody
+          field={resolved.field}
+          bits={resolved.bits}
+          titleId={titleId}
+        />
       ) : (
-        <SubfieldBody parent={resolved.parent} sub={resolved.sub} />
+        <SubfieldBody
+          parent={resolved.parent}
+          sub={resolved.sub}
+          titleId={titleId}
+        />
       )}
     </div>
   );
 }
 
-function FieldBody({ field, bits }: { field: Field; bits: number }) {
+function FieldBody({
+  field,
+  bits,
+  titleId,
+}: {
+  field: Field;
+  bits: number;
+  titleId: string;
+}) {
   const sizeStr = `${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}`;
   return (
     <div>
-      <h3 className="field-popover-title">{field.name}</h3>
+      <h3 id={titleId} className="field-popover-title">
+        {field.name}
+      </h3>
       <dl className="field-popover-list">
         <dt>Size</dt>
         <dd>
@@ -205,10 +230,18 @@ function FieldBody({ field, bits }: { field: Field; bits: number }) {
   );
 }
 
-function SubfieldBody({ parent, sub }: { parent: Field; sub: SubField }) {
+function SubfieldBody({
+  parent,
+  sub,
+  titleId,
+}: {
+  parent: Field;
+  sub: SubField;
+  titleId: string;
+}) {
   return (
     <div>
-      <h3 className="field-popover-title">
+      <h3 id={titleId} className="field-popover-title">
         {sub.name}{" "}
         <span className="field-popover-subnote">
           (subfield of {parent.name})
