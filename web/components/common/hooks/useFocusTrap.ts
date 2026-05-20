@@ -125,9 +125,10 @@ export function useFocusTrap({
     return () => {
       document.removeEventListener("keydown", handleKey);
     };
-    // `onClose` is captured via `onCloseRef`; including it here would
-    // re-run the effect on every parent render with an inline handler.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `onClose` is captured via `onCloseRef` (see above), so it's
+    // deliberately absent from the dependency list — that lets callers
+    // pass inline arrow functions without re-firing the effect each
+    // render.
   }, [open, containerRef]);
 
   // Restore focus once we close.
