@@ -9,7 +9,7 @@ import {
 } from "@/lib/formats/registry";
 import {
   downloadBlob,
-  extensionToFormat,
+  extToFormat,
   readFileAsText,
   slugify,
 } from "@/lib/preset-file-io";
@@ -64,23 +64,18 @@ export default function ImportExportDrawer({
     [currentMode],
   );
 
-  // Sync mode when parent re-opens with a different mode.
+  // Sync mode + reset transient state when the parent re-opens the drawer.
+  // Format is normalised against the new mode's allowed list so we don't
+  // need a second effect to "snap" an invalid format after the mode flip.
   useEffect(() => {
-    if (open) {
-      setCurrentMode(mode);
-      // Default sensible format per mode.
-      setFormat(mode === "import" ? "json" : "json");
-      setText("");
-      setStatus(null);
-    }
+    if (!open) return;
+    setCurrentMode(mode);
+    const allowed =
+      mode === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
+    setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
+    setText("");
+    setStatus(null);
   }, [open, mode]);
-
-  // Snap to a valid format when mode changes.
-  useEffect(() => {
-    if (!availableFormats.includes(format)) {
-      setFormat(availableFormats[0]);
-    }
-  }, [availableFormats, format]);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
@@ -107,6 +102,9 @@ export default function ImportExportDrawer({
 
   const handleModeChange = useCallback((next: DrawerMode) => {
     setCurrentMode(next);
+    const allowed =
+      next === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
+    setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
     setText("");
     setStatus(null);
   }, []);
@@ -164,7 +162,7 @@ export default function ImportExportDrawer({
       try {
         const content = await readFileAsText(file);
         setText(content);
-        const detected = extensionToFormat(file.name);
+        const detected = extToFormat(file.name);
         if (detected && availableFormats.includes(detected)) {
           setFormat(detected);
         }

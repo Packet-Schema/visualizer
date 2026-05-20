@@ -243,6 +243,10 @@ export function editReducer(state: EditState, action: EditAction): EditState {
       next.constraints = list;
       return commit(state, next);
     }
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
   }
 }
 

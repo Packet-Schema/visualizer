@@ -7,9 +7,12 @@
 // all entry points guard for SSR / non-DOM environments so vitest's node
 // runner doesn't crash when files import from here transitively.
 
-import { extToFormat, getFormat, type FormatKey } from "./formats/registry";
+import { getFormat, type FormatKey } from "./formats/registry";
 import type { PsmlPacket } from "./psml/types";
 
+// Re-export so callers don't have to know whether the extension lookup lives
+// in the registry or in this preset I/O module — there is only one name.
+export { extToFormat } from "./formats/registry";
 export type { FormatKey } from "./formats/registry";
 
 export const MY_PRESETS_FILE_FORMAT_VERSION = "psml-0.4" as const;
@@ -42,7 +45,7 @@ export function slugify(name: string): string {
 /**
  * Map a FormatKey to the file extension used in downloads. The PSML JSON
  * format takes a compound `.psml.json` extension so it round-trips through
- * extensionToFormat without ambiguity vs. the bulk-export `.json` envelope.
+ * `extToFormat` without ambiguity vs. the bulk-export `.json` envelope.
  *
  * Thin wrapper over the format registry — the source of truth is
  * `lib/formats/registry.ts`. Kept here so existing callers (and tests)
@@ -50,16 +53,6 @@ export function slugify(name: string): string {
  */
 export function formatToExtension(format: FormatKey): string {
   return getFormat(format).extension;
-}
-
-/**
- * Best-effort inverse of formatToExtension. Recognises both the canonical
- * extensions and the `.json` alias (treated as PSML JSON because that's what
- * users get when they export). Returns null when the filename has no
- * recognised extension.
- */
-export function extensionToFormat(filename: string): FormatKey | null {
-  return extToFormat(filename);
 }
 
 /* ------------------------------------------------------------------ *

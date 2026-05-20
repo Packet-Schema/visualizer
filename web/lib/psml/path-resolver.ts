@@ -95,23 +95,28 @@ export function descendNamed(node: Container, slot: string): Container[] {
         "'field' is a terminal marker and cannot be descended into",
       );
     case "children":
-      return assertGroup(node).children;
+      assertGroup(node);
+      return node.children;
     case "fields":
-      return assertStructShape(node).fields;
+      assertStructShape(node);
+      return node.fields;
     case "element":
       // The next path step will navigate through this Struct's `.fields`.
       // We return the `fields` array directly so the reducer's positional
       // index lands on a Container, mirroring `plaintext` / `default` below.
-      return assertRepeat(node).element.fields;
+      assertRepeat(node);
+      return node.element.fields;
     case "plaintext":
-      return assertEncrypted(node).plaintext.fields;
+      assertEncrypted(node);
+      return node.plaintext.fields;
     case "default":
-      return assertSwitchDefault(node).default.fields;
+      assertSwitchDefault(node);
+      return node.default.fields;
     default: {
       if (slot.startsWith("cases:")) {
-        const sw = assertSwitch(node);
+        assertSwitch(node);
         const key = slot.slice("cases:".length);
-        const variant = sw.cases[key];
+        const variant = node.cases[key];
         if (!variant) {
           throw new Error(`switch has no case with key ${key}`);
         }
@@ -124,45 +129,42 @@ export function descendNamed(node: Container, slot: string): Container[] {
 
 /* ------------------------------------------------------------------ *
  * Discriminated-union narrowing helpers. These replace blanket
- * `as unknown as Foo` casts with `throw`-on-mismatch guards so type
- * errors at the call site surface immediately rather than silently
- * returning the wrong array shape.
+ * `as unknown as Foo` casts with `asserts`-style guards so type errors
+ * at the call site surface immediately and the narrowed type flows
+ * through subsequent statements without re-binding.
  * ------------------------------------------------------------------ */
 
-function assertGroup(node: Container): Group {
+function assertGroup(node: Container): asserts node is Group {
   if (!("kind" in node) || node.kind !== "group") {
     throw new Error(`expected group at path; got ${describeKind(node)}`);
   }
-  return node;
 }
 
-function assertRepeat(node: Container): Repeat {
+function assertRepeat(node: Container): asserts node is Repeat {
   if (!("kind" in node) || node.kind !== "repeat") {
     throw new Error(`expected repeat at path; got ${describeKind(node)}`);
   }
-  return node;
 }
 
-function assertEncrypted(node: Container): Encrypted {
+function assertEncrypted(node: Container): asserts node is Encrypted {
   if (!("kind" in node) || node.kind !== "encrypted") {
     throw new Error(`expected encrypted at path; got ${describeKind(node)}`);
   }
-  return node;
 }
 
-function assertSwitch(node: Container): Switch {
+function assertSwitch(node: Container): asserts node is Switch {
   if (!("kind" in node) || node.kind !== "switch") {
     throw new Error(`expected switch at path; got ${describeKind(node)}`);
   }
-  return node;
 }
 
-function assertSwitchDefault(node: Container): Switch & { default: Struct } {
-  const sw = assertSwitch(node);
-  if (!sw.default) {
+function assertSwitchDefault(
+  node: Container,
+): asserts node is Switch & { default: Struct } {
+  assertSwitch(node);
+  if (!node.default) {
     throw new Error("expected switch with a default case at path");
   }
-  return sw as Switch & { default: Struct };
 }
 
 /**
@@ -171,13 +173,14 @@ function assertSwitchDefault(node: Container): Switch & { default: Struct } {
  * it as "a thing with .fields"; this narrowing helper accepts that shape
  * via structural duck-typing rather than the union.
  */
-function assertStructShape(node: unknown): { fields: Container[] } {
+function assertStructShape(
+  node: unknown,
+): asserts node is { fields: Container[] } {
   if (
-    typeof node === "object" &&
-    node !== null &&
-    Array.isArray((node as { fields?: unknown }).fields)
+    typeof node !== "object" ||
+    node === null ||
+    !Array.isArray((node as { fields?: unknown }).fields)
   ) {
-    return node as { fields: Container[] };
+    throw new Error("expected struct with 'fields' array");
   }
-  throw new Error("expected struct with 'fields' array");
 }

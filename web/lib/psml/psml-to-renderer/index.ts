@@ -17,7 +17,7 @@
 //   - `./shared.ts`    — `typeBits` + helpers used across the modules
 
 import { isField } from "../utils";
-import type { Packet as PsmlPacket } from "../types";
+import type { Constraint, Expr, Packet as PsmlPacket } from "../types";
 import type {
   Field as RendererField,
   Packet as RendererPacket,
@@ -34,27 +34,28 @@ export { rendererToPsml } from "./to-psml";
  * `ref(fieldA) * lit(N) == ref(fieldB)` (or the symmetric form). When such a
  * shape is found, return `{ fromId: fieldA, controlsName: fieldB }` so the
  * caller can tag fieldA's renderer Field with `controlsLength: fieldB`.
+ *
+ * Uses the discriminated `Expr` union directly — no structural casts — so
+ * adding a new Expr variant surfaces here as a tsc error rather than a
+ * silent miss at runtime.
  */
-function constraintToController(constraint: {
-  lhs: { kind: string; field?: string; op?: string; a?: unknown; b?: unknown };
-  rhs: { kind: string; field?: string; op?: string; a?: unknown; b?: unknown };
-}): { fromId: string; controlsName: string } | null {
+function constraintToController(
+  constraint: Constraint,
+): { fromId: string; controlsName: string } | null {
   const tryMatch = (
-    mul: typeof constraint.lhs,
-    target: typeof constraint.rhs,
+    mul: Expr,
+    target: Expr,
   ): { fromId: string; controlsName: string } | null => {
-    if (target.kind !== "ref" || typeof target.field !== "string") return null;
-    if (mul.kind === "ref" && typeof mul.field === "string") {
+    if (target.kind !== "ref") return null;
+    if (mul.kind === "ref") {
       return { fromId: mul.field, controlsName: target.field };
     }
     if (mul.kind === "op" && mul.op === "*") {
-      const a = mul.a as { kind: string; field?: string };
-      const b = mul.b as { kind: string; field?: string };
-      if (a.kind === "ref" && typeof a.field === "string") {
-        return { fromId: a.field, controlsName: target.field };
+      if (mul.a.kind === "ref") {
+        return { fromId: mul.a.field, controlsName: target.field };
       }
-      if (b.kind === "ref" && typeof b.field === "string") {
-        return { fromId: b.field, controlsName: target.field };
+      if (mul.b.kind === "ref") {
+        return { fromId: mul.b.field, controlsName: target.field };
       }
     }
     return null;
@@ -122,9 +123,7 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
   // step is responsible for deriving any downstream Repeat counts from it.
   if (packet.constraints) {
     for (const c of packet.constraints) {
-      const match = constraintToController(
-        c as Parameters<typeof constraintToController>[0],
-      );
+      const match = constraintToController(c);
       if (!match) continue;
       const target = fields.find((f) => f.id === match.fromId);
       if (target && !target.controlsLength) {

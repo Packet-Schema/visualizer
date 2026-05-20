@@ -9,7 +9,7 @@ import {
   MY_PRESETS_FILE_FORMAT_VERSION,
   buildMyPresetsBundle,
   downloadBlob,
-  extensionToFormat,
+  extToFormat,
   formatToExtension,
   isMyPresetsBundle,
   readFileAsText,
@@ -41,13 +41,13 @@ describe("slugify", () => {
   });
 });
 
-describe("formatToExtension / extensionToFormat", () => {
+describe("formatToExtension / extToFormat", () => {
   const formats: FormatKey[] = ["json", "rfc-ascii", "aug-ascii", "ksy"];
   it("round-trips every format", () => {
     for (const f of formats) {
       const ext = formatToExtension(f);
       const filename = `pkt.${ext}`;
-      expect(extensionToFormat(filename)).toBe(f);
+      expect(extToFormat(filename)).toBe(f);
     }
   });
   it("returns expected extensions", () => {
@@ -57,18 +57,18 @@ describe("formatToExtension / extensionToFormat", () => {
     expect(formatToExtension("ksy")).toBe("ksy");
   });
   it("treats bare .json as PSML JSON", () => {
-    expect(extensionToFormat("foo.json")).toBe("json");
+    expect(extToFormat("foo.json")).toBe("json");
   });
   it("returns null for unknown / invalid input", () => {
-    expect(extensionToFormat("foo.xyz")).toBeNull();
-    expect(extensionToFormat("noext")).toBeNull();
-    expect(extensionToFormat(undefined as unknown as string)).toBeNull();
+    expect(extToFormat("foo.xyz")).toBeNull();
+    expect(extToFormat("noext")).toBeNull();
+    expect(extToFormat(undefined as unknown as string)).toBeNull();
   });
   it("is case-insensitive", () => {
-    expect(extensionToFormat("PKT.PSML.JSON")).toBe("json");
-    expect(extensionToFormat("PKT.AAD")).toBe("aug-ascii");
-    expect(extensionToFormat("PKT.KSY")).toBe("ksy");
-    expect(extensionToFormat("PKT.TXT")).toBe("rfc-ascii");
+    expect(extToFormat("PKT.PSML.JSON")).toBe("json");
+    expect(extToFormat("PKT.AAD")).toBe("aug-ascii");
+    expect(extToFormat("PKT.KSY")).toBe("ksy");
+    expect(extToFormat("PKT.TXT")).toBe("rfc-ascii");
   });
 });
 

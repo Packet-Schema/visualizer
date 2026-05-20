@@ -52,15 +52,27 @@ function findRowNeighbor(
 /**
  * Wrap `callback` in a ref-backed thunk whose identity is stable for the
  * lifetime of the host component but always reads the *latest* callback
- * passed in. This is the “useEvent / useEventCallback” pattern that React's
- * RFC describes and is the cleanest way to avoid `eslint-disable
- * react-hooks/exhaustive-deps` in interval/timeout hooks.
+ * passed in.
+ *
+ * This is the "useEvent / useEventCallback" pattern from the React RFC,
+ * later shipped as `useEffectEvent` in Canary. We don't depend on Canary
+ * here — pinning to a Canary build to get one hook isn't worth it — so
+ * the pattern is inlined. The two are NOT interchangeable: when the
+ * Canary hook eventually graduates to stable React, callers below
+ * (`useDelayedOnce`, `useAutoClearStatus`, `useUndoRedoShortcuts`)
+ * should migrate, especially since `useEffectEvent` is restricted to
+ * effect bodies (which matches our usage anyway).
+ *
+ * Why not `useCallback(fn, [])`? An empty deps array freezes the closure
+ * at the first render, so any non-prop value the callback closes over
+ * (state, props) goes stale. The ref-write happens during render, which
+ * is safe because we only read it from event/timer callbacks — never
+ * during render itself.
  */
 function useEventCallback<TArgs extends unknown[], TResult>(
   callback: (...args: TArgs) => TResult,
 ): (...args: TArgs) => TResult {
   const ref = useRef(callback);
-  // Synchronously refresh on every render so we never run a stale closure.
   ref.current = callback;
   return useCallback((...args: TArgs) => ref.current(...args), []);
 }

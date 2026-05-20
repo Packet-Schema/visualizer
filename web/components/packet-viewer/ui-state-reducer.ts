@@ -139,5 +139,9 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         // hexStripUserSet intentionally preserved so the user's hex
         // visibility choice survives a preset change.
       };
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
   }
 }
