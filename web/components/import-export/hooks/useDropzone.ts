@@ -32,6 +32,19 @@ export function useDropzone({
   const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    // Ignore "leaves" that just transition into a child element of the
+    // dropzone (typically the textarea inside the wrapper). Without
+    // this guard, dragging over any nested element flips `dragActive`
+    // off and the drop-target styling flickers — Copilot flagged this
+    // as a UX regression. `relatedTarget` is the element the pointer
+    // is *entering*; if it's still inside `currentTarget`, the user
+    // hasn't actually left the dropzone.
+    if (
+      e.relatedTarget instanceof Node &&
+      e.currentTarget.contains(e.relatedTarget)
+    ) {
+      return;
+    }
     setDragActive(false);
   }, []);
   const onDrop = useCallback(

@@ -423,34 +423,22 @@ export default function PacketViewer() {
       } else if (importedPackets[packetKey]) {
         setImportedPackets((prev) => ({ ...prev, [packetKey]: nextPacket }));
       } else {
-        // Custom presets are stored as PSML; lift the renderer-shape edit back
-        // to PSML and persist into customPresets so the change survives a
-        // preset switch.
+        // Custom preset edits: keep the source PSML untouched and
+        // persist the renderer-shape edit in `renderedPresets` instead.
         //
-        // `rendererToPsml` is intentionally lossy — the renderer model
-        // cannot represent Constraints (and collapses Encrypted /
-        // Switch / Optional containers into placeholder Fields). If we
-        // blindly overwrite the stored PSML with the lifted output,
-        // editing a single TLV or chain instance erases the original
-        // preset's `constraints` block (slider drivers / IHL relations)
-        // and any non-Field container. Codex P1: at minimum we have to
-        // preserve `constraints` from the source PSML so the next
-        // render's `targetPsml ← customPresets[packetKey]` keeps the
-        // length-relation slider working. Encrypted / Switch / Optional
-        // body collapse is a known lossy edge of the renderer model;
-        // a more complete fix (keep PSML source-of-truth, overlay TLV
-        // edits) is tracked as a separate followup.
-        setCustomPresets((prev) => {
-          const original = prev[packetKey];
-          const lifted = rendererToPsml(nextPacket);
-          const merged: PsmlPacket = {
-            ...lifted,
-            ...(original?.constraints && original.constraints.length > 0
-              ? { constraints: original.constraints }
-              : {}),
-          };
-          return { ...prev, [packetKey]: merged };
-        });
+        // The earlier approach (`setCustomPresets ← rendererToPsml(...)`,
+        // even with constraints merged back) bakes the renderer model's
+        // lossy collapse of Encrypted / Switch / Optional containers
+        // into the source PSML on every TLV / Chain edit (Codex P1).
+        // The renderer mirror lookup at the top of this component
+        // already falls back to `renderedPresets[packetKey]` ??
+        // `customRenderer` (which re-derives from customPresets), so
+        // writing the edit to `renderedPresets[packetKey]` lets the UI
+        // pick up the change immediately while the canonical PSML
+        // stays intact. A preset switch + return re-derives the
+        // renderer view from the source; only an explicit
+        // "Save as preset" should rebuild the persisted PSML.
+        setRenderedPresets((prev) => ({ ...prev, [packetKey]: nextPacket }));
       }
     },
     [packetKey, renderedPresets, importedPackets],
