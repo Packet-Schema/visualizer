@@ -376,6 +376,7 @@ export default function ImportExportDrawer({
   );
 
   const handleCopy = useCallback(async () => {
+    const exportSession = exportSessionRef.current;
     try {
       if (currentMode === "export" && (format === "svg" || format === "png")) {
         const svg = buildDiagramSvg(packet, layout, {
@@ -384,12 +385,29 @@ export default function ImportExportDrawer({
           transparentBackground,
         });
         if (format === "svg") {
-          await navigator.clipboard.writeText(svg);
+          if (
+            typeof navigator !== "undefined" &&
+            navigator.clipboard?.writeText
+          ) {
+            await navigator.clipboard.writeText(svg);
+          } else {
+            const textarea = textareaRef.current;
+            if (!textarea) throw new Error("Clipboard copy was not available.");
+            textarea.value = svg;
+            textarea.select();
+            document.execCommand?.("copy");
+          }
         } else {
           const png = await svgToPngBlob(svg, pngScale);
+          if (!openRef.current || exportSessionRef.current !== exportSession) {
+            return;
+          }
           await navigator.clipboard.write([
             new ClipboardItem({ "image/png": png }),
           ]);
+        }
+        if (!openRef.current || exportSessionRef.current !== exportSession) {
+          return;
         }
         setStatus({ msg: "Copied to clipboard.", kind: "ok" });
         return;
@@ -588,9 +606,14 @@ function DrawerInner({
   const [dragActive, setDragActive] = useState(false);
   const previewSize = useMemo(() => {
     if (!previewSvg) return null;
-    const match = previewSvg.match(/width="(\d+)".*height="(\d+)"/);
-    if (!match) return null;
-    return { width: Number(match[1]), height: Number(match[2]) };
+    const svg = new DOMParser().parseFromString(
+      previewSvg,
+      "image/svg+xml",
+    ).documentElement;
+    const width = Number(svg.getAttribute("width"));
+    const height = Number(svg.getAttribute("height"));
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+    return { width, height };
   }, [previewSvg]);
   const pngWidthOptions = useMemo(() => {
     if (!previewSize) return [];
