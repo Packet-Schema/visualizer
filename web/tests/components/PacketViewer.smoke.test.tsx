@@ -83,6 +83,29 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("selects PSML group children with parent-qualified subfield ids", async () => {
+    const { container, cleanup } = await mountPacketViewer("/?preset=tcp");
+    try {
+      const ackCell = container.querySelector<HTMLElement>(
+        '[data-field-id="flagsBits:flags_ack"]',
+      );
+      expect(ackCell).not.toBeNull();
+
+      await act(async () => {
+        ackCell?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true }),
+        );
+      });
+
+      expect(ackCell?.classList.contains("selected")).toBe(true);
+      expect(container.textContent).toContain("ACK");
+      expect(container.textContent).toContain("subfield of flagsBits");
+      expect(container.textContent).not.toContain("Field not found");
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("stores a shared psml payload in My presets", async () => {
     const baseName = "Shared URL Packet ";
     const expectedName = `${baseName}${"x".repeat(80 - baseName.length)}`;

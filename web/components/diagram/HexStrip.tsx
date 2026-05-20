@@ -1,9 +1,10 @@
 import { useMemo, type CSSProperties } from "react";
 
-import type { Field, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Field, Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
 type Props = {
+  packet: Packet;
   layout: ResolvedLayout;
   rowBits: number;
   selectedFieldId: string | null;
@@ -34,12 +35,25 @@ function resolveFieldColor(field: Field): string {
   return tokenToCssVar(field.color);
 }
 
+function selectableFieldId(packet: Packet, field: Field): string {
+  if (packet.fields.some((f) => f.id === field.id)) return field.id;
+
+  for (const parent of packet.fields) {
+    if (parent.subfields?.some((sub) => sub.id === field.id)) {
+      return `${parent.id}:${field.id}`;
+    }
+  }
+
+  return field.id;
+}
+
 /**
  * Walk the resolved layout and compute owners for every byte. Returns an
  * array of length `totalBytes` where each entry is the list of fields/subfields
  * that contribute bits to that byte (in MSB->LSB order within the byte).
  */
 function computeByteOwners(
+  packet: Packet,
   layout: ResolvedLayout,
   rowBits: number,
 ): ByteOwner[][] {
@@ -50,6 +64,7 @@ function computeByteOwners(
     const absStart = cell.row * rowBits + cell.startBit;
     const absEnd = cell.row * rowBits + cell.endBit;
     const color = resolveFieldColor(cell.field);
+    const fieldId = selectableFieldId(packet, cell.field);
 
     // If a cell has subCells, prefer them for owner attribution so sub-byte
     // fields (Version 4 + IHL 4 in IPv4 byte 0) split the cell.
@@ -77,14 +92,14 @@ function computeByteOwners(
       for (let b = absStart; b <= absEnd; b++) {
         if (covered.has(b)) continue;
         addRange(owners, b, b, {
-          fieldId: cell.field.id,
+          fieldId,
           name: cell.field.name,
           color,
         });
       }
     } else {
       addRange(owners, absStart, absEnd, {
-        fieldId: cell.field.id,
+        fieldId,
         name: cell.field.name,
         color,
       });
@@ -161,14 +176,15 @@ function gradientFor(owners: ByteOwner[]): string {
  * Print mode hides the strip via `@media print` in globals.css.
  */
 export default function HexStrip({
+  packet,
   layout,
   rowBits,
   selectedFieldId,
   onByteHover,
 }: Props) {
   const byteOwners = useMemo(
-    () => computeByteOwners(layout, rowBits),
-    [layout, rowBits],
+    () => computeByteOwners(packet, layout, rowBits),
+    [packet, layout, rowBits],
   );
 
   if (byteOwners.length === 0) return null;
