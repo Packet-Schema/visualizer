@@ -90,12 +90,39 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
+  const [uiTheme, setUiTheme] = useState<"light" | "dark">(() => {
+    if (typeof document === "undefined") return "light";
+    return document.documentElement.getAttribute("data-theme") === "dark"
+      ? "dark"
+      : "light";
+  });
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const openRef = useRef(open);
   const exportSessionRef = useRef(0);
   useFocusTrap({ open, containerRef: drawerRef, onClose });
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const syncTheme = () => {
+      setUiTheme(root.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    };
+    syncTheme();
+
+    const observer = new MutationObserver((records) => {
+      if (records.some((record) => record.attributeName === "data-theme")) {
+        syncTheme();
+      }
+    });
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
@@ -238,6 +265,7 @@ export default function ImportExportDrawer({
     isImageExportMode,
     layout,
     packet,
+    uiTheme,
     transparentBackground,
   ]);
 
@@ -289,6 +317,7 @@ export default function ImportExportDrawer({
     layout,
     packet,
     pngScale,
+    uiTheme,
     transparentBackground,
   ]);
 
