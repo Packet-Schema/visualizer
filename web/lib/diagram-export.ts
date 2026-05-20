@@ -97,6 +97,7 @@ function fieldFill(field: Field, theme: DiagramExportTheme): string {
 }
 
 function rowsFor(layout: ResolvedLayout): Cell[][] {
+  // ResolvedLayout contract: row indices are non-negative integers.
   const rowsTotal = layout.cells.length
     ? Math.max(...layout.cells.map((cell) => cell.row)) + 1
     : 0;
@@ -371,17 +372,14 @@ function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
 }
 
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
-  if (
-    typeof document === "undefined" ||
-    !document.body ||
-    mode === "follow-ui"
-  ) {
+  if (typeof document === "undefined" || !document.body) {
     return readDiagramThemeFromDocument();
   }
 
-  const root = document.documentElement;
-  const previousTheme = root.getAttribute("data-theme");
-  root.setAttribute("data-theme", mode);
+  if (mode === "follow-ui") {
+    return readDiagramThemeFromRoot(document.body);
+  }
+
   const probeRoot = document.createElement("div");
   probeRoot.setAttribute("data-theme", mode);
   probeRoot.style.position = "fixed";
@@ -391,7 +389,7 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
   probeRoot.style.height = "0";
   probeRoot.style.overflow = "hidden";
   probeRoot.style.pointerEvents = "none";
-  root.appendChild(probeRoot);
+  document.body.appendChild(probeRoot);
 
   const resolveCssColor = (name: string, fallback: string): string =>
     readCssColorFromRoot(probeRoot, name, fallback);
@@ -400,11 +398,6 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
     return buildTheme(resolveCssColor);
   } finally {
     probeRoot.remove();
-    if (previousTheme === null) {
-      root.removeAttribute("data-theme");
-    } else {
-      root.setAttribute("data-theme", previousTheme);
-    }
   }
 }
 
