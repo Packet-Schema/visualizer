@@ -3,7 +3,20 @@ import { useMemo, useState } from "react";
 import { validate } from "@/lib/psml/constraint";
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import type { Constraint, Expr, PacketEnv } from "@/lib/psml/types";
-import { useListItemKeys } from "@/lib/use-list-item-keys";
+
+/**
+ * Mint a unique key for a new Constraint row. We can't use
+ * `useListItemKeys` here because the studio reducer deep-clones the
+ * packet on every action (so object identity is destroyed each
+ * dispatch); attaching a stable `_uid` directly to the Constraint and
+ * letting it survive the clone is what keeps React focus/state pinned
+ * to the right row through reorder / insert / delete (Copilot review).
+ */
+let constraintUidCounter = 0;
+function mintConstraintUid(): string {
+  constraintUidCounter += 1;
+  return `c${constraintUidCounter}`;
+}
 
 import ExprBuilder from "./ExprBuilder";
 
@@ -73,13 +86,11 @@ export default function ConstraintEditor({
   const addDraft = () => {
     dispatch({
       type: "add-constraint",
-      constraint: { lhs: draftLhs, rhs: draftRhs },
+      constraint: { lhs: draftLhs, rhs: draftRhs, _uid: mintConstraintUid() },
     });
     setDraftLhs({ kind: "lit", value: 0 });
     setDraftRhs({ kind: "lit", value: 0 });
   };
-
-  const itemKeys = useListItemKeys(constraints);
 
   return (
     <section
@@ -93,7 +104,7 @@ export default function ConstraintEditor({
       <ul className="flex flex-col gap-2">
         {constraints.map((c, i) => (
           <li
-            key={itemKeys[i]}
+            key={c._uid ?? `c-${i}`}
             className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border"
           >
             <ExprBuilder

@@ -64,10 +64,15 @@ export function parseShareParams(
     try {
       return { kind: "psml", ...decodePsmlParam(psml) };
     } catch (err) {
+      // Prefix mirrors `decodePsmlParam`'s user-facing rule: avoid the
+      // internal "PSML" label and tell the user what to do. The toast
+      // shows this string verbatim, so the inner Error message (which
+      // is already curated) is appended without an extra layer of
+      // jargon (Copilot review).
       return {
         kind: "none",
         controllers,
-        error: `Invalid shared PSML payload: ${(err as Error).message}`,
+        error: `Invalid shared link: ${(err as Error).message}`,
       };
     }
   }
