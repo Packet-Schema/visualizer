@@ -1,6 +1,9 @@
 // PSML edit reducer — the canonical state machine for the Custom Packet
-// Studio. Sibling Round 7 agents (7B/7C) read the action shape declared
-// here; do not change it without updating issue #64.
+// Studio. The action shape declared here is also the contract for any
+// consumer that builds and dispatches `EditAction` values (ContainerRow
+// editors, TLV / Chain forms). Treat its discriminated union as part of
+// the module's public API — additions go in `EditAction`, removals
+// require updating every dispatch site.
 //
 // Path scheme
 // -----------

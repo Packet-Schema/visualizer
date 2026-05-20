@@ -95,7 +95,9 @@ export default function ImportExportDrawer({
       const env = new Map<string, number>(Object.entries(controllers));
       const adapter = getFormat(format);
       if (!adapter.render) {
-        throw new Error(`Format "${format}" has no exporter.`);
+        throw new Error(
+          `Export to "${adapter.label}" is not supported. Try another format.`,
+        );
       }
       setText(adapter.render(psml, env));
       setStatus(null);
@@ -121,7 +123,9 @@ export default function ImportExportDrawer({
     try {
       const adapter = getFormat(format);
       if (!adapter.parse) {
-        throw new Error(`Format "${format}" cannot be imported.`);
+        throw new Error(
+          `Import from "${adapter.label}" is not supported. Try another format.`,
+        );
       }
       const { packet: psml, env, warnings } = adapter.parse(text);
       const runtime = psmlToRenderer(psml);

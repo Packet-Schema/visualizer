@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import stableStringify from "safe-stable-stringify";
 
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
@@ -115,11 +114,10 @@ function collectPsmlRefs(packet: PsmlPacket): Set<string> {
         visit(e.f);
         return;
       case "peek":
-        // peek.bits は定数 (number) で ref を含まない一方、
-        // peek.offset は Expr なので ref を含み得る (例: offset を
-        // 同 packet の長さ field で動かす lookahead パターン)。
-        // ここを walk しないと該当パケットが MissingRefError で落ちる
-        // (Codex P2 指摘)。
+        // peek.bits は定数 (number) で ref を含まない一方、 peek.offset は
+        // Expr なので ref を含み得る (lookahead パターンで、 offset を同
+        // packet の長さ field で動かすなど)。 ここを walk しないと該当
+        // パケットが MissingRefError で落ちる。
         if (e.offset) visit(e.offset);
         return;
     }
@@ -1038,6 +1036,25 @@ function normalizeCustomPresetName(name: string): string {
   const normalized = name.trim().replace(/\s+/g, " ");
   if (normalized.length === 0) return SHARED_CUSTOM_PRESET_FALLBACK_NAME;
   return normalized.slice(0, CUSTOM_PRESET_NAME_MAX).trimEnd();
+}
+
+/**
+ * Stable JSON comparison without the `safe-stable-stringify` dep — equality
+ * only needs key-order independence (the studio reducer deep-clones via
+ * `structuredClone`, which preserves key insertion order, but PSML packets
+ * from disparate sources may iterate differently). `JSON.stringify`'s
+ * second-arg array form sorts keys at every depth in one pass and is enough
+ * for our shallow-name PsmlPacket shape.
+ */
+function stableStringify(value: unknown): string {
+  const keys = new Set<string>();
+  // First pass: collect every property name reachable from the value so
+  // the replacer-array form of JSON.stringify can sort them globally.
+  JSON.stringify(value, (key, val) => {
+    if (key) keys.add(key);
+    return val;
+  });
+  return JSON.stringify(value, Array.from(keys).sort());
 }
 
 function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {

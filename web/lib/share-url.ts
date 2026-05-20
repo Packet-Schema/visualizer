@@ -41,7 +41,11 @@ export function decodePsmlParam(value: string): {
 } {
   const json = decompressFromEncodedURIComponent(value);
   if (!json) {
-    throw new Error("Shared PSML payload could not be decompressed.");
+    // User-facing — surfaced verbatim by parseShareParams' error toast.
+    // Avoid leaking internal terms ("PSML") and tell the user what to do.
+    throw new Error(
+      "Invalid shared link — the packet data could not be read. Please verify the link is complete.",
+    );
   }
   const { packet, env } = fromJson(json);
   validatePsmlPacket(packet);
