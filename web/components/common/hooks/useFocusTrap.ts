@@ -41,13 +41,13 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
 /**
  * Trap keyboard focus inside `containerRef` while `open` is true, escape
  * closes via `onClose`, and the previously focused element is restored
- * once the drawer is dismissed.
+ * once the modal is dismissed.
  *
- * Pulled out of `ImportExportDrawer` so the drawer component shrinks to a
- * presentational surface and the same trap can be reused if another modal
- * surface appears.
+ * Originally pulled out of `ImportExportDrawer`; now shared with
+ * `ExportDialog` and any other modal surface (hence the move to the
+ * `common/hooks` directory).
  */
-export function useDrawerFocusTrap({
+export function useFocusTrap({
   open,
   containerRef,
   onClose,

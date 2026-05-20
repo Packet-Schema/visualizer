@@ -16,7 +16,7 @@ import {
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import type { ControllerState, Packet } from "@/lib/psml/renderer";
 
-import { useDrawerFocusTrap } from "./hooks/useDrawerFocusTrap";
+import { useFocusTrap } from "@/components/common/hooks/useFocusTrap";
 import { useDropzone } from "./hooks/useDropzone";
 
 export type DrawerMode = "import" | "export";
@@ -55,7 +55,7 @@ export default function ImportExportDrawer({
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  useDrawerFocusTrap({ open, containerRef: drawerRef, onClose });
+  useFocusTrap({ open, containerRef: drawerRef, onClose });
 
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
