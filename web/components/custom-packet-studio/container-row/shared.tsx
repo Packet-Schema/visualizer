@@ -1,9 +1,10 @@
 // Pieces shared by the four ContainerRow editors. Kept tiny so each editor
 // can stay focused on the container variant it owns.
 
+import type { ContainerPatch } from "@/lib/psml/edit-reducer";
 import type { Repeat } from "@/lib/psml/types";
 
-export type Patch = (p: Record<string, unknown>) => void;
+export type Patch = (p: ContainerPatch) => void;
 
 export function inputStyle(): React.CSSProperties {
   return {

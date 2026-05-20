@@ -15,7 +15,7 @@ import {
 } from "react";
 
 import { highlightSelector } from "@/components/diagram/dom-query";
-import { cssEscape, findRowNeighbor } from "./navigation";
+import { findRowNeighbor } from "./navigation";
 
 /**
  * Wrap `callback` in a ref-backed thunk whose identity is stable for the
@@ -218,10 +218,6 @@ export function useRovingTabindex(
     [rootRef],
   );
 }
-
-// `cssEscape` is re-exported for backwards compatibility with PacketViewer's
-// other DOM utilities; the function lives in `navigation.ts`.
-export { cssEscape };
 
 export function useFieldHighlight(
   rootRef: RefObject<HTMLElement | null>,

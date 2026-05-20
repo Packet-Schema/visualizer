@@ -2,7 +2,7 @@
 // (Group / Repeat / Switch / Encrypted) lives in its own sub-file under
 // ./container-row/ so this dispatcher only has to pick the right one.
 
-import type { EditAction, Path } from "@/lib/psml/edit-reducer";
+import type { ContainerPatch, EditAction, Path } from "@/lib/psml/edit-reducer";
 import type { Container } from "@/lib/psml/types";
 
 import { EncryptedEditor } from "./container-row/EncryptedEditor";
@@ -23,7 +23,7 @@ export default function ContainerRow({
   dispatch,
   siblingFieldIds,
 }: Props) {
-  const patch = (p: Record<string, unknown>) =>
+  const patch = (p: ContainerPatch) =>
     dispatch({ type: "update-container", at: path, patch: p });
 
   // ContainerRow only renders the compound variants. Plain Fields are

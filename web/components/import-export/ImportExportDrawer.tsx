@@ -331,7 +331,7 @@ export default function ImportExportDrawer({
         ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`${currentMode === "import" ? "Import" : "Export"} packet definition`}
+        aria-labelledby="pv-import-export-title"
         className="pv-drawer h-full max-w-full flex flex-col shadow-2xl"
         style={{
           background: "var(--bg-elevated)",
@@ -426,7 +426,7 @@ function DrawerInner({
   return (
     <>
       <header className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h2 className="text-base font-semibold m-0">
+        <h2 id="pv-import-export-title" className="text-base font-semibold m-0">
           {currentMode === "import" ? "Import packet" : "Export packet"}
         </h2>
         <button

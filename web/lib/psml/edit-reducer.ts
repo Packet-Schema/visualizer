@@ -38,6 +38,15 @@ import { describeKind, resolveParent, type Path } from "./path-resolver";
 
 export type { Path } from "./path-resolver";
 
+/**
+ * A targeted patch for one Container variant. Using `Partial<Container>` keeps
+ * the union distributive so a caller can hand us, say, a `Partial<Repeat>`
+ * and the reducer still type-checks against the rest of the variants. Compared
+ * to the old `Record<string, unknown>` this preserves field names and stops
+ * typos from leaking through the studio reducer.
+ */
+export type ContainerPatch = Partial<Container>;
+
 export type EditAction =
   | { type: "add-field"; at: Path; field: Field }
   | { type: "delete-field"; at: Path }
@@ -49,7 +58,7 @@ export type EditAction =
       kind: "struct" | "group" | "repeat" | "switch" | "encrypted";
     }
   | { type: "add-container"; at: Path; container: Container }
-  | { type: "update-container"; at: Path; patch: Record<string, unknown> }
+  | { type: "update-container"; at: Path; patch: ContainerPatch }
   | { type: "add-constraint"; constraint: Constraint }
   | { type: "update-constraint"; index: number; patch: Partial<Constraint> }
   | { type: "delete-constraint"; index: number }

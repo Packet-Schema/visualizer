@@ -7,11 +7,23 @@
 // keeps the escaping rules and `#repeatIndex` handling in one place.
 
 /**
+ * `CSS.escape` polyfill — jsdom doesn't ship one, so fall back to a manual
+ * escape that handles the characters relevant for our `data-field-id` values
+ * (`#`, `:`, ASCII punctuation). The browser path is preferred when present.
+ */
+function escapeSelectorValue(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~]/g, "\\$&");
+}
+
+/**
  * Selector for cells whose own id matches `fieldId` exactly. Use when you
  * have a specific field/sub-field instance and need its visible cells.
  */
 export function fieldIdSelector(fieldId: string): string {
-  return `[data-field-id="${CSS.escape(fieldId)}"]`;
+  return `[data-field-id="${escapeSelectorValue(fieldId)}"]`;
 }
 
 /**
@@ -20,7 +32,7 @@ export function fieldIdSelector(fieldId: string): string {
  * `${fieldId}#…` namespace.
  */
 export function repeatedFieldIdSelector(fieldId: string): string {
-  return `[data-field-id^="${CSS.escape(fieldId)}#"]`;
+  return `[data-field-id^="${escapeSelectorValue(fieldId)}#"]`;
 }
 
 /**
