@@ -3,6 +3,8 @@ import { useMemo, type CSSProperties } from "react";
 import type { Field, Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
+import { selectableFieldId } from "./selectableFieldId";
+
 type Props = {
   packet: Packet;
   layout: ResolvedLayout;
@@ -33,19 +35,6 @@ function resolveFieldColor(field: Field): string {
     return tokenToCssVar(CATEGORY_TO_TOKEN[field.category]);
   }
   return tokenToCssVar(field.color);
-}
-
-function selectableFieldId(packet: Packet, field: Field): string {
-  if (packet.fields.some((f) => f === field)) return field.id;
-
-  for (const parent of packet.fields) {
-    if (parent.subfields?.some((sub) => sub.id === field.id)) {
-      return `${parent.id}:${field.id}`;
-    }
-  }
-
-  if (packet.fields.some((f) => f.id === field.id)) return field.id;
-  return field.id;
 }
 
 /**

@@ -106,6 +106,47 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("prefers top-level field ids over colliding subfield ids", async () => {
+    const packet: PsmlPacket = {
+      name: "Colliding IDs",
+      rowBits: 8,
+      body: [
+        { id: "flag", name: "Top Flag", type: { kind: "bits", n: 1 } },
+        {
+          kind: "group",
+          id: "flagsBits",
+          children: [
+            { id: "flag", name: "Nested Flag", type: { kind: "bits", n: 1 } },
+            { id: "rest", name: "Rest", type: { kind: "bits", n: 6 } },
+          ],
+        },
+      ],
+    };
+    const { container, cleanup } = await mountPacketViewer(
+      `/?psml=${encodePsmlParam(packet, {})}`,
+    );
+    try {
+      const topLevelCell = container.querySelector<HTMLElement>(
+        '[data-field-id="flag"]',
+      );
+      expect(topLevelCell).not.toBeNull();
+
+      await act(async () => {
+        topLevelCell?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true }),
+        );
+      });
+
+      expect(topLevelCell?.classList.contains("selected")).toBe(true);
+      expect(container.textContent).toContain("Top Flag");
+      expect(container.textContent).not.toContain("subfield of flagsBits");
+      expect(container.textContent).not.toContain("Field not found");
+      expect(container.querySelector(".hex-byte.selected")).not.toBeNull();
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("stores a shared psml payload in My presets", async () => {
     const baseName = "Shared URL Packet ";
     const expectedName = `${baseName}${"x".repeat(80 - baseName.length)}`;

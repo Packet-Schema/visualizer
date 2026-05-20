@@ -10,6 +10,8 @@ import type {
 } from "@/lib/psml/renderer";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
+import { selectableFieldId } from "./selectableFieldId";
+
 type Props = {
   packet: Packet;
   layout: ResolvedLayout;
@@ -35,19 +37,6 @@ function formatBitsLabel(bits: number, field: Field): string {
   if (field.variable) return `${bits} bits (var)`;
   const bytes = bits / 8;
   return Number.isInteger(bytes) ? `${bits} bits / ${bytes}B` : `${bits} bits`;
-}
-
-function selectableFieldId(packet: Packet, field: Field): string {
-  if (packet.fields.some((f) => f === field)) return field.id;
-
-  for (const parent of packet.fields) {
-    if (parent.subfields?.some((sub) => sub.id === field.id)) {
-      return `${parent.id}:${field.id}`;
-    }
-  }
-
-  if (packet.fields.some((f) => f.id === field.id)) return field.id;
-  return field.id;
 }
 
 /**
@@ -103,10 +92,11 @@ export default function HybridDiagram({
         >
           {rowCells.map((cell) => {
             const tabIndex = cellGlobalIndex === 0 ? 0 : -1;
+            const fieldId = selectableFieldId(packet, cell.field);
             cellGlobalIndex += 1;
             return (
               <FieldCell
-                key={`cell-${cell.field.id}-${cell.segmentIndex}`}
+                key={`cell-${fieldId}-${cell.segmentIndex}`}
                 packet={packet}
                 cell={cell}
                 selectedFieldId={selectedFieldId}
