@@ -74,9 +74,24 @@ export function useFocusTrap({
         ? document.activeElement
         : null;
 
-    // Move focus into the trap.
-    const focusables = getFocusables(containerRef.current);
-    if (focusables.length > 0) focusables[0].focus();
+    // Prefer focusing the container itself (typically the dialog card
+    // with tabIndex={-1}) so a screen reader announces the dialog
+    // title via aria-labelledby before Tab moves the user into the
+    // form. Fall back to the first focusable if the container can't
+    // accept focus.
+    const root = containerRef.current;
+    if (root && root.tabIndex !== undefined && root.tabIndex >= -1) {
+      root.focus({ preventScroll: true });
+    }
+    if (
+      !root ||
+      !document.activeElement ||
+      !root.contains(document.activeElement) ||
+      document.activeElement === document.body
+    ) {
+      const focusables = getFocusables(root);
+      if (focusables.length > 0) focusables[0].focus();
+    }
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
