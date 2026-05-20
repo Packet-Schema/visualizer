@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useSyncExternalStore,
   useRef,
   useState,
 } from "react";
@@ -48,6 +49,29 @@ const DEFAULT_SETTINGS: DiagramExportSettings = {
 const PNG_SCALE_MIN = 1;
 const PNG_SCALE_MAX = 8;
 const PNG_SCALE_STEP = 1;
+
+function subscribeThemeChange(onStoreChange: () => void): () => void {
+  if (
+    typeof MutationObserver === "undefined" ||
+    typeof document === "undefined"
+  ) {
+    return () => {};
+  }
+  const observer = new MutationObserver(onStoreChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  return () => observer.disconnect();
+}
+
+function useDocumentThemeKey(): string {
+  return useSyncExternalStore(
+    subscribeThemeChange,
+    () => document.documentElement.getAttribute("data-theme") ?? "light",
+    () => "light",
+  );
+}
 
 function isSaveFormat(value: unknown): value is SaveFormat {
   return value === "svg" || value === "png";
@@ -122,6 +146,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const openRef = useRef(open);
   const exportSessionRef = useRef(0);
   const titleId = useId();
+  const documentThemeKey = useDocumentThemeKey();
 
   useEffect(() => {
     openRef.current = open;
@@ -186,6 +211,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
       settings.exportThemeMode,
       settings.transparentBackground,
       open,
+      documentThemeKey,
     ],
   );
 
