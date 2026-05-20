@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 
 import type {
   Cell,
@@ -53,6 +53,19 @@ export default function HybridDiagram({
     ? Math.max(...layout.cells.map((c) => c.row)) + 1
     : 0;
 
+  // Override-capable field ids, sourced from the renderer mirror (`packet`).
+  // Layout cells carry a synthetic `field` built from NormalizedField, which
+  // does NOT include `controlsLength` / `tlv` / `chainCatalog` — those flags
+  // live on the original renderer mirror only. We look them up by base id
+  // (stripping the `#repeatIndex` suffix Repeat expansion adds).
+  const overridableIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const f of packet.fields) {
+      if (f.controlsLength || f.tlv || f.chainCatalog) s.add(f.id);
+    }
+    return s;
+  }, [packet]);
+
   // Group cells by row for clean grid wrapping.
   const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
   for (const cell of layout.cells) rows[cell.row].push(cell);
@@ -84,6 +97,9 @@ export default function HybridDiagram({
           {rowCells.map((cell) => {
             const tabIndex = cellGlobalIndex === 0 ? 0 : -1;
             cellGlobalIndex += 1;
+            const baseId = cell.field.id.includes("#")
+              ? cell.field.id.split("#")[0]
+              : cell.field.id;
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}
@@ -93,6 +109,7 @@ export default function HybridDiagram({
                 onSubfieldClick={onSubfieldClick}
                 onFieldHover={onFieldHover}
                 tabIndex={tabIndex}
+                isOverridable={overridableIds.has(baseId)}
               />
             );
           })}
@@ -114,6 +131,10 @@ type FieldCellProps = {
   ) => void;
   onFieldHover?: (fieldId: string | null) => void;
   tabIndex: number;
+  /** True when the cell's logical parent exposes a runtime override
+   *  (length controller, TLV catalog, or chain catalog). Drives the
+   *  `data-overridable` marker dot. */
+  isOverridable: boolean;
 };
 
 // Treat a selectedFieldId as "owned by this cell" when it matches the cell's
@@ -140,6 +161,7 @@ const FieldCell = memo(FieldCellImpl, (prev, next) => {
   if (prev.onFieldClick !== next.onFieldClick) return false;
   if (prev.onSubfieldClick !== next.onSubfieldClick) return false;
   if (prev.onFieldHover !== next.onFieldHover) return false;
+  if (prev.isOverridable !== next.isOverridable) return false;
   // Re-render only the cell that *was* selected (directly or via one of its
   // subfields) and the cell that *is now* selected — everything else can
   // skip. The subfield prefix match below is what fixes the bug where
@@ -168,6 +190,7 @@ function FieldCellImpl({
   onSubfieldClick,
   onFieldHover,
   tabIndex,
+  isOverridable,
 }: FieldCellProps) {
   const isSelected = cell.field.id === selectedFieldId;
   const span = cell.endBit - cell.startBit + 1;
@@ -182,15 +205,6 @@ function FieldCellImpl({
   const isEncryptedChild = !!cell.encryptedParentId;
   const isHeaderProtected = cell.headerProtected === true;
   const encryptionTitle = cell.encryptedContextNote ?? undefined;
-  // Override-capability marker. A cell is "overridable" when it (or its
-  // logical parent, surfaced via the renderer mirror) exposes a runtime
-  // override — today: a length controller (slider), a TLV catalog (list
-  // editor), or an IPv6 chain catalog (list editor). The marker is a
-  // visual hint only; the actual editing happens in DetailPanel.
-  const isOverridable =
-    !!cell.field.controlsLength ||
-    !!cell.field.tlv ||
-    !!cell.field.chainCatalog;
 
   // CSS custom properties drive the cell's column span (animatable) and
   // category fill color. The span class also hands `--cell-span` to CSS in
