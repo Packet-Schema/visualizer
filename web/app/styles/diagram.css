@@ -171,25 +171,33 @@
   .cell.field-cell[data-overridable="true"]::after {
     content: "";
     position: absolute;
-    left: 8px;
-    right: 8px;
+    left: 7px;
+    right: 7px;
     bottom: 3px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--accent);
-    opacity: 0.7;
+    height: 2.5px;
+    border-radius: 2px;
+    /* Gradient fades each end so the line reads as a soft glow, not a
+       hard rectangle. The marker accent (magenta-orchid) lives outside
+       every category hue so it stays distinct on any cell color. */
+    background: linear-gradient(
+      90deg,
+      var(--marker-accent-soft) 0%,
+      var(--marker-accent) 50%,
+      var(--marker-accent-soft) 100%
+    );
     pointer-events: none;
+    z-index: 2;
     transition:
-      opacity var(--pv-fast) var(--pv-ease),
       left var(--pv-fast) var(--pv-ease),
-      right var(--pv-fast) var(--pv-ease);
+      right var(--pv-fast) var(--pv-ease),
+      height var(--pv-fast) var(--pv-ease);
   }
 
   .cell.field-cell[data-overridable="true"]:hover::after,
   .cell.field-cell[data-overridable="true"].selected::after {
-    opacity: 1;
-    left: 5px;
-    right: 5px;
+    left: 4px;
+    right: 4px;
+    height: 3px;
   }
 
   @media print {
