@@ -615,19 +615,34 @@ export default function PacketViewer() {
   const buildCurrentShareUrl = useCallback(() => {
     if (typeof window === "undefined") return "";
     const builtInPsml = PRESETS[packetKey];
-    // For custom / imported presets we lift the current renderer packet
-    // back to PSML instead of pulling `customPresets[packetKey]`. The
-    // session-only TLV / Chain edits land in `renderedPresets` (see
-    // `replaceActivePacket` custom arm), so the source PSML stored in
-    // `customPresets` is intentionally stale; sharing it would emit a
-    // URL that round-trips to an older state than what the user sees.
-    // Codex P1: lift from `packet` so what's shared matches what's on
-    // screen.
+    const customSource = builtInPsml ? undefined : customPresets[packetKey];
+    // Custom preset edits live in `renderedPresets` (see
+    // `replaceActivePacket` custom arm) and the source PSML in
+    // `customPresets[packetKey]` stays untouched. Decide which one to
+    // share based on whether the user has actually edited:
+    //
+    //  - editMode → always share the studio state (the user's draft).
+    //  - built-in → share the built-in PSML (preset key + controllers
+    //    are enough, but emitting the PSML preserves any constraints
+    //    we want the recipient to see).
+    //  - custom + no renderer override → share the source PSML so its
+    //    `constraints` / Encrypted / Switch / Optional containers
+    //    survive (rendererToPsml would strip them — Codex P1).
+    //  - custom + renderer override → lift the renderer packet back to
+    //    PSML so the recipient sees the TLV / Chain edits actually
+    //    visible on screen (lossy for non-renderer constructs but
+    //    necessary; matching screen-state is the priority once the
+    //    user has touched the editor).
+    //  - imported → no source PSML available, lift from renderer.
+    const hasCustomRendererOverride =
+      !builtInPsml && renderedPresets[packetKey] !== undefined;
     const sharePacket = editMode
       ? studioState.packet
       : builtInPsml
         ? builtInPsml
-        : rendererToPsml(packet);
+        : hasCustomRendererOverride
+          ? rendererToPsml(packet)
+          : (customSource ?? rendererToPsml(packet));
     const defaultControllers = builtInPsml
       ? initialState(psmlToRenderer(builtInPsml))
       : undefined;
@@ -642,7 +657,15 @@ export default function PacketViewer() {
       defaultControllers,
       forcePsml: editMode || !builtInPsml,
     });
-  }, [controllers, editMode, packet, packetKey, studioState.packet]);
+  }, [
+    controllers,
+    customPresets,
+    editMode,
+    packet,
+    packetKey,
+    renderedPresets,
+    studioState.packet,
+  ]);
 
   useEffect(() => {
     if (!urlHydrated || typeof window === "undefined") return;
