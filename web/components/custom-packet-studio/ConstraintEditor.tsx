@@ -11,11 +11,22 @@ import type { Constraint, Expr, PacketEnv } from "@/lib/psml/types";
  * dispatch); attaching a stable `_uid` directly to the Constraint and
  * letting it survive the clone is what keeps React focus/state pinned
  * to the right row through reorder / insert / delete (Copilot review).
+ *
+ * `crypto.randomUUID()` (with a Math.random fallback for non-secure
+ * jsdom / older webview contexts that don't expose it) makes the value
+ * effectively collision-free even after a page reload — an earlier
+ * module-level counter form `c1`, `c2`, ... would have collided on
+ * reload because `_uid` is persisted when the packet is saved /
+ * exported via `JSON.stringify`.
  */
-let constraintUidCounter = 0;
 function mintConstraintUid(): string {
-  constraintUidCounter += 1;
-  return `c${constraintUidCounter}`;
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return `c-${crypto.randomUUID()}`;
+  }
+  return `c-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 }
 
 import ExprBuilder from "./ExprBuilder";

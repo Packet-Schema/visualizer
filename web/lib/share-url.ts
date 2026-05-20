@@ -64,15 +64,19 @@ export function parseShareParams(
     try {
       return { kind: "psml", ...decodePsmlParam(psml) };
     } catch (err) {
-      // Prefix mirrors `decodePsmlParam`'s user-facing rule: avoid the
-      // internal "PSML" label and tell the user what to do. The toast
-      // shows this string verbatim, so the inner Error message (which
-      // is already curated) is appended without an extra layer of
-      // jargon (Copilot review).
+      // `decodePsmlParam` already throws a curated user-facing message
+      // ("Invalid shared link — …"); wrapping it again here produced
+      // the duplicated phrasing "Invalid shared link: Invalid shared
+      // link — …" the user saw in the toast (Copilot review).
+      // Pass the inner message through verbatim. Errors from downstream
+      // codecs (`fromJson` / `validatePsmlPacket`) are short enough to
+      // be informative on their own — surfacing them as-is is the
+      // closest we can get to actionable feedback without inventing
+      // ad-hoc copy on every adapter failure.
       return {
         kind: "none",
         controllers,
-        error: `Invalid shared link: ${(err as Error).message}`,
+        error: (err as Error).message,
       };
     }
   }
