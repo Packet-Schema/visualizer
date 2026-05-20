@@ -49,12 +49,20 @@ const FORMAT_VERSION = "0.2";
 // features. Downstream `validate.ts` does the real semantic check —
 // rejecting at the version string forced users on 0.3 / 0.4 saves to
 // hand-edit the JSON, which we don't want.
-const SUPPORTED_VERSIONS = new Set(["0.2", "0.3", "0.4"]);
+type SupportedVersion = "0.2" | "0.3" | "0.4";
+const SUPPORTED_VERSIONS = new Set<SupportedVersion>(["0.2", "0.3", "0.4"]);
 
-/** Serialised JSON wire shape — the structural mirror of PSML. */
+/**
+ * Serialised JSON wire shape — the structural mirror of PSML.
+ *
+ * `version` is widened to the full SupportedVersion union so the type
+ * reflects what `fromJson` actually accepts. The writer (`toJson`) only
+ * ever emits FORMAT_VERSION ("0.2") as the canonical output; readers
+ * narrow further before use if needed (Copilot review).
+ */
 export type JsonPsmlPacket = {
   format: typeof FORMAT_TAG;
-  version: typeof FORMAT_VERSION;
+  version: SupportedVersion;
   name: string;
   rowBits: number;
   byteOrder?: string;
@@ -117,7 +125,10 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
   if (r.format !== FORMAT_TAG) {
     throw new Error(`Unknown format tag: ${String(r.format ?? "(missing)")}`);
   }
-  if (typeof r.version !== "string" || !SUPPORTED_VERSIONS.has(r.version)) {
+  if (
+    typeof r.version !== "string" ||
+    !SUPPORTED_VERSIONS.has(r.version as SupportedVersion)
+  ) {
     throw new Error(`Unsupported PSML version: ${String(r.version)}`);
   }
   if (typeof r.name !== "string" || r.name.length === 0) {

@@ -40,7 +40,16 @@ export default function ThemeToggle() {
     const reduceMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!reduceMotion) setBouncing(true);
+    if (reduceMotion) return;
+    // Retrigger the bounce on rapid successive clicks: a plain
+    // `setBouncing(true)` while already `true` keeps `data-bounce` at
+    // "true" with no DOM change, so CSS doesn't restart the keyframe.
+    // Flip to false first (which removes the attribute) and back to
+    // true on the next paint so the animation always replays — without
+    // this Copilot-flagged edge case, double-clicking the toggle
+    // animates only the first click.
+    setBouncing(false);
+    requestAnimationFrame(() => setBouncing(true));
   };
 
   const isDark = theme === "dark";

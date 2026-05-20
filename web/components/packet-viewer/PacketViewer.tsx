@@ -426,10 +426,31 @@ export default function PacketViewer() {
         // Custom presets are stored as PSML; lift the renderer-shape edit back
         // to PSML and persist into customPresets so the change survives a
         // preset switch.
-        setCustomPresets((prev) => ({
-          ...prev,
-          [packetKey]: rendererToPsml(nextPacket),
-        }));
+        //
+        // `rendererToPsml` is intentionally lossy — the renderer model
+        // cannot represent Constraints (and collapses Encrypted /
+        // Switch / Optional containers into placeholder Fields). If we
+        // blindly overwrite the stored PSML with the lifted output,
+        // editing a single TLV or chain instance erases the original
+        // preset's `constraints` block (slider drivers / IHL relations)
+        // and any non-Field container. Codex P1: at minimum we have to
+        // preserve `constraints` from the source PSML so the next
+        // render's `targetPsml ← customPresets[packetKey]` keeps the
+        // length-relation slider working. Encrypted / Switch / Optional
+        // body collapse is a known lossy edge of the renderer model;
+        // a more complete fix (keep PSML source-of-truth, overlay TLV
+        // edits) is tracked as a separate followup.
+        setCustomPresets((prev) => {
+          const original = prev[packetKey];
+          const lifted = rendererToPsml(nextPacket);
+          const merged: PsmlPacket = {
+            ...lifted,
+            ...(original?.constraints && original.constraints.length > 0
+              ? { constraints: original.constraints }
+              : {}),
+          };
+          return { ...prev, [packetKey]: merged };
+        });
       }
     },
     [packetKey, renderedPresets, importedPackets],

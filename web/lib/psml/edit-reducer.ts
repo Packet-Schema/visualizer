@@ -26,11 +26,16 @@
 //                                              token form is a leaf and
 //                                              cannot be descended into
 //   [i, 'children', j]                       → Group.children[j]
-//   [i, 'fields', j]                         → Struct.fields[j] inside a
-//                                              Switch case / default arm
 //   [i, 'element', j]                        → Repeat.element.fields[j]
+//                                              (`descendNamed('element')`
+//                                              returns the inner Struct's
+//                                              fields array directly, so
+//                                              the next token j is its
+//                                              positional index)
 //   [i, 'plaintext', j]                      → Encrypted.plaintext.fields[j]
+//                                              (same fields-direct trick)
 //   [i, 'default', j]                        → Switch.default.fields[j]
+//                                              (same fields-direct trick)
 //   [i, 'cases:<key>', j]                    → Switch.cases[<key>].fields[j]
 //                                              (the colon-separated key
 //                                              keeps the path positional
