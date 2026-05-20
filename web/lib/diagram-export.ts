@@ -319,6 +319,69 @@ function cssColor(name: string, fallback: string): string {
   return color;
 }
 
+type ThemeVariableMaps = {
+  light: Map<string, string>;
+  dark: Map<string, string>;
+};
+
+function collectThemeVariables(): ThemeVariableMaps {
+  const light = new Map<string, string>();
+  const dark = new Map<string, string>();
+  if (typeof document === "undefined") {
+    return { light, dark };
+  }
+
+  const visitRules = (rules: CSSRuleList): void => {
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) {
+        const selector = rule.selectorText;
+        const target =
+          selector.includes('[data-theme="dark"]') ||
+          selector === "[data-theme='dark']"
+            ? dark
+            : selector.includes(":root")
+              ? light
+              : null;
+        if (!target) continue;
+        for (const name of Array.from(rule.style)) {
+          if (!name.startsWith("--")) continue;
+          target.set(name, rule.style.getPropertyValue(name).trim());
+        }
+        continue;
+      }
+      if (rule instanceof CSSMediaRule || rule instanceof CSSLayerBlockRule) {
+        visitRules(rule.cssRules);
+      }
+    }
+  };
+
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      visitRules(sheet.cssRules);
+    } catch {
+      // Ignore cross-origin or inaccessible stylesheets.
+    }
+  }
+
+  return { light, dark };
+}
+
+function resolveThemeVariable(
+  maps: ThemeVariableMaps,
+  mode: DiagramThemeMode,
+  name: string,
+  fallback: string,
+): string {
+  if (mode === "follow-ui") {
+    return cssColor(name, fallback);
+  }
+  const value =
+    (mode === "dark" ? maps.dark.get(name) : maps.light.get(name)) ??
+    maps.light.get(name) ??
+    fallback;
+  return value || fallback;
+}
+
 function readCssColorFromRoot(
   root: ParentNode,
   name: string,
@@ -380,25 +443,10 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
     return readDiagramThemeFromRoot(document.body);
   }
 
-  const probeRoot = document.createElement("div");
-  probeRoot.setAttribute("data-theme", mode);
-  probeRoot.style.position = "fixed";
-  probeRoot.style.left = "-10000px";
-  probeRoot.style.top = "-10000px";
-  probeRoot.style.width = "0";
-  probeRoot.style.height = "0";
-  probeRoot.style.overflow = "hidden";
-  probeRoot.style.pointerEvents = "none";
-  document.body.appendChild(probeRoot);
-
+  const maps = collectThemeVariables();
   const resolveCssColor = (name: string, fallback: string): string =>
-    readCssColorFromRoot(probeRoot, name, fallback);
-
-  try {
-    return buildTheme(resolveCssColor);
-  } finally {
-    probeRoot.remove();
-  }
+    resolveThemeVariable(maps, mode, name, fallback);
+  return buildTheme(resolveCssColor);
 }
 
 export function readDiagramThemeFromDocument(): DiagramExportTheme {
