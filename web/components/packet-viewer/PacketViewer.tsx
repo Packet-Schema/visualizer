@@ -52,6 +52,7 @@ import type {
 import type { Expr, PsmlPacket } from "@/lib/psml/types";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
+import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
@@ -973,7 +974,7 @@ export default function PacketViewer() {
           />
         ) : null}
 
-        <div className="mt-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
           <section
             className="rounded-[10px] border px-4 py-3.5"
             style={{
@@ -986,6 +987,24 @@ export default function PacketViewer() {
               Field detail
             </h2>
             <DetailPanel
+              packet={packet}
+              selectedFieldId={selectedFieldId}
+              controllers={controllers}
+            />
+          </section>
+
+          <section
+            className="rounded-[10px] border px-4 py-3.5"
+            style={{
+              background: "var(--bg-elevated)",
+              borderColor: "var(--border)",
+              boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
+            }}
+          >
+            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
+              Override
+            </h2>
+            <OverridePanel
               packet={packet}
               selectedFieldId={selectedFieldId}
               controllers={controllers}
