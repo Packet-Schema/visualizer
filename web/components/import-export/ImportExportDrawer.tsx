@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { fromAad } from "@/lib/formats/aug-ascii";
 import {
@@ -67,6 +74,29 @@ const FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
+
+function subscribeThemeChange(onStoreChange: () => void): () => void {
+  if (
+    typeof MutationObserver === "undefined" ||
+    typeof document === "undefined"
+  ) {
+    return () => {};
+  }
+  const observer = new MutationObserver(onStoreChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  return () => observer.disconnect();
+}
+
+function useDocumentThemeKey(): string {
+  return useSyncExternalStore(
+    subscribeThemeChange,
+    () => document.documentElement.getAttribute("data-theme") ?? "light",
+    () => "light",
+  );
+}
 
 export default function ImportExportDrawer({
   open,
@@ -352,6 +382,7 @@ export default function ImportExportDrawer({
   );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const documentThemeKey = useDocumentThemeKey();
   const isImageExportMode =
     currentMode === "export" && (format === "svg" || format === "png");
   const previewSvg = useMemo(() => {
@@ -370,6 +401,7 @@ export default function ImportExportDrawer({
     layout,
     packet,
     transparentBackground,
+    documentThemeKey,
   ]);
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();

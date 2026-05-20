@@ -58,6 +58,7 @@ import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
+import ExportButton from "@/components/diagram-export/ExportButton";
 import ImportExportDrawer, {
   type DrawerMode,
 } from "@/components/import-export/ImportExportDrawer";
@@ -846,6 +847,7 @@ export default function PacketViewer() {
           }
           onToggleEditMode={() => setEditMode((v) => !v)}
           onDeleteCustomPreset={handleDeleteCustomPreset}
+          extraControls={<ExportButton packet={exportPacket} layout={layout} />}
         />
         <input
           ref={bulkImportInputRef}
