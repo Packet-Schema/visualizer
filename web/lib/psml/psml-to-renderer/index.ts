@@ -45,13 +45,18 @@ export { rendererToPsml } from "./to-psml";
  * silent miss at runtime.
  */
 function constraintToController(constraint: Constraint): string | null {
+  // Match strictly the documented shape: one side is `ref(fieldA) * lit(N)`
+  // (or the literal-first symmetric form `lit(N) * ref(fieldA)`), the
+  // other side is `ref(fieldB)`. Anything else — bare `ref == ref`, a
+  // `ref * ref` product, additive forms, peek-based discriminators —
+  // would otherwise be promoted to a UI slider even though the slider
+  // semantics (`length = controller × N`) only make sense when N is a
+  // compile-time literal scale factor.
   const tryMatch = (mul: Expr, target: Expr): string | null => {
     if (target.kind !== "ref") return null;
-    if (mul.kind === "ref") return mul.field;
-    if (mul.kind === "op" && mul.op === "*") {
-      if (mul.a.kind === "ref") return mul.a.field;
-      if (mul.b.kind === "ref") return mul.b.field;
-    }
+    if (mul.kind !== "op" || mul.op !== "*") return null;
+    if (mul.a.kind === "ref" && mul.b.kind === "lit") return mul.a.field;
+    if (mul.b.kind === "ref" && mul.a.kind === "lit") return mul.b.field;
     return null;
   };
   return (
