@@ -44,11 +44,22 @@ function rendererFieldToPsml(field: RendererField): Container[] {
   if (field.variable) {
     return [];
   }
+  // Zero-bit Fields are placeholders for Switch / Encrypted containers
+  // that the renderer model doesn't carry over (see `psmlToRenderer`'s
+  // `kind === "switch" / "encrypted"` arms, which emit `bits: 0`). PSML
+  // validation rejects `type: { kind: "bits", n: 0 }`, so emitting one
+  // here would corrupt the JSON export / share URL / custom-preset
+  // persistence paths. Drop the placeholder — its information cannot be
+  // reconstructed from the renderer model anyway. The file header
+  // already documents that Switch / Encrypted aren't round-trippable.
+  if (!field.bits || field.bits <= 0) {
+    return [];
+  }
   return [
     {
       id: field.id,
       name: field.name,
-      type: { kind: "bits", n: field.bits ?? 0 },
+      type: { kind: "bits", n: field.bits },
       ...(field.category ? { category: field.category } : {}),
       ...(field.description ? { doc: field.description } : {}),
       ...(field.defaultValue !== undefined
