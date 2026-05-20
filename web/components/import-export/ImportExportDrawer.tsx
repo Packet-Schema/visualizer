@@ -16,6 +16,9 @@ import {
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import type { ControllerState, Packet } from "@/lib/psml/renderer";
 
+import { useDrawerFocusTrap } from "./hooks/useDrawerFocusTrap";
+import { useDropzone } from "./hooks/useDropzone";
+
 export type DrawerMode = "import" | "export";
 export type { FormatKey } from "@/lib/formats/registry";
 
@@ -37,15 +40,6 @@ const FORMAT_LABELS: Record<FormatKey, string> = Object.fromEntries(
   FORMATS.map((f) => [f.id, f.label]),
 ) as Record<FormatKey, string>;
 
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type=hidden])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
-
 export default function ImportExportDrawer({
   open,
   mode,
@@ -60,8 +54,8 @@ export default function ImportExportDrawer({
   const [currentMode, setCurrentMode] = useState<DrawerMode>(mode);
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useDrawerFocusTrap({ open, containerRef: drawerRef, onClose });
 
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
@@ -110,65 +104,6 @@ export default function ImportExportDrawer({
       });
     }
   }, [open, currentMode, format, packet, controllers]);
-
-  // Capture / restore focus + Esc + focus trap.
-  useEffect(() => {
-    if (!open) return;
-    returnFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    // Move focus into the drawer.
-    const focusables = getFocusables(drawerRef.current);
-    if (focusables.length > 0) focusables[0].focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key === "Tab" && drawerRef.current) {
-        const list = getFocusables(drawerRef.current);
-        if (list.length === 0) {
-          e.preventDefault();
-          return;
-        }
-        const first = list[0];
-        const last = list[list.length - 1];
-        const active = document.activeElement;
-        if (e.shiftKey) {
-          if (active === first || !drawerRef.current.contains(active)) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (active === last || !drawerRef.current.contains(active)) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open, onClose]);
-
-  // Restore focus on close.
-  useEffect(() => {
-    if (open) return;
-    const el = returnFocusRef.current;
-    if (el && document.contains(el)) {
-      try {
-        el.focus();
-      } catch {
-        /* ignore */
-      }
-    }
-    returnFocusRef.current = null;
-  }, [open]);
 
   const handleModeChange = useCallback((next: DrawerMode) => {
     setCurrentMode(next);
@@ -370,27 +305,10 @@ function DrawerInner({
   onFileDropped,
   onClose,
 }: InnerProps) {
-  const [dragActive, setDragActive] = useState(false);
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(true);
-  }, []);
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-  }, []);
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragActive(false);
-      const file = e.dataTransfer?.files?.[0];
-      if (file) onFileDropped(file);
-    },
-    [onFileDropped],
-  );
+  const { dragActive, handlers: dropHandlers } = useDropzone({
+    enabled: currentMode === "import",
+    onFile: onFileDropped,
+  });
   return (
     <>
       <header className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -481,9 +399,9 @@ function DrawerInner({
         ) : null}
         <div
           className={`flex-1 min-h-[200px] flex rounded-md ${dragActive ? "drawer-drop-active" : ""}`}
-          onDragOver={currentMode === "import" ? handleDragOver : undefined}
-          onDragLeave={currentMode === "import" ? handleDragLeave : undefined}
-          onDrop={currentMode === "import" ? handleDrop : undefined}
+          onDragOver={dropHandlers?.onDragOver}
+          onDragLeave={dropHandlers?.onDragLeave}
+          onDrop={dropHandlers?.onDrop}
           style={{
             outline: dragActive ? "2px dashed var(--accent)" : "none",
             outlineOffset: "-2px",
@@ -571,16 +489,4 @@ function DrawerInner({
       </footer>
     </>
   );
-}
-
-function getFocusables(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return [];
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((el) => {
-    if (el.hidden) return false;
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    return true;
-  });
 }
