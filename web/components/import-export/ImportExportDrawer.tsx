@@ -505,7 +505,7 @@ function DrawerInner({
               type="file"
               accept=".json,.psml.json,.txt,.ksy,.aad"
               onChange={onFileInputChange}
-              style={{ display: "none" }}
+              className="hidden"
               aria-hidden="true"
               tabIndex={-1}
             />

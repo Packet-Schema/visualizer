@@ -287,7 +287,7 @@ export default function DependencyOverlay({
               fill="none"
               stroke="transparent"
               strokeWidth={14}
-              style={{ pointerEvents: "auto", cursor: "help" }}
+              className="pointer-events-auto cursor-help"
               onMouseEnter={() => setHoverEdgeId(edge.id)}
               onMouseLeave={() =>
                 setHoverEdgeId((cur) => (cur === edge.id ? null : cur))

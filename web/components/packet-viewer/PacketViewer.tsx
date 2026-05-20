@@ -838,7 +838,7 @@ export default function PacketViewer() {
           type="file"
           accept=".json,application/json"
           onChange={handleImportCustomPresetsFile}
-          style={{ display: "none" }}
+          className="hidden"
           aria-hidden="true"
           tabIndex={-1}
         />
