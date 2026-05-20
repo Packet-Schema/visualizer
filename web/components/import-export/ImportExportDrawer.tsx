@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { fromAad } from "@/lib/formats/aug-ascii";
-import { fromJson, toJson } from "@/lib/formats/json";
-import { fromKsy, toKsy } from "@/lib/formats/ksy";
-import { toAscii } from "@/lib/formats/rfc-ascii";
+import {
+  EXPORTABLE_FORMATS,
+  FORMATS,
+  IMPORTABLE_FORMATS,
+  getFormat,
+  type FormatKey,
+} from "@/lib/formats/registry";
 import {
   downloadBlob,
   extensionToFormat,
-  formatToExtension,
   readFileAsText,
   slugify,
 } from "@/lib/preset-file-io";
@@ -15,7 +17,7 @@ import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import type { ControllerState, Packet } from "@/lib/psml/renderer";
 
 export type DrawerMode = "import" | "export";
-export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
+export type { FormatKey } from "@/lib/formats/registry";
 
 type Props = {
   open: boolean;
@@ -31,12 +33,9 @@ type Props = {
 type StatusKind = "ok" | "warn" | "error";
 type Status = { msg: string; kind: StatusKind } | null;
 
-const FORMAT_LABELS: Record<FormatKey, string> = {
-  json: "JSON",
-  "rfc-ascii": "RFC ASCII",
-  "aug-ascii": "AAD (Augmented ASCII)",
-  ksy: "Kaitai (.ksy)",
-};
+const FORMAT_LABELS: Record<FormatKey, string> = Object.fromEntries(
+  FORMATS.map((f) => [f.id, f.label]),
+) as Record<FormatKey, string>;
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -64,12 +63,10 @@ export default function ImportExportDrawer({
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Format availability per mode.
+  // Format availability per mode — derived from each adapter's parse/render
+  // presence so a new entry in `FORMATS` shows up automatically.
   const availableFormats: FormatKey[] = useMemo(
-    () =>
-      currentMode === "import"
-        ? ["json", "aug-ascii", "ksy"]
-        : ["json", "rfc-ascii", "ksy"],
+    () => (currentMode === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS),
     [currentMode],
   );
 
@@ -100,13 +97,11 @@ export default function ImportExportDrawer({
       // plain object keyed by controller id; PSML's PacketEnv is a Map.
       const psml = rendererToPsml(packet);
       const env = new Map<string, number>(Object.entries(controllers));
-      if (format === "json") {
-        setText(toJson(psml, env));
-      } else if (format === "rfc-ascii") {
-        setText(toAscii(psml, env));
-      } else if (format === "ksy") {
-        setText(toKsy(psml));
+      const adapter = getFormat(format);
+      if (!adapter.render) {
+        throw new Error(`Format "${format}" has no exporter.`);
       }
+      setText(adapter.render(psml, env));
       setStatus(null);
     } catch (e) {
       setStatus({
@@ -183,39 +178,26 @@ export default function ImportExportDrawer({
 
   const handleApply = useCallback(() => {
     try {
-      if (format === "json") {
-        const { packet: psml, env } = fromJson(text);
-        const runtime = psmlToRenderer(psml);
-        const controllers: ControllerState = {};
-        for (const [k, v] of env) controllers[k] = v;
-        onImport(runtime, controllers);
-        setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
-      } else if (format === "aug-ascii") {
-        const { packet: psml, warnings } = fromAad(text);
-        const runtime = psmlToRenderer(psml);
-        onImport(runtime, {});
-        if (warnings.length) {
-          setStatus({
-            msg: `Imported with warnings: ${warnings.join("; ")}`,
-            kind: "warn",
-          });
-        } else {
-          setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
-        }
-      } else if (format === "ksy") {
-        const { packet: psml, warnings } = fromKsy(text);
-        const runtime = psmlToRenderer(psml);
-        onImport(runtime, {});
-        if (warnings.length) {
-          setStatus({
-            msg: `Imported "${psml.name}" with ${warnings.length} warning(s): ${warnings.join("; ")}`,
-            kind: "warn",
-          });
-        } else {
-          setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
-        }
-      } else {
+      const adapter = getFormat(format);
+      if (!adapter.parse) {
         throw new Error(`Format "${format}" cannot be imported.`);
+      }
+      const { packet: psml, env, warnings } = adapter.parse(text);
+      const runtime = psmlToRenderer(psml);
+      const controllers: ControllerState = {};
+      if (env) for (const [k, v] of env) controllers[k] = v;
+      onImport(runtime, controllers);
+      if (warnings && warnings.length) {
+        const prefix =
+          format === "ksy"
+            ? `Imported "${psml.name}" with ${warnings.length} warning(s)`
+            : "Imported with warnings";
+        setStatus({
+          msg: `${prefix}: ${warnings.join("; ")}`,
+          kind: "warn",
+        });
+      } else {
+        setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
       }
     } catch (e) {
       setStatus({
@@ -227,10 +209,9 @@ export default function ImportExportDrawer({
 
   const handleDownload = useCallback(() => {
     try {
-      const ext = formatToExtension(format);
-      const filename = `${slugify(packet.name)}.${ext}`;
-      const mime = format === "json" ? "application/json" : "text/plain";
-      downloadBlob(filename, mime, text);
+      const adapter = getFormat(format);
+      const filename = `${slugify(packet.name)}.${adapter.extension}`;
+      downloadBlob(filename, adapter.mime, text);
       setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
     } catch (e) {
       setStatus({

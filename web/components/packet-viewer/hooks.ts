@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { cssEscape } from "./navigation";
+import { highlightSelector } from "@/components/diagram/dom-query";
 
 /**
  * Returns `true` when `window.innerWidth >= breakpoint`. SSR-safe: defaults
@@ -131,13 +131,11 @@ export function useFieldHighlight(
         return;
       }
       root.setAttribute("data-highlighted-field", fieldId);
-      // Subfield ids look like "parent:sub". Highlight both the subfield
-      // itself and the parent field cell so the relationship is unambiguous.
-      const parentId = fieldId.includes(":") ? fieldId.split(":")[0] : null;
+      // Subfield ids look like "parent:sub". The selector lights up both the
+      // subfield itself and the parent field cell so the relationship is
+      // unambiguous (see `dom-query.highlightSelector`).
       const matches = root.querySelectorAll<HTMLElement>(
-        parentId
-          ? `[data-field-id="${cssEscape(fieldId)}"], .field-cell[data-field-id="${cssEscape(parentId)}"]`
-          : `[data-field-id="${cssEscape(fieldId)}"]`,
+        highlightSelector(fieldId),
       );
       for (const el of matches) el.classList.add("hex-match");
     },

@@ -8,7 +8,7 @@ import type {
   SubCell,
   SubField,
 } from "@/lib/psml/renderer";
-import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
+import { categoryColor } from "@/lib/render-tokens";
 
 type Props = {
   packet: Packet;
@@ -23,13 +23,6 @@ type Props = {
   /** Optional hover sink (used by HexStrip for bidirectional highlight). */
   onFieldHover?: (fieldId: string | null) => void;
 };
-
-function resolveFieldColor(field: Field): string {
-  if (field.category && CATEGORY_TO_TOKEN[field.category]) {
-    return tokenToCssVar(CATEGORY_TO_TOKEN[field.category]);
-  }
-  return tokenToCssVar(field.color);
-}
 
 function formatBitsLabel(bits: number, field: Field): string {
   if (field.variable) return `${bits} bits (var)`;
@@ -134,7 +127,7 @@ function FieldCell({
   const span = cell.endBit - cell.startBit + 1;
   const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
   const variableNote = cell.field.variable ? ", variable-length" : "";
-  const fill = resolveFieldColor(cell.field);
+  const fill = categoryColor(cell.field);
   // Encryption-decoration props are written to the rendered cell on PSML 0.3
   // packets. Wire mode collapses to one `encrypted` block; semantic mode emits
   // child fields tagged with `encryptedParentId`. `headerProtected` is a
