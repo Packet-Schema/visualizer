@@ -499,6 +499,12 @@ export function downloadBlobFile(filename: string, blob: Blob): void {
 }
 
 export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
+  // External callers (and corrupted localStorage) can pass anything; guard
+  // before the silent-bad-output path kicks in (scale=0 → 1×1 transparent
+  // PNG, scale<0 → mirrored offscreen, NaN → toBlob(null)).
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error(`Invalid PNG scale: ${scale}`);
+  }
   const svgBlob = new Blob([svg], { type: "image/svg+xml" });
   const url = URL.createObjectURL(svgBlob);
   try {

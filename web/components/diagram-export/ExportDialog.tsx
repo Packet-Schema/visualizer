@@ -121,10 +121,15 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  // Increments on every open/close transition. Used as the single source
-  // of truth for "is the in-flight PNG encode still relevant?" — see
-  // handlePngDownload.
+  // Increments on every open/close transition and on packet/layout swaps
+  // while open. Used as the single source of truth for "is the in-flight
+  // PNG encode still relevant?" — see handlePngDownload.
   const exportSessionRef = useRef(0);
+  // Holds the latest settings so the close-time flush below can persist
+  // whatever the user was tweaking when they dismissed the dialog without
+  // having to depend on the settings effect's captured value.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const titleId = useId();
   const pngScaleId = useId();
 
@@ -136,22 +141,30 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
     if (open) setError(null);
   }, [open]);
 
+  // Invalidate any PNG encode that was kicked off against the previous
+  // packet/layout so its result doesn't get downloaded as if it were the
+  // current diagram.
+  useEffect(() => {
+    exportSessionRef.current += 1;
+  }, [packet, layout]);
+
   // Coalesce localStorage writes so a single slider drag (which can emit
   // 30-60 onChange events) doesn't trigger that many synchronous
-  // JSON.stringify + setItem cycles. Cleanup writes the pending settings
-  // synchronously so closing the dialog within the 200ms debounce window
-  // (or unmounting) still persists the user's latest tweak.
+  // JSON.stringify + setItem cycles. Cleanup only clears the pending
+  // timer — flushing on every effect re-run would defeat the debounce
+  // and write on each keystroke.
   useEffect(() => {
-    let flushed = false;
-    const handle = setTimeout(() => {
-      flushed = true;
-      saveSettings(settings);
-    }, 200);
-    return () => {
-      clearTimeout(handle);
-      if (!flushed) saveSettings(settings);
-    };
+    const handle = setTimeout(() => saveSettings(settings), 200);
+    return () => clearTimeout(handle);
   }, [settings]);
+
+  // Persist whatever the user had tweaked when the dialog closes. This
+  // covers the gap where a slider drag inside the 200ms debounce window
+  // would otherwise be lost on close.
+  useEffect(() => {
+    if (open) return;
+    saveSettings(settingsRef.current);
+  }, [open]);
 
   // SVG generation is O(packet cells) — rebuild only when the inputs that
   // actually change the diagram change. `busy`/`error` etc. must not
@@ -325,7 +338,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
                   max={PNG_SCALE_MAX}
                   step={PNG_SCALE_STEP}
                   value={settings.pngScale}
-                  aria-valuetext={`${settings.pngScale} times`}
+                  aria-valuetext={`${settings.pngScale}× resolution`}
                   onChange={(event) =>
                     setSettings((current) => ({
                       ...current,
@@ -346,10 +359,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
           </div>
         ) : null}
         {error ? (
-          <p
-            className="mb-0 mt-3 text-xs text-field-rose-strong"
-            role="alert"
-          >
+          <p className="mb-0 mt-3 text-xs text-field-rose-strong" role="alert">
             {error}
           </p>
         ) : null}

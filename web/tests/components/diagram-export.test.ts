@@ -444,6 +444,10 @@ describe("buildDiagramSvg", () => {
 describe("diagram export helpers", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    // vi.restoreAllMocks() does not undo vi.stubGlobal — the svgToPngBlob
+    // tests below stub `Image`, and leaving the stub around can leak into
+    // other tests in the same worker.
+    vi.unstubAllGlobals();
     document.head.querySelectorAll("style[data-test-theme]").forEach((el) => {
       el.remove();
     });

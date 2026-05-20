@@ -73,15 +73,21 @@ export default function ImportExportDrawer({
     setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
   }, []);
 
-  // Sync mode + reset transient state when the parent re-opens the drawer.
-  // Format normalisation lives in `snapFormatForMode` so we don't need a
-  // second effect to "snap" after the mode flip.
+  // Sync mode when the parent re-opens the drawer. Transient state
+  // (`text`, `status`) is reset *only* when the requested mode differs
+  // from the one we currently show — otherwise a quick detour through
+  // another modal (e.g. the image-export dialog) and back would wipe
+  // text the user had typed or pasted.
   useEffect(() => {
     if (!open) return;
-    setCurrentMode(mode);
-    snapFormatForMode(mode);
-    setText("");
-    setStatus(null);
+    setCurrentMode((prev) => {
+      if (prev !== mode) {
+        snapFormatForMode(mode);
+        setText("");
+        setStatus(null);
+      }
+      return mode;
+    });
   }, [open, mode, snapFormatForMode]);
 
   // Auto-fill on Export when format / packet / controllers change.

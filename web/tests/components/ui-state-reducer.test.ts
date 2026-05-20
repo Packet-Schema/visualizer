@@ -75,6 +75,9 @@ describe("uiReducer", () => {
       showJsonPane: true,
       hexStripUserSet: true,
       hexStripVisible: true,
+      drawerMode: "export",
+      showSaveDialog: true,
+      showExportImageDialog: true,
     };
     const next = uiReducer(dirty, { type: "preset-switched" });
     expect(next.selectedFieldId).toBeNull();
@@ -83,6 +86,37 @@ describe("uiReducer", () => {
     expect(next.showJsonPane).toBe(false);
     expect(next.hexStripUserSet).toBe(true);
     expect(next.hexStripVisible).toBe(true);
+    // Modal-class surfaces are reset so they don't keep pointing at the
+    // previous preset after the swap.
+    expect(next.drawerMode).toBeNull();
+    expect(next.showSaveDialog).toBe(false);
+    expect(next.showExportImageDialog).toBe(false);
+  });
+
+  it("open-drawer closes any open image-export dialog", () => {
+    const withDialog: UiState = { ...seed, showExportImageDialog: true };
+    const next = uiReducer(withDialog, {
+      type: "open-drawer",
+      mode: "export",
+    });
+    expect(next.drawerMode).toBe("export");
+    expect(next.showExportImageDialog).toBe(false);
+  });
+
+  it("open-export-image-dialog closes any open drawer", () => {
+    const withDrawer: UiState = { ...seed, drawerMode: "import" };
+    const next = uiReducer(withDrawer, {
+      type: "open-export-image-dialog",
+    });
+    expect(next.showExportImageDialog).toBe(true);
+    expect(next.drawerMode).toBeNull();
+  });
+
+  it("close-export-image-dialog only flips its own flag", () => {
+    const opened = uiReducer(seed, { type: "open-export-image-dialog" });
+    const closed = uiReducer(opened, { type: "close-export-image-dialog" });
+    expect(closed.showExportImageDialog).toBe(false);
+    expect(closed.drawerMode).toBeNull();
   });
 
   it("set-share-status / clear-share-status drive the share toast", () => {

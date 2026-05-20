@@ -102,7 +102,11 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       // same z-index and global focus-trap keydown listener. Opening one
       // implicitly closes the other so the two traps don't fight over Tab
       // and Escape.
-      return { ...state, drawerMode: action.mode, showExportImageDialog: false };
+      return {
+        ...state,
+        drawerMode: action.mode,
+        showExportImageDialog: false,
+      };
     case "close-drawer":
       return { ...state, drawerMode: null };
     case "set-tour-open":
