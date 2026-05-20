@@ -54,15 +54,24 @@ export function plainFieldToRenderer(f: PsmlField): RendererField {
 }
 
 /** Inverse of `groupToSubfieldField` — round-trips renderer subfields
- *  back into a PSML Group. Used by `rendererToPsml`. */
+ *  back into a PSML Group. Used by `rendererToPsml`.
+ *
+ *  The previous form rewrote ids on the way back (`${field.id}_bits` for
+ *  the Group, `${field.id}_${sf.id}` for each subfield), which made
+ *  PSML→renderer→PSML non-idempotent and broke any Expr / constraint
+ *  reference that pointed at the original subfield id. We now preserve
+ *  the source ids — `groupToSubfieldField` keeps the original SubField
+ *  id intact when lowering, so honouring it on the way back makes the
+ *  round-trip stable and keeps ref lookups working (Copilot review).
+ */
 export function rendererSubfieldsToGroup(field: RendererField): Group {
   const subs: SubField[] = field.subfields ?? [];
   return {
     kind: "group",
-    id: `${field.id}_bits`,
+    id: field.id,
     name: field.name,
     children: subs.map((sf) => ({
-      id: `${field.id}_${sf.id}`,
+      id: sf.id,
       name: sf.name,
       type: { kind: "bits", n: sf.bits },
       ...(field.category ? { category: field.category } : {}),

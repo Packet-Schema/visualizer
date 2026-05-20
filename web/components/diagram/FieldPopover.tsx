@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { enrichDescriptionHtml } from "@/lib/enrich";
@@ -116,9 +116,14 @@ export default function FieldPopover({
   // A non-modal dialog: it floats over the diagram but doesn't trap focus or
   // block the backdrop, so we set `aria-modal="false"` to be explicit. The
   // visible heading provides the label.
-  const titleId = `field-popover-title-${
-    resolved.kind === "field" ? resolved.field.id : resolved.sub.id
-  }`;
+  //
+  // `useId()` instead of deriving from `resolved.*.id` directly — PSML ids
+  // only have to be non-empty strings, so they can carry spaces / colons
+  // (e.g. nested `flags:df`) that produce invalid or non-unique HTML id
+  // attributes and silently break the `aria-labelledby` link to the
+  // heading. React's `useId` gives us a guaranteed-unique, DOM-safe
+  // string scoped to this component instance (Copilot review).
+  const titleId = useId();
   return (
     <div
       ref={ref}
