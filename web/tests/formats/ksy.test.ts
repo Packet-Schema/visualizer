@@ -1275,7 +1275,7 @@ describe("toKsy — exporter", () => {
 });
 
 describe("toKsy — PSML 0.3 Encrypted container", () => {
-  it("emits a single zero-size placeholder entry with a psml-only header note", () => {
+  it("emits a 1-byte placeholder entry with a psml-only header note", () => {
     const yaml = toKsy({
       name: "QuicShort",
       rowBits: 32,
@@ -1297,10 +1297,13 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
     expect(yaml).toMatch(/# psml-only: encrypted block "payload"/);
     expect(yaml).toMatch(/TLS 1\.3 handshake keys/);
     const obj = yamlParse(yaml);
-    // One placeholder entry, NOT the two plaintext fields.
+    // One placeholder entry, NOT the two plaintext fields. Size 1
+    // (not 0) so the synthesised Kaitai parser actually advances the
+    // stream past the encrypted region — a `size: 0` placeholder leaves
+    // following fields overlapping it (Copilot review).
     expect(obj.seq).toHaveLength(1);
     expect(obj.seq[0].id).toBe("payload");
-    expect(obj.seq[0].size).toBe(0);
+    expect(obj.seq[0].size).toBe(1);
     expect(obj.seq[0].doc).toContain("encrypted block");
     expect(obj.seq[0].doc).toContain("TLS 1.3 handshake keys");
     // Plaintext field ids must not surface.
@@ -1334,7 +1337,7 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
     });
     const obj = yamlParse(yaml);
     expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["hdr", "secret"]);
-    expect(obj.seq[1].size).toBe(0);
+    expect(obj.seq[1].size).toBe(1);
   });
 });
 

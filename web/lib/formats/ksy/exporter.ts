@@ -157,10 +157,21 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       ctx.psmlOnly.push(
         `encrypted block "${e.id}" (${e.contextNote}) skipped — Kaitai has no encrypted primitive`,
       );
+      // Derive a byte size from `wireBits` when PSML pins it as a
+      // literal; otherwise fall back to 1 so the seq entry actually
+      // consumes a stream offset. The previous `size: 0` form was
+      // documented as a "single byte placeholder" but read 0 bytes,
+      // leaving subsequent fields overlapping the encrypted region in
+      // a generated parser. Evaluating a non-literal Expr would need
+      // an `env` that the exporter doesn't carry, so dynamic widths
+      // simply degrade to the same 1-byte placeholder.
+      const litBits = e.wireBits?.kind === "lit" ? e.wireBits.value : null;
+      const sizeBytes =
+        litBits !== null && litBits > 0 ? Math.ceil(litBits / 8) : 1;
       return [
         {
           id: toKsyId(e.id),
-          size: 0,
+          size: sizeBytes,
           doc: `psml-only: encrypted block (${e.contextNote})`,
         },
       ];

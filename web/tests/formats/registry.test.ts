@@ -69,7 +69,7 @@ describe("extToFormat", () => {
 });
 
 describe("adapter wrappers — round-trip", () => {
-  it("JSON parse returns the env it received from fromJson", () => {
+  it("JSON parse round-trips the env produced by render", () => {
     const json = getFormat("json").render!(PRESETS.ipv4, new Map());
     const parsed = getFormat("json").parse!(json);
     expect(parsed.packet.name).toBe(PRESETS.ipv4.name);

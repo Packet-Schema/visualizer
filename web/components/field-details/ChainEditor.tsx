@@ -203,6 +203,11 @@ export default function ChainEditor({ field, onChange }: Props) {
             color: "var(--fg)",
           }}
         >
+          {/* Empty-value option pairs with `value={finalProto ?? ""}` so
+              the &lt;select&gt; stays controlled when no final proto is
+              picked yet (avoids the "controlled value doesn't match any
+              option" React warning). */}
+          <option value="">(none)</option>
           {FINAL_PROTOS.map((f) => (
             <option key={f.v} value={f.v}>
               {f.name} ({f.v})

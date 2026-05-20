@@ -130,12 +130,21 @@ function parseControllers(params: URLSearchParams): ControllerState {
     const controllerKey = key.slice(CONTROLLER_PARAM_PREFIX.length);
     if (!controllerKey) continue;
     const value = Number(raw);
-    // Reject anything that's not a representable integer-sized number.
-    // `Number.isFinite` filters NaN / ±Infinity but still admits values
-    // up to `Number.MAX_VALUE` (1.8e308); those round to Infinity once
-    // any downstream multiplication touches them. Clamping at
-    // MAX_SAFE_INTEGER keeps the slider / layout math precise.
-    if (Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER) {
+    // Reject anything that's not a representable, finite *integer*.
+    //  - `Number.isFinite` filters NaN / ±Infinity.
+    //  - `Math.abs(value) <= MAX_SAFE_INTEGER` keeps slider / layout
+    //    math precise (otherwise `1.8e308` survives, then downstream
+    //    multiplication rounds it to Infinity).
+    //  - `Number.isInteger` is the key: controllers feed `Repeat.count`
+    //    via `normalize.resolveRepeatCount`, which does not truncate
+    //    `env.get(...)` for `count: "eos"` / `until` shapes. A
+    //    fractional value would expand the Repeat the wrong number
+    //    of times (Copilot review).
+    if (
+      Number.isFinite(value) &&
+      Number.isInteger(value) &&
+      Math.abs(value) <= Number.MAX_SAFE_INTEGER
+    ) {
       out[controllerKey] = value;
     }
   }

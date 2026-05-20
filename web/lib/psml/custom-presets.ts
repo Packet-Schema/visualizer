@@ -50,12 +50,14 @@ function readRaw(): PresetMap {
     return {};
   }
   // Validate every entry with the same checker the import drawer uses,
-  // so a third party that wrote a hand-crafted JSON blob into our
-  // localStorage key (extension, dev tools paste, malicious CSRF-like
-  // cross-origin write that escapes the same-origin model) can't get a
-  // malformed PsmlPacket into the renderer or the bulk-export bundle.
-  // Per-entry try/catch keeps a single bad packet from wiping the whole
-  // user library — only the corrupt key is dropped, the rest survive.
+  // so a hand-crafted JSON blob that ended up in our localStorage key
+  // — browser extension, dev tools paste, or an XSS foothold elsewhere
+  // on this origin (cross-origin writes are blocked by same-origin
+  // policy, so the threat model is same-origin tampering rather than
+  // CSRF) — can't get a malformed PsmlPacket into the renderer or the
+  // bulk-export bundle. Per-entry try/catch keeps a single bad packet
+  // from wiping the whole user library: only the corrupt key is
+  // dropped, the rest survive.
   const out: PresetMap = {};
   for (const [key, value] of Object.entries(
     parsed as Record<string, unknown>,
