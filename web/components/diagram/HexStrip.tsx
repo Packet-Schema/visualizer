@@ -36,7 +36,7 @@ function resolveFieldColor(field: Field): string {
 }
 
 function selectableFieldId(packet: Packet, field: Field): string {
-  if (packet.fields.some((f) => f.id === field.id)) return field.id;
+  if (packet.fields.some((f) => f === field)) return field.id;
 
   for (const parent of packet.fields) {
     if (parent.subfields?.some((sub) => sub.id === field.id)) {
@@ -44,6 +44,7 @@ function selectableFieldId(packet: Packet, field: Field): string {
     }
   }
 
+  if (packet.fields.some((f) => f.id === field.id)) return field.id;
   return field.id;
 }
 
