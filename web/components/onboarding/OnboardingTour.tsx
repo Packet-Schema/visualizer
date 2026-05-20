@@ -128,14 +128,19 @@ export default function OnboardingTour({ steps, onClose }: Props) {
         if (focusables.length === 0) return;
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
+        // `document.activeElement` is `Element | null`; treat null as
+        // "no focus inside the dialog" so the shift/non-shift branches
+        // both wrap to the appropriate end without doing a `null ===
+        // first` comparison that always reads as false.
         const active = document.activeElement;
+        const outside = !active || !root.contains(active);
         if (e.shiftKey) {
-          if (active === first || !root.contains(active)) {
+          if (active === first || outside) {
             e.preventDefault();
             last.focus();
           }
         } else {
-          if (active === last || !root.contains(active)) {
+          if (active === last || outside) {
             e.preventDefault();
             first.focus();
           }
@@ -242,7 +247,7 @@ export default function OnboardingTour({ steps, onClose }: Props) {
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label="Onboarding tour"
+      aria-label={`Onboarding tour — step ${idx + 1} of ${steps.length}`}
       onClick={(e) => {
         if (e.target === e.currentTarget) finish();
       }}
@@ -256,7 +261,6 @@ export default function OnboardingTour({ steps, onClose }: Props) {
       <div aria-hidden="true" style={spotlightStyle} />
       <div
         ref={tooltipRef}
-        role="document"
         style={{
           ...tooltipStyle,
           background: "var(--bg-elevated)",
@@ -274,11 +278,16 @@ export default function OnboardingTour({ steps, onClose }: Props) {
         <div className="mt-2 text-3xs uppercase tracking-wider text-fg-faint">
           Step {idx + 1} of {steps.length}
         </div>
+        {/*
+         * Buttons use `min-h-[44px] min-w-[44px]` to meet the WCAG 2.2 AA
+         * target size guidance (≥ 44×44 CSS px) without forcing the
+         * existing visual padding to grow on narrow viewports.
+         */}
         <div className="mt-3 flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={finish}
-            className="text-xs px-3 py-1.5 rounded border"
+            className="text-xs px-4 py-2 min-h-[44px] min-w-[44px] rounded border"
             style={{
               borderColor: "var(--border-strong)",
               background: "var(--bg-base)",
@@ -291,7 +300,7 @@ export default function OnboardingTour({ steps, onClose }: Props) {
             ref={nextBtnRef}
             type="button"
             onClick={advance}
-            className="text-xs px-3 py-1.5 rounded border font-semibold"
+            className="text-xs px-4 py-2 min-h-[44px] min-w-[44px] rounded border font-semibold"
             style={{
               borderColor: "var(--accent)",
               background: "var(--accent)",

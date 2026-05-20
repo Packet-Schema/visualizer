@@ -47,6 +47,7 @@ import type {
   Field,
   Packet,
   PacketRegistry,
+  SubField,
   TlvInstance,
 } from "@/lib/psml/renderer";
 import type { Expr, PsmlPacket } from "@/lib/psml/types";
@@ -386,6 +387,20 @@ export default function PacketViewer() {
       uiDispatch({ type: "select-field", id: fieldId, anchor });
     },
     [isWideViewport],
+  );
+
+  // Stable callbacks for HybridDiagram. Without these, the JSX-inline
+  // arrow functions would mint new identities every render and bypass
+  // FieldCell's `memo` equality, so every slider drag would re-render
+  // every cell (~ 50+ cells × 60 fps ≈ 3000 reconciliations/s).
+  const handleFieldClickWithField = useCallback(
+    (field: Field, elem: HTMLElement) => handleFieldClick(field.id, elem),
+    [handleFieldClick],
+  );
+  const handleSubfieldClick = useCallback(
+    (parentField: Field, subfield: SubField, elem: HTMLElement) =>
+      handleFieldClick(`${parentField.id}:${subfield.id}`, elem),
+    [handleFieldClick],
   );
 
   const handleImport = useCallback(
@@ -865,10 +880,8 @@ export default function PacketViewer() {
               packet={packet}
               layout={layout}
               selectedFieldId={selectedFieldId}
-              onFieldClick={(field, elem) => handleFieldClick(field.id, elem)}
-              onSubfieldClick={(parentField, subfield, elem) =>
-                handleFieldClick(`${parentField.id}:${subfield.id}`, elem)
-              }
+              onFieldClick={handleFieldClickWithField}
+              onSubfieldClick={handleSubfieldClick}
               onFieldHover={hexStripVisible ? handleFieldHover : undefined}
             />
             {hexStripVisible ? (

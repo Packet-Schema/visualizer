@@ -12,6 +12,7 @@
 // is unavailable (SSR or sandboxed iframes).
 
 import type { PsmlPacket } from "./types";
+import { validatePsmlPacket } from "./validate";
 
 export const STORAGE_KEY = "packet-view-custom-presets-v1";
 
@@ -39,15 +40,35 @@ function readRaw(): PresetMap {
     return {};
   }
   if (!raw) return {};
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return parsed as PresetMap;
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  // Validate every entry with the same checker the import drawer uses,
+  // so a third party that wrote a hand-crafted JSON blob into our
+  // localStorage key (extension, dev tools paste, malicious CSRF-like
+  // cross-origin write that escapes the same-origin model) can't get a
+  // malformed PsmlPacket into the renderer or the bulk-export bundle.
+  // Per-entry try/catch keeps a single bad packet from wiping the whole
+  // user library — only the corrupt key is dropped, the rest survive.
+  const out: PresetMap = {};
+  for (const [key, value] of Object.entries(
+    parsed as Record<string, unknown>,
+  )) {
+    if (typeof key !== "string" || key.length === 0) continue;
+    try {
+      validatePsmlPacket(value as PsmlPacket);
+      out[key] = value as PsmlPacket;
+    } catch {
+      // Skip the entry; keep others.
+    }
+  }
+  return out;
 }
 
 function writeRaw(map: PresetMap): void {

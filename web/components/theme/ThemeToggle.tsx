@@ -10,8 +10,10 @@ export default function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("light");
   // Toggling this attribute (instead of imperatively running an animation)
   // hands the bounce to CSS keyframes. Removing it on `animationend` lets
-  // the same click animate again. `prefers-reduced-motion` is honoured by
-  // the global override in globals.css so we don't need to gate here.
+  // the same click animate again. We additionally gate the *entry* into
+  // bouncing state on `prefers-reduced-motion` so users with that setting
+  // see no movement at all (the global CSS override only shortens the
+  // duration; this skips the bounce class entirely).
   const [bouncing, setBouncing] = useState(false);
 
   useEffect(() => {
@@ -30,7 +32,15 @@ export default function ThemeToggle() {
       // Storage may be unavailable (private mode, etc.) — that's fine.
     }
     setTheme(next);
-    setBouncing(true);
+    // Respect the user's motion preference at the source: don't enter
+    // the bouncing state at all if reduce-motion is on. globals.css does
+    // shorten the animation duration globally, but skipping the state
+    // machine entirely is a stronger guarantee for WCAG 2.3.3 and also
+    // saves an `animationend` round-trip when no motion will play.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!reduceMotion) setBouncing(true);
   };
 
   const isDark = theme === "dark";
