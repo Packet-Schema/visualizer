@@ -163,27 +163,33 @@
   }
 
   /* Overridable cells expose a runtime knob (length controller / TLV / chain
-     catalog). The marker is a small accent dot in the top-right corner — it
-     hints "this is interactive" without competing with category color or the
-     selection ring. Hidden in PNG/print exports because it's a UI affordance,
-     not a wire-format detail. */
+     catalog). The marker is an accent dot in the top-right corner — it hints
+     "this is interactive" so users know clicking the cell opens an editor
+     in the field detail panel. Hidden in PNG/print exports because it's a
+     UI affordance, not a wire-format detail. */
   .cell.field-cell[data-overridable="true"]::after {
     content: "";
     position: absolute;
-    top: 5px;
-    right: 5px;
-    width: 6px;
-    height: 6px;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--accent);
-    opacity: 0.7;
+    /* Inset ring + outer ring give the dot contrast against any category
+       fill underneath. The outer ring uses the cell background so the dot
+       reads as "lifted out of the cell" rather than painted on top. */
+    box-shadow:
+      0 0 0 1.5px var(--bg-elevated, oklch(99% 0 0 / 0.95)),
+      0 0 0 2.5px var(--accent-glow, oklch(65% 0.2 265 / 0.45));
     pointer-events: none;
-    transition: opacity var(--pv-fast) var(--pv-ease);
+    z-index: 2;
+    transition: transform var(--pv-fast) var(--pv-ease);
   }
 
   .cell.field-cell[data-overridable="true"]:hover::after,
   .cell.field-cell[data-overridable="true"].selected::after {
-    opacity: 1;
+    transform: scale(1.15);
   }
 
   @media print {
