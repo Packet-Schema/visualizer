@@ -201,10 +201,27 @@ export default function ImportExportDrawer({
 
   const handleCopy = useCallback(async () => {
     try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard API is not available in this browser.");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for non-secure contexts (HTTP deployments, older
+        // embedded webviews) where the async Clipboard API is unavailable.
+        // The export textarea is already in the DOM with the same content,
+        // so selecting it and using legacy `execCommand("copy")` works
+        // without requiring a hidden helper element.
+        const ta = textareaRef.current;
+        if (!ta) {
+          throw new Error("Clipboard API is not available in this browser.");
+        }
+        const prev = { start: ta.selectionStart, end: ta.selectionEnd };
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.setSelectionRange(prev.start, prev.end);
+        if (!ok) {
+          throw new Error("Copy command was rejected by the browser.");
+        }
       }
-      await navigator.clipboard.writeText(text);
       setStatus({ msg: "Copied to clipboard.", kind: "ok" });
     } catch (e) {
       setStatus({ msg: `Copy failed: ${(e as Error).message}`, kind: "error" });

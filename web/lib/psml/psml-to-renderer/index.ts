@@ -30,33 +30,27 @@ import { isTlvRepeat, repeatToTlvField } from "./tlv";
 export { rendererToPsml } from "./to-psml";
 
 /**
- * Inspect a Constraint to discover field controller relations of the form
- * `ref(fieldA) * lit(N) == ref(fieldB)` (or the symmetric form). When such a
- * shape is found, return `{ fromId: fieldA, controlsName: fieldB }` so the
- * caller can tag fieldA's renderer Field with `controlsLength: fieldB`.
+ * Inspect a Constraint of the form `ref(fieldA) * lit(N) == ref(fieldB)`
+ * (or the symmetric form) and return the *controller* field's id (fieldA).
+ *
+ * fieldA is the one the user moves through a slider (IHL, Data Offset, …);
+ * `Field.controlsLength = fieldA.id` is what `ControlsPanel` keys its UI
+ * by, and `controllers[fieldA.id]` is the bound numeric state. fieldB —
+ * the multiplied length on the RHS — is not needed here because layout
+ * derivation of `fieldB` happens later via `resolveLayout`'s own ref
+ * walking; the constraint only tells us "fieldA is a length controller".
  *
  * Uses the discriminated `Expr` union directly — no structural casts — so
  * adding a new Expr variant surfaces here as a tsc error rather than a
  * silent miss at runtime.
  */
-function constraintToController(
-  constraint: Constraint,
-): { fromId: string; controlsName: string } | null {
-  const tryMatch = (
-    mul: Expr,
-    target: Expr,
-  ): { fromId: string; controlsName: string } | null => {
+function constraintToController(constraint: Constraint): string | null {
+  const tryMatch = (mul: Expr, target: Expr): string | null => {
     if (target.kind !== "ref") return null;
-    if (mul.kind === "ref") {
-      return { fromId: mul.field, controlsName: target.field };
-    }
+    if (mul.kind === "ref") return mul.field;
     if (mul.kind === "op" && mul.op === "*") {
-      if (mul.a.kind === "ref") {
-        return { fromId: mul.a.field, controlsName: target.field };
-      }
-      if (mul.b.kind === "ref") {
-        return { fromId: mul.b.field, controlsName: target.field };
-      }
+      if (mul.a.kind === "ref") return mul.a.field;
+      if (mul.b.kind === "ref") return mul.b.field;
     }
     return null;
   };
@@ -123,11 +117,11 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
   // step is responsible for deriving any downstream Repeat counts from it.
   if (packet.constraints) {
     for (const c of packet.constraints) {
-      const match = constraintToController(c);
-      if (!match) continue;
-      const target = fields.find((f) => f.id === match.fromId);
+      const fromId = constraintToController(c);
+      if (!fromId) continue;
+      const target = fields.find((f) => f.id === fromId);
       if (target && !target.controlsLength) {
-        target.controlsLength = match.fromId;
+        target.controlsLength = fromId;
         if (target.bits != null) {
           target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
         }

@@ -73,27 +73,33 @@ export function chainEntryToStruct(
 }
 
 export function chainFieldToRepeat(field: RendererField): Repeat {
+  // `repeatToChainField` carries the source Repeat id straight onto the
+  // renderer Field, so a PSML→renderer→PSML round-trip on a chain repeat
+  // ends up here with `field.id` already ending in `_chain`. Strip the
+  // trailing marker so we don't emit `${name}_chain_chain` (and all of
+  // its derived child ids) on the way back to PSML.
+  const baseId = field.id.replace(/_chain$/, "");
   const cases: Record<string, Struct> = {};
   for (const entry of field.chainCatalog ?? []) {
-    cases[String(entry.proto)] = chainEntryToStruct(field.id, entry);
+    cases[String(entry.proto)] = chainEntryToStruct(baseId, entry);
   }
   return {
     kind: "repeat",
-    id: `${field.id}_chain`,
+    id: `${baseId}_chain`,
     name: `${field.name} (chain)`,
     category: "type",
     doc: "IPv6 extension-header chain.",
     element: {
-      id: `${field.id}_chainRecord`,
+      id: `${baseId}_chainRecord`,
       fields: [
         {
           kind: "switch",
-          id: `${field.id}_byProto`,
-          on: { kind: "ref", field: `${field.id}_proto` },
+          id: `${baseId}_byProto`,
+          on: { kind: "ref", field: `${baseId}_proto` },
           cases,
         },
       ],
     },
-    count: { kind: "ref", field: `${field.id}_chainCount` },
+    count: { kind: "ref", field: `${baseId}_chainCount` },
   };
 }

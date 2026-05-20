@@ -15,7 +15,7 @@ import {
   useRovingTabindex,
 } from "@/components/packet-viewer/hooks";
 
-let containers: HTMLDivElement[] = [];
+let mounted: { container: HTMLDivElement; root: Root }[] = [];
 
 /**
  * Build the small subset of `React.KeyboardEvent` that `useRovingTabindex`
@@ -44,17 +44,26 @@ function mount(node: React.ReactNode): {
 } {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  containers.push(container);
   const root = createRoot(container);
   act(() => {
     root.render(node);
   });
-  return { container, root };
+  const entry = { container, root };
+  mounted.push(entry);
+  return entry;
 }
 
 beforeEach(() => {
-  for (const c of containers) c.remove();
-  containers = [];
+  // Unmount before detach so effects' cleanup callbacks fire; bare
+  // `container.remove()` would leak the previous test's timers /
+  // listeners into the next case (Copilot review).
+  for (const { root, container } of mounted) {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  }
+  mounted = [];
 });
 
 describe("useFieldHighlight", () => {

@@ -9,10 +9,13 @@
 // Design rules:
 //   - The reducer is pure (no DOM, no localStorage). All side effects
 //     (URL sync, localStorage, focus) live in PacketViewer or hooks.ts.
-//   - Cross-cutting actions are *not* added here. Cases like "preset
-//     switch resets selectedFieldId + editMode" are composed in the
-//     caller by issuing two dispatches; the reducer keeps single-purpose
-//     actions easy to reason about.
+//   - Most actions are single-purpose `set-*` / `toggle-*` so callers can
+//     reason about them in isolation.
+//   - Multi-field actions are allowed *only* when the touched fields must
+//     change atomically to avoid intermediate render states. The current
+//     example is `preset-switched`, which clears selection / popover /
+//     edit mode / JSON pane together so the next frame can't paint with
+//     "old preset's selection on the new preset's body".
 
 import type { DrawerMode } from "@/components/import-export/ImportExportDrawer";
 import type { ViewMode } from "@/lib/psml/types";

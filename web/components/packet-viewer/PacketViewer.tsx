@@ -248,8 +248,16 @@ export default function PacketViewer() {
   const controlsRef = useRef<HTMLDivElement | null>(null);
 
   // Pull user-saved presets from localStorage, then apply shared URL state.
-  // URL hydration is one-shot; later state changes update the address bar.
+  // URL hydration must run exactly once at mount: subsequent edits flow
+  // through `setRenderedPresets` (TLV / chain edits on a built-in preset),
+  // which would otherwise re-trigger this effect via `[renderedPresets]`
+  // and clobber the user's controller state with the original share URL.
+  // The ref gate fires synchronously inside the same effect run as the
+  // state update so React's StrictMode double-invocation is also safe.
+  const hydrationRanRef = useRef(false);
   useEffect(() => {
+    if (hydrationRanRef.current) return;
+    hydrationRanRef.current = true;
     const stored = loadCustomPresets();
     if (typeof window === "undefined") {
       setCustomPresets(stored);
@@ -289,7 +297,9 @@ export default function PacketViewer() {
       }
     }
     setUrlHydrated(true);
-  }, [renderedPresets]);
+    // renderedPresets is intentionally not in the deps — see comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The active PSML packet for the studio reducer. Prefers built-in PSML,
   // then a custom preset, then a lifted version of the imported renderer

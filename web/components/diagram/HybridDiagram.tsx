@@ -115,6 +115,20 @@ type FieldCellProps = {
   tabIndex: number;
 };
 
+// Treat a selectedFieldId as "owned by this cell" when it matches the cell's
+// field id exactly *or* it points at a subfield rendered inside this cell.
+// Subfield ids look like `${parentField.id}:${subfield.name}` (see
+// SubfieldRow.onClick below), so a prefix match against the same parent is
+// enough to know we should re-render the cell.
+function cellOwnsSelection(
+  cellFieldId: string,
+  selectedFieldId: string | null,
+): boolean {
+  if (selectedFieldId === null) return false;
+  if (selectedFieldId === cellFieldId) return true;
+  return selectedFieldId.startsWith(`${cellFieldId}:`);
+}
+
 const FieldCell = memo(FieldCellImpl, (prev, next) => {
   // Identity check is enough because `cell` comes from a useMemo (layout)
   // and the parent rebuilds it only when `controllers` / `packet` change.
@@ -125,11 +139,25 @@ const FieldCell = memo(FieldCellImpl, (prev, next) => {
   if (prev.onFieldClick !== next.onFieldClick) return false;
   if (prev.onSubfieldClick !== next.onSubfieldClick) return false;
   if (prev.onFieldHover !== next.onFieldHover) return false;
-  // Re-render only the cell that *was* selected and the cell that *is now*
-  // selected — everything else can skip.
-  const wasSelected = prev.cell.field.id === prev.selectedFieldId;
-  const isSelected = next.cell.field.id === next.selectedFieldId;
-  return wasSelected === isSelected;
+  // Re-render only the cell that *was* selected (directly or via one of its
+  // subfields) and the cell that *is now* selected — everything else can
+  // skip. The subfield prefix match below is what fixes the bug where
+  // clicking a `parent:sub` subfield didn't repaint the `.selected` class
+  // on the SubfieldRow underneath an already-mounted parent FieldCell.
+  const wasSelected = cellOwnsSelection(
+    prev.cell.field.id,
+    prev.selectedFieldId,
+  );
+  const isSelected = cellOwnsSelection(
+    next.cell.field.id,
+    next.selectedFieldId,
+  );
+  if (wasSelected !== isSelected) return false;
+  // Both ends "own" the selection — re-render iff the selected subfield
+  // within this cell actually changed (e.g. clicking from `parent:a` to
+  // `parent:b`). When neither end owns it, the equality above already
+  // returned `true` for "skip".
+  return prev.selectedFieldId === next.selectedFieldId || !isSelected;
 });
 
 function FieldCellImpl({

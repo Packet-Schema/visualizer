@@ -13,7 +13,7 @@ import { createRoot, type Root } from "react-dom/client";
 import TlvEditor from "@/components/field-details/TlvEditor";
 import type { Field, TlvCatalogEntry, TlvInstance } from "@/lib/psml/renderer";
 
-let containers: HTMLDivElement[] = [];
+let mounted: { container: HTMLDivElement; root: Root }[] = [];
 
 function mount(node: React.ReactNode): {
   container: HTMLDivElement;
@@ -21,17 +21,26 @@ function mount(node: React.ReactNode): {
 } {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  containers.push(container);
   const root = createRoot(container);
   act(() => {
     root.render(node);
   });
-  return { container, root };
+  const entry = { container, root };
+  mounted.push(entry);
+  return entry;
 }
 
 afterEach(() => {
-  for (const c of containers) c.remove();
-  containers = [];
+  // Unmount the React tree first so cleanup effects fire before the
+  // container is detached. Skipping this leaks timeouts / event listeners
+  // into later tests and is what Copilot flagged on this suite.
+  for (const { root, container } of mounted) {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  }
+  mounted = [];
 });
 
 const catalog: TlvCatalogEntry[] = [

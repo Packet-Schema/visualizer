@@ -174,17 +174,6 @@ export function useAutoClearStatus<T>(
 }
 
 /**
- * Imperative bridge for diagram ↔ hex strip hover highlighting.
- *
- * Returns a setter that paints `.hex-match` onto cells matching `fieldId`
- * and mirrors the id on the root via `data-highlighted-field`. The work
- * runs outside React's render cycle on purpose: hover events fire dozens
- * of times per second and we don't want each one to trigger a re-render
- * of the entire packet tree. The hook contains the side effect so the
- * call site stays declarative — "give me a highlighter for this DOM
- * subtree" instead of two dozen lines of DOM queries.
- */
-/**
  * Roving-tabindex keyboard navigation across the hybrid diagram's flat list
  * of `.field-cell` / `.subfield-cell` elements. The single tab stop moves to
  * whichever cell the user lands on, so screen readers and keyboard users can
@@ -263,6 +252,17 @@ export function useRovingTabindex(
   );
 }
 
+/**
+ * Imperative bridge for diagram ↔ hex strip hover highlighting.
+ *
+ * Returns a setter that paints `.hex-match` onto cells matching `fieldId`
+ * and mirrors the id on the root via `data-highlighted-field`. The work
+ * runs outside React's render cycle on purpose: hover events fire dozens
+ * of times per second and we don't want each one to trigger a re-render
+ * of the entire packet tree. The hook contains the side effect so the
+ * call site stays declarative — "give me a highlighter for this DOM
+ * subtree" instead of two dozen lines of DOM queries.
+ */
 export function useFieldHighlight(
   rootRef: RefObject<HTMLElement | null>,
 ): (fieldId: string | null) => void {

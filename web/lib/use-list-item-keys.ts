@@ -6,8 +6,11 @@ import { useRef } from "react";
  * reorder operations (swap two indices, splice one element) keep DOM nodes
  * in place instead of remounting them.
  *
- * Falls back to `idx-${i}` for primitives — those have no identity, so we
- * cannot do better than index-based keying.
+ * Object-only by design: the implementation backs identity via a WeakMap,
+ * which forbids primitive keys. Callers that hold primitives should wrap
+ * them in a stable object first (e.g. `{ value: 42 }`) so the same
+ * reference reaches every render. Passing a primitive array is a tsc
+ * error — `T extends object` enforces this at the call site.
  */
 export function useListItemKeys<T extends object>(
   items: readonly T[],

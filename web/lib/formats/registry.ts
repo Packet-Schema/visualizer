@@ -5,9 +5,10 @@
 // its format picker and dispatch import/export, so adding a new format is
 // just adding one entry here (and writing the codec module it points at).
 //
-// Adapters omit `import` to signal "export only" (e.g. RFC ASCII, which we
-// emit but never parse) and omit `export` to signal "import only" (e.g. AAD,
-// where we have no canonical writer back to the source text).
+// Adapters omit `parse` to signal "export only" (e.g. RFC ASCII, which we
+// emit but never parse) and omit `render` to signal "import only" (e.g.
+// AAD, where we have no canonical writer back to the source text). See the
+// `FormatAdapter` definition below for the actual property names.
 
 import { fromAad } from "./aug-ascii";
 import { fromJson, toJson } from "./json";

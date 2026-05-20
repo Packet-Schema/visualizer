@@ -15,7 +15,7 @@ import type {
   Field,
 } from "@/lib/psml/renderer";
 
-let containers: HTMLDivElement[] = [];
+let mounted: { container: HTMLDivElement; root: Root }[] = [];
 
 function mount(node: React.ReactNode): {
   container: HTMLDivElement;
@@ -23,17 +23,23 @@ function mount(node: React.ReactNode): {
 } {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  containers.push(container);
   const root = createRoot(container);
   act(() => {
     root.render(node);
   });
-  return { container, root };
+  const entry = { container, root };
+  mounted.push(entry);
+  return entry;
 }
 
 afterEach(() => {
-  for (const c of containers) c.remove();
-  containers = [];
+  for (const { root, container } of mounted) {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  }
+  mounted = [];
 });
 
 const catalog: ChainCatalogEntry[] = [
