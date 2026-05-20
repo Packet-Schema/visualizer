@@ -10,6 +10,8 @@ import type {
   SubField,
 } from "@/lib/psml/renderer";
 
+import { decodeSubfieldSelection } from "./selectableFieldId";
+
 type Props = {
   packet: Packet;
   controllers: ControllerState;
@@ -31,8 +33,9 @@ function resolve(
   controllers: ControllerState,
   selectedFieldId: string,
 ): Resolved | null {
-  if (selectedFieldId.includes(":")) {
-    const [parentId, subId] = selectedFieldId.split(":");
+  const selection = decodeSubfieldSelection(selectedFieldId);
+  if (selection) {
+    const { parentId, subId } = selection;
     const parent = packet.fields.find((f) => f.id === parentId);
     const sub = parent?.subfields?.find((s) => s.id === subId);
     if (!parent || !sub) return null;

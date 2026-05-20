@@ -61,20 +61,20 @@ function findTopLevelGroupSubfieldParentId(
   packet: PsmlPacket,
   field: NormalizedField,
 ): string | undefined {
-  const pathParts = field.originalContainerPath.split("/");
-  if (pathParts.length !== 2 || pathParts[0] !== packet.name) return undefined;
-  const groupId = pathParts[1];
-  const group = packet.body.find(
-    (container): container is Group =>
-      isGroup(container) && container.id === groupId,
-  );
-  if (!group) return undefined;
-  return group.children.some(
-    (child) =>
-      (!("kind" in child) || child.kind === "field") && child.id === field.id,
-  )
-    ? groupId
-    : undefined;
+  for (const container of packet.body) {
+    if (!isGroup(container)) continue;
+    if (!field.originalContainerPath.endsWith(`/${container.id}`)) continue;
+    if (
+      container.children.some(
+        (child) =>
+          (!("kind" in child) || child.kind === "field") &&
+          child.id === field.id,
+      )
+    ) {
+      return container.id;
+    }
+  }
+  return undefined;
 }
 
 function emitField(

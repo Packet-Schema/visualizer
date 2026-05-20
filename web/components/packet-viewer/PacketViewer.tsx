@@ -58,6 +58,7 @@ import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
+import { decodeSubfieldSelection } from "@/components/diagram/selectableFieldId";
 import ImportExportDrawer, {
   type DrawerMode,
 } from "@/components/import-export/ImportExportDrawer";
@@ -382,9 +383,9 @@ export default function PacketViewer() {
       return;
     }
     root.setAttribute("data-highlighted-field", fieldId);
-    // Subfield ids look like "parent:sub". Highlight both the subfield itself
-    // and the parent field cell so the relationship is unambiguous.
-    const parentId = fieldId.includes(":") ? fieldId.split(":")[0] : null;
+    // Subfield ids are encoded; highlight both the subfield itself and the
+    // parent field cell so the relationship is unambiguous.
+    const parentId = decodeSubfieldSelection(fieldId)?.parentId ?? null;
     const matches = root.querySelectorAll<HTMLElement>(
       parentId
         ? `[data-field-id="${cssEscape(fieldId)}"], .field-cell[data-field-id="${cssEscape(parentId)}"]`

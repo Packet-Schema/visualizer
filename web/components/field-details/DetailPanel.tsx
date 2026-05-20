@@ -11,6 +11,7 @@ import type {
 
 import ChainEditor from "./ChainEditor";
 import TlvEditor from "./TlvEditor";
+import { decodeSubfieldSelection } from "../diagram/selectableFieldId";
 
 function EnrichedText({ text }: { text: string }) {
   return (
@@ -48,8 +49,9 @@ export default function DetailPanel({
   }
 
   const subPair = (() => {
-    if (selectedFieldId.includes(":")) {
-      const [parentId, subId] = selectedFieldId.split(":");
+    const selection = decodeSubfieldSelection(selectedFieldId);
+    if (selection) {
+      const { parentId, subId } = selection;
       const parent = packet.fields.find((f) => f.id === parentId);
       const sub = parent?.subfields?.find((s) => s.id === subId);
       return parent && sub ? { parent, sub } : null;
@@ -86,7 +88,7 @@ export default function DetailPanel({
     );
   }
 
-  if (selectedFieldId.includes(":")) {
+  if (decodeSubfieldSelection(selectedFieldId)) {
     return (
       <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
         Subfield not found.
