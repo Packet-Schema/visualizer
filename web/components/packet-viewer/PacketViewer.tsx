@@ -618,10 +618,35 @@ export default function PacketViewer() {
           `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard API is not available in this browser.");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        // Fallback for non-secure contexts (HTTP deployments / older
+        // embedded webviews) where the async Clipboard API is unavailable.
+        // We can't reuse a page textarea like ImportExportDrawer does
+        // because the share URL is not rendered anywhere, so spin up a
+        // hidden one just for the execCommand call.
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.setAttribute("readonly", "");
+        // `position: fixed` + opacity 0 avoids the iOS / Android scroll
+        // jump that a plain off-screen textarea would cause.
+        ta.style.position = "fixed";
+        ta.style.top = "0";
+        ta.style.left = "0";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try {
+          ok = document.execCommand("copy");
+        } finally {
+          document.body.removeChild(ta);
+        }
+        if (!ok) {
+          throw new Error("Copy command was rejected by the browser.");
+        }
       }
-      await navigator.clipboard.writeText(url);
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }

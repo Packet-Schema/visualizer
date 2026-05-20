@@ -1,27 +1,45 @@
 import { useRef } from "react";
 
 /**
- * Return a stable React `key` for each item in `items` based on object
- * identity. Two renders with the same item reference get the same key, so
- * reorder operations (swap two indices, splice one element) keep DOM nodes
- * in place instead of remounting them.
+ * Return a stable React `key` for each item in `items` so the underlying
+ * DOM nodes survive both immutable edits *and* reorder/remove operations.
  *
- * Object-only by design: the implementation backs identity via a WeakMap,
- * which forbids primitive keys. Callers that hold primitives should wrap
- * them in a stable object first (e.g. `{ value: 42 }`) so the same
- * reference reaches every render. Passing a primitive array is a tsc
- * error — `T extends object` enforces this at the call site.
+ * Three matching strategies are tried per render, in order:
+ *
+ *  1. **Identity match**: the same object reference appears in the
+ *     previous render → reuse its key. Covers reorder (swap two indices).
+ *  2. **Position match**: an item at the same index in the previous
+ *     render exists → reuse that key. Covers immutable edits — the
+ *     common pattern `list[i] = { ...list[i], extras: ... }` swaps the
+ *     reference but the caller still means "same row".
+ *  3. **Fresh key**: anything else (length growth, all-new array) gets a
+ *     newly minted key.
+ *
+ * Without (2), every spread-replace would mint a new key and React would
+ * remount the row mid-edit, dropping the focused input — that's the
+ * Copilot regression this rewrite fixes. The shape of the hook (read
+ * refs at the top, write back before return) is the React "render-time
+ * ref comparison" pattern; we don't dispatch any side effects, so the
+ * write is safe during render.
  */
 export function useListItemKeys<T extends object>(
   items: readonly T[],
 ): string[] {
-  const ids = useRef(new WeakMap<T, string>());
-  const counter = useRef(0);
-  return items.map((item) => {
-    const existing = ids.current.get(item);
-    if (existing) return existing;
-    const fresh = `i${++counter.current}`;
-    ids.current.set(item, fresh);
-    return fresh;
+  const lastItemsRef = useRef<readonly T[]>([]);
+  const lastKeysRef = useRef<string[]>([]);
+  const counterRef = useRef(0);
+
+  const prevItems = lastItemsRef.current;
+  const prevKeys = lastKeysRef.current;
+
+  const newKeys: string[] = items.map((item, i) => {
+    const prevIdx = prevItems.indexOf(item);
+    if (prevIdx !== -1) return prevKeys[prevIdx];
+    if (i < prevKeys.length) return prevKeys[i];
+    return `i${++counterRef.current}`;
   });
+
+  lastItemsRef.current = items;
+  lastKeysRef.current = newKeys;
+  return newKeys;
 }
