@@ -237,6 +237,17 @@ function renderCellBadges(
   return badges.join("");
 }
 
+/**
+ * Render the current packet diagram as a standalone, self-contained SVG
+ * string. Every color is resolved to an attribute (no external CSS),
+ * making the output safe to drop into `dangerouslySetInnerHTML`, save
+ * as a file, or rasterize via {@link svgToPngBlob}.
+ *
+ * @param packet  Runtime packet (typically the rendered preset or the
+ *                live studio packet for edit-mode exports).
+ * @param layout  Pre-computed cell layout from `resolveLayout`.
+ * @param options Theme override, per-bit pixel width, transparency.
+ */
 export function buildDiagramSvg(
   packet: Packet,
   layout: ResolvedLayout,
@@ -450,6 +461,18 @@ function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
   return buildTheme(resolveCssColor);
 }
 
+/**
+ * Resolve a {@link DiagramExportTheme} for the requested mode.
+ *
+ * - `"follow-ui"`: reads the currently applied `:root` / `[data-theme]`
+ *   variables from `document.body`, so a Dark UI exports a Dark image.
+ * - `"light"` / `"dark"`: walks the stylesheets to find the requested
+ *   palette without mutating `document.documentElement` (so picking
+ *   "Light" while in Dark mode doesn't flash the page).
+ *
+ * Falls back to the bundled {@link DEFAULT_THEME} when no `document` is
+ * available (SSR) or the required CSS variables aren't loaded.
+ */
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
   if (typeof document === "undefined" || !document.body) {
     return readDiagramThemeFromDocument();
@@ -498,6 +521,17 @@ export function downloadBlobFile(filename: string, blob: Blob): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * Rasterize a self-contained SVG string into a PNG Blob at the given
+ * scale factor. The SVG must not reference external resources (no
+ * `<image href>`, `<use href>`, or web fonts) or the resulting canvas
+ * becomes tainted and `toBlob` will silently fail with `SecurityError`.
+ *
+ * @throws Error when `scale <= 0` or non-finite.
+ * @throws Error when the SVG cannot be loaded as an image, the canvas
+ *         2D context is unavailable, or `canvas.toBlob` yields null
+ *         (typically a canvas dimension overflow).
+ */
 export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
   // External callers (and corrupted localStorage) can pass anything; guard
   // before the silent-bad-output path kicks in (scale=0 → 1×1 transparent

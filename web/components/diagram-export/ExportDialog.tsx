@@ -131,6 +131,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const titleId = useId();
+  const descriptionId = useId();
   const pngScaleId = useId();
 
   useFocusTrap({ open, containerRef: cardRef, onClose });
@@ -192,6 +193,17 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
     settings.transparentBackground,
   ]);
 
+  // Pull the intrinsic pixel size out of the SVG header so the PNG section
+  // can show an "approximate output size" hint without re-parsing on every
+  // scale tick.
+  const svgDimensions = useMemo(() => {
+    if (!svg) return null;
+    const width = Number(/\swidth="(\d+)"/.exec(svg)?.[1] ?? NaN);
+    const height = Number(/\sheight="(\d+)"/.exec(svg)?.[1] ?? NaN);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+    return { width, height };
+  }, [svg]);
+
   const handleSvgDownload = useCallback(() => {
     if (!svg) return;
     const filename = `${slugify(packet.name)}-diagram.svg`;
@@ -245,6 +257,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       onClick={(e) => {
         // Only close when the click both starts and ends on the backdrop
         // — `e.target === e.currentTarget` ensures we don't fire when a
@@ -255,12 +268,19 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
     >
       <div
         ref={cardRef}
-        className="w-full max-w-xl rounded-xl border p-4 bg-bg-elevated text-fg border-border"
+        // tabIndex=-1 lets useFocusTrap park initial focus on the card so
+        // screen readers announce the dialog title via aria-labelledby
+        // before Tab moves into the form controls.
+        tabIndex={-1}
+        className="w-full max-w-xl rounded-xl border p-4 bg-bg-elevated text-fg border-border focus:outline-none"
         style={{ boxShadow: "0 10px 25px rgba(0,0,0,0.12)" }}
       >
-        <h3 id={titleId} className="m-0 mb-3 text-sm font-semibold">
+        <h3 id={titleId} className="m-0 mb-1 text-sm font-semibold">
           Save image
         </h3>
+        <p id={descriptionId} className="m-0 mb-3 text-xs text-fg-muted">
+          Download the current diagram as an SVG (vector) or PNG (bitmap) file.
+        </p>
         <div
           className="diagram-export-preview mb-3 overflow-hidden rounded-lg border p-2 bg-bg border-border"
           aria-label="Diagram preview"
@@ -367,6 +387,12 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
                 {settings.pngScale}x
               </output>
             </div>
+            {svgDimensions ? (
+              <p className="m-0 mt-1 text-xs text-fg-muted">
+                ≈ {Math.round(svgDimensions.width * settings.pngScale)} ×{" "}
+                {Math.round(svgDimensions.height * settings.pngScale)} px
+              </p>
+            ) : null}
           </div>
         ) : null}
         {error ? (
