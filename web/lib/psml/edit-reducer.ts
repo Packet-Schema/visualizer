@@ -12,8 +12,16 @@
 // `path-resolver.ts`'s `resolveParent` / `descendNamed`; the shapes
 // recognised there are:
 //
-//   []                                       → the packet itself
-//   [i]                                      → packet.body[i] (Container)
+//   [i]                                      → packet.body[i] (Container).
+//                                              The empty path `[]` is
+//                                              reserved for "the packet
+//                                              itself", but `resolveParent`
+//                                              throws on it — none of the
+//                                              mutating actions target the
+//                                              packet root directly. Use
+//                                              `replace-packet` instead
+//                                              when you need to swap the
+//                                              whole body.
 //   [i, 'field']                             → terminal marker; this path
 //                                              token form is a leaf and
 //                                              cannot be descended into
@@ -51,19 +59,24 @@ import { isField } from "./utils";
 export type { Path } from "./path-resolver";
 
 /**
- * A targeted patch for any Container variant. `Partial<Container>` is a
- * single mapped type over the union of every variant's keys (it isn't
- * distributive over `Container`), so callers can hand us any subset of
- * those keys and the reducer copies them straight onto the existing
- * node. Compared to the old `Record<string, unknown>` this preserves
- * field names and stops typos from leaking through the studio reducer;
- * we do *not* try to enforce variant-specific shapes here (that would
- * need a distributive helper like `T extends Container ? Partial<T> :
- * never` and a discriminator on the action), since the reducer's
- * update-container case spreads onto a node whose `kind` is already
- * fixed.
+ * A targeted patch for any Container variant.
+ *
+ * We distribute over the `Container` union (`T extends unknown ? ... :
+ * never`) so each variant keeps its own non-discriminator fields —
+ * `Repeat.count`, `Switch.on`, `Encrypted.wireBits`, etc. — instead of
+ * being collapsed into the union's intersection. The `Omit<_, "kind">`
+ * strips the discriminator from every arm so the `update-container`
+ * reducer case can't be handed a patch that flips `kind` mid-tree
+ * (e.g. turning a `repeat` into a `switch`) and corrupt the PSML shape
+ * by leaving required variant fields missing. The reducer spreads onto
+ * an existing node whose `kind` is already fixed, so excluding it from
+ * the patch type is the minimum guard against that corruption path
+ * (Copilot review).
  */
-export type ContainerPatch = Partial<Container>;
+type DistributivePartialOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<Partial<T>, K>
+  : never;
+export type ContainerPatch = DistributivePartialOmit<Container, "kind">;
 
 export type EditAction =
   | { type: "add-field"; at: Path; field: Field }
