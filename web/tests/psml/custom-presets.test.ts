@@ -103,14 +103,20 @@ describe("listCustomPresets", () => {
     ]);
   });
 
-  it("falls back to the key when stored packet lacks a name", () => {
+  it("drops entries that fail PSML validation (e.g. missing name)", () => {
+    // `readRaw` runs `validatePsmlPacket` on each entry now so a third
+    // party that wrote a malformed blob into our storage key can't get
+    // a half-shaped Packet through to the UI. A valid sibling survives
+    // — per-entry isolation keeps one bad packet from wiping the
+    // library.
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ "custom:nameless": { rowBits: 32, body: [] } }),
+      JSON.stringify({
+        "custom:nameless": { rowBits: 32, body: [] },
+        "custom:ok": { name: "OK", rowBits: 32, body: [] },
+      }),
     );
-    expect(listCustomPresets()).toEqual([
-      { key: "custom:nameless", name: "custom:nameless" },
-    ]);
+    expect(listCustomPresets()).toEqual([{ key: "custom:ok", name: "OK" }]);
   });
 
   it("returns [] when nothing is stored", () => {

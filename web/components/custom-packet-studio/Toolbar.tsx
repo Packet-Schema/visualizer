@@ -105,11 +105,7 @@ export default function Toolbar({
     <div
       role="toolbar"
       aria-label="Custom Packet Studio toolbar"
-      className="flex flex-wrap items-center gap-1.5 p-2 border-b"
-      style={{
-        background: "var(--bg-subtle)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="flex flex-wrap items-center gap-1.5 p-2 border-b bg-bg-subtle border-border-strong"
     >
       <button
         type="button"
@@ -166,11 +162,7 @@ export default function Toolbar({
         + Encrypted
       </button>
 
-      <span
-        aria-hidden
-        className="mx-1 h-5 w-px"
-        style={{ background: "var(--border-strong)" }}
-      />
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
 
       <button
         type="button"
@@ -193,11 +185,7 @@ export default function Toolbar({
         Redo
       </button>
 
-      <span
-        aria-hidden
-        className="mx-1 h-5 w-px"
-        style={{ background: "var(--border-strong)" }}
-      />
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
 
       <button
         type="button"
@@ -218,11 +206,7 @@ export default function Toolbar({
         Discard
       </button>
 
-      <span
-        aria-hidden
-        className="mx-1 h-5 w-px"
-        style={{ background: "var(--border-strong)" }}
-      />
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
 
       <button
         type="button"

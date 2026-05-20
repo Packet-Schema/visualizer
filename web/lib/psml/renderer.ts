@@ -12,19 +12,10 @@
 // still consults when a category is missing.
 
 import type { ColorToken } from "../render-tokens";
+import type { CategoryToken } from "./types";
 
 export type { ColorToken } from "../render-tokens";
-
-export type CategoryToken =
-  | "addressing"
-  | "identifier"
-  | "length"
-  | "type"
-  | "flags"
-  | "reserved"
-  | "checksum"
-  | "variable"
-  | "payload-marker";
+export type { CategoryToken } from "./types";
 
 export type SubField = {
   id: string;

@@ -20,10 +20,7 @@ import type {
   Type,
 } from "./types";
 import { VARINT_ENCODINGS } from "./types";
-
-function isField(c: Container): c is Field {
-  return !("kind" in c) || c.kind === "field";
-}
+import { isField } from "./utils";
 
 /**
  * Shape-check an Expr — purely structural (no env evaluation). Catches typos

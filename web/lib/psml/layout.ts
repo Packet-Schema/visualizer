@@ -32,6 +32,16 @@ export function resolveLayout(
   packet: PsmlPacket,
   options: LayoutOptions = {},
 ): ResolvedLayout {
+  // `validate.ts` already requires rowBits > 0 on the import path, but
+  // callers that hand-build a PsmlPacket in tests / fuzz harness can
+  // reach `resolveLayout` without going through validation. Guarding
+  // here keeps the `bitPos % rowBits` / `Math.floor(bitPos / rowBits)`
+  // arithmetic below from collapsing into NaN.
+  if (!Number.isInteger(packet.rowBits) || packet.rowBits <= 0) {
+    throw new Error(
+      `resolveLayout: rowBits must be a positive integer; got ${String(packet.rowBits)}.`,
+    );
+  }
   const env: PacketEnv = new Map(options.env ?? initialEnv(packet));
   const viewMode: ViewMode = options.viewMode ?? "wire";
   const norm = normalize(packet, env, { viewMode });

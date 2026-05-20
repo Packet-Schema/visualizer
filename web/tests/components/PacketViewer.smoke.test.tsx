@@ -162,6 +162,59 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("rebuilds layout cleanly when switching presets after editing controllers", async () => {
+    // Regression: an earlier revision deferred `controllers` via
+    // useDeferredValue, so when we changed `packetKey` from ipv4 to ipv6 the
+    // layout was still computed with the previous `controllers.ihl=8` for a
+    // frame. The IPv6 diagram briefly showed IPv4-shaped cells.
+    const { container, cleanup } = await mountPacketViewer(
+      "/?preset=ipv4&controllers.ihl=8",
+    );
+    try {
+      // Sanity check: starts on ipv4 and the diagram has an IHL controller.
+      const picker = container.querySelector<HTMLSelectElement>("select");
+      expect(picker?.value).toBe("ipv4");
+      const ihlBefore =
+        container.querySelector<HTMLInputElement>("#ctrl-ihl-number");
+      expect(ihlBefore?.value).toBe("8");
+      const sourceCellBefore = container.querySelector(
+        '[data-field-id="srcAddr"]',
+      );
+      expect(sourceCellBefore).not.toBeNull();
+
+      // Switch the preset picker to ipv6.
+      await act(async () => {
+        if (!picker) throw new Error("preset picker missing");
+        picker.value = "ipv6";
+        picker.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // After the switch we should see IPv6's `srcAddr` field and *not* the
+      // IPv4 IHL controller — which would prove `controllers` was reset
+      // and the layout was rebuilt against the new packet shape.
+      expect(picker?.value).toBe("ipv6");
+      expect(
+        container.querySelector('[data-field-id="srcAddr"]'),
+      ).not.toBeNull();
+      expect(
+        container.querySelector<HTMLInputElement>("#ctrl-ihl-number"),
+      ).toBeNull();
+      // No IPv4 option-cell leftovers (Type=0 etc.) — those use the
+      // `${field.id}#${repeatIndex}` synthetic id from the Repeat expansion.
+      const leftoverIds = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-field-id]"),
+      )
+        .map((el) => el.dataset.fieldId ?? "")
+        .filter((id) => id.startsWith("type#") || id.startsWith("type:"));
+      expect(leftoverIds).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("stores a same-named shared packet under the next custom key when content differs", async () => {
     const name = "Shared URL Packet";
     const storedPacket = mkPacket(name, "stored-field");

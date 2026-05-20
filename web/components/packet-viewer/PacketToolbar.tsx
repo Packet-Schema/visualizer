@@ -3,16 +3,12 @@ import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
 import PresetPicker from "@/components/presets/PresetPicker";
 import ToolbarButton from "./ToolbarButton";
 
-type Props = {
-  packetKey: string;
-  importedPackets: PacketRegistry;
-  customPresets: Record<string, PsmlPacket>;
-  hexStripVisible: boolean;
-  dependenciesVisible: boolean;
-  editMode: boolean;
-  viewMode: ViewMode;
-  headerSizeLabel: string;
-  shareStatus: { msg: string; kind: "ok" | "error" } | null;
+/**
+ * Every action the toolbar fires. Bundling them lets the parent (PacketViewer)
+ * pass one prop instead of eleven, and keeps the prop list focused on what
+ * the toolbar actually *renders*.
+ */
+export type PacketToolbarActions = {
   onPacketChange: (nextKey: string) => void;
   onExportCustomPresets: () => void;
   onImportCustomPresets: () => void;
@@ -26,6 +22,19 @@ type Props = {
   onDeleteCustomPreset: () => void;
 };
 
+type Props = {
+  packetKey: string;
+  importedPackets: PacketRegistry;
+  customPresets: Record<string, PsmlPacket>;
+  hexStripVisible: boolean;
+  dependenciesVisible: boolean;
+  editMode: boolean;
+  viewMode: ViewMode;
+  headerSizeLabel: string;
+  shareStatus: { msg: string; kind: "ok" | "error" } | null;
+  actions: PacketToolbarActions;
+};
+
 export default function PacketToolbar({
   packetKey,
   importedPackets,
@@ -36,18 +45,21 @@ export default function PacketToolbar({
   viewMode,
   headerSizeLabel,
   shareStatus,
-  onPacketChange,
-  onExportCustomPresets,
-  onImportCustomPresets,
-  onOpenImport,
-  onOpenExport,
-  onShare,
-  onToggleHexStrip,
-  onToggleDependencies,
-  onToggleViewMode,
-  onToggleEditMode,
-  onDeleteCustomPreset,
+  actions,
 }: Props) {
+  const {
+    onPacketChange,
+    onExportCustomPresets,
+    onImportCustomPresets,
+    onOpenImport,
+    onOpenExport,
+    onShare,
+    onToggleHexStrip,
+    onToggleDependencies,
+    onToggleViewMode,
+    onToggleEditMode,
+    onDeleteCustomPreset,
+  } = actions;
   return (
     <div
       className="flex flex-wrap items-center gap-3 mb-2 rounded-[10px] border px-3.5 py-2.5"
@@ -120,21 +132,16 @@ export default function PacketToolbar({
         <div
           role="status"
           aria-live="polite"
-          className="text-xs font-medium"
-          style={{
-            color:
-              shareStatus.kind === "error"
-                ? "var(--field-rose)"
-                : "var(--field-green)",
-          }}
+          className={`text-xs font-medium ${
+            shareStatus.kind === "error"
+              ? "text-field-rose"
+              : "text-field-green"
+          }`}
         >
           {shareStatus.msg}
         </div>
       ) : null}
-      <div
-        className="ml-auto text-[13px] font-mono tabular-nums"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <div className="ml-auto text-sm-tight font-mono tabular-nums text-fg-muted">
         Header size: {headerSizeLabel}
       </div>
     </div>

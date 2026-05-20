@@ -1,11 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Packet Visualizer",
   description: "Visual viewer for common network packet headers.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "oklch(99% 0.005 260)" },
+    { media: "(prefers-color-scheme: dark)", color: "oklch(18% 0.025 270)" },
+  ],
 };
 
 // 2026 typography: Geist + Geist Mono via next/font for self-hosted, FOIT-free
@@ -49,10 +59,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${geistSans.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-      </head>
-      <body>{children}</body>
+      <body>
+        {/* `beforeInteractive` runs in <head> before hydration and is the
+            Next-sanctioned way to ship a synchronous inline bootstrap. */}
+        <Script id="pv-theme-bootstrap" strategy="beforeInteractive">
+          {themeBootstrap}
+        </Script>
+        {children}
+      </body>
     </html>
   );
 }

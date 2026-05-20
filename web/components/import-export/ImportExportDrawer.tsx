@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { fromAad } from "@/lib/formats/aug-ascii";
-import { fromJson, toJson } from "@/lib/formats/json";
-import { fromKsy, toKsy } from "@/lib/formats/ksy";
-import { toAscii } from "@/lib/formats/rfc-ascii";
+import {
+  EXPORTABLE_FORMATS,
+  FORMATS,
+  IMPORTABLE_FORMATS,
+  getFormat,
+  type FormatKey,
+} from "@/lib/formats/registry";
 import {
   downloadBlob,
-  extensionToFormat,
-  formatToExtension,
+  extToFormat,
   readFileAsText,
   slugify,
 } from "@/lib/preset-file-io";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 import type { ControllerState, Packet } from "@/lib/psml/renderer";
 
+import { useDrawerFocusTrap } from "./hooks/useDrawerFocusTrap";
+import { useDropzone } from "./hooks/useDropzone";
+
 export type DrawerMode = "import" | "export";
-export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
+export type { FormatKey } from "@/lib/formats/registry";
 
 type Props = {
   open: boolean;
@@ -31,21 +36,9 @@ type Props = {
 type StatusKind = "ok" | "warn" | "error";
 type Status = { msg: string; kind: StatusKind } | null;
 
-const FORMAT_LABELS: Record<FormatKey, string> = {
-  json: "JSON",
-  "rfc-ascii": "RFC ASCII",
-  "aug-ascii": "AAD (Augmented ASCII)",
-  ksy: "Kaitai (.ksy)",
-};
-
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type=hidden])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
+const FORMAT_LABELS: Record<FormatKey, string> = Object.fromEntries(
+  FORMATS.map((f) => [f.id, f.label]),
+) as Record<FormatKey, string>;
 
 export default function ImportExportDrawer({
   open,
@@ -61,35 +54,35 @@ export default function ImportExportDrawer({
   const [currentMode, setCurrentMode] = useState<DrawerMode>(mode);
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useDrawerFocusTrap({ open, containerRef: drawerRef, onClose });
 
-  // Format availability per mode.
+  // Format availability per mode — derived from each adapter's parse/render
+  // presence so a new entry in `FORMATS` shows up automatically.
   const availableFormats: FormatKey[] = useMemo(
-    () =>
-      currentMode === "import"
-        ? ["json", "aug-ascii", "ksy"]
-        : ["json", "rfc-ascii", "ksy"],
+    () => (currentMode === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS),
     [currentMode],
   );
 
-  // Sync mode when parent re-opens with a different mode.
-  useEffect(() => {
-    if (open) {
-      setCurrentMode(mode);
-      // Default sensible format per mode.
-      setFormat(mode === "import" ? "json" : "json");
-      setText("");
-      setStatus(null);
-    }
-  }, [open, mode]);
+  // Snap `format` into the allowed list for the new mode, preserving the
+  // user's pick when it's still legal. Called from both the parent-driven
+  // re-open effect and the user-driven mode toggle so the two paths can't
+  // drift in what counts as a valid format for a given pane.
+  const snapFormatForMode = useCallback((next: DrawerMode) => {
+    const allowed = next === "import" ? IMPORTABLE_FORMATS : EXPORTABLE_FORMATS;
+    setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
+  }, []);
 
-  // Snap to a valid format when mode changes.
+  // Sync mode + reset transient state when the parent re-opens the drawer.
+  // Format normalisation lives in `snapFormatForMode` so we don't need a
+  // second effect to "snap" after the mode flip.
   useEffect(() => {
-    if (!availableFormats.includes(format)) {
-      setFormat(availableFormats[0]);
-    }
-  }, [availableFormats, format]);
+    if (!open) return;
+    setCurrentMode(mode);
+    snapFormatForMode(mode);
+    setText("");
+    setStatus(null);
+  }, [open, mode, snapFormatForMode]);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
@@ -100,13 +93,13 @@ export default function ImportExportDrawer({
       // plain object keyed by controller id; PSML's PacketEnv is a Map.
       const psml = rendererToPsml(packet);
       const env = new Map<string, number>(Object.entries(controllers));
-      if (format === "json") {
-        setText(toJson(psml, env));
-      } else if (format === "rfc-ascii") {
-        setText(toAscii(psml, env));
-      } else if (format === "ksy") {
-        setText(toKsy(psml));
+      const adapter = getFormat(format);
+      if (!adapter.render) {
+        throw new Error(
+          `Export to "${adapter.label}" is not supported. Try another format.`,
+        );
       }
+      setText(adapter.render(psml, env));
       setStatus(null);
     } catch (e) {
       setStatus({
@@ -116,106 +109,40 @@ export default function ImportExportDrawer({
     }
   }, [open, currentMode, format, packet, controllers]);
 
-  // Capture / restore focus + Esc + focus trap.
-  useEffect(() => {
-    if (!open) return;
-    returnFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    // Move focus into the drawer.
-    const focusables = getFocusables(drawerRef.current);
-    if (focusables.length > 0) focusables[0].focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key === "Tab" && drawerRef.current) {
-        const list = getFocusables(drawerRef.current);
-        if (list.length === 0) {
-          e.preventDefault();
-          return;
-        }
-        const first = list[0];
-        const last = list[list.length - 1];
-        const active = document.activeElement;
-        if (e.shiftKey) {
-          if (active === first || !drawerRef.current.contains(active)) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (active === last || !drawerRef.current.contains(active)) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open, onClose]);
-
-  // Restore focus on close.
-  useEffect(() => {
-    if (open) return;
-    const el = returnFocusRef.current;
-    if (el && document.contains(el)) {
-      try {
-        el.focus();
-      } catch {
-        /* ignore */
-      }
-    }
-    returnFocusRef.current = null;
-  }, [open]);
-
-  const handleModeChange = useCallback((next: DrawerMode) => {
-    setCurrentMode(next);
-    setText("");
-    setStatus(null);
-  }, []);
+  const handleModeChange = useCallback(
+    (next: DrawerMode) => {
+      setCurrentMode(next);
+      snapFormatForMode(next);
+      setText("");
+      setStatus(null);
+    },
+    [snapFormatForMode],
+  );
 
   const handleApply = useCallback(() => {
     try {
-      if (format === "json") {
-        const { packet: psml, env } = fromJson(text);
-        const runtime = psmlToRenderer(psml);
-        const controllers: ControllerState = {};
-        for (const [k, v] of env) controllers[k] = v;
-        onImport(runtime, controllers);
-        setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
-      } else if (format === "aug-ascii") {
-        const { packet: psml, warnings } = fromAad(text);
-        const runtime = psmlToRenderer(psml);
-        onImport(runtime, {});
-        if (warnings.length) {
-          setStatus({
-            msg: `Imported with warnings: ${warnings.join("; ")}`,
-            kind: "warn",
-          });
-        } else {
-          setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
-        }
-      } else if (format === "ksy") {
-        const { packet: psml, warnings } = fromKsy(text);
-        const runtime = psmlToRenderer(psml);
-        onImport(runtime, {});
-        if (warnings.length) {
-          setStatus({
-            msg: `Imported "${psml.name}" with ${warnings.length} warning(s): ${warnings.join("; ")}`,
-            kind: "warn",
-          });
-        } else {
-          setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
-        }
+      const adapter = getFormat(format);
+      if (!adapter.parse) {
+        throw new Error(
+          `Import from "${adapter.label}" is not supported. Try another format.`,
+        );
+      }
+      const { packet: psml, env, warnings } = adapter.parse(text);
+      const runtime = psmlToRenderer(psml);
+      const controllers: ControllerState = {};
+      if (env) for (const [k, v] of env) controllers[k] = v;
+      onImport(runtime, controllers);
+      if (warnings && warnings.length) {
+        const prefix =
+          format === "ksy"
+            ? `Imported "${psml.name}" with ${warnings.length} warning(s)`
+            : "Imported with warnings";
+        setStatus({
+          msg: `${prefix}: ${warnings.join("; ")}`,
+          kind: "warn",
+        });
       } else {
-        throw new Error(`Format "${format}" cannot be imported.`);
+        setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
       }
     } catch (e) {
       setStatus({
@@ -227,10 +154,9 @@ export default function ImportExportDrawer({
 
   const handleDownload = useCallback(() => {
     try {
-      const ext = formatToExtension(format);
-      const filename = `${slugify(packet.name)}.${ext}`;
-      const mime = format === "json" ? "application/json" : "text/plain";
-      downloadBlob(filename, mime, text);
+      const adapter = getFormat(format);
+      const filename = `${slugify(packet.name)}.${adapter.extension}`;
+      downloadBlob(filename, adapter.mime, text);
       setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
     } catch (e) {
       setStatus({
@@ -248,7 +174,7 @@ export default function ImportExportDrawer({
       try {
         const content = await readFileAsText(file);
         setText(content);
-        const detected = extensionToFormat(file.name);
+        const detected = extToFormat(file.name);
         if (detected && availableFormats.includes(detected)) {
           setFormat(detected);
         }
@@ -279,11 +205,34 @@ export default function ImportExportDrawer({
 
   const handleCopy = useCallback(async () => {
     try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else if (textareaRef.current) {
-        textareaRef.current.select();
-        document.execCommand?.("copy");
+      // Try the async Clipboard API first, then fall through to the
+      // legacy execCommand path if the API is missing *or* rejected
+      // (Permissions-Policy / NotAllowedError / non-secure context).
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch {
+          // Swallow the reject and let the fallback below try.
+        }
+      }
+      if (!copied) {
+        // The export textarea is already in the DOM with the same content,
+        // so selecting it and using legacy `execCommand("copy")` works
+        // without requiring a hidden helper element.
+        const ta = textareaRef.current;
+        if (!ta) {
+          throw new Error("Export textarea is not available.");
+        }
+        const prev = { start: ta.selectionStart, end: ta.selectionEnd };
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.setSelectionRange(prev.start, prev.end);
+        if (!ok) {
+          throw new Error("Copy command was rejected by the browser.");
+        }
       }
       setStatus({ msg: "Copied to clipboard.", kind: "ok" });
     } catch (e) {
@@ -291,42 +240,11 @@ export default function ImportExportDrawer({
     }
   }, [text]);
 
-  // Spring-slide the drawer + fade the backdrop on open via Motion One.
-  // Lazy-imported so SSR stays untouched. We respect prefers-reduced-motion.
+  // Slide-and-fade entry is handled by CSS (`@starting-style` on the
+  // `.pv-drawer-backdrop` / `.pv-drawer` classes in styles/drawer.css).
+  // `prefers-reduced-motion` is honoured by the global override in
+  // app/globals.css.
   const backdropRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { animate } = await import("motion");
-        if (cancelled) return;
-        if (drawerRef.current) {
-          animate(
-            drawerRef.current,
-            { x: [20, 0], opacity: [0, 1] },
-            { duration: 0.24, ease: [0.32, 0.72, 0, 1] },
-          );
-        }
-        if (backdropRef.current) {
-          animate(
-            backdropRef.current,
-            { opacity: [0, 1] },
-            { duration: 0.18, ease: "easeOut" },
-          );
-        }
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
 
   if (!open) return null;
 
@@ -334,11 +252,10 @@ export default function ImportExportDrawer({
     <div
       ref={backdropRef}
       role="presentation"
-      className="fixed inset-0 z-[100] flex"
+      className="pv-drawer-backdrop fixed inset-0 z-[100] flex"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      style={{ background: "oklch(18% 0.03 270 / 0.45)" }}
     >
       <div className="flex-1" aria-hidden="true" />
       {/* Width: full-width below 900px, 40% at >= 900px (per spec). */}
@@ -352,7 +269,7 @@ export default function ImportExportDrawer({
         ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`${currentMode === "import" ? "Import" : "Export"} packet definition`}
+        aria-labelledby="pv-import-export-title"
         className="pv-drawer h-full max-w-full flex flex-col shadow-2xl"
         style={{
           background: "var(--bg-elevated)",
@@ -423,34 +340,14 @@ function DrawerInner({
   onFileDropped,
   onClose,
 }: InnerProps) {
-  const [dragActive, setDragActive] = useState(false);
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(true);
-  }, []);
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-  }, []);
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragActive(false);
-      const file = e.dataTransfer?.files?.[0];
-      if (file) onFileDropped(file);
-    },
-    [onFileDropped],
-  );
+  const { dragActive, handlers: dropHandlers } = useDropzone({
+    enabled: currentMode === "import",
+    onFile: onFileDropped,
+  });
   return (
     <>
-      <header
-        className="flex items-center justify-between px-4 py-3 border-b"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <h2 className="text-base font-semibold m-0">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h2 id="pv-import-export-title" className="text-base font-semibold m-0">
           {currentMode === "import" ? "Import packet" : "Export packet"}
         </h2>
         <button
@@ -470,7 +367,7 @@ function DrawerInner({
 
       <div className="px-4 py-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-medium">
-          <span style={{ color: "var(--fg-muted)" }}>Mode:</span>
+          <span className="text-fg-muted">Mode:</span>
           <select
             value={currentMode}
             onChange={(e) => onModeChange(e.target.value as DrawerMode)}
@@ -486,7 +383,7 @@ function DrawerInner({
           </select>
         </label>
         <label className="flex items-center gap-2 text-sm font-medium">
-          <span style={{ color: "var(--fg-muted)" }}>Format:</span>
+          <span className="text-fg-muted">Format:</span>
           <select
             value={format}
             onChange={(e) => onFormatChange(e.target.value as FormatKey)}
@@ -521,7 +418,7 @@ function DrawerInner({
             >
               Upload file
             </button>
-            <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+            <span className="text-xs text-fg-muted">
               or drop a file on the textarea
             </span>
             <input
@@ -529,7 +426,7 @@ function DrawerInner({
               type="file"
               accept=".json,.psml.json,.txt,.ksy,.aad"
               onChange={onFileInputChange}
-              style={{ display: "none" }}
+              className="hidden"
               aria-hidden="true"
               tabIndex={-1}
             />
@@ -537,9 +434,9 @@ function DrawerInner({
         ) : null}
         <div
           className={`flex-1 min-h-[200px] flex rounded-md ${dragActive ? "drawer-drop-active" : ""}`}
-          onDragOver={currentMode === "import" ? handleDragOver : undefined}
-          onDragLeave={currentMode === "import" ? handleDragLeave : undefined}
-          onDrop={currentMode === "import" ? handleDrop : undefined}
+          onDragOver={dropHandlers?.onDragOver}
+          onDragLeave={dropHandlers?.onDragLeave}
+          onDrop={dropHandlers?.onDrop}
           style={{
             outline: dragActive ? "2px dashed var(--accent)" : "none",
             outlineOffset: "-2px",
@@ -564,28 +461,23 @@ function DrawerInner({
           />
         </div>
         <div
-          className="text-xs min-h-[1.25rem]"
+          className={`text-xs min-h-[1.25rem] ${
+            status?.kind === "error"
+              ? "text-field-rose"
+              : status?.kind === "warn"
+                ? "text-field-amber"
+                : status?.kind === "ok"
+                  ? "text-field-green"
+                  : "text-fg-muted"
+          }`}
           role="status"
           aria-live="polite"
-          style={{
-            color:
-              status?.kind === "error"
-                ? "var(--field-rose)"
-                : status?.kind === "warn"
-                  ? "var(--field-amber)"
-                  : status?.kind === "ok"
-                    ? "var(--field-green)"
-                    : "var(--fg-muted)",
-          }}
         >
           {status?.msg ?? ""}
         </div>
       </div>
 
-      <footer
-        className="flex items-center justify-end gap-2 px-4 py-3 border-t"
-        style={{ borderColor: "var(--border)" }}
-      >
+      <footer className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
         <button
           type="button"
           onClick={onClose}
@@ -602,12 +494,7 @@ function DrawerInner({
           <button
             type="button"
             onClick={onApply}
-            className="text-sm px-3 py-1.5 rounded-md border font-semibold"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-fg)",
-              borderColor: "var(--accent)",
-            }}
+            className="text-sm px-3 py-1.5 rounded-md border font-semibold bg-accent text-accent-fg border-accent"
           >
             Apply
           </button>
@@ -628,12 +515,7 @@ function DrawerInner({
             <button
               type="button"
               onClick={onDownload}
-              className="text-sm px-3 py-1.5 rounded-md border font-semibold"
-              style={{
-                background: "var(--accent)",
-                color: "var(--accent-fg)",
-                borderColor: "var(--accent)",
-              }}
+              className="text-sm px-3 py-1.5 rounded-md border font-semibold bg-accent text-accent-fg border-accent"
             >
               Download
             </button>
@@ -642,16 +524,4 @@ function DrawerInner({
       </footer>
     </>
   );
-}
-
-function getFocusables(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return [];
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-  ).filter((el) => {
-    if (el.hidden) return false;
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    return true;
-  });
 }

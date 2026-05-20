@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties } from "react";
 
-import type { Field, ResolvedLayout } from "@/lib/psml/renderer";
-import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
+import type { ResolvedLayout } from "@/lib/psml/renderer";
+import { categoryColor } from "@/lib/render-tokens";
 
 type Props = {
   layout: ResolvedLayout;
@@ -24,17 +24,6 @@ type ByteOwner = {
 };
 
 /**
- * Resolve the color CSS value for a field, mirroring HybridDiagram's logic so
- * the strip and diagram stay visually in sync.
- */
-function resolveFieldColor(field: Field): string {
-  if (field.category && CATEGORY_TO_TOKEN[field.category]) {
-    return tokenToCssVar(CATEGORY_TO_TOKEN[field.category]);
-  }
-  return tokenToCssVar(field.color);
-}
-
-/**
  * Walk the resolved layout and compute owners for every byte. Returns an
  * array of length `totalBytes` where each entry is the list of fields/subfields
  * that contribute bits to that byte (in MSB->LSB order within the byte).
@@ -49,7 +38,7 @@ function computeByteOwners(
   for (const cell of layout.cells) {
     const absStart = cell.row * rowBits + cell.startBit;
     const absEnd = cell.row * rowBits + cell.endBit;
-    const color = resolveFieldColor(cell.field);
+    const color = categoryColor(cell.field);
 
     // If a cell has subCells, prefer them for owner attribution so sub-byte
     // fields (Version 4 + IHL 4 in IPv4 byte 0) split the cell.
@@ -179,10 +168,7 @@ export default function HexStrip({
       role="group"
       aria-label="Header bytes (placeholder values)"
     >
-      <div
-        className="hex-strip-label text-[11px] uppercase tracking-wider font-bold mb-1.5"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <div className="hex-strip-label text-3xs uppercase tracking-wider font-bold mb-1.5 text-fg-muted">
         Bytes ({byteOwners.length})
       </div>
       <div className="hex-strip-row flex flex-wrap gap-[3px]">

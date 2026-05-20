@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 
 import type {
   Cell,
@@ -8,7 +8,7 @@ import type {
   SubCell,
   SubField,
 } from "@/lib/psml/renderer";
-import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
+import { categoryColor } from "@/lib/render-tokens";
 
 type Props = {
   packet: Packet;
@@ -23,13 +23,6 @@ type Props = {
   /** Optional hover sink (used by HexStrip for bidirectional highlight). */
   onFieldHover?: (fieldId: string | null) => void;
 };
-
-function resolveFieldColor(field: Field): string {
-  if (field.category && CATEGORY_TO_TOKEN[field.category]) {
-    return tokenToCssVar(CATEGORY_TO_TOKEN[field.category]);
-  }
-  return tokenToCssVar(field.color);
-}
 
 function formatBitsLabel(bits: number, field: Field): string {
   if (field.variable) return `${bits} bits (var)`;
@@ -108,6 +101,7 @@ export default function HybridDiagram({
     </div>
   );
 }
+HybridDiagram.displayName = "HybridDiagram";
 
 type FieldCellProps = {
   cell: Cell;
@@ -122,7 +116,52 @@ type FieldCellProps = {
   tabIndex: number;
 };
 
-function FieldCell({
+// Treat a selectedFieldId as "owned by this cell" when it matches the cell's
+// field id exactly *or* it points at a subfield rendered inside this cell.
+// Subfield ids look like `${parentField.id}:${subfield.name}` (see
+// SubfieldRow.onClick below), so a prefix match against the same parent is
+// enough to know we should re-render the cell.
+function cellOwnsSelection(
+  cellFieldId: string,
+  selectedFieldId: string | null,
+): boolean {
+  if (selectedFieldId === null) return false;
+  if (selectedFieldId === cellFieldId) return true;
+  return selectedFieldId.startsWith(`${cellFieldId}:`);
+}
+
+const FieldCell = memo(FieldCellImpl, (prev, next) => {
+  // Identity check is enough because `cell` comes from a useMemo (layout)
+  // and the parent rebuilds it only when `controllers` / `packet` change.
+  // We compare `selectedFieldId` separately because it changes on every
+  // click but should only invalidate cells that go in/out of the selection.
+  if (prev.cell !== next.cell) return false;
+  if (prev.tabIndex !== next.tabIndex) return false;
+  if (prev.onFieldClick !== next.onFieldClick) return false;
+  if (prev.onSubfieldClick !== next.onSubfieldClick) return false;
+  if (prev.onFieldHover !== next.onFieldHover) return false;
+  // Re-render only the cell that *was* selected (directly or via one of its
+  // subfields) and the cell that *is now* selected — everything else can
+  // skip. The subfield prefix match below is what fixes the bug where
+  // clicking a `parent:sub` subfield didn't repaint the `.selected` class
+  // on the SubfieldRow underneath an already-mounted parent FieldCell.
+  const wasSelected = cellOwnsSelection(
+    prev.cell.field.id,
+    prev.selectedFieldId,
+  );
+  const isSelected = cellOwnsSelection(
+    next.cell.field.id,
+    next.selectedFieldId,
+  );
+  if (wasSelected !== isSelected) return false;
+  // Both ends "own" the selection — re-render iff the selected subfield
+  // within this cell actually changed (e.g. clicking from `parent:a` to
+  // `parent:b`). When neither end owns it, the equality above already
+  // returned `true` for "skip".
+  return prev.selectedFieldId === next.selectedFieldId || !isSelected;
+});
+
+function FieldCellImpl({
   cell,
   selectedFieldId,
   onFieldClick,
@@ -134,7 +173,7 @@ function FieldCell({
   const span = cell.endBit - cell.startBit + 1;
   const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
   const variableNote = cell.field.variable ? ", variable-length" : "";
-  const fill = resolveFieldColor(cell.field);
+  const fill = categoryColor(cell.field);
   // Encryption-decoration props are written to the rendered cell on PSML 0.3
   // packets. Wire mode collapses to one `encrypted` block; semantic mode emits
   // child fields tagged with `encryptedParentId`. `headerProtected` is a

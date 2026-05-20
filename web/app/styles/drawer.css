@@ -1,0 +1,35 @@
+@layer components {
+  /* ==========================================================================
+   Import / export drawer
+   ========================================================================== */
+
+  /* CSS-only entry animations. Replaces a Motion One `animate(...)` call so
+     the bundle stays free of an animation runtime. `@starting-style` sets
+     the initial values; the `transition` on the steady-state rule does the
+     actual animating on mount. `prefers-reduced-motion` is handled by the
+     global override in app/globals.css. */
+  .pv-drawer-backdrop {
+    background: oklch(18% 0.03 270 / 0.45);
+    opacity: 1;
+    transition: opacity 0.18s ease-out;
+  }
+  @starting-style {
+    .pv-drawer-backdrop {
+      opacity: 0;
+    }
+  }
+
+  .pv-drawer {
+    opacity: 1;
+    translate: 0;
+    transition:
+      opacity 0.24s var(--pv-ease, ease-out),
+      translate 0.24s var(--pv-ease, ease-out);
+  }
+  @starting-style {
+    .pv-drawer {
+      opacity: 0;
+      translate: 20px 0;
+    }
+  }
+}

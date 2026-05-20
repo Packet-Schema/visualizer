@@ -37,21 +37,38 @@
 // Color is intentionally not part of the wire shape — PSML carries
 // semantic category only.
 
-import type { Packet, PacketEnv } from "../psml/types";
+import type { Constraint, Container, Packet, PacketEnv } from "../psml/types";
 
 const FORMAT_TAG = "psml";
 const FORMAT_VERSION = "0.2";
+// Versions we tolerate on input. The on-wire JSON shape is shape-stable
+// across 0.2 → 0.4: every PSML 0.3 / 0.4 addition (Encrypted, varint,
+// Optional, peek, berLength, per-field byteOrder) lives on tagged sub-
+// objects that `body: Container[]` already passes through structurally,
+// so an older codec can still parse a packet that carries those
+// features. Downstream `validate.ts` does the real semantic check —
+// rejecting at the version string forced users on 0.3 / 0.4 saves to
+// hand-edit the JSON, which we don't want.
+type SupportedVersion = "0.2" | "0.3" | "0.4";
+const SUPPORTED_VERSIONS = new Set<SupportedVersion>(["0.2", "0.3", "0.4"]);
 
-/** Serialised JSON wire shape — the structural mirror of PSML. */
+/**
+ * Serialised JSON wire shape — the structural mirror of PSML.
+ *
+ * `version` is widened to the full SupportedVersion union so the type
+ * reflects what `fromJson` actually accepts. The writer (`toJson`) only
+ * ever emits FORMAT_VERSION ("0.2") as the canonical output; readers
+ * narrow further before use if needed (Copilot review).
+ */
 export type JsonPsmlPacket = {
   format: typeof FORMAT_TAG;
-  version: typeof FORMAT_VERSION;
+  version: SupportedVersion;
   name: string;
   rowBits: number;
   byteOrder?: string;
   description?: string;
-  body: unknown[];
-  constraints?: unknown[];
+  body: Container[];
+  constraints?: Constraint[];
   env?: Record<string, number>;
 };
 
@@ -84,9 +101,9 @@ export function toJson(packet: Packet, env?: PacketEnv): string {
     rowBits: packet.rowBits,
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
     ...(packet.description ? { description: packet.description } : {}),
-    body: packet.body as unknown[],
+    body: packet.body,
     ...(packet.constraints && packet.constraints.length > 0
-      ? { constraints: packet.constraints as unknown[] }
+      ? { constraints: packet.constraints }
       : {}),
     ...(envToObject(env) ? { env: envToObject(env) } : {}),
   };
@@ -108,7 +125,10 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
   if (r.format !== FORMAT_TAG) {
     throw new Error(`Unknown format tag: ${String(r.format ?? "(missing)")}`);
   }
-  if (r.version !== FORMAT_VERSION) {
+  if (
+    typeof r.version !== "string" ||
+    !SUPPORTED_VERSIONS.has(r.version as SupportedVersion)
+  ) {
     throw new Error(`Unsupported PSML version: ${String(r.version)}`);
   }
   if (typeof r.name !== "string" || r.name.length === 0) {
