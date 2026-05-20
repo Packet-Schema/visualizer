@@ -991,6 +991,7 @@ export default function PacketViewer() {
     </>
   );
 }
+PacketViewer.displayName = "PacketViewer";
 
 function persistSharedCustomPreset(
   packet: PsmlPacket,

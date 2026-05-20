@@ -130,7 +130,14 @@ function parseControllers(params: URLSearchParams): ControllerState {
     const controllerKey = key.slice(CONTROLLER_PARAM_PREFIX.length);
     if (!controllerKey) continue;
     const value = Number(raw);
-    if (Number.isFinite(value)) out[controllerKey] = value;
+    // Reject anything that's not a representable integer-sized number.
+    // `Number.isFinite` filters NaN / ±Infinity but still admits values
+    // up to `Number.MAX_VALUE` (1.8e308); those round to Infinity once
+    // any downstream multiplication touches them. Clamping at
+    // MAX_SAFE_INTEGER keeps the slider / layout math precise.
+    if (Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER) {
+      out[controllerKey] = value;
+    }
   }
   return out;
 }

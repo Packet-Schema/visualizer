@@ -243,6 +243,13 @@ function collectRefs(expr: Expr, set: Set<string>): void {
       collectRefs(expr.t, set);
       collectRefs(expr.f, set);
       return;
+    case "peek":
+      // peek.bits is a literal but peek.offset is itself an Expr, so a
+      // lookahead like `peek(8, ref("hdr_len"))` does pull a ref into
+      // the constraint graph. Missing this case made `uniqueRefs`
+      // under-count and the propagator skip valid drivers.
+      if (expr.offset) collectRefs(expr.offset, set);
+      return;
   }
 }
 

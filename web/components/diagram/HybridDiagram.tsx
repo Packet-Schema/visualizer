@@ -101,6 +101,7 @@ export default function HybridDiagram({
     </div>
   );
 }
+HybridDiagram.displayName = "HybridDiagram";
 
 type FieldCellProps = {
   cell: Cell;
