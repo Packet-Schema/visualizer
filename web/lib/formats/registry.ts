@@ -114,6 +114,15 @@ export const EXPORTABLE_FORMATS = FORMATS.filter((f) => !!f.render).map(
   (f) => f.id,
 );
 
+// Precompute the (`.ext` → FormatKey) lookup once at module load — sorted by
+// extension length descending so compound suffixes like `.psml.json` match
+// before the friendlier `.json` fallback below. The earlier in-function sort
+// allocated a fresh copy of `FORMATS` and re-sorted on every drop / file
+// selection; this list is FORMATS-stable so a single shared array is safe.
+const EXT_LOOKUP: ReadonlyArray<readonly [string, FormatKey]> = [...FORMATS]
+  .sort((a, b) => b.extension.length - a.extension.length)
+  .map((f) => [`.${f.extension}`, f.id] as const);
+
 /**
  * File extension → FormatKey for download/upload round-trip. Recognises both
  * the canonical extensions and a couple of friendly aliases ('.json' alone is
@@ -122,12 +131,8 @@ export const EXPORTABLE_FORMATS = FORMATS.filter((f) => !!f.render).map(
 export function extToFormat(filename: string): FormatKey | null {
   if (typeof filename !== "string") return null;
   const lower = filename.toLowerCase();
-  // Compound extensions first so e.g. `*.psml.json` doesn't fall through to `*.json`.
-  const sorted = [...FORMATS].sort(
-    (a, b) => b.extension.length - a.extension.length,
-  );
-  for (const f of sorted) {
-    if (lower.endsWith(`.${f.extension}`)) return f.id;
+  for (const [ext, id] of EXT_LOOKUP) {
+    if (lower.endsWith(ext)) return id;
   }
   // Friendly aliases.
   if (lower.endsWith(".json")) return "json";
