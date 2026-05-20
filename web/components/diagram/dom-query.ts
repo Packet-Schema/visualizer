@@ -55,6 +55,15 @@ function escapeSelectorValue(value: string): string {
       out += ch;
       continue;
     }
+    if (ch === "\\") {
+      // Explicit backslash branch: emit the literal two-character
+      // escape `\\` so the rendered attribute selector matches a
+      // single backslash without leaving the closing quote stranded
+      // (Copilot review flagged the template-literal form below as
+      // ambiguous when `ch` is itself a backslash).
+      out += "\\\\";
+      continue;
+    }
     // Any other ASCII (space, punctuation, control) gets a single
     // backslash prefix per the spec's character-escape branch.
     out += `\\${ch}`;
