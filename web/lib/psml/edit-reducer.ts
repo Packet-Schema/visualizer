@@ -8,21 +8,29 @@
 // Path scheme
 // -----------
 // A `Path` is a sequence of (string | number) tokens that addresses a node
-// inside a `PsmlPacket`. Paths always descend into the packet body using
-// numeric indices and named child slots:
+// inside a `PsmlPacket`. The grammar is defined and walked by
+// `path-resolver.ts`'s `resolveParent` / `descendNamed`; the shapes
+// recognised there are:
 //
-//   []                                     → the packet itself
-//   [i]                                    → packet.body[i] (Container)
-//   [i, 'field']                           → packet.body[i] treated as a Field
-//   [i, 'element', 'fields', j]            → Repeat → element.fields[j]
-//   [i, 'plaintext', 'fields', j]          → Encrypted → plaintext.fields[j]
-//   [i, 'children', j]                     → Group → children[j]
-//   [i, 'cases', '<key>', 'fields', j]     → Switch case struct field
-//   [i, 'default', 'fields', j]            → Switch default struct field
+//   []                                       → the packet itself
+//   [i]                                      → packet.body[i] (Container)
+//   [i, 'field']                             → terminal marker; this path
+//                                              token form is a leaf and
+//                                              cannot be descended into
+//   [i, 'children', j]                       → Group.children[j]
+//   [i, 'fields', j]                         → Struct.fields[j] inside a
+//                                              Switch case / default arm
+//   [i, 'element', j]                        → Repeat.element.fields[j]
+//   [i, 'plaintext', j]                      → Encrypted.plaintext.fields[j]
+//   [i, 'default', j]                        → Switch.default.fields[j]
+//   [i, 'cases:<key>', j]                    → Switch.cases[<key>].fields[j]
+//                                              (the colon-separated key
+//                                              keeps the path positional
+//                                              even when <key> is dynamic)
 //
 // `add-field`, `delete-field`, `add-container`, etc. address the **slot**
-// (the numeric index inside the parent's array). `move-field`'s `from` and
-// `to` paths both end on the slot index.
+// (the numeric index inside the parent's array). `move-field`'s `from`
+// and `to` paths both end on a numeric slot index.
 //
 // History
 // -------
@@ -43,11 +51,17 @@ import { isField } from "./utils";
 export type { Path } from "./path-resolver";
 
 /**
- * A targeted patch for one Container variant. Using `Partial<Container>` keeps
- * the union distributive so a caller can hand us, say, a `Partial<Repeat>`
- * and the reducer still type-checks against the rest of the variants. Compared
- * to the old `Record<string, unknown>` this preserves field names and stops
- * typos from leaking through the studio reducer.
+ * A targeted patch for any Container variant. `Partial<Container>` is a
+ * single mapped type over the union of every variant's keys (it isn't
+ * distributive over `Container`), so callers can hand us any subset of
+ * those keys and the reducer copies them straight onto the existing
+ * node. Compared to the old `Record<string, unknown>` this preserves
+ * field names and stops typos from leaking through the studio reducer;
+ * we do *not* try to enforce variant-specific shapes here (that would
+ * need a distributive helper like `T extends Container ? Partial<T> :
+ * never` and a discriminator on the action), since the reducer's
+ * update-container case spreads onto a node whose `kind` is already
+ * fixed.
  */
 export type ContainerPatch = Partial<Container>;
 

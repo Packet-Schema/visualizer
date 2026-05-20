@@ -49,9 +49,10 @@ function readRaw(): PresetMap {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {};
   }
-  // Validate every entry with the same checker the import drawer uses,
-  // so a hand-crafted JSON blob that ended up in our localStorage key
-  // — browser extension, dev tools paste, or an XSS foothold elsewhere
+  // Validate every entry with `validatePsmlPacket` (the same checker
+  // the format-adapter `parse` wrappers now run on imported files), so
+  // a hand-crafted JSON blob that ended up in our localStorage key —
+  // browser extension, dev tools paste, or an XSS foothold elsewhere
   // on this origin (cross-origin writes are blocked by same-origin
   // policy, so the threat model is same-origin tampering rather than
   // CSRF) — can't get a malformed PsmlPacket into the renderer or the

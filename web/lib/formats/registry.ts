@@ -15,6 +15,7 @@ import { fromJson, toJson } from "./json";
 import { fromKsy, toKsy } from "./ksy";
 import { toAscii } from "./rfc-ascii";
 import type { PacketEnv, Packet as PsmlPacket } from "../psml/types";
+import { validatePsmlPacket } from "../psml/validate";
 
 export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
 
@@ -40,6 +41,20 @@ export type FormatAdapter = {
   render?: (packet: PsmlPacket, env: PacketEnv) => string;
 };
 
+/**
+ * Run the structural PSML validator on a parsed packet before handing it
+ * downstream. Each adapter's underlying codec (fromJson / fromAad /
+ * fromKsy) trusts the structural shape it returns, but the inputs that
+ * reach `parse` are user files / drops / pastes that may be malformed;
+ * letting them through to `psmlToRenderer` / `normalize` surfaces the
+ * error several call sites away. Throwing here keeps the failure
+ * adjacent to the user action that caused it.
+ */
+function validated(result: ImportResult): ImportResult {
+  validatePsmlPacket(result.packet);
+  return result;
+}
+
 export const FORMATS: ReadonlyArray<FormatAdapter> = [
   {
     id: "json",
@@ -48,7 +63,7 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
     mime: "application/json",
     parse: (text) => {
       const { packet, env } = fromJson(text);
-      return { packet, env };
+      return validated({ packet, env });
     },
     render: (packet, env) => toJson(packet, env),
   },
@@ -67,7 +82,7 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
     mime: "text/plain",
     parse: (text) => {
       const { packet, warnings } = fromAad(text);
-      return { packet, warnings };
+      return validated({ packet, warnings });
     },
     // No exporter — AAD is read-only (no canonical writer yet).
   },
@@ -78,7 +93,7 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
     mime: "text/plain",
     parse: (text) => {
       const { packet, warnings } = fromKsy(text);
-      return { packet, warnings };
+      return validated({ packet, warnings });
     },
     render: (packet) => toKsy(packet),
   },

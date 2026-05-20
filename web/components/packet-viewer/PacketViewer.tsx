@@ -459,10 +459,14 @@ export default function PacketViewer() {
       const nextPacket = updatePacketField(packet, field.id, (f) => ({
         ...f,
         chainInstances: next.instances,
-        chainFinalProto:
-          typeof next.finalProto === "number"
-            ? next.finalProto
-            : f.chainFinalProto,
+        // Reflect the editor's payload verbatim — ChainEditor's `emit`
+        // already defaults `nextFinal` to the current `finalProto`, so
+        // an undefined value here means the user explicitly picked
+        // "(none)" and wants the terminal proto cleared. Falling back
+        // to `f.chainFinalProto` (as the earlier `typeof === "number"`
+        // form did) made the clear path silently no-op, leaving stale
+        // final-proto state on the packet (Codex P1).
+        chainFinalProto: next.finalProto,
       }));
       replaceActivePacket(nextPacket);
       setControllers((prev) => syncChainControllers(nextPacket, prev));
