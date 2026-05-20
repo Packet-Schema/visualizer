@@ -49,7 +49,7 @@ import type {
   PacketRegistry,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { Expr, PsmlPacket, ViewMode } from "@/lib/psml/types";
+import type { Expr, PsmlPacket } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
@@ -57,9 +57,7 @@ import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
-import ImportExportDrawer, {
-  type DrawerMode,
-} from "@/components/import-export/ImportExportDrawer";
+import ImportExportDrawer from "@/components/import-export/ImportExportDrawer";
 import Legend from "@/components/diagram/Legend";
 import OnboardingTour, {
   hasSeenTour,
@@ -76,6 +74,7 @@ import {
   useRovingTabindex,
   useUndoRedoShortcuts,
 } from "./hooks";
+import { initialUiState, uiReducer } from "./ui-state-reducer";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
@@ -224,30 +223,26 @@ export default function PacketViewer() {
     PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
-  const [editMode, setEditMode] = useState(false);
-  const [showJsonPane, setShowJsonPane] = useState(false);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
+  // UI shell state — visibility toggles, selection, drawer mode, etc.
+  // The reducer lives in `ui-state-reducer.ts`; keeping it pure and away
+  // from the data flow above makes intent of each transition (e.g.
+  // "preset-switched" resets edit + json pane) explicit.
+  const [ui, uiDispatch] = useReducer(uiReducer, initialUiState);
+  const {
+    editMode,
+    showJsonPane,
+    showSaveDialog,
+    selectedFieldId,
+    popoverAnchor,
+    drawerMode,
+    tourOpen,
+    hexStripVisible,
+    dependenciesVisible,
+    viewMode,
+    shareStatus,
+  } = ui;
   const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
-  const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
-  const [tourOpen, setTourOpen] = useState(false);
-  // Hex strip is hidden by default on narrow viewports so phones aren't
-  // overwhelmed; users can flip it on via the toolbar regardless.
-  const [hexStripVisible, setHexStripVisible] = useState(false);
-  // Tracks whether the user has explicitly toggled hex visibility. Without
-  // this flag, the wide-viewport effect would keep clobbering their choice.
-  const hexStripUserSetRef = useRef(false);
-  const [dependenciesVisible, setDependenciesVisible] = useState(false);
-  // Wire vs. semantic ('Decrypted') view. Phase 2C will populate the runtime
-  // resolver with encrypted blocks; for now the toggle threads state through
-  // and HybridDiagram decorates any cell that already carries the flags.
-  const [viewMode, setViewMode] = useState<ViewMode>("wire");
   const [urlHydrated, setUrlHydrated] = useState(false);
-  const [shareStatus, setShareStatus] = useState<{
-    msg: string;
-    kind: "ok" | "error";
-  } | null>(null);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
@@ -328,14 +323,20 @@ export default function PacketViewer() {
     onRedo: () => dispatch({ type: "redo" }),
   });
 
-  useDelayedOnce(!hasSeenTour(), 350, () => setTourOpen(true));
+  useDelayedOnce(!hasSeenTour(), 350, () =>
+    uiDispatch({ type: "set-tour-open", open: true }),
+  );
 
   // Default the hex strip on for wide viewports the first time we know the
   // viewport size. Once the user toggles, leave their preference alone.
   useEffect(() => {
-    if (hexStripUserSetRef.current) return;
-    setHexStripVisible(isWideViewport);
-  }, [isWideViewport]);
+    if (ui.hexStripUserSet) return;
+    uiDispatch({
+      type: "set-hex-strip-visible",
+      visible: isWideViewport,
+      userInitiated: false,
+    });
+  }, [isWideViewport, ui.hexStripUserSet]);
 
   // Bidirectional highlight wiring. Both the diagram cells and the hex strip
   // call this; the hook paints `.hex-match` on matching cells and mirrors
@@ -353,15 +354,11 @@ export default function PacketViewer() {
         importedPackets[nextKey] ??
         (customPreset ? psmlToRenderer(customPreset) : null);
       if (next) setControllers(initialState(next));
-      setSelectedFieldId(null);
-      setPopoverAnchor(null);
-      // If the user was in the studio editing a different preset, drop edit
-      // mode on swap. Otherwise `targetPsml` would briefly fall back to
-      // `studioState.packet` (still pointing at the previous preset) and the
-      // diagram would render mixed cells until the next render cycle commits
-      // the studio reducer replay.
-      setEditMode(false);
-      setShowJsonPane(false);
+      // `preset-switched` resets selection, popover anchor, edit mode, and
+      // the json pane in one shot. Otherwise `targetPsml` would briefly
+      // fall back to `studioState.packet` (still pointing at the previous
+      // preset) and the diagram would render mixed cells.
+      uiDispatch({ type: "preset-switched" });
     },
     [customPresets, importedPackets, renderedPresets],
   );
@@ -374,12 +371,9 @@ export default function PacketViewer() {
   // straight getBoundingClientRect() — no SVG branching required.
   const handleFieldClick = useCallback(
     (fieldId: string, elem: HTMLElement | null) => {
-      setSelectedFieldId(fieldId);
-      if (isWideViewport && elem) {
-        setPopoverAnchor(elem.getBoundingClientRect());
-      } else {
-        setPopoverAnchor(null);
-      }
+      const anchor =
+        isWideViewport && elem ? elem.getBoundingClientRect() : null;
+      uiDispatch({ type: "select-field", id: fieldId, anchor });
     },
     [isWideViewport],
   );
@@ -390,8 +384,8 @@ export default function PacketViewer() {
       setImportedPackets((prev) => ({ ...prev, [key]: imported }));
       setPacketKey(key);
       setControllers({ ...initialState(imported), ...importedControllers });
-      setSelectedFieldId(null);
-      setDrawerMode(null);
+      uiDispatch({ type: "clear-selection" });
+      uiDispatch({ type: "close-drawer" });
     },
     [],
   );
@@ -469,9 +463,9 @@ export default function PacketViewer() {
       setCustomPresets(loadCustomPresets());
       setPacketKey(key);
       setControllers(initialState(psmlToRenderer(packetToSave)));
-      setSelectedFieldId(null);
-      setShowSaveDialog(false);
-      setEditMode(false);
+      uiDispatch({ type: "clear-selection" });
+      uiDispatch({ type: "close-save-dialog" });
+      uiDispatch({ type: "set-edit-mode", editing: false });
     },
     [studioState.packet],
   );
@@ -479,9 +473,11 @@ export default function PacketViewer() {
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
-    setEditMode(false);
-    setShowJsonPane(false);
-  }, [activePsmlPacket]);
+    uiDispatch({ type: "set-edit-mode", editing: false });
+    // showJsonPane is part of the same UI shell — keep them in sync by
+    // toggling off if it was open.
+    if (showJsonPane) uiDispatch({ type: "toggle-json-pane" });
+  }, [activePsmlPacket, showJsonPane]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.
@@ -553,7 +549,7 @@ export default function PacketViewer() {
     deleteCustomPreset(packetKey);
     setCustomPresets(loadCustomPresets());
     setPacketKey(DEFAULT_PACKET_KEY);
-    setEditMode(false);
+    uiDispatch({ type: "set-edit-mode", editing: false });
   }, [packetKey, customPresets]);
 
   const buildCurrentShareUrl = useCallback(() => {
@@ -599,7 +595,9 @@ export default function PacketViewer() {
     }
   }, [buildCurrentShareUrl, urlHydrated]);
 
-  useAutoClearStatus(shareStatus, 2400, () => setShareStatus(null));
+  useAutoClearStatus(shareStatus, 2400, () =>
+    uiDispatch({ type: "clear-share-status" }),
+  );
 
   const handleShare = useCallback(async () => {
     try {
@@ -617,11 +615,17 @@ export default function PacketViewer() {
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }
-      setShareStatus({ msg: "Share URL copied.", kind: "ok" });
+      uiDispatch({
+        type: "set-share-status",
+        status: { msg: "Share URL copied.", kind: "ok" },
+      });
     } catch (err) {
-      setShareStatus({
-        msg: `Share failed: ${(err as Error).message}`,
-        kind: "error",
+      uiDispatch({
+        type: "set-share-status",
+        status: {
+          msg: `Share failed: ${(err as Error).message}`,
+          kind: "error",
+        },
       });
     }
   }, [buildCurrentShareUrl]);
@@ -752,17 +756,16 @@ export default function PacketViewer() {
             onPacketChange: handlePacketChange,
             onExportCustomPresets: handleExportCustomPresets,
             onImportCustomPresets: handleImportCustomPresetsClick,
-            onOpenImport: () => setDrawerMode("import"),
-            onOpenExport: () => setDrawerMode("export"),
+            onOpenImport: () =>
+              uiDispatch({ type: "open-drawer", mode: "import" }),
+            onOpenExport: () =>
+              uiDispatch({ type: "open-drawer", mode: "export" }),
             onShare: handleShare,
-            onToggleHexStrip: () => {
-              hexStripUserSetRef.current = true;
-              setHexStripVisible((v) => !v);
-            },
-            onToggleDependencies: () => setDependenciesVisible((v) => !v),
-            onToggleViewMode: () =>
-              setViewMode((v) => (v === "semantic" ? "wire" : "semantic")),
-            onToggleEditMode: () => setEditMode((v) => !v),
+            onToggleHexStrip: () => uiDispatch({ type: "toggle-hex-strip" }),
+            onToggleDependencies: () =>
+              uiDispatch({ type: "toggle-dependencies" }),
+            onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
+            onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
           }}
         />
@@ -833,8 +836,8 @@ export default function PacketViewer() {
             state={studioState}
             dispatch={dispatch}
             showJsonPane={showJsonPane}
-            onToggleJsonPane={() => setShowJsonPane((v) => !v)}
-            onSaveAs={() => setShowSaveDialog(true)}
+            onToggleJsonPane={() => uiDispatch({ type: "toggle-json-pane" })}
+            onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
           />
         ) : null}
@@ -888,7 +891,9 @@ export default function PacketViewer() {
           controllers={controllers}
           selectedFieldId={selectedFieldId}
           anchorRect={popoverAnchor}
-          onDismiss={() => setPopoverAnchor(null)}
+          onDismiss={() =>
+            uiDispatch({ type: "set-popover-anchor", anchor: null })
+          }
         />
       ) : null}
 
@@ -897,18 +902,21 @@ export default function PacketViewer() {
         mode={drawerMode ?? "export"}
         packet={packet}
         controllers={controllers}
-        onClose={() => setDrawerMode(null)}
+        onClose={() => uiDispatch({ type: "close-drawer" })}
         onImport={handleImport}
       />
 
       {tourOpen ? (
-        <OnboardingTour steps={tourSteps} onClose={() => setTourOpen(false)} />
+        <OnboardingTour
+          steps={tourSteps}
+          onClose={() => uiDispatch({ type: "set-tour-open", open: false })}
+        />
       ) : null}
 
       {showSaveDialog ? (
         <SavePresetDialog
           defaultName={studioState.packet.name}
-          onCancel={() => setShowSaveDialog(false)}
+          onCancel={() => uiDispatch({ type: "close-save-dialog" })}
           onSubmit={handleSaveAsPreset}
         />
       ) : null}
