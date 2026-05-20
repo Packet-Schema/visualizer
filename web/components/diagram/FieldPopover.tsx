@@ -97,6 +97,14 @@ export default function FieldPopover({
   // runtime and respects prefers-reduced-motion through the global rule
   // in app/globals.css.
 
+  // `useId()` must run on every render to satisfy the Rules of Hooks —
+  // earlier the call was placed after the `if (!resolved) return null`
+  // early-return, so a frame where `resolved === null` skipped the
+  // hook, and the next frame with `resolved` set added it back,
+  // tripping React's "Rendered fewer hooks than expected" guard
+  // (Codex P1). Hoist it above any conditional return.
+  const titleId = useId();
+
   const resolved = resolve(packet, controllers, selectedFieldId);
   if (!resolved) return null;
 
@@ -117,13 +125,11 @@ export default function FieldPopover({
   // block the backdrop, so we set `aria-modal="false"` to be explicit. The
   // visible heading provides the label.
   //
-  // `useId()` instead of deriving from `resolved.*.id` directly — PSML ids
-  // only have to be non-empty strings, so they can carry spaces / colons
-  // (e.g. nested `flags:df`) that produce invalid or non-unique HTML id
-  // attributes and silently break the `aria-labelledby` link to the
-  // heading. React's `useId` gives us a guaranteed-unique, DOM-safe
-  // string scoped to this component instance (Copilot review).
-  const titleId = useId();
+  // `titleId` was hoisted above the early-return so the hook order stays
+  // stable across `resolved === null` frames; PSML ids may carry
+  // spaces / colons (e.g. nested `flags:df`) that produce invalid HTML
+  // id attributes and silently break the `aria-labelledby` link, so we
+  // rely on React's `useId` for a DOM-safe, unique value.
   return (
     <div
       ref={ref}

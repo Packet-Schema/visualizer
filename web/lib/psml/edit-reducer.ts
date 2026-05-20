@@ -22,9 +22,18 @@
 //                                              `replace-packet` instead
 //                                              when you need to swap the
 //                                              whole body.
-//   [i, 'field']                             → terminal marker; this path
-//                                              token form is a leaf and
-//                                              cannot be descended into
+//   [i, 'field']                             → NOT a usable action path:
+//                                              `resolveParent` requires
+//                                              a numeric slot terminator
+//                                              and `descendNamed('field')`
+//                                              throws unconditionally. The
+//                                              token still exists as a
+//                                              terminal marker for older
+//                                              call sites, but new actions
+//                                              should address Field slots
+//                                              with the bare `[i]` form
+//                                              (which already returns the
+//                                              parent body + slot index).
 //   [i, 'children', j]                       → Group.children[j]
 //   [i, 'element', j]                        → Repeat.element.fields[j]
 //                                              (`descendNamed('element')`
