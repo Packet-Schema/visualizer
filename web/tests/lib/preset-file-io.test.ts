@@ -28,9 +28,15 @@ describe("slugify", () => {
     expect(slugify("A__B!!C")).toBe("a-b-c");
     expect(slugify("  spaces   here  ")).toBe("spaces-here");
   });
-  it("handles unicode by stripping it", () => {
-    expect(slugify("日本語")).toBe("untitled");
-    expect(slugify("hello 日本 world")).toBe("hello-world");
+  it("preserves unicode letters and digits", () => {
+    // Earlier behaviour collapsed every non-ASCII run to a separator,
+    // so a Japanese preset name turned into `untitled` — surprising for
+    // users who downloaded a packet named in their own language. The
+    // `\p{L}\p{N}` regex with the `u` flag treats CJK / accented letters
+    // as word chars and only collapses *true* punctuation runs.
+    expect(slugify("日本語")).toBe("日本語");
+    expect(slugify("IPv4ヘッダー")).toBe("ipv4ヘッダー");
+    expect(slugify("hello 日本 world")).toBe("hello-日本-world");
   });
   it("returns 'untitled' for empty / whitespace / non-string input", () => {
     expect(slugify("")).toBe("untitled");

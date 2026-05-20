@@ -36,9 +36,15 @@ export type MyPresetsBundle = {
  */
 export function slugify(name: string): string {
   if (typeof name !== "string") return "untitled";
-  // Replace any non-ASCII-alphanumeric run with a single '-'.
-  const replaced = name.replace(/[^A-Za-z0-9]+/g, "-").toLowerCase();
-  const trimmed = replaced.replace(/^-+|-+$/g, "");
+  // Allow any Unicode letter / number through (`\p{L}\p{N}` with the `u`
+  // flag). The earlier `[^A-Za-z0-9]+` form treated Japanese / accented
+  // names as one long run of separators, so 'IPv4ヘッダー' collapsed to
+  // `ipv4---` (multiple hyphens) before trimming. The post-pass
+  // `replace(/-+/g, "-")` then collapses any incidental runs (e.g. from
+  // mixed ASCII / punctuation input) into a single hyphen.
+  const replaced = name.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase();
+  const collapsed = replaced.replace(/-+/g, "-");
+  const trimmed = collapsed.replace(/^-+|-+$/g, "");
   return trimmed.length > 0 ? trimmed : "untitled";
 }
 
