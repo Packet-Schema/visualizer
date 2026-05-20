@@ -16,7 +16,7 @@ import {
   readDiagramTheme,
   svgToPngBlob,
 } from "@/lib/diagram-export";
-import { useDrawerFocusTrap } from "@/components/import-export/hooks/useDrawerFocusTrap";
+import { useFocusTrap } from "@/components/common/hooks/useFocusTrap";
 import { slugify } from "@/lib/preset-file-io";
 import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
 
@@ -133,7 +133,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const titleId = useId();
   const pngScaleId = useId();
 
-  useDrawerFocusTrap({ open, containerRef: cardRef, onClose });
+  useFocusTrap({ open, containerRef: cardRef, onClose });
 
   useEffect(() => {
     exportSessionRef.current += 1;
@@ -160,9 +160,16 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
 
   // Persist whatever the user had tweaked when the dialog closes. This
   // covers the gap where a slider drag inside the 200ms debounce window
-  // would otherwise be lost on close.
+  // would otherwise be lost on close. Gate on `hasBeenOpenRef` so a viewer
+  // that never opens the dialog doesn't write DEFAULT_SETTINGS over an
+  // empty (or otherwise valid) storage entry on first mount.
+  const hasBeenOpenRef = useRef(false);
   useEffect(() => {
-    if (open) return;
+    if (open) {
+      hasBeenOpenRef.current = true;
+      return;
+    }
+    if (!hasBeenOpenRef.current) return;
     saveSettings(settingsRef.current);
   }, [open]);
 
@@ -213,7 +220,11 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
       console.error("Failed to export diagram as PNG.", caught);
       setError("PNG export failed. Please try SVG or another browser.");
     } finally {
-      if (isCurrent()) setBusy(false);
+      // Always release the busy indicator on this dialog instance. The
+      // session counter only gates *result handling* (filename, error
+      // message) — leaving `busy=true` after a stale session would freeze
+      // the Save PNG button permanently on a packet/layout swap.
+      setBusy(false);
     }
   }, [packet.name, settings.pngScale, svg, onClose]);
 
