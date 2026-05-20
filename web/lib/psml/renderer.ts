@@ -106,6 +106,8 @@ export type ChainInstance = {
 export type Field = {
   id: string;
   name: string;
+  /** Top-level group id when this layout field is really a flattened subfield. */
+  sourceTopLevelGroupId?: string;
   /** Fixed bit width for non-variable fields. */
   bits?: number;
   category?: CategoryToken;

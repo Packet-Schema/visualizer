@@ -8,6 +8,8 @@
 // surface-level — they only need to know how to read cells).
 
 import type {
+  Container,
+  Group,
   NormalizedField,
   PacketEnv,
   Packet as PsmlPacket,
@@ -41,6 +43,7 @@ export function resolveLayout(
     const synthetic: RendererField = {
       id: nf.id,
       name: nf.name,
+      sourceTopLevelGroupId: findTopLevelGroupSubfieldParentId(packet, nf),
       bits: nf.bits,
       ...(nf.category ? { category: nf.category } : {}),
       ...(nf.doc ? { description: nf.doc } : {}),
@@ -48,6 +51,30 @@ export function resolveLayout(
     bitPos = emitField(synthetic, nf, bitPos, packet.rowBits, cells);
   }
   return { cells, totalBits: norm.totalBits };
+}
+
+function isGroup(container: Container): container is Group {
+  return "kind" in container && container.kind === "group";
+}
+
+function findTopLevelGroupSubfieldParentId(
+  packet: PsmlPacket,
+  field: NormalizedField,
+): string | undefined {
+  const pathParts = field.originalContainerPath.split("/");
+  if (pathParts.length !== 2 || pathParts[0] !== packet.name) return undefined;
+  const groupId = pathParts[1];
+  const group = packet.body.find(
+    (container): container is Group =>
+      isGroup(container) && container.id === groupId,
+  );
+  if (!group) return undefined;
+  return group.children.some(
+    (child) =>
+      (!("kind" in child) || child.kind === "field") && child.id === field.id,
+  )
+    ? groupId
+    : undefined;
 }
 
 function emitField(
