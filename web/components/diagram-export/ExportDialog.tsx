@@ -65,8 +65,8 @@ function isPngScale(value: unknown): value is number {
 }
 
 function loadSettings(): DiagramExportSettings {
-  if (typeof localStorage === "undefined") return DEFAULT_SETTINGS;
   try {
+    if (typeof localStorage === "undefined") return DEFAULT_SETTINGS;
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<DiagramExportSettings> | null;
@@ -97,8 +97,8 @@ function loadSettings(): DiagramExportSettings {
 }
 
 function saveSettings(settings: DiagramExportSettings): void {
-  if (typeof localStorage === "undefined") return;
   try {
+    if (typeof localStorage === "undefined") return;
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // Ignore unavailable or quota-limited storage; export still works.
@@ -190,7 +190,9 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
       }
       const filename = `${slugify(packet.name)}-diagram-${settings.pngScale}x.png`;
       downloadBlobFile(filename, png);
-      onClose();
+      if (openRef.current && exportSessionRef.current === exportSession) {
+        onClose();
+      }
     } catch (caught) {
       if (!openRef.current || exportSessionRef.current !== exportSession) {
         return;

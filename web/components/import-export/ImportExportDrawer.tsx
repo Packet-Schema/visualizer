@@ -68,6 +68,19 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
+function copyTextFallback(text: string): void {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.readOnly = true;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
 export default function ImportExportDrawer({
   open,
   mode,
@@ -391,16 +404,18 @@ export default function ImportExportDrawer({
           ) {
             await navigator.clipboard.writeText(svg);
           } else {
-            const textarea = textareaRef.current;
-            if (!textarea) throw new Error("Clipboard copy was not available.");
-            textarea.value = svg;
-            textarea.select();
-            document.execCommand?.("copy");
+            if (typeof document === "undefined" || !document.body) {
+              throw new Error("Clipboard copy was not available.");
+            }
+            copyTextFallback(svg);
           }
         } else {
           const png = await svgToPngBlob(svg, pngScale);
           if (!openRef.current || exportSessionRef.current !== exportSession) {
             return;
+          }
+          if (typeof navigator === "undefined" || !navigator.clipboard?.write) {
+            throw new Error("Clipboard image write was not available.");
           }
           await navigator.clipboard.write([
             new ClipboardItem({ "image/png": png }),

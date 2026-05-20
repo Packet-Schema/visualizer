@@ -146,10 +146,12 @@ describe("buildDiagramSvg", () => {
       "image/svg+xml",
     ).documentElement;
     const wideBodyRect = wideSvg.querySelector("rect[rx='10']");
+    const firstRulerLabel = standardSvg.querySelector("text");
 
     expect(standardSvg.getAttribute("width")).toBe("224");
     expect(wideSvg.getAttribute("width")).toBe("352");
     expect(wideBodyRect?.getAttribute("width")).toBe("156");
+    expect(firstRulerLabel?.getAttribute("text-anchor")).toBe("middle");
   });
 
   it("can emit transparent background when requested", () => {
@@ -442,7 +444,28 @@ describe("buildDiagramSvg", () => {
 describe("diagram export helpers", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    document.head.querySelectorAll("style[data-test-theme]").forEach((el) => {
+      el.remove();
+    });
   });
+
+  function installThemeStyles(): void {
+    const style = document.createElement("style");
+    style.dataset.testTheme = "true";
+    style.textContent = `
+      :root {
+        --bg-elevated: rgb(250, 250, 250);
+        --accent: rgb(7, 8, 9);
+        --field-blue: rgb(4, 5, 6);
+        --custom-fill: rgb(240, 240, 240);
+      }
+      [data-theme="dark"] {
+        --bg-elevated: rgb(15, 15, 15);
+        --accent: rgb(20, 21, 22);
+      }
+    `;
+    document.head.appendChild(style);
+  }
 
   it("reads concrete theme colors from the document", () => {
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
@@ -467,27 +490,15 @@ describe("diagram export helpers", () => {
   });
 
   it("resolves explicit light/dark theme independent from current UI theme", () => {
+    installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");
 
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const explicitTheme = (
-        element as HTMLElement
-      ).parentElement?.getAttribute("data-theme");
-      const color = (element as HTMLElement).style.color;
-      if (color === "var(--bg-elevated)" && explicitTheme === "light") {
-        return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
-      }
-      if (color === "var(--bg-elevated)" && explicitTheme === "dark") {
-        return { color: "rgb(15, 15, 15)" } as CSSStyleDeclaration;
-      }
-      return { color: "" } as CSSStyleDeclaration;
-    });
-
-    expect(readDiagramTheme("light").background).toBe("rgb(250, 250, 250)");
-    expect(readDiagramTheme("dark").background).toBe("rgb(15, 15, 15)");
+    expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
+    expect(readDiagramTheme("dark").background).toBe("rgb(15,15,15)");
   });
 
   it("uses the current UI theme when mode is follow-ui", () => {
+    installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");
 
     vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
@@ -501,27 +512,8 @@ describe("diagram export helpers", () => {
   });
 
   it("resolves custom CSS-variable fills against the explicit export theme", () => {
+    installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");
-
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const explicitTheme =
-        (element as HTMLElement).parentElement?.getAttribute("data-theme") ??
-        "dark";
-      const color = (element as HTMLElement).style.color;
-      if (color === "var(--custom-fill)" && explicitTheme === "light") {
-        return { color: "rgb(240, 240, 240)" } as CSSStyleDeclaration;
-      }
-      if (color === "var(--custom-fill)" && explicitTheme === "dark") {
-        return { color: "rgb(15, 15, 15)" } as CSSStyleDeclaration;
-      }
-      if (color === "var(--bg-elevated)" && explicitTheme === "light") {
-        return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
-      }
-      if (color === "var(--bg-elevated)" && explicitTheme === "dark") {
-        return { color: "rgb(20, 20, 20)" } as CSSStyleDeclaration;
-      }
-      return { color: "" } as CSSStyleDeclaration;
-    });
 
     const svg = buildDiagramSvg(
       {
@@ -561,28 +553,15 @@ describe("diagram export helpers", () => {
       { theme: readDiagramTheme("light") },
     );
 
-    expect(svg).toContain('fill="rgb(240, 240, 240)"');
-    expect(svg).not.toContain('fill="rgb(15, 15, 15)"');
+    expect(svg).toContain('fill="rgb(240,240,240)"');
+    expect(svg).not.toContain('fill="rgb(15,15,15)"');
   });
 
   it("restores the current UI theme after resolving an explicit export theme", () => {
+    installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");
 
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const explicitTheme = (
-        element as HTMLElement
-      ).parentElement?.getAttribute("data-theme");
-      const color = (element as HTMLElement).style.color;
-      if (color === "var(--bg-elevated)" && explicitTheme === "light") {
-        return { color: "rgb(250, 250, 250)" } as CSSStyleDeclaration;
-      }
-      if (color === "var(--bg-elevated)" && explicitTheme === "dark") {
-        return { color: "rgb(15, 15, 15)" } as CSSStyleDeclaration;
-      }
-      return { color: "" } as CSSStyleDeclaration;
-    });
-
-    expect(readDiagramTheme("light").background).toBe("rgb(250, 250, 250)");
+    expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
