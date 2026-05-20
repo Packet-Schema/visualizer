@@ -17,7 +17,13 @@ import { toAscii } from "./rfc-ascii";
 import type { PacketEnv, Packet as PsmlPacket } from "../psml/types";
 import { validatePsmlPacket } from "../psml/validate";
 
-export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
+export type FormatKey =
+  | "json"
+  | "rfc-ascii"
+  | "aug-ascii"
+  | "ksy"
+  | "svg"
+  | "png";
 
 export type ImportResult = {
   packet: PsmlPacket;
@@ -30,6 +36,9 @@ export type ImportResult = {
 export type FormatAdapter = {
   id: FormatKey;
   label: string;
+  /** Whether the adapter should appear in the Export selector even if it
+   *  does not use the text-rendering pipeline (e.g. diagram image export). */
+  exportable?: boolean;
   /** Extension used by the download workflow. Includes any compound suffix
    *  (e.g. `psml.json`) so the same string round-trips through `extToFormat`. */
   extension: string;
@@ -99,6 +108,20 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
     },
     render: (packet) => toKsy(packet),
   },
+  {
+    id: "svg",
+    label: "Image (SVG)",
+    exportable: true,
+    extension: "svg",
+    mime: "image/svg+xml",
+  },
+  {
+    id: "png",
+    label: "Image (PNG)",
+    exportable: true,
+    extension: "png",
+    mime: "image/png",
+  },
 ];
 
 const BY_ID = new Map(FORMATS.map((f) => [f.id, f] as const));
@@ -112,9 +135,9 @@ export function getFormat(id: FormatKey): FormatAdapter {
 export const IMPORTABLE_FORMATS = FORMATS.filter((f) => !!f.parse).map(
   (f) => f.id,
 );
-export const EXPORTABLE_FORMATS = FORMATS.filter((f) => !!f.render).map(
-  (f) => f.id,
-);
+export const EXPORTABLE_FORMATS = FORMATS.filter(
+  (f) => f.exportable === true || !!f.render,
+).map((f) => f.id);
 
 // Precompute the (`.ext` → FormatKey) lookup once at module load — sorted by
 // extension length descending so compound suffixes like `.psml.json` match

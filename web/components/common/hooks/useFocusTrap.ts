@@ -108,7 +108,11 @@ export function useFocusTrap({
         const last = list[list.length - 1];
         const active = document.activeElement;
         if (e.shiftKey) {
-          if (active === first || !containerRef.current.contains(active)) {
+          if (
+            active === first ||
+            active === containerRef.current ||
+            !containerRef.current.contains(active)
+          ) {
             e.preventDefault();
             last.focus();
           }

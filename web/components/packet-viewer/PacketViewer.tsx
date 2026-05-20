@@ -1041,6 +1041,7 @@ export default function PacketViewer() {
         mode={drawerMode ?? "export"}
         packet={exportPacket}
         controllers={controllers}
+        layout={layout}
         onClose={() => uiDispatch({ type: "close-drawer" })}
         onImport={handleImport}
       />
