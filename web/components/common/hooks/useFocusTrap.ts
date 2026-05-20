@@ -75,12 +75,12 @@ export function useFocusTrap({
         : null;
 
     // Prefer focusing the container itself (typically the dialog card
-    // with tabIndex={-1}) so a screen reader announces the dialog
-    // title via aria-labelledby before Tab moves the user into the
-    // form. Fall back to the first focusable if the container can't
-    // accept focus.
+    // with an explicit tabindex="-1") so a screen reader announces the
+    // dialog title via aria-labelledby before Tab moves the user into
+    // the form controls. Fall back to the first focusable when the
+    // container doesn't opt into receiving focus.
     const root = containerRef.current;
-    if (root && root.tabIndex !== undefined && root.tabIndex >= -1) {
+    if (root?.hasAttribute("tabindex")) {
       root.focus({ preventScroll: true });
     }
     if (
