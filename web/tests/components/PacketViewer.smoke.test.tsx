@@ -46,53 +46,6 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
-  it("opens the Save image dialog from the toolbar", async () => {
-    const { container, cleanup } = await mountPacketViewer();
-    try {
-      const trigger = findButton(container, "Save image");
-      expect(trigger).toBeDefined();
-      expect(trigger?.getAttribute("aria-haspopup")).toBe("dialog");
-      expect(document.querySelector('[role="dialog"]')).toBeNull();
-
-      await act(async () => {
-        trigger?.click();
-      });
-
-      const dialog = document.querySelector<HTMLElement>(
-        '[role="dialog"][aria-modal="true"]',
-      );
-      expect(dialog).not.toBeNull();
-      expect(dialog?.textContent ?? "").toContain("Save image");
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("renders the export preview while edit mode is active", async () => {
-    // Regression for `exportPacket = editMode ? studio : packet` — the
-    // dialog must not blow up when opened mid-edit, and the preview must
-    // come from the in-progress studio packet rather than a stale preset.
-    const { container, cleanup } = await mountPacketViewer();
-    try {
-      await act(async () => {
-        findButton(container, "Edit packet")?.click();
-      });
-
-      await act(async () => {
-        findButton(container, "Save image")?.click();
-      });
-
-      const dialog = document.querySelector<HTMLElement>(
-        '[role="dialog"][aria-modal="true"]',
-      );
-      expect(dialog).not.toBeNull();
-      const previewSvg = dialog?.querySelector(".diagram-export-preview svg");
-      expect(previewSvg).not.toBeNull();
-    } finally {
-      await cleanup();
-    }
-  });
-
   it("adds a field via the reducer when in edit mode", async () => {
     // Import the reducer pieces directly; we drive the same state shape the
     // component uses so we don't depend on internal UI affordances.

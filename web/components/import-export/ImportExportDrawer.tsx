@@ -76,7 +76,7 @@ export default function ImportExportDrawer({
   // Sync mode when the parent re-opens the drawer. Transient state
   // (`text`, `status`) is reset *only* when the requested mode differs
   // from the one we currently show — otherwise a quick detour through
-  // another modal (e.g. the image-export dialog) and back would wipe
+  // another modal and back would wipe
   // text the user had typed or pasted.
   useEffect(() => {
     if (!open) return;

@@ -1,6 +1,5 @@
 import type { PacketRegistry } from "@/lib/psml/renderer";
 import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
-import ExportButton from "@/components/diagram-export/ExportButton";
 import PresetPicker from "@/components/presets/PresetPicker";
 import ToolbarButton from "./ToolbarButton";
 
@@ -21,7 +20,6 @@ export type PacketToolbarActions = {
   onToggleViewMode: () => void;
   onToggleEditMode: () => void;
   onDeleteCustomPreset: () => void;
-  onOpenExportImage: () => void;
 };
 
 type Props = {
@@ -61,7 +59,6 @@ export default function PacketToolbar({
     onToggleViewMode,
     onToggleEditMode,
     onDeleteCustomPreset,
-    onOpenExportImage,
   } = actions;
   return (
     <div
@@ -83,7 +80,6 @@ export default function PacketToolbar({
       <div className="flex items-center gap-1.5 ml-2">
         <ToolbarButton onClick={onOpenImport}>Import</ToolbarButton>
         <ToolbarButton onClick={onOpenExport}>Export</ToolbarButton>
-        <ExportButton onClick={onOpenExportImage} />
         <ToolbarButton onClick={onShare} ariaLabel="Copy share URL">
           Share
         </ToolbarButton>

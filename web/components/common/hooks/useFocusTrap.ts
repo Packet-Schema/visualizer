@@ -43,9 +43,8 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
  * closes via `onClose`, and the previously focused element is restored
  * once the modal is dismissed.
  *
- * Originally pulled out of `ImportExportDrawer`; now shared with
- * `ExportDialog` and any other modal surface (hence the move to the
- * `common/hooks` directory).
+ * Originally pulled out of `ImportExportDrawer`; now shared with other
+ * modal surfaces (hence the move to the `common/hooks` directory).
  */
 export function useFocusTrap({
   open,

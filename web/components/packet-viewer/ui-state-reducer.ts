@@ -40,7 +40,6 @@ export type UiState = {
   editMode: boolean;
   showJsonPane: boolean;
   showSaveDialog: boolean;
-  showExportImageDialog: boolean;
   shareStatus: ShareStatus | null;
 };
 
@@ -56,7 +55,6 @@ export const initialUiState: UiState = {
   editMode: false,
   showJsonPane: false,
   showSaveDialog: false,
-  showExportImageDialog: false,
   shareStatus: null,
 };
 
@@ -76,8 +74,6 @@ export type UiAction =
   | { type: "toggle-json-pane" }
   | { type: "open-save-dialog" }
   | { type: "close-save-dialog" }
-  | { type: "open-export-image-dialog" }
-  | { type: "close-export-image-dialog" }
   | { type: "set-share-status"; status: ShareStatus }
   | { type: "clear-share-status" }
   /** Reset transient UI when the active packet swaps. Keeps the
@@ -98,14 +94,9 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "set-popover-anchor":
       return { ...state, popoverAnchor: action.anchor };
     case "open-drawer":
-      // Modal-class surfaces (drawer / image-export dialog) share the
-      // same z-index and global focus-trap keydown listener. Opening one
-      // implicitly closes the other so the two traps don't fight over Tab
-      // and Escape.
       return {
         ...state,
         drawerMode: action.mode,
-        showExportImageDialog: false,
       };
     case "close-drawer":
       return { ...state, drawerMode: null };
@@ -140,11 +131,6 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, showSaveDialog: true };
     case "close-save-dialog":
       return { ...state, showSaveDialog: false };
-    case "open-export-image-dialog":
-      // See `open-drawer` comment — mirror the same mutual exclusion.
-      return { ...state, showExportImageDialog: true, drawerMode: null };
-    case "close-export-image-dialog":
-      return { ...state, showExportImageDialog: false };
     case "set-share-status":
       return { ...state, shareStatus: action.status };
     case "clear-share-status":
@@ -160,7 +146,6 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         // the previous preset's packet/layout after the swap.
         drawerMode: null,
         showSaveDialog: false,
-        showExportImageDialog: false,
         // hexStripUserSet intentionally preserved so the user's hex
         // visibility choice survives a preset change.
       };
