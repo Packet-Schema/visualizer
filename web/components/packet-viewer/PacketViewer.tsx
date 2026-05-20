@@ -615,9 +615,19 @@ export default function PacketViewer() {
   const buildCurrentShareUrl = useCallback(() => {
     if (typeof window === "undefined") return "";
     const builtInPsml = PRESETS[packetKey];
+    // For custom / imported presets we lift the current renderer packet
+    // back to PSML instead of pulling `customPresets[packetKey]`. The
+    // session-only TLV / Chain edits land in `renderedPresets` (see
+    // `replaceActivePacket` custom arm), so the source PSML stored in
+    // `customPresets` is intentionally stale; sharing it would emit a
+    // URL that round-trips to an older state than what the user sees.
+    // Codex P1: lift from `packet` so what's shared matches what's on
+    // screen.
     const sharePacket = editMode
       ? studioState.packet
-      : (builtInPsml ?? customPresets[packetKey] ?? rendererToPsml(packet));
+      : builtInPsml
+        ? builtInPsml
+        : rendererToPsml(packet);
     const defaultControllers = builtInPsml
       ? initialState(psmlToRenderer(builtInPsml))
       : undefined;
@@ -632,14 +642,7 @@ export default function PacketViewer() {
       defaultControllers,
       forcePsml: editMode || !builtInPsml,
     });
-  }, [
-    controllers,
-    customPresets,
-    editMode,
-    packet,
-    packetKey,
-    studioState.packet,
-  ]);
+  }, [controllers, editMode, packet, packetKey, studioState.packet]);
 
   useEffect(() => {
     if (!urlHydrated || typeof window === "undefined") return;
