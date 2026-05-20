@@ -57,7 +57,7 @@ import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
-import ExportButton from "@/components/diagram-export/ExportButton";
+import ExportDialog from "@/components/diagram-export/ExportDialog";
 import ImportExportDrawer from "@/components/import-export/ImportExportDrawer";
 import Legend from "@/components/diagram/Legend";
 import OnboardingTour, {
@@ -232,6 +232,7 @@ export default function PacketViewer() {
     editMode,
     showJsonPane,
     showSaveDialog,
+    showExportImageDialog,
     selectedFieldId,
     popoverAnchor,
     drawerMode,
@@ -909,8 +910,9 @@ export default function PacketViewer() {
             onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
             onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
+            onOpenExportImage: () =>
+              uiDispatch({ type: "open-export-image-dialog" }),
           }}
-          extraControls={<ExportButton packet={exportPacket} layout={layout} />}
         />
         <input
           ref={bulkImportInputRef}
@@ -1061,6 +1063,13 @@ export default function PacketViewer() {
           onSubmit={handleSaveAsPreset}
         />
       ) : null}
+
+      <ExportDialog
+        packet={exportPacket}
+        layout={layout}
+        open={showExportImageDialog}
+        onClose={() => uiDispatch({ type: "close-export-image-dialog" })}
+      />
     </>
   );
 }

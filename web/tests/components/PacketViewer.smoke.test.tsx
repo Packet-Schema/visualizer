@@ -46,6 +46,30 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("opens the Save image dialog from the toolbar", async () => {
+    const { container, cleanup } = await mountPacketViewer();
+    try {
+      const trigger = Array.from(
+        container.querySelectorAll<HTMLButtonElement>("button"),
+      ).find((btn) => btn.textContent?.trim() === "Save image");
+      expect(trigger).toBeDefined();
+      expect(trigger?.getAttribute("aria-haspopup")).toBe("dialog");
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+      await act(async () => {
+        trigger?.click();
+      });
+
+      const dialog = document.querySelector<HTMLElement>(
+        '[role="dialog"][aria-modal="true"]',
+      );
+      expect(dialog).not.toBeNull();
+      expect(dialog?.textContent ?? "").toContain("Save image");
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("adds a field via the reducer when in edit mode", async () => {
     // Import the reducer pieces directly; we drive the same state shape the
     // component uses so we don't depend on internal UI affordances.

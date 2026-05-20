@@ -9,6 +9,7 @@ import {
   readDiagramTheme,
   svgToPngBlob,
 } from "@/lib/diagram-export";
+import { useDrawerFocusTrap } from "@/components/import-export/hooks/useDrawerFocusTrap";
 import { slugify } from "@/lib/preset-file-io";
 import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
 
@@ -41,6 +42,9 @@ const DEFAULT_SETTINGS: DiagramExportSettings = {
 const PNG_SCALE_MIN = 1;
 const PNG_SCALE_MAX = 8;
 const PNG_SCALE_STEP = 1;
+
+const SELECT_CLASS =
+  "mt-1 h-9 w-full rounded-md border px-2 text-xs bg-bg-elevated text-fg border-border";
 
 function isSaveFormat(value: unknown): value is SaveFormat {
   return value === "svg" || value === "png";
@@ -110,54 +114,21 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const firstControlRef = useRef<HTMLSelectElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  // Tracks the current open/busy lifecycle so an async PNG encode that
+  // resolves after the dialog has been closed (or re-opened) doesn't
+  // trigger a download or update state on the new session.
   const openRef = useRef(open);
   const exportSessionRef = useRef(0);
   const titleId = useId();
 
+  useDrawerFocusTrap({ open, containerRef: cardRef, onClose });
+
   useEffect(() => {
     openRef.current = open;
-    if (!open) {
-      exportSessionRef.current += 1;
-      setBusy(false);
-      return;
-    }
     exportSessionRef.current += 1;
     setBusy(false);
-    setError(null);
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    firstControlRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-
-      if (e.key !== "Tab" || !cardRef.current) return;
-      const focusable = cardRef.current.querySelectorAll<HTMLElement>(
-        'button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      previousFocusRef.current?.focus();
-    };
-  }, [open, onClose]);
+    if (open) setError(null);
+  }, [open]);
 
   useEffect(() => {
     saveSettings(settings);
@@ -218,34 +189,29 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "oklch(18% 0.03 270 / 0.45)" }}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      onMouseDown={(e) => {
-        if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
-          onClose();
-        }
+      onClick={(e) => {
+        // Only close when the click both starts and ends on the backdrop
+        // — `e.target === e.currentTarget` ensures we don't fire when a
+        // pointer was pressed inside the card and released on the
+        // backdrop (e.g. text-selection drag).
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         ref={cardRef}
-        className="w-full max-w-xl rounded-xl border p-4"
-        style={{
-          background: "var(--bg-elevated)",
-          borderColor: "var(--border)",
-          boxShadow: "0 10px 25px rgba(0,0,0,0.12)",
-        }}
+        className="w-full max-w-xl rounded-xl border p-4 bg-bg-elevated text-fg border-border"
+        style={{ boxShadow: "0 10px 25px rgba(0,0,0,0.12)" }}
       >
         <h3 id={titleId} className="m-0 mb-3 text-sm font-semibold">
           Save image
         </h3>
         <div
-          className="diagram-export-preview mb-3 overflow-hidden rounded-lg border p-2"
-          style={{
-            background: "var(--bg)",
-            borderColor: "var(--border)",
-          }}
+          className="diagram-export-preview mb-3 overflow-hidden rounded-lg border p-2 bg-bg border-border"
           aria-label="Diagram preview"
           dangerouslySetInnerHTML={{ __html: svg ?? "" }}
         />
@@ -253,7 +219,6 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
           <label className="text-xs">
             Format
             <select
-              ref={firstControlRef}
               value={settings.format}
               onChange={(event) =>
                 setSettings((current) => ({
@@ -261,12 +226,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
                   format: event.target.value as SaveFormat,
                 }))
               }
-              className="mt-1 h-9 w-full rounded-md border px-2 text-xs"
-              style={{
-                background: "var(--bg-elevated)",
-                borderColor: "var(--border)",
-                color: "var(--fg)",
-              }}
+              className={SELECT_CLASS}
             >
               <option value="svg">SVG</option>
               <option value="png">PNG</option>
@@ -282,12 +242,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
                   exportThemeMode: event.target.value as ExportThemeMode,
                 }))
               }
-              className="mt-1 h-9 w-full rounded-md border px-2 text-xs"
-              style={{
-                background: "var(--bg-elevated)",
-                borderColor: "var(--border)",
-                color: "var(--fg)",
-              }}
+              className={SELECT_CLASS}
             >
               <option value="follow-ui">Follow UI theme</option>
               <option value="light">Light</option>
@@ -304,12 +259,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
                   diagramWidth: Number(event.target.value) as DiagramWidth,
                 }))
               }
-              className="mt-1 h-9 w-full rounded-md border px-2 text-xs"
-              style={{
-                background: "var(--bg-elevated)",
-                borderColor: "var(--border)",
-                color: "var(--fg)",
-              }}
+              className={SELECT_CLASS}
             >
               <option value={24}>Standard width</option>
               <option value={32}>Wide width</option>
@@ -333,10 +283,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
           </label>
         </div>
         {settings.format === "png" ? (
-          <div
-            className="mt-3 rounded-lg border p-3"
-            style={{ borderColor: "var(--border)" }}
-          >
+          <div className="mt-3 rounded-lg border p-3 border-border">
             <label className="text-xs">
               PNG resolution
               <div className="mt-1 flex items-center gap-3">
@@ -364,11 +311,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
           </div>
         ) : null}
         {error ? (
-          <p
-            className="mb-0 mt-3 text-xs"
-            role="alert"
-            style={{ color: "#b42318" }}
-          >
+          <p className="mb-0 mt-3 text-xs text-field-rose" role="alert">
             {error}
           </p>
         ) : null}
@@ -376,8 +319,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="h-9 rounded-md border px-3 text-xs"
-            style={{ borderColor: "var(--border)" }}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-bg-elevated text-fg border-border-strong"
           >
             Cancel
           </button>
@@ -385,8 +327,7 @@ export default function ExportDialog({ packet, layout, open, onClose }: Props) {
             type="button"
             onClick={handleSave}
             disabled={settings.format === "png" && busy}
-            className="h-9 rounded-md border px-3 text-xs disabled:opacity-60"
-            style={{ borderColor: "var(--border)" }}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-accent text-accent-fg border-accent disabled:opacity-60"
           >
             {settings.format === "svg"
               ? "Save SVG"

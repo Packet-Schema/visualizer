@@ -40,6 +40,7 @@ export type UiState = {
   editMode: boolean;
   showJsonPane: boolean;
   showSaveDialog: boolean;
+  showExportImageDialog: boolean;
   shareStatus: ShareStatus | null;
 };
 
@@ -55,6 +56,7 @@ export const initialUiState: UiState = {
   editMode: false,
   showJsonPane: false,
   showSaveDialog: false,
+  showExportImageDialog: false,
   shareStatus: null,
 };
 
@@ -74,6 +76,8 @@ export type UiAction =
   | { type: "toggle-json-pane" }
   | { type: "open-save-dialog" }
   | { type: "close-save-dialog" }
+  | { type: "open-export-image-dialog" }
+  | { type: "close-export-image-dialog" }
   | { type: "set-share-status"; status: ShareStatus }
   | { type: "clear-share-status" }
   /** Reset transient UI when the active packet swaps. Keeps the
@@ -128,6 +132,10 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, showSaveDialog: true };
     case "close-save-dialog":
       return { ...state, showSaveDialog: false };
+    case "open-export-image-dialog":
+      return { ...state, showExportImageDialog: true };
+    case "close-export-image-dialog":
+      return { ...state, showExportImageDialog: false };
     case "set-share-status":
       return { ...state, shareStatus: action.status };
     case "clear-share-status":
