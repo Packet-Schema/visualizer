@@ -41,7 +41,11 @@ export function decodePsmlParam(value: string): {
 } {
   const json = decompressFromEncodedURIComponent(value);
   if (!json) {
-    throw new Error("Shared PSML payload could not be decompressed.");
+    // User-facing — surfaced verbatim by parseShareParams' error toast.
+    // Avoid leaking internal terms ("PSML") and tell the user what to do.
+    throw new Error(
+      "Invalid shared link — the packet data could not be read. Please verify the link is complete.",
+    );
   }
   const { packet, env } = fromJson(json);
   validatePsmlPacket(packet);
@@ -60,10 +64,25 @@ export function parseShareParams(
     try {
       return { kind: "psml", ...decodePsmlParam(psml) };
     } catch (err) {
+      // `decodePsmlParam` already throws a curated user-facing message
+      // ("Invalid shared link — …"); wrapping it again here produced
+      // the duplicated phrasing "Invalid shared link: Invalid shared
+      // link — …" the user saw in the toast (Copilot review).
+      // Pass the inner message through verbatim. Errors from downstream
+      // codecs (`fromJson` / `validatePsmlPacket`) are short enough to
+      // be informative on their own — surfacing them as-is is the
+      // closest we can get to actionable feedback without inventing
+      // ad-hoc copy on every adapter failure.
+      //
+      // Normalise non-`Error` throws (a third-party codec could `throw
+      // "string"` and we'd otherwise surface `undefined` as the toast
+      // body), and provide a generic fallback when the stringified
+      // value is empty (Copilot review).
+      const raw = err instanceof Error ? err.message : String(err);
       return {
         kind: "none",
         controllers,
-        error: `Invalid shared PSML payload: ${(err as Error).message}`,
+        error: raw || "Invalid shared link.",
       };
     }
   }
@@ -120,13 +139,42 @@ export function shareUrlByteLength(url: string): number {
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {
-  const out: ControllerState = {};
+  // `Object.create(null)` so an attacker-controlled URL containing
+  // `controllers.__proto__=N` can't mutate the map's prototype and
+  // leak into any iteration / merge downstream (Copilot security
+  // review). The dangerous-key skip below is belt-and-braces: even
+  // with the null prototype, surfacing a controller literally named
+  // `__proto__` in the UI would be confusing.
+  const out = Object.create(null) as ControllerState;
   for (const [key, raw] of params.entries()) {
     if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
     const controllerKey = key.slice(CONTROLLER_PARAM_PREFIX.length);
     if (!controllerKey) continue;
+    if (
+      controllerKey === "__proto__" ||
+      controllerKey === "constructor" ||
+      controllerKey === "prototype"
+    ) {
+      continue;
+    }
     const value = Number(raw);
-    if (Number.isFinite(value)) out[controllerKey] = value;
+    // Reject anything that's not a representable, finite *integer*.
+    //  - `Number.isFinite` filters NaN / ±Infinity.
+    //  - `Math.abs(value) <= MAX_SAFE_INTEGER` keeps slider / layout
+    //    math precise (otherwise `1.8e308` survives, then downstream
+    //    multiplication rounds it to Infinity).
+    //  - `Number.isInteger` is the key: controllers feed `Repeat.count`
+    //    via `normalize.resolveRepeatCount`, which does not truncate
+    //    `env.get(...)` for `count: "eos"` / `until` shapes. A
+    //    fractional value would expand the Repeat the wrong number
+    //    of times (Copilot review).
+    if (
+      Number.isFinite(value) &&
+      Number.isInteger(value) &&
+      Math.abs(value) <= Number.MAX_SAFE_INTEGER
+    ) {
+      out[controllerKey] = value;
+    }
   }
   return out;
 }

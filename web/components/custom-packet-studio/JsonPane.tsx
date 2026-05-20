@@ -38,17 +38,9 @@ export default function JsonPane({ packet, dispatch }: Props) {
   return (
     <section
       aria-label="JSON editor"
-      className="flex flex-col gap-1 p-2 border-t"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="flex flex-col gap-1 p-2 border-t bg-bg-elevated border-border-strong"
     >
-      <label
-        className="text-xs"
-        style={{ color: "var(--fg-muted)" }}
-        htmlFor="psml-json-pane"
-      >
+      <label className="text-xs text-fg-muted" htmlFor="psml-json-pane">
         Packet JSON
       </label>
       <textarea
@@ -58,19 +50,12 @@ export default function JsonPane({ packet, dispatch }: Props) {
         value={text}
         onChange={onChange}
         rows={20}
-        className="text-xs font-mono px-2 py-2 rounded border w-full"
-        style={{
-          background: "var(--bg-subtle)",
-          color: "var(--fg)",
-          borderColor: error ? "var(--field-rose)" : "var(--border-strong)",
-        }}
+        className={`text-xs font-mono px-2 py-2 rounded border w-full bg-bg-subtle text-fg ${
+          error ? "border-field-rose" : "border-border-strong"
+        }`}
       />
       {error && (
-        <p
-          role="alert"
-          className="text-xs"
-          style={{ color: "var(--field-rose)" }}
-        >
+        <p role="alert" className="text-xs text-field-rose">
           JSON parse error: {error}
         </p>
       )}

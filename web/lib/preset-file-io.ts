@@ -7,12 +7,13 @@
 // all entry points guard for SSR / non-DOM environments so vitest's node
 // runner doesn't crash when files import from here transitively.
 
+import { getFormat, type FormatKey } from "./formats/registry";
 import type { PsmlPacket } from "./psml/types";
 
-// FormatKey duplicates ImportExportDrawer's format union. We redeclare here
-// instead of importing from a React component file so this module stays free
-// of UI dependencies and can be unit-tested in plain Node.
-export type FormatKey = "json" | "rfc-ascii" | "aug-ascii" | "ksy";
+// Re-export so callers don't have to know whether the extension lookup lives
+// in the registry or in this preset I/O module — there is only one name.
+export { extToFormat } from "./formats/registry";
+export type { FormatKey } from "./formats/registry";
 
 export const MY_PRESETS_FILE_FORMAT_VERSION = "psml-0.4" as const;
 
@@ -35,45 +36,29 @@ export type MyPresetsBundle = {
  */
 export function slugify(name: string): string {
   if (typeof name !== "string") return "untitled";
-  // Replace any non-ASCII-alphanumeric run with a single '-'.
-  const replaced = name.replace(/[^A-Za-z0-9]+/g, "-").toLowerCase();
-  const trimmed = replaced.replace(/^-+|-+$/g, "");
+  // Allow any Unicode letter / number through (`\p{L}\p{N}` with the `u`
+  // flag). The earlier `[^A-Za-z0-9]+` form treated Japanese / accented
+  // names as one long run of separators, so 'IPv4ヘッダー' collapsed to
+  // `ipv4---` (multiple hyphens) before trimming. The post-pass
+  // `replace(/-+/g, "-")` then collapses any incidental runs (e.g. from
+  // mixed ASCII / punctuation input) into a single hyphen.
+  const replaced = name.replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase();
+  const collapsed = replaced.replace(/-+/g, "-");
+  const trimmed = collapsed.replace(/^-+|-+$/g, "");
   return trimmed.length > 0 ? trimmed : "untitled";
 }
 
 /**
  * Map a FormatKey to the file extension used in downloads. The PSML JSON
  * format takes a compound `.psml.json` extension so it round-trips through
- * extensionToFormat without ambiguity vs. the bulk-export `.json` envelope.
+ * `extToFormat` without ambiguity vs. the bulk-export `.json` envelope.
+ *
+ * Thin wrapper over the format registry — the source of truth is
+ * `lib/formats/registry.ts`. Kept here so existing callers (and tests)
+ * don't have to know about the adapter shape.
  */
 export function formatToExtension(format: FormatKey): string {
-  switch (format) {
-    case "json":
-      return "psml.json";
-    case "rfc-ascii":
-      return "txt";
-    case "aug-ascii":
-      return "aad";
-    case "ksy":
-      return "ksy";
-  }
-}
-
-/**
- * Best-effort inverse of formatToExtension. Recognises both the canonical
- * extensions and a couple of friendly aliases ('.json' alone is treated as
- * PSML JSON because that's what users get when they export). Returns null
- * when the filename has no recognised extension.
- */
-export function extensionToFormat(filename: string): FormatKey | null {
-  if (typeof filename !== "string") return null;
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".psml.json")) return "json";
-  if (lower.endsWith(".aad")) return "aug-ascii";
-  if (lower.endsWith(".ksy")) return "ksy";
-  if (lower.endsWith(".txt")) return "rfc-ascii";
-  if (lower.endsWith(".json")) return "json";
-  return null;
+  return getFormat(format).extension;
 }
 
 /* ------------------------------------------------------------------ *

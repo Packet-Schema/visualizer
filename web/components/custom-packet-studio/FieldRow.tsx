@@ -106,17 +106,12 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className="flex flex-wrap items-start gap-2 p-2 border-b"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border)",
-      }}
+      className="flex flex-wrap items-start gap-2 p-2 border-b bg-bg-elevated border-border"
     >
       <span
         aria-hidden
         title="Drag to reorder"
-        className="cursor-grab select-none px-1 self-center"
-        style={{ color: "var(--fg-faint)" }}
+        className="cursor-grab select-none px-1 self-center text-fg-faint"
       >
         ⋮⋮
       </span>
@@ -216,11 +211,7 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
         {menuOpen && (
           <div
             role="menu"
-            className="absolute right-0 z-10 mt-1 min-w-44 rounded-md border shadow-lg"
-            style={{
-              background: "var(--bg-elevated)",
-              borderColor: "var(--border-strong)",
-            }}
+            className="absolute right-0 z-10 mt-1 min-w-44 rounded-md border shadow-lg bg-bg-elevated border-border-strong"
           >
             <MenuItem
               label="Duplicate"
@@ -262,10 +253,7 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
                 }
               }}
             />
-            <div
-              className="border-t my-1"
-              style={{ borderColor: "var(--border)" }}
-            />
+            <div className="border-t my-1 border-border" />
             {(
               ["struct", "group", "repeat", "switch", "encrypted"] as const
             ).map((kind) => (
@@ -291,8 +279,7 @@ function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
       type="button"
       role="menuitem"
       onClick={onClick}
-      className="block w-full text-left text-sm px-3 py-1.5 hover:opacity-80"
-      style={{ color: "var(--fg)" }}
+      className="block w-full text-left text-sm px-3 py-1.5 hover:opacity-80 text-fg"
     >
       {label}
     </button>

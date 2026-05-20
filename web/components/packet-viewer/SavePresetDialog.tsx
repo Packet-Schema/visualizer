@@ -52,24 +52,14 @@ export default function SavePresetDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-            style={{
-              background: "var(--bg-elevated)",
-              color: "var(--fg)",
-              borderColor: "var(--border-strong)",
-            }}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-bg-elevated text-fg border-border-strong"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={!name.trim()}
-            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-            style={{
-              background: "var(--accent)",
-              color: "var(--accent-fg)",
-              borderColor: "var(--accent)",
-            }}
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border bg-accent text-accent-fg border-accent"
           >
             Save
           </button>

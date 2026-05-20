@@ -4,6 +4,31 @@ import { validate } from "@/lib/psml/constraint";
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import type { Constraint, Expr, PacketEnv } from "@/lib/psml/types";
 
+/**
+ * Mint a unique key for a new Constraint row. We can't use
+ * `useListItemKeys` here because the studio reducer deep-clones the
+ * packet on every action (so object identity is destroyed each
+ * dispatch); attaching a stable `_uid` directly to the Constraint and
+ * letting it survive the clone is what keeps React focus/state pinned
+ * to the right row through reorder / insert / delete (Copilot review).
+ *
+ * `crypto.randomUUID()` (with a Math.random fallback for non-secure
+ * jsdom / older webview contexts that don't expose it) makes the value
+ * effectively collision-free even after a page reload — an earlier
+ * module-level counter form `c1`, `c2`, ... would have collided on
+ * reload because `_uid` is persisted when the packet is saved /
+ * exported via `JSON.stringify`.
+ */
+function mintConstraintUid(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return `c-${crypto.randomUUID()}`;
+  }
+  return `c-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
 import ExprBuilder from "./ExprBuilder";
 
 type Props = {
@@ -38,28 +63,14 @@ function StatusBadge({
 
   if (result.state === "unknown") {
     return (
-      <span
-        className="text-xs px-2 py-0.5 rounded border"
-        style={{
-          background: "var(--bg-subtle)",
-          color: "var(--fg-muted)",
-          borderColor: "var(--border)",
-        }}
-      >
+      <span className="text-xs px-2 py-0.5 rounded border bg-bg-subtle text-fg-muted border-border">
         cannot verify
       </span>
     );
   }
   if (result.state === "ok") {
     return (
-      <span
-        className="text-xs px-2 py-0.5 rounded border"
-        style={{
-          background: "var(--field-green)",
-          color: "var(--accent-fg)",
-          borderColor: "var(--border-strong)",
-        }}
-      >
+      <span className="text-xs px-2 py-0.5 rounded border bg-field-green text-accent-fg border-border-strong">
         ok
       </span>
     );
@@ -67,12 +78,7 @@ function StatusBadge({
   return (
     <span
       title={result.message}
-      className="text-xs px-2 py-0.5 rounded border"
-      style={{
-        background: "var(--field-rose)",
-        color: "var(--accent-fg)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="text-xs px-2 py-0.5 rounded border bg-field-rose text-accent-fg border-border-strong"
     >
       conflict
     </span>
@@ -91,7 +97,7 @@ export default function ConstraintEditor({
   const addDraft = () => {
     dispatch({
       type: "add-constraint",
-      constraint: { lhs: draftLhs, rhs: draftRhs },
+      constraint: { lhs: draftLhs, rhs: draftRhs, _uid: mintConstraintUid() },
     });
     setDraftLhs({ kind: "lit", value: 0 });
     setDraftRhs({ kind: "lit", value: 0 });
@@ -100,27 +106,17 @@ export default function ConstraintEditor({
   return (
     <section
       aria-label="Constraints"
-      className="flex flex-col gap-3 p-3 border-t"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border-strong)",
-      }}
+      className="flex flex-col gap-3 p-3 border-t bg-bg-elevated border-border-strong"
     >
       <header className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold" style={{ color: "var(--fg)" }}>
-          Constraints
-        </h3>
+        <h3 className="text-sm font-semibold text-fg">Constraints</h3>
         <StatusBadge constraints={constraints} env={env} />
       </header>
       <ul className="flex flex-col gap-2">
         {constraints.map((c, i) => (
           <li
-            key={i}
-            className="flex items-start gap-2 p-2 rounded border"
-            style={{
-              background: "var(--bg-subtle)",
-              borderColor: "var(--border)",
-            }}
+            key={c._uid ?? `c-${i}`}
+            className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border"
           >
             <ExprBuilder
               value={c.lhs}
@@ -133,12 +129,7 @@ export default function ConstraintEditor({
                 })
               }
             />
-            <span
-              className="self-center px-1 font-mono"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              ==
-            </span>
+            <span className="self-center px-1 font-mono text-fg-muted">==</span>
             <ExprBuilder
               value={c.rhs}
               fieldIds={fieldIds}
@@ -162,24 +153,13 @@ export default function ConstraintEditor({
           </li>
         ))}
       </ul>
-      <div
-        className="flex items-start gap-2 p-2 rounded border"
-        style={{
-          background: "var(--bg-subtle)",
-          borderColor: "var(--border)",
-        }}
-      >
+      <div className="flex items-start gap-2 p-2 rounded border bg-bg-subtle border-border">
         <ExprBuilder
           value={draftLhs}
           fieldIds={fieldIds}
           onChange={setDraftLhs}
         />
-        <span
-          className="self-center px-1 font-mono"
-          style={{ color: "var(--fg-muted)" }}
-        >
-          ==
-        </span>
+        <span className="self-center px-1 font-mono text-fg-muted">==</span>
         <ExprBuilder
           value={draftRhs}
           fieldIds={fieldIds}

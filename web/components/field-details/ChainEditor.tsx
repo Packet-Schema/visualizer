@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 
+import { useListItemKeys } from "@/lib/use-list-item-keys";
 import type {
   ChainCatalogEntry,
   ChainInstance,
@@ -34,6 +35,7 @@ export default function ChainEditor({ field, onChange }: Props) {
   const catalogByProto = new Map<number, ChainCatalogEntry>(
     catalog.map((c) => [c.proto, c]),
   );
+  const itemKeys = useListItemKeys(instances);
 
   const emit = (
     nextList: ChainInstance[],
@@ -71,6 +73,15 @@ export default function ChainEditor({ field, onChange }: Props) {
   };
 
   const handleFinalChange = (raw: string) => {
+    // Empty string means the user picked "(none)" — clear the final
+    // proto entirely instead of coercing it to 0. `Number("")` is 0 in
+    // JS, so without this guard the select would silently bind 0 (a
+    // valid IPv6 HBH next-header) to `chainFinalProto` and the chain
+    // editor would render that proto's row as the terminal protocol.
+    if (raw === "") {
+      emit(instances, undefined);
+      return;
+    }
     const v = Number(raw);
     if (!Number.isFinite(v)) return;
     emit(instances, v);
@@ -78,10 +89,8 @@ export default function ChainEditor({ field, onChange }: Props) {
 
   return (
     <div>
-      <h3 className="m-0 mb-2 text-[15px]" style={{ color: "var(--fg)" }}>
-        {field.name} — chain
-      </h3>
-      <p className="text-[12px] m-0 mb-2" style={{ color: "var(--fg-muted)" }}>
+      <h3 className="m-0 mb-2 text-[15px] text-fg">{field.name} — chain</h3>
+      <p className="text-xs m-0 mb-2 text-fg-muted">
         Attach IPv6 extension headers in order. The final Next Header is the
         upper-layer protocol.
       </p>
@@ -94,10 +103,7 @@ export default function ChainEditor({ field, onChange }: Props) {
         }}
       >
         {instances.length === 0 ? (
-          <p
-            className="m-0 px-3 py-2 text-[12px]"
-            style={{ color: "var(--fg-faint)" }}
-          >
+          <p className="m-0 px-3 py-2 text-xs text-fg-faint">
             No extension headers attached.
           </p>
         ) : (
@@ -106,32 +112,15 @@ export default function ChainEditor({ field, onChange }: Props) {
             if (!entry) return null;
             const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
             return (
-              <div
-                key={i}
-                className="px-3 py-2"
-                style={{ borderColor: "var(--border)" }}
-              >
+              <div key={itemKeys[i]} className="px-3 py-2 border-border">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono"
-                    style={{
-                      background: "var(--bg-elevated)",
-                      color: "var(--fg-muted)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
+                  <span className="text-2xs font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
                     proto {entry.proto}
                   </span>
-                  <span
-                    className="text-[13px] font-semibold"
-                    style={{ color: "var(--fg)" }}
-                  >
+                  <span className="text-sm-tight font-semibold text-fg">
                     {entry.name}
                   </span>
-                  <span
-                    className="text-[11px] font-mono tabular-nums"
-                    style={{ color: "var(--fg-muted)" }}
-                  >
+                  <span className="text-3xs font-mono tabular-nums text-fg-muted">
                     {bits} b / {bits / 8} B
                   </span>
                   <div className="ml-auto flex items-center gap-1">
@@ -152,7 +141,7 @@ export default function ChainEditor({ field, onChange }: Props) {
                     <button
                       type="button"
                       onClick={() => handleRemove(i)}
-                      className="text-[11px] px-2 py-0.5 rounded border"
+                      className="text-3xs px-2 py-0.5 rounded border"
                       style={{
                         borderColor: "var(--border-strong)",
                         color: "var(--fg)",
@@ -164,10 +153,7 @@ export default function ChainEditor({ field, onChange }: Props) {
                   </div>
                 </div>
                 {entry.description ? (
-                  <p
-                    className="m-0 mt-1 text-[11px]"
-                    style={{ color: "var(--fg-faint)" }}
-                  >
+                  <p className="m-0 mt-1 text-3xs text-fg-faint">
                     {entry.description}
                   </p>
                 ) : null}
@@ -178,13 +164,11 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
-          Add extension header:
-        </label>
+        <label className="text-xs text-fg-muted">Add extension header:</label>
         <select
           value={addProto}
           onChange={(e) => setAddProto(e.target.value)}
-          className="px-2 py-1 rounded border text-[12px]"
+          className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",
@@ -202,7 +186,7 @@ export default function ChainEditor({ field, onChange }: Props) {
           type="button"
           onClick={handleAdd}
           disabled={!addProto}
-          className="text-[12px] px-2.5 py-1 rounded border"
+          className="text-xs px-2.5 py-1 rounded border"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--accent)",
@@ -215,19 +199,24 @@ export default function ChainEditor({ field, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
+        <label className="text-xs text-fg-muted">
           Final upper-layer protocol:
         </label>
         <select
           value={finalProto ?? ""}
           onChange={(e) => handleFinalChange(e.target.value)}
-          className="px-2 py-1 rounded border text-[12px]"
+          className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",
             color: "var(--fg)",
           }}
         >
+          {/* Empty-value option pairs with `value={finalProto ?? ""}` so
+              the &lt;select&gt; stays controlled when no final proto is
+              picked yet (avoids the "controlled value doesn't match any
+              option" React warning). */}
+          <option value="">(none)</option>
           {FINAL_PROTOS.map((f) => (
             <option key={f.v} value={f.v}>
               {f.name} ({f.v})
@@ -256,7 +245,7 @@ function IconBtn({
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className="text-[11px] w-6 h-6 rounded border font-mono"
+      className="text-3xs w-6 h-6 rounded border font-mono"
       style={{
         borderColor: "var(--border-strong)",
         background: "var(--bg-elevated)",

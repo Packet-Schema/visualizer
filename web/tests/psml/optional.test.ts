@@ -100,10 +100,11 @@ describe("normalize — Optional", () => {
       ],
     };
     const n = normalize(p);
-    // Optional inside repeat keeps the inner field's id (no repeat suffixing
-    // for compound children — that mirrors group / switch nesting today).
+    // Each repetition tags the emitted field with its index so the cell
+    // renderer can keep unique React keys across copies. Without this the
+    // diagram would silently drop or duplicate cells.
     expect(n.fields.length).toBe(3);
-    for (const f of n.fields) expect(f.id).toBe("opt");
+    expect(n.fields.map((f) => f.id)).toEqual(["opt#0", "opt#1", "opt#2"]);
   });
 
   it("Optional nested inside Encrypted plaintext (semantic mode)", () => {

@@ -41,7 +41,7 @@ export default function DetailPanel({
 }: Props) {
   if (!selectedFieldId) {
     return (
-      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
+      <p className="m-0 text-sm-tight text-fg-faint">
         Click a field in the diagram to see its details.
       </p>
     );
@@ -72,12 +72,9 @@ export default function DetailPanel({
     const { parent, sub } = subPair;
     return (
       <div>
-        <h3 className="m-0 mb-2.5 text-[15px]" style={{ color: "var(--fg)" }}>
+        <h3 className="m-0 mb-2.5 text-[15px] text-fg">
           {sub.name}{" "}
-          <span
-            className="text-[11px] font-normal"
-            style={{ color: "var(--fg-muted)" }}
-          >
+          <span className="text-3xs font-normal text-fg-muted">
             (subfield of {parent.name})
           </span>
         </h3>
@@ -99,19 +96,13 @@ export default function DetailPanel({
 
   if (selectedFieldId.includes(":")) {
     return (
-      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
-        Subfield not found.
-      </p>
+      <p className="m-0 text-sm-tight text-fg-faint">Subfield not found.</p>
     );
   }
 
   const field = packet.fields.find((f) => f.id === selectedFieldId);
   if (!field) {
-    return (
-      <p className="m-0 text-[13px]" style={{ color: "var(--fg-faint)" }}>
-        Field not found.
-      </p>
-    );
+    return <p className="m-0 text-sm-tight text-fg-faint">Field not found.</p>;
   }
 
   // TLV editor.
@@ -156,9 +147,7 @@ export default function DetailPanel({
       <span key="size">
         <span className="font-mono tabular-nums">{sizeStr}</span>
         {field.variable ? (
-          <em className="not-italic ml-1" style={{ color: "var(--fg-muted)" }}>
-            (variable)
-          </em>
+          <em className="not-italic ml-1 text-fg-muted">(variable)</em>
         ) : null}
       </span>,
     ],
@@ -187,10 +176,7 @@ export default function DetailPanel({
             </span>
             )
             {drivenByTlv ? (
-              <em
-                className="not-italic ml-2 text-[11px]"
-                style={{ color: "var(--fg-muted)" }}
-              >
+              <em className="not-italic ml-2 text-3xs text-fg-muted">
                 — synced from TLV editor
               </em>
             ) : null}
@@ -217,9 +203,7 @@ export default function DetailPanel({
 
   return (
     <div>
-      <h3 className="m-0 mb-2.5 text-[15px]" style={{ color: "var(--fg)" }}>
-        {field.name}
-      </h3>
+      <h3 className="m-0 mb-2.5 text-[15px] text-fg">{field.name}</h3>
       <DefList rows={rows} />
     </div>
   );
@@ -231,22 +215,15 @@ function DefList({ rows }: { rows: Array<[string, React.ReactNode] | null> }) {
   );
   return (
     <dl
-      className="m-0 grid gap-y-1.5 gap-x-3.5 text-[13px]"
+      className="m-0 grid gap-y-1.5 gap-x-3.5 text-sm-tight"
       style={{
         gridTemplateColumns: "max-content 1fr",
       }}
     >
       {filtered.map(([term, value]) => (
         <div key={term} className="contents">
-          <dt
-            className="font-semibold m-0"
-            style={{ color: "var(--fg-muted)" }}
-          >
-            {term}
-          </dt>
-          <dd className="m-0" style={{ color: "var(--fg)" }}>
-            {value}
-          </dd>
+          <dt className="font-semibold m-0 text-fg-muted">{term}</dt>
+          <dd className="m-0 text-fg">{value}</dd>
         </div>
       ))}
     </dl>

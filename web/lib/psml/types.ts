@@ -226,6 +226,15 @@ export type Constraint = {
   lhs: Expr;
   rhs: Expr;
   doc?: string;
+  /**
+   * UI-only stable identity preserved across `structuredClone` so the
+   * editor can give each row a React key that survives reorder /
+   * insert / delete. Not part of the on-wire PSML contract; emitters
+   * that round-trip a constraint may either preserve or strip it
+   * (validators ignore unknown fields). When absent, callers should
+   * fall back to an index-based key.
+   */
+  _uid?: string;
 };
 
 /* ------------------------------------------------------------------ *

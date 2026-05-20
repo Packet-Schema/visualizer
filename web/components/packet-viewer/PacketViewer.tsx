@@ -7,10 +7,7 @@ import {
   useReducer,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import copy from "copy-to-clipboard";
-import stableStringify from "safe-stable-stringify";
 
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
@@ -22,6 +19,7 @@ import {
   syncTlvControllers,
 } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
+import { updatePacketField } from "@/lib/psml/packet-update";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
 import {
@@ -48,9 +46,10 @@ import type {
   Field,
   Packet,
   PacketRegistry,
+  SubField,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { Expr, PsmlPacket, ViewMode } from "@/lib/psml/types";
+import type { Expr, PsmlPacket } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
@@ -58,9 +57,7 @@ import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
-import ImportExportDrawer, {
-  type DrawerMode,
-} from "@/components/import-export/ImportExportDrawer";
+import ImportExportDrawer from "@/components/import-export/ImportExportDrawer";
 import Legend from "@/components/diagram/Legend";
 import OnboardingTour, {
   hasSeenTour,
@@ -69,7 +66,15 @@ import OnboardingTour, {
 import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
 import StudioPanel from "./StudioPanel";
-import { cssEscape, findRowNeighbor } from "./navigation";
+import {
+  useAutoClearStatus,
+  useDelayedOnce,
+  useFieldHighlight,
+  useIsWideViewport,
+  useRovingTabindex,
+  useUndoRedoShortcuts,
+} from "./hooks";
+import { initialUiState, uiReducer } from "./ui-state-reducer";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
@@ -109,11 +114,10 @@ function collectPsmlRefs(packet: PsmlPacket): Set<string> {
         visit(e.f);
         return;
       case "peek":
-        // peek.bits は定数 (number) で ref を含まない一方、
-        // peek.offset は Expr なので ref を含み得る (例: offset を
-        // 同 packet の長さ field で動かす lookahead パターン)。
-        // ここを walk しないと該当パケットが MissingRefError で落ちる
-        // (Codex P2 指摘)。
+        // peek.bits は定数 (number) で ref を含まない一方、 peek.offset は
+        // Expr なので ref を含み得る (lookahead パターンで、 offset を同
+        // packet の長さ field で動かすなど)。 ここを walk しないと該当
+        // パケットが MissingRefError で落ちる。
         if (e.offset) visit(e.offset);
         return;
     }
@@ -177,10 +181,9 @@ export default function PacketViewer() {
   // and are lowered to the renderer shape on demand.
   const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
   // The renderer-shape mirror of every built-in PSML preset. Lowered once on
-  // mount; TLV/Chain mutations mutate the field object identity in-place so
-  // the mirror is stable across re-renders (the format hub re-lifts back to
-  // PSML at export time).
-  const [renderedPresets] = useState<PacketRegistry>(() => {
+  // mount; TLV/Chain edits replace the relevant packet entry immutably via
+  // `updatePacketField` (the format hub re-lifts back to PSML at export time).
+  const [renderedPresets, setRenderedPresets] = useState<PacketRegistry>(() => {
     const out: PacketRegistry = {};
     for (const [k, v] of Object.entries(PRESETS)) {
       out[k] = psmlToRenderer(v);
@@ -219,37 +222,41 @@ export default function PacketViewer() {
     PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
-  const [editMode, setEditMode] = useState(false);
-  const [showJsonPane, setShowJsonPane] = useState(false);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [popoverAnchor, setPopoverAnchor] = useState<DOMRect | null>(null);
-  const [isWideViewport, setIsWideViewport] = useState(false);
-  const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
-  const [tourOpen, setTourOpen] = useState(false);
-  // Hex strip is hidden by default on narrow viewports so phones aren't
-  // overwhelmed; users can flip it on via the toolbar regardless.
-  const [hexStripVisible, setHexStripVisible] = useState(false);
-  // Tracks whether the user has explicitly toggled hex visibility. Without
-  // this flag, the wide-viewport effect would keep clobbering their choice.
-  const hexStripUserSetRef = useRef(false);
-  const [dependenciesVisible, setDependenciesVisible] = useState(false);
-  // Wire vs. semantic ('Decrypted') view. Phase 2C will populate the runtime
-  // resolver with encrypted blocks; for now the toggle threads state through
-  // and HybridDiagram decorates any cell that already carries the flags.
-  const [viewMode, setViewMode] = useState<ViewMode>("wire");
+  // UI shell state — visibility toggles, selection, drawer mode, etc.
+  // The reducer lives in `ui-state-reducer.ts`; keeping it pure and away
+  // from the data flow above makes intent of each transition (e.g.
+  // "preset-switched" resets edit + json pane) explicit.
+  const [ui, uiDispatch] = useReducer(uiReducer, initialUiState);
+  const {
+    editMode,
+    showJsonPane,
+    showSaveDialog,
+    selectedFieldId,
+    popoverAnchor,
+    drawerMode,
+    tourOpen,
+    hexStripVisible,
+    dependenciesVisible,
+    viewMode,
+    shareStatus,
+  } = ui;
+  const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
   const [urlHydrated, setUrlHydrated] = useState(false);
-  const [shareStatus, setShareStatus] = useState<{
-    msg: string;
-    kind: "ok" | "error";
-  } | null>(null);
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
-  const controlsRef = useRef<HTMLElement | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
 
   // Pull user-saved presets from localStorage, then apply shared URL state.
-  // URL hydration is one-shot; later state changes update the address bar.
+  // URL hydration must run exactly once at mount: subsequent edits flow
+  // through `setRenderedPresets` (TLV / chain edits on a built-in preset),
+  // which would otherwise re-trigger this effect via `[renderedPresets]`
+  // and clobber the user's controller state with the original share URL.
+  // The ref gate fires synchronously inside the same effect run as the
+  // state update so React's StrictMode double-invocation is also safe.
+  const hydrationRanRef = useRef(false);
   useEffect(() => {
+    if (hydrationRanRef.current) return;
+    hydrationRanRef.current = true;
     const stored = loadCustomPresets();
     if (typeof window === "undefined") {
       setCustomPresets(stored);
@@ -289,7 +296,9 @@ export default function PacketViewer() {
       }
     }
     setUrlHydrated(true);
-  }, [renderedPresets]);
+    // renderedPresets is intentionally not in the deps — see comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The active PSML packet for the studio reducer. Prefers built-in PSML,
   // then a custom preset, then a lifted version of the imported renderer
@@ -304,94 +313,46 @@ export default function PacketViewer() {
     );
   }, [packetKey, customPresets, importedPackets]);
 
-  // When the user changes preset, reseed the reducer so undo doesn't span
-  // unrelated packets.
-  useEffect(() => {
+  // Re-seed the studio reducer in-place when the active PSML packet swaps
+  // (preset change, custom preset selection, import). Detecting the change
+  // during render and dispatching synchronously is the React-recommended
+  // alternative to a useEffect — it keeps `studioState.packet` aligned with
+  // `activePsmlPacket` on the same render that observed the change, avoiding
+  // a flash of stale state.
+  // See: https://react.dev/learn/you-might-not-need-an-effect
+  const lastReducerPacketRef = useRef(activePsmlPacket);
+  if (lastReducerPacketRef.current !== activePsmlPacket) {
+    lastReducerPacketRef.current = activePsmlPacket;
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
-  }, [activePsmlPacket]);
+  }
 
-  // Keyboard shortcuts while editing. Skip when focus is on an input/textarea
-  // so the browser's native text-undo still works inside FieldRow inputs.
-  useEffect(() => {
-    if (!editMode) return;
-    function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
-          return;
-        }
-      }
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: "undo" });
-      } else if ((key === "z" && e.shiftKey) || key === "y") {
-        e.preventDefault();
-        dispatch({ type: "redo" });
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [editMode]);
+  useUndoRedoShortcuts({
+    enabled: editMode,
+    onUndo: () => dispatch({ type: "undo" }),
+    onRedo: () => dispatch({ type: "redo" }),
+  });
 
-  // Auto-launch the tour on first visit. Delay slightly so the diagram is
-  // mounted and target elements are visible.
-  useEffect(() => {
-    if (hasSeenTour()) return;
-    const id = window.setTimeout(() => setTourOpen(true), 350);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  // Track viewport width to gate the popover affordance. Read on mount and on
-  // resize; SSR sees `false` so the markup matches the initial client render.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    function update() {
-      setIsWideViewport(window.innerWidth >= POPOVER_MIN_WIDTH);
-    }
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+  useDelayedOnce(!hasSeenTour(), 350, () =>
+    uiDispatch({ type: "set-tour-open", open: true }),
+  );
 
   // Default the hex strip on for wide viewports the first time we know the
   // viewport size. Once the user toggles, leave their preference alone.
   useEffect(() => {
-    if (hexStripUserSetRef.current) return;
-    setHexStripVisible(isWideViewport);
-  }, [isWideViewport]);
+    if (ui.hexStripUserSet) return;
+    uiDispatch({
+      type: "set-hex-strip-visible",
+      visible: isWideViewport,
+      userInitiated: false,
+    });
+  }, [isWideViewport, ui.hexStripUserSet]);
 
   // Bidirectional highlight wiring. Both the diagram cells and the hex strip
-  // call this; we mirror the active fieldId to the diagram root and tag any
-  // matching elements with `.hex-match`. CSS can't compare two attribute
-  // values, so we apply the class imperatively — zero re-render churn during
-  // hover and the styling rules stay declarative in globals.css.
-  const handleFieldHover = useCallback((fieldId: string | null) => {
-    const root = diagramRef.current;
-    if (!root) return;
-    // Always clear the previous highlight first so rapid hover transitions
-    // don't leave stale classes behind.
-    for (const el of root.querySelectorAll<HTMLElement>(".hex-match")) {
-      el.classList.remove("hex-match");
-    }
-    if (!fieldId) {
-      root.removeAttribute("data-highlighted-field");
-      return;
-    }
-    root.setAttribute("data-highlighted-field", fieldId);
-    // Subfield ids look like "parent:sub". Highlight both the subfield itself
-    // and the parent field cell so the relationship is unambiguous.
-    const parentId = fieldId.includes(":") ? fieldId.split(":")[0] : null;
-    const matches = root.querySelectorAll<HTMLElement>(
-      parentId
-        ? `[data-field-id="${cssEscape(fieldId)}"], .field-cell[data-field-id="${cssEscape(parentId)}"]`
-        : `[data-field-id="${cssEscape(fieldId)}"]`,
-    );
-    for (const el of matches) el.classList.add("hex-match");
-  }, []);
+  // call this; the hook paints `.hex-match` on matching cells and mirrors
+  // the active id on the diagram root via `data-highlighted-field`.
+  // Implemented imperatively on purpose (hover fires dozens of times per
+  // second; re-rendering the entire packet tree each time is wasteful).
+  const handleFieldHover = useFieldHighlight(diagramRef);
 
   const handlePacketChange = useCallback(
     (nextKey: string) => {
@@ -402,8 +363,11 @@ export default function PacketViewer() {
         importedPackets[nextKey] ??
         (customPreset ? psmlToRenderer(customPreset) : null);
       if (next) setControllers(initialState(next));
-      setSelectedFieldId(null);
-      setPopoverAnchor(null);
+      // `preset-switched` resets selection, popover anchor, edit mode, and
+      // the json pane in one shot. Otherwise `targetPsml` would briefly
+      // fall back to `studioState.packet` (still pointing at the previous
+      // preset) and the diagram would render mixed cells.
+      uiDispatch({ type: "preset-switched" });
     },
     [customPresets, importedPackets, renderedPresets],
   );
@@ -416,14 +380,25 @@ export default function PacketViewer() {
   // straight getBoundingClientRect() — no SVG branching required.
   const handleFieldClick = useCallback(
     (fieldId: string, elem: HTMLElement | null) => {
-      setSelectedFieldId(fieldId);
-      if (isWideViewport && elem) {
-        setPopoverAnchor(elem.getBoundingClientRect());
-      } else {
-        setPopoverAnchor(null);
-      }
+      const anchor =
+        isWideViewport && elem ? elem.getBoundingClientRect() : null;
+      uiDispatch({ type: "select-field", id: fieldId, anchor });
     },
     [isWideViewport],
+  );
+
+  // Stable callbacks for HybridDiagram. Without these, the JSX-inline
+  // arrow functions would mint new identities every render and bypass
+  // FieldCell's `memo` equality, so every slider drag would re-render
+  // every cell (~ 50+ cells × 60 fps ≈ 3000 reconciliations/s).
+  const handleFieldClickWithField = useCallback(
+    (field: Field, elem: HTMLElement) => handleFieldClick(field.id, elem),
+    [handleFieldClick],
+  );
+  const handleSubfieldClick = useCallback(
+    (parentField: Field, subfield: SubField, elem: HTMLElement) =>
+      handleFieldClick(`${parentField.id}:${subfield.id}`, elem),
+    [handleFieldClick],
   );
 
   const handleImport = useCallback(
@@ -432,22 +407,57 @@ export default function PacketViewer() {
       setImportedPackets((prev) => ({ ...prev, [key]: imported }));
       setPacketKey(key);
       setControllers({ ...initialState(imported), ...importedControllers });
-      setSelectedFieldId(null);
-      setDrawerMode(null);
+      uiDispatch({ type: "clear-selection" });
+      uiDispatch({ type: "close-drawer" });
     },
     [],
   );
 
-  // TLV edits mutate the field's `tlv.instances` array (matching legacy
-  // behaviour where the catalog data is shared with the resolver). We
-  // re-sync TLV-driven controllers afterwards.
+  // Swap whichever registry currently owns `packetKey` (built-in mirror /
+  // imported / custom) for a new Packet. Keeps TLV/Chain edits visible
+  // across preset switches without mutating shared field objects.
+  const replaceActivePacket = useCallback(
+    (nextPacket: Packet) => {
+      if (renderedPresets[packetKey]) {
+        setRenderedPresets((prev) => ({ ...prev, [packetKey]: nextPacket }));
+      } else if (importedPackets[packetKey]) {
+        setImportedPackets((prev) => ({ ...prev, [packetKey]: nextPacket }));
+      } else {
+        // Custom preset edits: keep the source PSML untouched and
+        // persist the renderer-shape edit in `renderedPresets` instead.
+        //
+        // The earlier approach (`setCustomPresets ← rendererToPsml(...)`,
+        // even with constraints merged back) bakes the renderer model's
+        // lossy collapse of Encrypted / Switch / Optional containers
+        // into the source PSML on every TLV / Chain edit (Codex P1).
+        // The renderer mirror lookup at the top of this component
+        // already falls back to `renderedPresets[packetKey]` ??
+        // `customRenderer` (which re-derives from customPresets), so
+        // writing the edit to `renderedPresets[packetKey]` lets the UI
+        // pick up the change immediately while the canonical PSML
+        // stays intact. A preset switch + return re-derives the
+        // renderer view from the source; only an explicit
+        // "Save as preset" should rebuild the persisted PSML.
+        setRenderedPresets((prev) => ({ ...prev, [packetKey]: nextPacket }));
+      }
+    },
+    [packetKey, renderedPresets, importedPackets],
+  );
+
+  // TLV edits replace the field's `tlv.instances` immutably and re-sync
+  // TLV-driven controllers afterwards.
   const handleTlvChange = useCallback(
     (field: Field, next: TlvInstance[]) => {
       if (!field.tlv) return;
-      field.tlv.instances = next;
-      setControllers((prev) => syncTlvControllers(packet, prev));
+      const tlv = field.tlv;
+      const nextPacket = updatePacketField(packet, field.id, (f) => ({
+        ...f,
+        tlv: { ...tlv, instances: next },
+      }));
+      replaceActivePacket(nextPacket);
+      setControllers((prev) => syncTlvControllers(nextPacket, prev));
     },
-    [packet],
+    [packet, replaceActivePacket],
   );
 
   const handleChainChange = useCallback(
@@ -455,14 +465,22 @@ export default function PacketViewer() {
       field: Field,
       next: { instances: ChainInstance[]; finalProto?: number },
     ) => {
-      field.chainInstances = next.instances;
-      if (typeof next.finalProto === "number") {
-        field.chainFinalProto = next.finalProto;
-      }
-      // Force a re-render even though we mutated the field directly.
-      setControllers((prev) => syncChainControllers(packet, { ...prev }));
+      const nextPacket = updatePacketField(packet, field.id, (f) => ({
+        ...f,
+        chainInstances: next.instances,
+        // Reflect the editor's payload verbatim — ChainEditor's `emit`
+        // already defaults `nextFinal` to the current `finalProto`, so
+        // an undefined value here means the user explicitly picked
+        // "(none)" and wants the terminal proto cleared. Falling back
+        // to `f.chainFinalProto` (as the earlier `typeof === "number"`
+        // form did) made the clear path silently no-op, leaving stale
+        // final-proto state on the packet (Codex P1).
+        chainFinalProto: next.finalProto,
+      }));
+      replaceActivePacket(nextPacket);
+      setControllers((prev) => syncChainControllers(nextPacket, prev));
     },
-    [packet],
+    [packet, replaceActivePacket],
   );
 
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
@@ -479,11 +497,24 @@ export default function PacketViewer() {
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
+      // Drop any stale renderer-mirror cache for this key. The custom-
+      // edit path writes renderer packets into `renderedPresets[key]`
+      // for session-only persistence; without this evict, saving over
+      // an existing `custom:<name>` keeps the old renderer ahead of
+      // the freshly persisted PSML in `packet`'s resolution order and
+      // the UI shows stale data (Codex P2). The next render will
+      // re-derive from `customPresets[key]` → `customRenderer`.
+      setRenderedPresets((prev) => {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
       setPacketKey(key);
       setControllers(initialState(psmlToRenderer(packetToSave)));
-      setSelectedFieldId(null);
-      setShowSaveDialog(false);
-      setEditMode(false);
+      uiDispatch({ type: "clear-selection" });
+      uiDispatch({ type: "close-save-dialog" });
+      uiDispatch({ type: "set-edit-mode", editing: false });
     },
     [studioState.packet],
   );
@@ -491,9 +522,11 @@ export default function PacketViewer() {
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
-    setEditMode(false);
-    setShowJsonPane(false);
-  }, [activePsmlPacket]);
+    uiDispatch({ type: "set-edit-mode", editing: false });
+    // showJsonPane is part of the same UI shell — keep them in sync by
+    // toggling off if it was open.
+    if (showJsonPane) uiDispatch({ type: "toggle-json-pane" });
+  }, [activePsmlPacket, showJsonPane]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.
@@ -564,16 +597,52 @@ export default function PacketViewer() {
     }
     deleteCustomPreset(packetKey);
     setCustomPresets(loadCustomPresets());
+    // Drop any cached renderer mirror for this custom key — `replace
+    // ActivePacket` writes edits into `renderedPresets[packetKey]` for
+    // custom presets, so a `custom:foo` re-created with the same name
+    // after deletion would otherwise re-bind to the stale cached
+    // renderer packet instead of the freshly imported one (Codex P2).
+    setRenderedPresets((prev) => {
+      if (!(packetKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[packetKey];
+      return next;
+    });
     setPacketKey(DEFAULT_PACKET_KEY);
-    setEditMode(false);
+    uiDispatch({ type: "set-edit-mode", editing: false });
   }, [packetKey, customPresets]);
 
   const buildCurrentShareUrl = useCallback(() => {
     if (typeof window === "undefined") return "";
     const builtInPsml = PRESETS[packetKey];
+    const customSource = builtInPsml ? undefined : customPresets[packetKey];
+    // Custom preset edits live in `renderedPresets` (see
+    // `replaceActivePacket` custom arm) and the source PSML in
+    // `customPresets[packetKey]` stays untouched. Decide which one to
+    // share based on whether the user has actually edited:
+    //
+    //  - editMode → always share the studio state (the user's draft).
+    //  - built-in → share the built-in PSML (preset key + controllers
+    //    are enough, but emitting the PSML preserves any constraints
+    //    we want the recipient to see).
+    //  - custom + no renderer override → share the source PSML so its
+    //    `constraints` / Encrypted / Switch / Optional containers
+    //    survive (rendererToPsml would strip them — Codex P1).
+    //  - custom + renderer override → lift the renderer packet back to
+    //    PSML so the recipient sees the TLV / Chain edits actually
+    //    visible on screen (lossy for non-renderer constructs but
+    //    necessary; matching screen-state is the priority once the
+    //    user has touched the editor).
+    //  - imported → no source PSML available, lift from renderer.
+    const hasCustomRendererOverride =
+      !builtInPsml && renderedPresets[packetKey] !== undefined;
     const sharePacket = editMode
       ? studioState.packet
-      : (builtInPsml ?? customPresets[packetKey] ?? rendererToPsml(packet));
+      : builtInPsml
+        ? builtInPsml
+        : hasCustomRendererOverride
+          ? rendererToPsml(packet)
+          : (customSource ?? rendererToPsml(packet));
     const defaultControllers = builtInPsml
       ? initialState(psmlToRenderer(builtInPsml))
       : undefined;
@@ -594,6 +663,7 @@ export default function PacketViewer() {
     editMode,
     packet,
     packetKey,
+    renderedPresets,
     studioState.packet,
   ]);
 
@@ -611,13 +681,11 @@ export default function PacketViewer() {
     }
   }, [buildCurrentShareUrl, urlHydrated]);
 
-  useEffect(() => {
-    if (!shareStatus) return;
-    const id = window.setTimeout(() => setShareStatus(null), 2400);
-    return () => window.clearTimeout(id);
-  }, [shareStatus]);
+  useAutoClearStatus(shareStatus, 2400, () =>
+    uiDispatch({ type: "clear-share-status" }),
+  );
 
-  const handleShare = useCallback(() => {
+  const handleShare = useCallback(async () => {
     try {
       const url = buildCurrentShareUrl();
       const bytes = shareUrlByteLength(url);
@@ -626,16 +694,68 @@ export default function PacketViewer() {
           `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
-      const ok = copy(url);
-      if (!ok) throw new Error("Clipboard copy was not available.");
+      // Try the async Clipboard API first, then fall through to the
+      // legacy execCommand path if it's missing (non-secure context) *or*
+      // rejected at call time (Permissions-Policy / NotAllowedError on
+      // background tabs, iframes without `clipboard-write`, etc.).
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(url);
+          copied = true;
+        } catch {
+          // Swallow the reject and let the fallback below try.
+        }
+      }
+      if (!copied) {
+        // We can't reuse a page textarea like ImportExportDrawer does
+        // because the share URL is not rendered anywhere, so spin up a
+        // hidden one just for the execCommand call.
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.setAttribute("readonly", "");
+        // Hide from assistive tech + tab order so screen readers don't
+        // announce the brief mount/unmount and keyboard users can't tab
+        // into the throwaway element.
+        ta.setAttribute("aria-hidden", "true");
+        ta.tabIndex = -1;
+        // `position: fixed` + opacity 0 avoids the iOS / Android scroll
+        // jump that a plain off-screen textarea would cause.
+        ta.style.position = "fixed";
+        ta.style.top = "0";
+        ta.style.left = "0";
+        ta.style.opacity = "0";
+        // `ta.select()` steals focus from whatever invoked the share,
+        // typically the Share button. Capture and restore it so the
+        // user's focus context doesn't jump after the copy.
+        const prevFocus = document.activeElement;
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try {
+          ok = document.execCommand("copy");
+        } finally {
+          document.body.removeChild(ta);
+          if (prevFocus instanceof HTMLElement) prevFocus.focus();
+        }
+        if (!ok) {
+          throw new Error("Copy command was rejected by the browser.");
+        }
+      }
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }
-      setShareStatus({ msg: "Share URL copied.", kind: "ok" });
+      uiDispatch({
+        type: "set-share-status",
+        status: { msg: "Share URL copied.", kind: "ok" },
+      });
     } catch (err) {
-      setShareStatus({
-        msg: `Share failed: ${(err as Error).message}`,
-        kind: "error",
+      uiDispatch({
+        type: "set-share-status",
+        status: {
+          msg: `Share failed: ${(err as Error).message}`,
+          kind: "error",
+        },
       });
     }
   }, [buildCurrentShareUrl]);
@@ -670,6 +790,33 @@ export default function PacketViewer() {
     [],
   );
 
+  // NOTE: an earlier revision wrapped `controllers` in `useDeferredValue` to
+  // smooth slider drags. That breaks preset switches: when `packetKey`
+  // changes, `controllers` is replaced with the new preset's defaults
+  // synchronously, but a deferred copy keeps the *previous* preset's keys
+  // alive for one or more frames — so e.g. switching from IPv4 to IPv6
+  // leaves a stale `ihl` in the env, and the IPv6 diagram is laid out as
+  // if IHL were still active. We need `packet`-and-`controllers` to stay
+  // in lockstep, so the synchronous value is the only safe choice.
+  // The PSML packet feeding `resolveLayout` — depends only on the active
+  // entry, never on the whole `customPresets` map. Pulling this out lets
+  // `psmlRefs` (an AST walk) re-run only when the body actually changes,
+  // not every time another preset is edited.
+  const targetPsml: PsmlPacket = useMemo(
+    () =>
+      editMode
+        ? studioState.packet
+        : (PRESETS[packetKey] ??
+          customPresets[packetKey] ??
+          rendererToPsml(packet)),
+    [editMode, studioState.packet, packetKey, customPresets, packet],
+  );
+
+  // Set of ref-names that the active packet expects in `env`. Cached against
+  // `targetPsml` so slider drag (which mutates `controllers` every frame but
+  // leaves the body untouched) does not re-walk the AST 60×/sec.
+  const psmlRefs = useMemo(() => collectPsmlRefs(targetPsml), [targetPsml]);
+
   const layout = useMemo(() => {
     // Every preset is PSML now — route the diagram through resolveLayout so
     // Encrypted-container decoration and viewMode toggling are uniform.
@@ -690,14 +837,6 @@ export default function PacketViewer() {
     env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
     const off = env.get("dataOffset") ?? 5;
     env.set("tcpOptionsCount", Math.max(0, off - 5));
-    // 描画対象の PSML packet を一旦変数で持つ — editMode / built-in /
-    // custom / imported のいずれも resolveLayout には PsmlPacket を渡す
-    // ので、 ref fallback seed を一箇所に集約できる。
-    const targetPsml: PsmlPacket = editMode
-      ? studioState.packet
-      : (PRESETS[packetKey] ??
-        customPresets[packetKey] ??
-        rendererToPsml(packet));
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、
@@ -715,19 +854,11 @@ export default function PacketViewer() {
     // MissingRefError で throw → React render が落ちて "Application error"
     // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
     // と命名が一致しない ref をまとめて吸収する。
-    for (const r of collectPsmlRefs(targetPsml)) {
+    for (const r of psmlRefs) {
       if (!env.has(r)) env.set(r, 0);
     }
     return resolveLayout(targetPsml, { env, viewMode });
-  }, [
-    packet,
-    packetKey,
-    controllers,
-    viewMode,
-    editMode,
-    studioState.packet,
-    customPresets,
-  ]);
+  }, [targetPsml, psmlRefs, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
@@ -736,77 +867,10 @@ export default function PacketViewer() {
     ? `${bytes} bytes`
     : `${layout.totalBits} bits`;
 
-  // Roving tabindex keyboard navigation on the diagram. We treat field cells
-  // (and subfield cells) as a flat list keyed by document order, but Up/Down
-  // routes through `data-row` + `data-start-bit` for spatial behaviour.
-  const handleDiagramKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      const root = diagramRef.current;
-      if (!root) return;
-      const target = e.target as Element | null;
-      if (!target) return;
-
-      const isFieldCell = target.classList.contains("field-cell");
-      const isSubfieldCell = target.classList.contains("subfield-cell");
-      if (!isFieldCell && !isSubfieldCell) return;
-
-      // All cells are HTMLElements in the hybrid renderer.
-      const cells = Array.from(
-        root.querySelectorAll<HTMLElement>(
-          isSubfieldCell ? ".subfield-cell" : ".field-cell",
-        ),
-      );
-      // Subfields navigate within their parent only.
-      const group = isSubfieldCell
-        ? cells.filter(
-            (c) =>
-              c.dataset.parentFieldId ===
-              (target as HTMLElement).dataset.parentFieldId,
-          )
-        : cells;
-
-      const idx = group.indexOf(target as HTMLElement);
-      if (idx === -1) return;
-
-      let next: HTMLElement | null = null;
-      switch (e.key) {
-        case "ArrowRight":
-          next = group[Math.min(group.length - 1, idx + 1)] ?? null;
-          break;
-        case "ArrowLeft":
-          next = group[Math.max(0, idx - 1)] ?? null;
-          break;
-        case "ArrowDown":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, +1);
-          break;
-        case "ArrowUp":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, -1);
-          break;
-        case "Home":
-          next = group[0] ?? null;
-          break;
-        case "End":
-          next = group[group.length - 1] ?? null;
-          break;
-        default:
-          return;
-      }
-
-      if (next && next !== target) {
-        e.preventDefault();
-        // Move the single tabindex=0 to the focused element.
-        for (const c of group) {
-          c.setAttribute("tabindex", c === next ? "0" : "-1");
-        }
-        next.focus();
-      }
-    },
-    [],
-  );
+  // Roving tabindex keyboard navigation on the diagram. The hook owns the
+  // imperative DOM operations (`setAttribute("tabindex", …)` + focus()) so
+  // PacketViewer stays declarative.
+  const handleDiagramKeyDown = useRovingTabindex(diagramRef);
 
   return (
     <>
@@ -821,50 +885,40 @@ export default function PacketViewer() {
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
           shareStatus={shareStatus}
-          onPacketChange={handlePacketChange}
-          onExportCustomPresets={handleExportCustomPresets}
-          onImportCustomPresets={handleImportCustomPresetsClick}
-          onOpenImport={() => setDrawerMode("import")}
-          onOpenExport={() => setDrawerMode("export")}
-          onShare={handleShare}
-          onToggleHexStrip={() => {
-            hexStripUserSetRef.current = true;
-            setHexStripVisible((v) => !v);
+          actions={{
+            onPacketChange: handlePacketChange,
+            onExportCustomPresets: handleExportCustomPresets,
+            onImportCustomPresets: handleImportCustomPresetsClick,
+            onOpenImport: () =>
+              uiDispatch({ type: "open-drawer", mode: "import" }),
+            onOpenExport: () =>
+              uiDispatch({ type: "open-drawer", mode: "export" }),
+            onShare: handleShare,
+            onToggleHexStrip: () => uiDispatch({ type: "toggle-hex-strip" }),
+            onToggleDependencies: () =>
+              uiDispatch({ type: "toggle-dependencies" }),
+            onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
+            onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
+            onDeleteCustomPreset: handleDeleteCustomPreset,
           }}
-          onToggleDependencies={() => setDependenciesVisible((v) => !v)}
-          onToggleViewMode={() =>
-            setViewMode((v) => (v === "semantic" ? "wire" : "semantic"))
-          }
-          onToggleEditMode={() => setEditMode((v) => !v)}
-          onDeleteCustomPreset={handleDeleteCustomPreset}
         />
         <input
           ref={bulkImportInputRef}
           type="file"
           accept=".json,application/json"
           onChange={handleImportCustomPresetsFile}
-          style={{ display: "none" }}
+          className="hidden"
           aria-hidden="true"
           tabIndex={-1}
         />
 
         {packet.description ? (
-          <p
-            className="text-[13px] mx-0.5 mt-2 mb-1"
-            style={{ color: "var(--fg-muted)" }}
-          >
+          <p className="text-sm-tight mx-0.5 mt-2 mb-1 text-fg-muted">
             {packet.description}
           </p>
         ) : null}
-        <p
-          className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5"
-          style={{ color: "var(--fg-faint)" }}
-        >
-          <span
-            className="not-italic font-bold"
-            style={{ color: "var(--accent)" }}
-            aria-hidden="true"
-          >
+        <p className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5 text-fg-faint">
+          <span className="not-italic font-bold text-accent" aria-hidden="true">
             ↦
           </span>
           {packet.byteOrder || DEFAULT_BYTE_ORDER}
@@ -887,10 +941,8 @@ export default function PacketViewer() {
               packet={packet}
               layout={layout}
               selectedFieldId={selectedFieldId}
-              onFieldClick={(field, elem) => handleFieldClick(field.id, elem)}
-              onSubfieldClick={(parentField, subfield, elem) =>
-                handleFieldClick(`${parentField.id}:${subfield.id}`, elem)
-              }
+              onFieldClick={handleFieldClickWithField}
+              onSubfieldClick={handleSubfieldClick}
               onFieldHover={hexStripVisible ? handleFieldHover : undefined}
             />
             {hexStripVisible ? (
@@ -915,8 +967,8 @@ export default function PacketViewer() {
             state={studioState}
             dispatch={dispatch}
             showJsonPane={showJsonPane}
-            onToggleJsonPane={() => setShowJsonPane((v) => !v)}
-            onSaveAs={() => setShowSaveDialog(true)}
+            onToggleJsonPane={() => uiDispatch({ type: "toggle-json-pane" })}
+            onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
           />
         ) : null}
@@ -930,15 +982,10 @@ export default function PacketViewer() {
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
           >
-            <h2
-              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
-              style={{ color: "var(--fg-muted)" }}
-            >
+            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Controls
             </h2>
-            <div
-              ref={controlsRef as unknown as React.RefObject<HTMLDivElement>}
-            >
+            <div ref={controlsRef}>
               <ControlsPanel
                 packet={packet}
                 controllers={controllers}
@@ -955,10 +1002,7 @@ export default function PacketViewer() {
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
           >
-            <h2
-              className="text-xs m-0 mb-3 uppercase tracking-wider font-bold"
-              style={{ color: "var(--fg-muted)" }}
-            >
+            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Field detail
             </h2>
             <DetailPanel
@@ -978,7 +1022,9 @@ export default function PacketViewer() {
           controllers={controllers}
           selectedFieldId={selectedFieldId}
           anchorRect={popoverAnchor}
-          onDismiss={() => setPopoverAnchor(null)}
+          onDismiss={() =>
+            uiDispatch({ type: "set-popover-anchor", anchor: null })
+          }
         />
       ) : null}
 
@@ -987,24 +1033,28 @@ export default function PacketViewer() {
         mode={drawerMode ?? "export"}
         packet={packet}
         controllers={controllers}
-        onClose={() => setDrawerMode(null)}
+        onClose={() => uiDispatch({ type: "close-drawer" })}
         onImport={handleImport}
       />
 
       {tourOpen ? (
-        <OnboardingTour steps={tourSteps} onClose={() => setTourOpen(false)} />
+        <OnboardingTour
+          steps={tourSteps}
+          onClose={() => uiDispatch({ type: "set-tour-open", open: false })}
+        />
       ) : null}
 
       {showSaveDialog ? (
         <SavePresetDialog
           defaultName={studioState.packet.name}
-          onCancel={() => setShowSaveDialog(false)}
+          onCancel={() => uiDispatch({ type: "close-save-dialog" })}
           onSubmit={handleSaveAsPreset}
         />
       ) : null}
     </>
   );
 }
+PacketViewer.displayName = "PacketViewer";
 
 function persistSharedCustomPreset(
   packet: PsmlPacket,
@@ -1050,6 +1100,37 @@ function normalizeCustomPresetName(name: string): string {
   const normalized = name.trim().replace(/\s+/g, " ");
   if (normalized.length === 0) return SHARED_CUSTOM_PRESET_FALLBACK_NAME;
   return normalized.slice(0, CUSTOM_PRESET_NAME_MAX).trimEnd();
+}
+
+/**
+ * Stable JSON comparison without the `safe-stable-stringify` dep — equality
+ * only needs key-order independence (the studio reducer deep-clones via
+ * `structuredClone`, which preserves key insertion order, but PSML packets
+ * from disparate sources may iterate differently). `JSON.stringify`'s
+ * second-arg array form sorts keys at every depth in one pass and is enough
+ * for our shallow-name PsmlPacket shape.
+ */
+function stableStringify(value: unknown): string {
+  const keys = new Set<string>();
+  // First pass: collect every property name reachable from the value so
+  // the replacer-array form of JSON.stringify can sort them globally.
+  // The replacer's *first* invocation is the root call with key === ""
+  // and val === value, which we skip; every subsequent empty-string key
+  // is a legitimate object property (e.g. `switch.cases[""]`, which
+  // `validateSwitch` doesn't forbid) and must enter the Set, otherwise
+  // `samePsmlPacket` would treat two packets that differ only inside an
+  // empty-keyed sub-object as identical and `persistSharedCustomPreset`
+  // would silently dedupe them away (Codex P2).
+  let seenRoot = false;
+  JSON.stringify(value, (key, val) => {
+    if (!seenRoot) {
+      seenRoot = true;
+      return val;
+    }
+    keys.add(key);
+    return val;
+  });
+  return JSON.stringify(value, Array.from(keys).sort());
 }
 
 function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {

@@ -10,6 +10,12 @@ import {
 
 import type { Field, Packet } from "@/lib/psml/renderer";
 
+import {
+  fieldIdAndRepeatsSelector,
+  fieldIdSelector,
+  repeatedFieldIdSelector,
+} from "./dom-query";
+
 type Props = {
   packet: Packet;
   containerRef: RefObject<HTMLElement | null>;
@@ -94,14 +100,10 @@ function findCellElement(
   root: HTMLElement,
   fieldId: string,
 ): HTMLElement | null {
-  const direct = root.querySelector<HTMLElement>(
-    `[data-field-id="${CSS.escape(fieldId)}"]`,
-  );
+  const direct = root.querySelector<HTMLElement>(fieldIdSelector(fieldId));
   if (direct) return direct;
   // TLV expansion: look for the first segment whose id starts with `${id}#`.
-  return root.querySelector<HTMLElement>(
-    `[data-field-id^="${CSS.escape(fieldId)}#"]`,
-  );
+  return root.querySelector<HTMLElement>(repeatedFieldIdSelector(fieldId));
 }
 
 export default function DependencyOverlay({
@@ -231,17 +233,11 @@ export default function DependencyOverlay({
 
     function collect(fieldId: string): HTMLElement[] {
       if (!container) return [];
-      const exact = Array.from(
+      return Array.from(
         container.querySelectorAll<HTMLElement>(
-          `[data-field-id="${CSS.escape(fieldId)}"]`,
+          fieldIdAndRepeatsSelector(fieldId),
         ),
       );
-      const virtual = Array.from(
-        container.querySelectorAll<HTMLElement>(
-          `[data-field-id^="${CSS.escape(fieldId)}#"]`,
-        ),
-      );
-      return [...exact, ...virtual];
     }
 
     if (!hoverEdgeId) return;
@@ -291,7 +287,7 @@ export default function DependencyOverlay({
               fill="none"
               stroke="transparent"
               strokeWidth={14}
-              style={{ pointerEvents: "auto", cursor: "help" }}
+              className="pointer-events-auto cursor-help"
               onMouseEnter={() => setHoverEdgeId(edge.id)}
               onMouseLeave={() =>
                 setHoverEdgeId((cur) => (cur === edge.id ? null : cur))

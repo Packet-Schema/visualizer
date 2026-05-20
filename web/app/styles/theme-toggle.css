@@ -1,0 +1,38 @@
+@layer components {
+  /* ==========================================================================
+   Header theme toggle button
+   ========================================================================== */
+
+  .theme-toggle-btn {
+    background: oklch(99% 0 0 / 0.08);
+    color: var(--header-fg);
+    border: 1px solid oklch(99% 0 0 / 0.14);
+    transition: background var(--pv-fast, 180ms) var(--pv-ease, ease-out);
+  }
+
+  .theme-toggle-btn:hover {
+    background: oklch(99% 0 0 / 0.14);
+  }
+
+  /* Click micro-bounce. Replaces a Motion One `animate({ scale: […] })` call
+     so the bundle stays free of an animation runtime. The component toggles
+     `data-bounce="true"` on click and clears it on `animationend`. */
+  .theme-toggle-btn[data-bounce="true"] {
+    animation: theme-toggle-bounce 0.42s var(--pv-ease, ease-out);
+  }
+
+  @keyframes theme-toggle-bounce {
+    0% {
+      scale: 1;
+    }
+    40% {
+      scale: 0.88;
+    }
+    70% {
+      scale: 1.05;
+    }
+    100% {
+      scale: 1;
+    }
+  }
+}

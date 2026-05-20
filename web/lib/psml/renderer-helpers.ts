@@ -178,8 +178,10 @@ export function initialState(packet: Packet): ControllerState {
     }
   }
   syncTlvControllers(packet, state);
-  syncChainControllers(packet, state);
-  return state;
+  // `syncChainControllers` now returns a fresh object so callers that
+  // depend on reference equality see the update; for the bootstrap
+  // path we still want a single state — chain it through.
+  return syncChainControllers(packet, state);
 }
 
 /** Recompute every TLV-driven controller against the current instances. */
@@ -196,11 +198,20 @@ export function syncTlvControllers(
   return state;
 }
 
-/** Recompute renderer chain-derived env keys used by PSML Repeat<Switch>. */
+/** Recompute renderer chain-derived env keys used by PSML Repeat<Switch>.
+ *
+ *  Returns a *new* ControllerState object so React's reference-equality
+ *  reconciler (and downstream `useMemo([... controllers])` callers) see
+ *  the update. The earlier in-place mutation form returned the same
+ *  `state` reference and silently kept `layout` cached against the
+ *  pre-edit env — Chain edits applied to controllers internally but
+ *  never reached the diagram (Codex P1).
+ */
 export function syncChainControllers(
   packet: Packet,
   state: ControllerState,
 ): ControllerState {
+  const next: ControllerState = { ...state };
   for (const field of packet.fields) {
     if (!field.chainCatalog) continue;
 
@@ -210,13 +221,13 @@ export function syncChainControllers(
       : field.id;
     const proto = instances[0]?.proto ?? field.chainFinalProto ?? 59;
 
-    state[`${field.id}Count`] = instances.length;
-    state[`${field.id}_chainCount`] = instances.length;
-    state[`${baseId}_chainCount`] = instances.length;
-    state[`${field.id}_proto`] = proto;
-    state[`${baseId}_proto`] = proto;
+    next[`${field.id}Count`] = instances.length;
+    next[`${field.id}_chainCount`] = instances.length;
+    next[`${baseId}_chainCount`] = instances.length;
+    next[`${field.id}_proto`] = proto;
+    next[`${baseId}_proto`] = proto;
   }
-  return state;
+  return next;
 }
 
 /** Effective field list for a TLV catalog entry given an instance. */

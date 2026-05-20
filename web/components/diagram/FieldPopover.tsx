@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { enrichDescriptionHtml } from "@/lib/enrich";
@@ -92,33 +92,18 @@ export default function FieldPopover({
     };
   }, [onDismiss]);
 
-  // Spring entry via Motion One. Lazy-import so SSR + bundle stay small.
-  // Respects prefers-reduced-motion.
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { animate } = await import("motion");
-        if (cancelled || !ref.current) return;
-        animate(
-          ref.current,
-          { opacity: [0, 1], scale: [0.96, 1] },
-          { duration: 0.22, ease: [0.32, 0.72, 0, 1] },
-        );
-      } catch {
-        // ignore — popover is still visible without the bounce
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Entry animation is handled in CSS via `@starting-style` (see
+  // app/styles/popover.css). That keeps the bundle free of an animation
+  // runtime and respects prefers-reduced-motion through the global rule
+  // in app/globals.css.
+
+  // `useId()` must run on every render to satisfy the Rules of Hooks —
+  // earlier the call was placed after the `if (!resolved) return null`
+  // early-return, so a frame where `resolved === null` skipped the
+  // hook, and the next frame with `resolved` set added it back,
+  // tripping React's "Rendered fewer hooks than expected" guard
+  // (Codex P1). Hoist it above any conditional return.
+  const titleId = useId();
 
   const resolved = resolve(packet, controllers, selectedFieldId);
   if (!resolved) return null;
@@ -136,11 +121,21 @@ export default function FieldPopover({
       ? anchorRect.bottom + POPOVER_OFFSET
       : Math.max(8, anchorRect.top - POPOVER_OFFSET - 220);
 
+  // A non-modal dialog: it floats over the diagram but doesn't trap focus or
+  // block the backdrop, so we set `aria-modal="false"` to be explicit. The
+  // visible heading provides the label.
+  //
+  // `titleId` was hoisted above the early-return so the hook order stays
+  // stable across `resolved === null` frames; PSML ids may carry
+  // spaces / colons (e.g. nested `flags:df`) that produce invalid HTML
+  // id attributes and silently break the `aria-labelledby` link, so we
+  // rely on React's `useId` for a DOM-safe, unique value.
   return (
     <div
       ref={ref}
       role="dialog"
-      aria-label="Field detail"
+      aria-modal="false"
+      aria-labelledby={titleId}
       className="field-popover"
       style={{
         position: "fixed",
@@ -158,19 +153,37 @@ export default function FieldPopover({
         }}
       />
       {resolved.kind === "field" ? (
-        <FieldBody field={resolved.field} bits={resolved.bits} />
+        <FieldBody
+          field={resolved.field}
+          bits={resolved.bits}
+          titleId={titleId}
+        />
       ) : (
-        <SubfieldBody parent={resolved.parent} sub={resolved.sub} />
+        <SubfieldBody
+          parent={resolved.parent}
+          sub={resolved.sub}
+          titleId={titleId}
+        />
       )}
     </div>
   );
 }
 
-function FieldBody({ field, bits }: { field: Field; bits: number }) {
+function FieldBody({
+  field,
+  bits,
+  titleId,
+}: {
+  field: Field;
+  bits: number;
+  titleId: string;
+}) {
   const sizeStr = `${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}`;
   return (
     <div>
-      <h3 className="field-popover-title">{field.name}</h3>
+      <h3 id={titleId} className="field-popover-title">
+        {field.name}
+      </h3>
       <dl className="field-popover-list">
         <dt>Size</dt>
         <dd>
@@ -205,10 +218,18 @@ function FieldBody({ field, bits }: { field: Field; bits: number }) {
   );
 }
 
-function SubfieldBody({ parent, sub }: { parent: Field; sub: SubField }) {
+function SubfieldBody({
+  parent,
+  sub,
+  titleId,
+}: {
+  parent: Field;
+  sub: SubField;
+  titleId: string;
+}) {
   return (
     <div>
-      <h3 className="field-popover-title">
+      <h3 id={titleId} className="field-popover-title">
         {sub.name}{" "}
         <span className="field-popover-subnote">
           (subfield of {parent.name})

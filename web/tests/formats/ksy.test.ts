@@ -1275,7 +1275,7 @@ describe("toKsy — exporter", () => {
 });
 
 describe("toKsy — PSML 0.3 Encrypted container", () => {
-  it("emits a single zero-size placeholder entry with a psml-only header note", () => {
+  it("emits a 1-byte placeholder entry with a psml-only header note", () => {
     const yaml = toKsy({
       name: "QuicShort",
       rowBits: 32,
@@ -1297,16 +1297,91 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
     expect(yaml).toMatch(/# psml-only: encrypted block "payload"/);
     expect(yaml).toMatch(/TLS 1\.3 handshake keys/);
     const obj = yamlParse(yaml);
-    // One placeholder entry, NOT the two plaintext fields.
+    // One placeholder entry, NOT the two plaintext fields. Size 1
+    // (not 0) so the synthesised Kaitai parser actually advances the
+    // stream past the encrypted region — a `size: 0` placeholder leaves
+    // following fields overlapping it (Copilot review).
     expect(obj.seq).toHaveLength(1);
     expect(obj.seq[0].id).toBe("payload");
-    expect(obj.seq[0].size).toBe(0);
+    expect(obj.seq[0].size).toBe(1);
     expect(obj.seq[0].doc).toContain("encrypted block");
     expect(obj.seq[0].doc).toContain("TLS 1.3 handshake keys");
     // Plaintext field ids must not surface.
     const ksyText = yaml;
     expect(ksyText).not.toMatch(/^\s*-\s*id:\s*pn\b/m);
     expect(ksyText).not.toMatch(/^\s*-\s*id:\s*frame\b/m);
+  });
+
+  it("encrypted with wireBits=0 falls back to a 1-byte placeholder", () => {
+    // The exporter treats non-positive lit values as "size unknown" and
+    // emits a single byte rather than a zero-byte placeholder. Test
+    // covers the `litBits > 0` false branch added when we dropped the
+    // old `size: 0` form.
+    const yaml = toKsy({
+      name: "ZeroEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "zero_enc",
+          wireBits: { kind: "lit", value: 0 },
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+          contextNote: "empty payload",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe(1);
+  });
+
+  it("encrypted with non-literal wireBits falls back to a 1-byte placeholder", () => {
+    // Dynamic widths (ref / op) cannot be evaluated at export time
+    // without the runtime env, so the exporter degrades to the same
+    // 1-byte placeholder as the no-wireBits case. Covers the
+    // `kind === "lit"` false branch in `litBits` computation.
+    const yaml = toKsy({
+      name: "DynEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "dyn_enc",
+          wireBits: { kind: "ref", field: "payload_len" },
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+          contextNote: "dynamic length",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe(1);
+  });
+
+  it("encrypted with wireBits=16 emits a 2-byte placeholder", () => {
+    // Positive lit widths round up to the nearest byte. 16 bits → 2.
+    const yaml = toKsy({
+      name: "TwoByteEnc",
+      rowBits: 32,
+      body: [
+        {
+          kind: "encrypted",
+          id: "two_byte_enc",
+          wireBits: { kind: "lit", value: 16 },
+          plaintext: {
+            id: "p",
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 16 } }],
+          },
+          contextNote: "fixed 16-bit width",
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe(2);
   });
 
   it("encrypted nested inside a Group still produces the placeholder", () => {
@@ -1334,7 +1409,7 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
     });
     const obj = yamlParse(yaml);
     expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["hdr", "secret"]);
-    expect(obj.seq[1].size).toBe(0);
+    expect(obj.seq[1].size).toBe(1);
   });
 });
 

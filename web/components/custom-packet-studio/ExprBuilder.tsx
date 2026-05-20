@@ -175,27 +175,21 @@ export default function ExprBuilder({
 
       {value.kind === "cond" && (
         <div className="flex flex-col gap-1">
-          <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
-            test
-          </label>
+          <label className="text-xs text-fg-muted">test</label>
           <ExprBuilder
             value={value.test}
             fieldIds={fieldIds}
             depth={depth + 1}
             onChange={(test) => onChange({ ...value, test })}
           />
-          <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
-            then
-          </label>
+          <label className="text-xs text-fg-muted">then</label>
           <ExprBuilder
             value={value.t}
             fieldIds={fieldIds}
             depth={depth + 1}
             onChange={(t) => onChange({ ...value, t })}
           />
-          <label className="text-xs" style={{ color: "var(--fg-muted)" }}>
-            else
-          </label>
+          <label className="text-xs text-fg-muted">else</label>
           <ExprBuilder
             value={value.f}
             fieldIds={fieldIds}

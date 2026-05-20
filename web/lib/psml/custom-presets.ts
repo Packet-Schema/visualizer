@@ -12,6 +12,7 @@
 // is unavailable (SSR or sandboxed iframes).
 
 import type { PsmlPacket } from "./types";
+import { validatePsmlPacket } from "./validate";
 
 export const STORAGE_KEY = "packet-view-custom-presets-v1";
 
@@ -39,15 +40,50 @@ function readRaw(): PresetMap {
     return {};
   }
   if (!raw) return {};
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return parsed as PresetMap;
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  // Validate every entry with `validatePsmlPacket` (the same checker
+  // the format-adapter `parse` wrappers now run on imported files), so
+  // a hand-crafted JSON blob that ended up in our localStorage key —
+  // browser extension, dev tools paste, or an XSS foothold elsewhere
+  // on this origin (cross-origin writes are blocked by same-origin
+  // policy, so the threat model is same-origin tampering rather than
+  // CSRF) — can't get a malformed PsmlPacket into the renderer or the
+  // bulk-export bundle. Per-entry try/catch keeps a single bad packet
+  // from wiping the whole user library: only the corrupt key is
+  // dropped, the rest survive.
+  // `Object.create(null)` (cast to PresetMap) avoids prototype pollution
+  // from a tampered localStorage payload — a key like `__proto__` or
+  // `constructor` against a plain `{}` literal would otherwise mutate
+  // the map's prototype and leak into any merge/iteration downstream
+  // (Copilot security review).
+  const out = Object.create(null) as PresetMap;
+  for (const [key, value] of Object.entries(
+    parsed as Record<string, unknown>,
+  )) {
+    if (typeof key !== "string" || key.length === 0) continue;
+    // Explicit reject for dangerous keys — `Object.create(null)` already
+    // makes the map prototype-pollution-immune, but we'd still surface
+    // a confusing "preset" labelled `__proto__` in the picker if we
+    // didn't skip it here.
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    try {
+      validatePsmlPacket(value as PsmlPacket);
+      out[key] = value as PsmlPacket;
+    } catch {
+      // Skip the entry; keep others.
+    }
+  }
+  return out;
 }
 
 function writeRaw(map: PresetMap): void {

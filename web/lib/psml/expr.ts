@@ -136,5 +136,14 @@ function walk(expr: Expr, out: string[]): void {
     case "peek":
       if (expr.offset !== undefined) walk(expr.offset, out);
       return;
+    default: {
+      // Exhaustiveness guard — a new `Expr` variant should surface here
+      // as a tsc error, not as a silent miss that leaves its refs out of
+      // `exprRefs` (and so out of the propagator's dependency graph).
+      const _exhaustive: never = expr;
+      throw new Error(
+        `exprRefs.walk: unhandled Expr kind ${String((_exhaustive as { kind?: string }).kind)}`,
+      );
+    }
   }
 }

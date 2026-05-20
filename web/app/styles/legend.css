@@ -1,0 +1,26 @@
+@layer components {
+  /* ==========================================================================
+   Legend swatches
+   ========================================================================== */
+
+  .legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.12);
+  }
+
+  .legend-item {
+    cursor: default;
+    border-radius: 4px;
+    padding: 1px 2px;
+    transition: background var(--pv-fast) var(--pv-ease);
+  }
+
+  .legend-item:hover,
+  .legend-item:focus-visible {
+    background: var(--bg-subtle);
+    outline: none;
+  }
+}

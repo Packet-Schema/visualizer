@@ -1,25 +1,58 @@
 // PSML edit reducer — the canonical state machine for the Custom Packet
-// Studio. Sibling Round 7 agents (7B/7C) read the action shape declared
-// here; do not change it without updating issue #64.
+// Studio. The action shape declared here is also the contract for any
+// consumer that builds and dispatches `EditAction` values (ContainerRow
+// editors, TLV / Chain forms). Treat its discriminated union as part of
+// the module's public API — additions go in `EditAction`, removals
+// require updating every dispatch site.
 //
 // Path scheme
 // -----------
 // A `Path` is a sequence of (string | number) tokens that addresses a node
-// inside a `PsmlPacket`. Paths always descend into the packet body using
-// numeric indices and named child slots:
+// inside a `PsmlPacket`. The grammar is defined and walked by
+// `path-resolver.ts`'s `resolveParent` / `descendNamed`; the shapes
+// recognised there are:
 //
-//   []                                     → the packet itself
-//   [i]                                    → packet.body[i] (Container)
-//   [i, 'field']                           → packet.body[i] treated as a Field
-//   [i, 'element', 'fields', j]            → Repeat → element.fields[j]
-//   [i, 'plaintext', 'fields', j]          → Encrypted → plaintext.fields[j]
-//   [i, 'children', j]                     → Group → children[j]
-//   [i, 'cases', '<key>', 'fields', j]     → Switch case struct field
-//   [i, 'default', 'fields', j]            → Switch default struct field
+//   [i]                                      → packet.body[i] (Container).
+//                                              The empty path `[]` is
+//                                              reserved for "the packet
+//                                              itself", but `resolveParent`
+//                                              throws on it — none of the
+//                                              mutating actions target the
+//                                              packet root directly. Use
+//                                              `replace-packet` instead
+//                                              when you need to swap the
+//                                              whole body.
+//   [i, 'field']                             → NOT a usable action path:
+//                                              `resolveParent` requires
+//                                              a numeric slot terminator
+//                                              and `descendNamed('field')`
+//                                              throws unconditionally. The
+//                                              token still exists as a
+//                                              terminal marker for older
+//                                              call sites, but new actions
+//                                              should address Field slots
+//                                              with the bare `[i]` form
+//                                              (which already returns the
+//                                              parent body + slot index).
+//   [i, 'children', j]                       → Group.children[j]
+//   [i, 'element', j]                        → Repeat.element.fields[j]
+//                                              (`descendNamed('element')`
+//                                              returns the inner Struct's
+//                                              fields array directly, so
+//                                              the next token j is its
+//                                              positional index)
+//   [i, 'plaintext', j]                      → Encrypted.plaintext.fields[j]
+//                                              (same fields-direct trick)
+//   [i, 'default', j]                        → Switch.default.fields[j]
+//                                              (same fields-direct trick)
+//   [i, 'cases:<key>', j]                    → Switch.cases[<key>].fields[j]
+//                                              (the colon-separated key
+//                                              keeps the path positional
+//                                              even when <key> is dynamic)
 //
 // `add-field`, `delete-field`, `add-container`, etc. address the **slot**
-// (the numeric index inside the parent's array). `move-field`'s `from` and
-// `to` paths both end on the slot index.
+// (the numeric index inside the parent's array). `move-field`'s `from`
+// and `to` paths both end on a numeric slot index.
 //
 // History
 // -------
@@ -29,24 +62,35 @@
 // reverse. Packets are deep-cloned via `structuredClone` on every mutation
 // so callers can hold references to historical entries safely.
 
-import type {
-  Constraint,
-  Container,
-  Encrypted,
-  Field,
-  Group,
-  Packet,
-  PsmlPacket,
-  Repeat,
-  Struct,
-  Switch,
-} from "./types";
+import type { Constraint, Container, Field, Packet, PsmlPacket } from "./types";
+import { describeKind, resolveParent, type Path } from "./path-resolver";
+import { isField } from "./utils";
 
 /* ------------------------------------------------------------------ *
  * Public types
  * ------------------------------------------------------------------ */
 
-export type Path = (string | number)[];
+export type { Path } from "./path-resolver";
+
+/**
+ * A targeted patch for any Container variant.
+ *
+ * We distribute over the `Container` union (`T extends unknown ? ... :
+ * never`) so each variant keeps its own non-discriminator fields —
+ * `Repeat.count`, `Switch.on`, `Encrypted.wireBits`, etc. — instead of
+ * being collapsed into the union's intersection. The `Omit<_, "kind">`
+ * strips the discriminator from every arm so the `update-container`
+ * reducer case can't be handed a patch that flips `kind` mid-tree
+ * (e.g. turning a `repeat` into a `switch`) and corrupt the PSML shape
+ * by leaving required variant fields missing. The reducer spreads onto
+ * an existing node whose `kind` is already fixed, so excluding it from
+ * the patch type is the minimum guard against that corruption path
+ * (Copilot review).
+ */
+type DistributivePartialOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<Partial<T>, K>
+  : never;
+export type ContainerPatch = DistributivePartialOmit<Container, "kind">;
 
 export type EditAction =
   | { type: "add-field"; at: Path; field: Field }
@@ -59,7 +103,7 @@ export type EditAction =
       kind: "struct" | "group" | "repeat" | "switch" | "encrypted";
     }
   | { type: "add-container"; at: Path; container: Container }
-  | { type: "update-container"; at: Path; patch: Record<string, unknown> }
+  | { type: "update-container"; at: Path; patch: ContainerPatch }
   | { type: "add-constraint"; constraint: Constraint }
   | { type: "update-constraint"; index: number; patch: Partial<Constraint> }
   | { type: "delete-constraint"; index: number }
@@ -92,146 +136,6 @@ function commit(state: EditState, next: PsmlPacket): EditState {
   const history = state.history.concat([state.packet]);
   while (history.length > HISTORY_LIMIT) history.shift();
   return { packet: next, history, future: [] };
-}
-
-/* ------------------------------------------------------------------ *
- * Path resolution
- * ------------------------------------------------------------------ */
-
-/**
- * Walk a path, returning the parent array and the final index. Throws on
- * a malformed path (no final numeric index) so callers can rely on the
- * tuple shape. Operates on a packet that the caller has already deep-cloned.
- */
-function resolveParent(
-  packet: PsmlPacket,
-  path: Path,
-): { parent: Container[]; index: number } {
-  if (path.length === 0) {
-    throw new Error("path must address a slot inside the packet body");
-  }
-  const last = path[path.length - 1];
-  if (typeof last !== "number") {
-    throw new Error(
-      `path must end with a numeric slot index; got ${String(last)}`,
-    );
-  }
-  const head = path.slice(0, -1);
-  let parent: Container[] = packet.body;
-  for (let i = 0; i < head.length; i++) {
-    const token = head[i];
-    if (typeof token === "number") {
-      const node = parent[token];
-      if (node === undefined) {
-        throw new Error(`path token ${i} (${token}) is out of range`);
-      }
-      // Numeric token alone means "step *into* this container's primary
-      // child array". We only descend if the *next* token is a string slot
-      // name, otherwise this number is the final slot index handled above.
-      const nextToken = head[i + 1];
-      if (typeof nextToken !== "string") {
-        throw new Error(
-          `path token ${i + 1} must be a slot name (e.g. 'fields', 'children')`,
-        );
-      }
-      i += 1; // consume the slot name
-      parent = descendNamed(node, nextToken);
-    } else {
-      throw new Error(
-        `path expects (index, slot-name) pairs; got string ${token} at position ${i}`,
-      );
-    }
-  }
-  return { parent, index: last };
-}
-
-/**
- * Step into a container's named child array. Recognized slot names:
- *   'field'    — return the container itself as a single-element array
- *                (used only by code that wants the Field object; we don't
- *                support descending further so this is treated as a no-op).
- *   'children' — Group.children
- *   'fields'   — Struct.fields (used inside element/plaintext/cases)
- *   'element'  — Repeat.element (returns its `fields` array directly so the
- *                next token may be a numeric index).
- *   'plaintext'— Encrypted.plaintext (same: returns `.fields`).
- *   'cases'    — Switch.cases (the caller must provide the case key next,
- *                followed by 'fields').
- *   'default'  — Switch.default (returns its `.fields`).
- */
-function descendNamed(node: Container, slot: string): Container[] {
-  switch (slot) {
-    case "field":
-      throw new Error(
-        "'field' is a terminal marker and cannot be descended into",
-      );
-    case "children": {
-      const group = node as Group;
-      if (group.kind !== "group") {
-        throw new Error(`expected group at path; got ${describeKind(node)}`);
-      }
-      return group.children;
-    }
-    case "fields": {
-      // node here is a Struct, not a Container. We tolerate that by checking
-      // for `.fields`.
-      const s = node as unknown as Struct;
-      if (!Array.isArray(s.fields)) {
-        throw new Error("expected struct with 'fields' array");
-      }
-      return s.fields;
-    }
-    case "element": {
-      const r = node as Repeat;
-      if (r.kind !== "repeat") {
-        throw new Error(`expected repeat at path; got ${describeKind(node)}`);
-      }
-      // Cast through unknown — the caller must specify 'fields' next.
-      return r.element as unknown as Container[];
-    }
-    case "plaintext": {
-      const e = node as Encrypted;
-      if (e.kind !== "encrypted") {
-        throw new Error(
-          `expected encrypted at path; got ${describeKind(node)}`,
-        );
-      }
-      return e.plaintext as unknown as Container[];
-    }
-    case "default": {
-      const sw = node as Switch;
-      if (sw.kind !== "switch" || !sw.default) {
-        throw new Error("expected switch with a default case at path");
-      }
-      return sw.default as unknown as Container[];
-    }
-    default: {
-      // Switch case lookup: parent token is 'cases', this token is the key.
-      // To support this, the caller writes [..., i, 'cases', key, 'fields', j].
-      // We reach here when slot is the case key — but we've lost the context
-      // that the parent step was 'cases'. To keep resolution simple, we use
-      // a sentinel: callers must write 'cases:<key>' as a single token.
-      if (slot.startsWith("cases:")) {
-        const sw = node as Switch;
-        if (sw.kind !== "switch") {
-          throw new Error(`expected switch at path; got ${describeKind(node)}`);
-        }
-        const key = slot.slice("cases:".length);
-        const variant = sw.cases[key];
-        if (!variant) {
-          throw new Error(`switch has no case with key ${key}`);
-        }
-        return variant as unknown as Container[];
-      }
-      throw new Error(`unknown path slot name: ${slot}`);
-    }
-  }
-}
-
-function describeKind(node: Container): string {
-  if (!node || typeof node !== "object") return String(node);
-  if ("kind" in node && node.kind) return String(node.kind);
-  return "field";
 }
 
 /* ------------------------------------------------------------------ *
@@ -336,7 +240,15 @@ export function editReducer(state: EditState, action: EditAction): EditState {
       const { parent, index } = resolveParent(next, action.at);
       const existing = parent[index];
       if (!existing) return state;
-      parent[index] = { ...(existing as Field), ...action.patch } as Container;
+      if (!isField(existing)) {
+        // The `update-field` action only patches Field-shape props (name,
+        // doc, bits, type, …). Routing it at a Container slot would drop
+        // the kind discriminator on spread and silently corrupt the tree.
+        throw new Error(
+          `update-field expected a Field; got ${describeKind(existing)} at path ${action.at.join("/")}`,
+        );
+      }
+      parent[index] = { ...existing, ...action.patch };
       return commit(state, next);
     }
     case "wrap-in": {
@@ -383,6 +295,16 @@ export function editReducer(state: EditState, action: EditAction): EditState {
       list.splice(action.index, 1);
       next.constraints = list;
       return commit(state, next);
+    }
+    default: {
+      // Compile-time exhaustiveness (new EditAction variants fail to
+      // assign to `never`); at runtime we fall back to the previous
+      // state instead of returning the raw action object, so an
+      // untyped dispatch can't replace EditState with a free-form
+      // payload and corrupt history.
+      const _exhaustive: never = action;
+      void _exhaustive;
+      return state;
     }
   }
 }

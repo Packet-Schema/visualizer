@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 
 import { tlvRecordBits, tlvTotalBits } from "@/lib/psml/renderer-helpers";
+import { useListItemKeys } from "@/lib/use-list-item-keys";
 import type {
   ControllerState,
   Field,
@@ -28,22 +29,21 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
 
   const summary = useMemo(() => tlvTotalBits(field), [field]);
 
+  const instances = tlv?.instances || [];
+  const itemKeys = useListItemKeys(instances);
+
   if (!tlv) return null;
 
-  const instances = tlv.instances || [];
   const catalogByKind = new Map<number, TlvCatalogEntry>(
     tlv.catalog.map((c) => [c.kind, c]),
   );
 
+  // Shallow-copy the array so React sees a new reference, but keep each
+  // instance object's identity stable across mutations that don't touch its
+  // fields. That lets `useListItemKeys` track rows through reorder/remove
+  // without remounting them.
   const update = (mutator: (list: TlvInstance[]) => TlvInstance[]) => {
-    onChange(
-      mutator(
-        instances.map((i) => ({
-          ...i,
-          extras: i.extras ? { ...i.extras } : undefined,
-        })),
-      ),
-    );
+    onChange(mutator(instances.slice()));
   };
 
   const handleRemove = (idx: number) =>
@@ -97,10 +97,8 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
 
   return (
     <div>
-      <h3 className="m-0 mb-2 text-[15px]" style={{ color: "var(--fg)" }}>
-        {field.name}
-      </h3>
-      <p className="text-[12px] m-0 mb-2" style={{ color: "var(--fg-muted)" }}>
+      <h3 className="m-0 mb-2 text-[15px] text-fg">{field.name}</h3>
+      <p className="text-xs m-0 mb-2 text-fg-muted">
         Recursive TLV container. Add typed records below; the total length
         drives <code className="font-mono">{tlv.drivesController || ""}</code>.
       </p>
@@ -114,10 +112,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         role="list"
       >
         {instances.length === 0 ? (
-          <p
-            className="m-0 px-3 py-2 text-[12px]"
-            style={{ color: "var(--fg-faint)" }}
-          >
+          <p className="m-0 px-3 py-2 text-xs text-fg-faint">
             No options attached yet.
           </p>
         ) : (
@@ -132,32 +127,18 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
             };
             return (
               <div
-                key={i}
+                key={itemKeys[i]}
                 role="listitem"
-                className="px-3 py-2"
-                style={{ borderColor: "var(--border)" }}
+                className="px-3 py-2 border-border"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono"
-                    style={{
-                      background: "var(--bg-elevated)",
-                      color: "var(--fg-muted)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
+                  <span className="text-2xs font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
                     kind {entry.kind}
                   </span>
-                  <span
-                    className="text-[13px] font-semibold"
-                    style={{ color: "var(--fg)" }}
-                  >
+                  <span className="text-sm-tight font-semibold text-fg">
                     {entry.name}
                   </span>
-                  <span
-                    className="text-[11px] font-mono tabular-nums"
-                    style={{ color: "var(--fg-muted)" }}
-                  >
+                  <span className="text-3xs font-mono tabular-nums text-fg-muted">
                     {bits} b / {bits / 8} B
                   </span>
                   <div className="ml-auto flex items-center gap-1">
@@ -177,7 +158,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                     </IconBtn>
                     <button
                       type="button"
-                      className="text-[11px] px-2 py-0.5 rounded border"
+                      className="text-3xs px-2 py-0.5 rounded border"
                       onClick={() => handleRemove(i)}
                       style={{
                         borderColor: "var(--border-strong)",
@@ -190,11 +171,8 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                   </div>
                 </div>
                 {vc ? (
-                  <div className="mt-1.5 text-[12px] flex items-center gap-2">
-                    <label
-                      className="flex items-center gap-1.5"
-                      style={{ color: "var(--fg-muted)" }}
-                    >
+                  <div className="mt-1.5 text-xs flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-fg-muted">
                       {vc.label || vc.key}:
                       <input
                         type="number"
@@ -204,7 +182,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                         onChange={(e) =>
                           handleExtraChange(i, vc.key, e.target.value)
                         }
-                        className="w-14 px-1.5 py-0.5 rounded border font-mono tabular-nums text-[12px]"
+                        className="w-14 px-1.5 py-0.5 rounded border font-mono tabular-nums text-xs"
                         style={{
                           borderColor: "var(--border-strong)",
                           background: "var(--bg-elevated)",
@@ -215,10 +193,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                   </div>
                 ) : null}
                 {entry.description ? (
-                  <p
-                    className="m-0 mt-1 text-[11px]"
-                    style={{ color: "var(--fg-faint)" }}
-                  >
+                  <p className="m-0 mt-1 text-3xs text-fg-faint">
                     {entry.description}
                   </p>
                 ) : null}
@@ -229,13 +204,11 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-[12px]" style={{ color: "var(--fg-muted)" }}>
-          Add option:
-        </label>
+        <label className="text-xs text-fg-muted">Add option:</label>
         <select
           value={addKind}
           onChange={(e) => setAddKind(e.target.value)}
-          className="px-2 py-1 rounded border text-[12px]"
+          className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",
@@ -253,7 +226,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
           type="button"
           onClick={handleAdd}
           disabled={!addKind}
-          className="text-[12px] px-2.5 py-1 rounded border"
+          className="text-xs px-2.5 py-1 rounded border"
           style={{
             borderColor: "var(--border-strong)",
             background: "var(--accent)",
@@ -265,10 +238,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         </button>
       </div>
 
-      <p
-        className="text-[12px] mt-2.5 mb-0"
-        style={{ color: "var(--fg-muted)" }}
-      >
+      <p className="text-xs mt-2.5 mb-0 text-fg-muted">
         Total:{" "}
         <span className="font-mono tabular-nums">{summary.totalBits} b</span>;
         padded to{" "}
@@ -308,7 +278,7 @@ function IconBtn({
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className="text-[11px] w-6 h-6 rounded border font-mono"
+      className="text-3xs w-6 h-6 rounded border font-mono"
       style={{
         borderColor: "var(--border-strong)",
         background: "var(--bg-elevated)",
