@@ -73,10 +73,16 @@ export function parseShareParams(
       // be informative on their own — surfacing them as-is is the
       // closest we can get to actionable feedback without inventing
       // ad-hoc copy on every adapter failure.
+      //
+      // Normalise non-`Error` throws (a third-party codec could `throw
+      // "string"` and we'd otherwise surface `undefined` as the toast
+      // body), and provide a generic fallback when the stringified
+      // value is empty (Copilot review).
+      const raw = err instanceof Error ? err.message : String(err);
       return {
         kind: "none",
         controllers,
-        error: (err as Error).message,
+        error: raw || "Invalid shared link.",
       };
     }
   }
