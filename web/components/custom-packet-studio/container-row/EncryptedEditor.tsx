@@ -1,8 +1,52 @@
 import type { Container, Encrypted } from "@/lib/psml/types";
+import { isField } from "@/lib/psml/utils";
 
 import ExprBuilder from "../ExprBuilder";
 
 import { Frame, inputStyle, type Patch } from "./shared";
+
+/**
+ * Walk the plaintext body recursively and return every reachable leaf
+ * Field id. `validatePsmlPacket` resolves `headerProtected` entries
+ * against this same set (leaves under Group / Repeat / Switch /
+ * Optional are all valid targets), so the UI must mirror it — picking
+ * a Group / Repeat id from the surface level would fail validation, and
+ * conversely a leaf nested inside a Group used to be unreachable from
+ * this checkbox list (Copilot review).
+ */
+function collectLeafFieldIds(containers: Container[]): string[] {
+  const out: string[] = [];
+  const walk = (cs: Container[]): void => {
+    for (const c of cs) {
+      if (isField(c)) {
+        out.push(c.id);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          walk(c.children);
+          break;
+        case "repeat":
+          walk(c.element.fields);
+          break;
+        case "switch":
+          for (const branch of Object.values(c.cases)) walk(branch.fields);
+          if (c.default) walk(c.default.fields);
+          break;
+        case "optional":
+          walk([c.field]);
+          break;
+        case "encrypted":
+          // Encrypted-in-encrypted: keep the recursive ids reachable for
+          // completeness, even though that nesting is unusual.
+          walk(c.plaintext.fields);
+          break;
+      }
+    }
+  };
+  walk(containers);
+  return out;
+}
 
 export function EncryptedEditor({
   container,
@@ -13,9 +57,7 @@ export function EncryptedEditor({
   patch: Patch;
   siblingFieldIds: string[];
 }) {
-  const plaintextIds = container.plaintext.fields
-    .filter((f): f is Container & { id: string } => "id" in f)
-    .map((f) => f.id);
+  const plaintextIds = collectLeafFieldIds(container.plaintext.fields);
   const protectedSet = new Set(container.headerProtected ?? []);
 
   const toggleProtected = (id: string) => {
