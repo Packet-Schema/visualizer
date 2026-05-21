@@ -23,6 +23,7 @@ import {
   psmlToRenderer,
   rendererToPsml,
 } from "@/lib/psml/psml-to-renderer";
+import type { TlvSlotBytes } from "@/lib/psml/psml-to-renderer/apply-tlv";
 import { updatePacketField } from "@/lib/psml/packet-update";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
@@ -470,60 +471,17 @@ export default function PacketViewer() {
     [packetKey, renderedPresets, importedPackets],
   );
 
-  const handleControllerChange = useCallback(
-    (key: string, value: number) => {
-      setControllers((prev) => ({ ...prev, [key]: value }));
-      const rule = TLV_LENGTH_SYNC.find(
-        (r) => r.presetKey === packetKey && r.controllerKey === key,
-      );
-      if (!rule) return;
-      // IHL / Data Offset count 32-bit words. The slot available for options
-      // is `(value - offset) × 4` bytes — we have to fill this exactly so
-      // the diagram stays aligned to the controller boundary. A large
-      // default variant (Record Route = 15 bytes) overshoots the slot and
-      // rows wrap awkwardly; use the smallest catalog entry instead
-      // (typically NOP = 1 byte for IPv4 / TCP) so each IHL unit maps
-      // cleanly to 4 cells.
-      const totalBytes = Math.max(0, value - rule.offset) * 4;
-      const tlvField = packet.fields.find(
-        (f) => f.id === rule.tlvFieldId && f.tlv,
-      );
-      if (!tlvField?.tlv) return;
-      const sized = tlvField.tlv.catalog
-        .map((e) => ({
-          entry: e,
-          bytes: (e.fields ?? []).reduce((a, f) => a + f.bits, 0) / 8,
-        }))
-        .filter(({ bytes }) => bytes > 0 && Number.isInteger(bytes))
-        // Smallest byte size first. Tiebreak: deprioritise kind === 0,
-        // because in TLV protocols kind 0 is almost always a terminator
-        // (IPv4 EOL "End of Options", TCP EOL "End of Option List") that
-        // semantically ends the option list — repeating it as padding
-        // misrepresents the wire format. NOP / kind 1 is the canonical
-        // padding option.
-        .sort((a, b) => {
-          if (a.bytes !== b.bytes) return a.bytes - b.bytes;
-          const aTerm = a.entry.kind === 0 ? 1 : 0;
-          const bTerm = b.entry.kind === 0 ? 1 : 0;
-          return aTerm - bTerm;
-        });
-      const smallest = sized[0];
-      if (!smallest) return;
-      const targetCount = Math.floor(totalBytes / smallest.bytes);
-      const cur = tlvField.tlv.instances;
-      if (cur.length === targetCount) return;
-      const next: typeof cur = [];
-      for (let i = 0; i < targetCount; i++) {
-        next.push(cur[i] ?? { kind: smallest.entry.kind });
-      }
-      const nextPacket = updatePacketField(packet, rule.tlvFieldId, (f) => ({
-        ...f,
-        tlv: { ...f.tlv!, instances: next },
-      }));
-      replaceActivePacket(nextPacket);
-    },
-    [packet, packetKey, replaceActivePacket],
-  );
+  const handleControllerChange = useCallback((key: string, value: number) => {
+    setControllers((prev) => ({ ...prev, [key]: value }));
+    // TLV_LENGTH_SYNC is consulted by `applyTlvInstances` (via
+    // `tlvSlotBytes`) to size the Options *placeholder* cell — the
+    // slot the user has carved out by moving IHL / Data Offset. We
+    // intentionally do NOT pre-populate `tlv.instances` here. The
+    // user's mental model is:
+    //   IHL=7  →  empty Options slot of 8 bytes appears
+    //   click  →  TlvEditor lets the user pick which records fill it
+    // Auto-padding the slot with NOPs short-circuited that flow.
+  }, []);
 
   // TLV edits replace the field's `tlv.instances` immutably and re-sync
   // TLV-driven controllers afterwards.
@@ -902,11 +860,27 @@ export default function PacketViewer() {
       : (PRESETS[packetKey] ??
         customPresets[packetKey] ??
         rendererToPsml(packet));
-    // Expand TLV Repeats so each iteration shows its instance's variant
-    // (PSML normalize only supports one Switch dispatch per Repeat). When
-    // there are no instances, falls back to the original Repeat.
-    return applyTlvInstances(base, packet);
-  }, [editMode, studioState.packet, packetKey, customPresets, packet]);
+    // Per-TLV slot sizes derived from the upstream length controller (e.g.
+    // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
+    // either emits an empty placeholder of this size (when no instances
+    // are attached yet) or a trailing "remaining" placeholder after the
+    // instance Groups. Computed inline so the hook also re-runs whenever
+    // the controller value changes.
+    const slotBytes: TlvSlotBytes = {};
+    for (const rule of TLV_LENGTH_SYNC) {
+      if (rule.presetKey !== packetKey) continue;
+      const ctrl = Number(controllers[rule.controllerKey] ?? 0);
+      slotBytes[rule.tlvFieldId] = Math.max(0, ctrl - rule.offset) * 4;
+    }
+    return applyTlvInstances(base, packet, slotBytes);
+  }, [
+    editMode,
+    studioState.packet,
+    packetKey,
+    customPresets,
+    packet,
+    controllers,
+  ]);
 
   // Set of ref-names that the active packet expects in `env`. Cached against
   // `targetPsml` so slider drag (which mutates `controllers` every frame but
