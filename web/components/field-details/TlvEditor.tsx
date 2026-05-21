@@ -6,7 +6,7 @@
 // The parent owns the field; we call `onChange(newInstances)` for every
 // mutation and let it re-sync controllers.
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { tlvRecordBits, tlvTotalBits } from "@/lib/psml/renderer-helpers";
 import { useListItemKeys } from "@/lib/use-list-item-keys";
@@ -24,7 +24,6 @@ type Props = {
 };
 
 export default function TlvEditor({ field, controllers, onChange }: Props) {
-  const [addKind, setAddKind] = useState<string>("");
   const tlv = field.tlv;
 
   const summary = useMemo(() => tlvTotalBits(field), [field]);
@@ -81,18 +80,17 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
     });
   };
 
-  const handleAdd = () => {
-    const kind = Number(addKind);
-    if (!Number.isFinite(kind)) return;
-    const entry = catalogByKind.get(kind);
+  const handleKindChange = (idx: number, raw: string) => {
+    const newKind = Number(raw);
+    if (!Number.isFinite(newKind)) return;
+    const entry = catalogByKind.get(newKind);
     if (!entry) return;
-    const inst: TlvInstance = { kind };
-    if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
     update((list) => {
-      list.push(inst);
+      const inst: TlvInstance = { kind: newKind };
+      if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
+      list[idx] = inst;
       return list;
     });
-    setAddKind("");
   };
 
   return (
@@ -132,16 +130,33 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                 className="px-3 py-2 border-border"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-2xs font-bold px-1.5 py-0.5 rounded font-mono bg-bg-elevated text-fg-muted border border-border">
-                    kind {entry.kind}
+                  <span
+                    className="text-3xs font-mono tabular-nums text-fg-muted shrink-0"
+                    aria-hidden
+                  >
+                    #{i}
                   </span>
-                  <span className="text-sm-tight font-semibold text-fg">
-                    {entry.name}
-                  </span>
-                  <span className="text-3xs font-mono tabular-nums text-fg-muted">
+                  <select
+                    aria-label={`Record ${i} variant`}
+                    value={inst.kind}
+                    onChange={(e) => handleKindChange(i, e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1 rounded border font-mono text-sm-tight"
+                    style={{
+                      borderColor: "var(--border-strong)",
+                      background: "var(--bg-elevated)",
+                      color: "var(--fg)",
+                    }}
+                  >
+                    {tlv.catalog.map((c) => (
+                      <option key={c.kind} value={c.kind}>
+                        kind {c.kind} — {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-3xs font-mono tabular-nums text-fg-muted shrink-0">
                     {bits} b / {bits / 8} B
                   </span>
-                  <div className="ml-auto flex items-center gap-1">
+                  <div className="ml-auto flex items-center gap-1 shrink-0">
                     <IconBtn
                       label="Move up"
                       disabled={i === 0}
@@ -158,7 +173,8 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                     </IconBtn>
                     <button
                       type="button"
-                      className="text-3xs px-2 py-0.5 rounded border"
+                      aria-label={`Remove record ${i}`}
+                      className="text-3xs w-6 h-6 rounded border font-mono"
                       onClick={() => handleRemove(i)}
                       style={{
                         borderColor: "var(--border-strong)",
@@ -166,7 +182,7 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
                         background: "var(--bg-elevated)",
                       }}
                     >
-                      Remove
+                      ×
                     </button>
                   </div>
                 </div>
@@ -204,10 +220,25 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-xs text-fg-muted">Add option:</label>
+        <label className="text-xs text-fg-muted">+ Add record:</label>
         <select
-          value={addKind}
-          onChange={(e) => setAddKind(e.target.value)}
+          value=""
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return;
+            // 1-click add: picking a variant immediately appends, no extra
+            // confirm step. Native <select> resets visually because `value=""`
+            // re-renders on the next React tick.
+            const kind = Number(v);
+            const entry = catalogByKind.get(kind);
+            if (!entry) return;
+            const inst: TlvInstance = { kind };
+            if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
+            update((list) => {
+              list.push(inst);
+              return list;
+            });
+          }}
           className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
@@ -215,27 +246,13 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
             color: "var(--fg)",
           }}
         >
-          <option value="">-- choose a record type --</option>
+          <option value="">-- pick a record type to append --</option>
           {tlv.catalog.map((c) => (
             <option key={c.kind} value={c.kind}>
-              {c.name} (kind {c.kind})
+              kind {c.kind} — {c.name}
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={handleAdd}
-          disabled={!addKind}
-          className="text-xs px-2.5 py-1 rounded border"
-          style={{
-            borderColor: "var(--border-strong)",
-            background: "var(--accent)",
-            color: "var(--accent-fg, #fff)",
-            opacity: addKind ? 1 : 0.5,
-          }}
-        >
-          Add
-        </button>
       </div>
 
       <p className="text-xs mt-2.5 mb-0 text-fg-muted">

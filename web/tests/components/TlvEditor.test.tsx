@@ -97,44 +97,34 @@ describe("TlvEditor", () => {
     expect(container.querySelector("h3")).toBeNull();
   });
 
-  it("adds an instance when 'Add option' is clicked with a kind selected", () => {
+  it("adds an instance when a kind is picked in the append selector", () => {
     const { container } = mount(
       <TlvEditor field={mkField()} controllers={{}} onChange={onChange} />,
     );
-    const select = container.querySelector<HTMLSelectElement>("select")!;
+    // The append selector is the only <select> at mount time (no rows yet).
+    const appendSelect =
+      container.querySelector<HTMLSelectElement>("select")!;
     act(() => {
-      select.value = "1";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    const addBtn = Array.from(
-      container.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((b) => b.textContent?.includes("Add"));
-    expect(addBtn).toBeDefined();
-    act(() => {
-      addBtn!.click();
+      appendSelect.value = "1";
+      appendSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(lastChange).toEqual([{ kind: 1 }]);
   });
 
-  it("does nothing when the kind is unknown", () => {
+  it("does nothing when the append selector is reset to the empty value", () => {
     const { container } = mount(
       <TlvEditor field={mkField()} controllers={{}} onChange={onChange} />,
     );
-    const select = container.querySelector<HTMLSelectElement>("select")!;
+    const appendSelect =
+      container.querySelector<HTMLSelectElement>("select")!;
     act(() => {
-      select.value = "";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    const addBtn = Array.from(
-      container.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((b) => b.textContent?.includes("Add"));
-    act(() => {
-      addBtn!.click();
+      appendSelect.value = "";
+      appendSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(lastChange).toBeNull();
   });
 
-  it("removes an instance via the Remove button", () => {
+  it("removes an instance via the per-row × button", () => {
     const { container } = mount(
       <TlvEditor
         field={mkField([{ kind: 0 }, { kind: 1 }, { kind: 7 }])}
@@ -144,12 +134,29 @@ describe("TlvEditor", () => {
     );
     const removeButtons = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
-    ).filter((b) => b.textContent === "Remove");
+    ).filter((b) => b.getAttribute("aria-label")?.startsWith("Remove record"));
     expect(removeButtons.length).toBe(3);
     act(() => {
       removeButtons[1].click(); // remove middle item
     });
     expect(lastChange).toEqual([{ kind: 0 }, { kind: 7 }]);
+  });
+
+  it("changes a record's variant in place via the per-row <select>", () => {
+    const { container } = mount(
+      <TlvEditor
+        field={mkField([{ kind: 1 }])}
+        controllers={{}}
+        onChange={onChange}
+      />,
+    );
+    // First <select> is the row's kind selector when one row exists.
+    const rowSelect = container.querySelector<HTMLSelectElement>("select")!;
+    act(() => {
+      rowSelect.value = "7";
+      rowSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(lastChange).toEqual([{ kind: 7 }]);
   });
 
   it("moves an instance up / down via the reorder buttons", () => {
