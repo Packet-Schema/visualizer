@@ -164,6 +164,11 @@ export type Field = {
    * → TCP`) instead of typing a raw integer. Populated by `psmlToRenderer`.
    */
   enumVariants?: Record<number, string>;
+  /** Per-field byte order override (PSML 0.4). When set, OverridePanel
+   *  surfaces a BE / LE toggle for this field. The mutation goes through
+   *  StudioPanel's edit-reducer because byteOrder is a schema attribute,
+   *  not an env override. */
+  byteOrder?: "BE" | "LE";
 };
 
 export type Packet = {
@@ -172,6 +177,19 @@ export type Packet = {
   description?: string;
   byteOrder?: string;
   fields: Field[];
+  /** Non-TLV / non-chain Repeat counts the user can drive via OverridePanel.
+   *  Surfaced as a "Repeats" stepper section because these counts don't
+   *  belong to a single field (they're synthetic env keys). */
+  freeRepeats?: { name: string; countKey: string }[];
+  /** Switches whose `on` is a `peek` expression — discriminator can't be
+   *  surfaced via a real cell, so OverridePanel offers a synthetic
+   *  case-picker. */
+  peekSwitches?: {
+    id: string;
+    name: string;
+    cases: { value: number; label: string }[];
+    peekKey: string;
+  }[];
 };
 
 /** A laid-out cell within a row. May span multiple rows via segmentation. */

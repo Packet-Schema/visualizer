@@ -117,6 +117,72 @@ describe("OverridePanel widgets", () => {
     expect(text).toMatch(/BOOTREPLY/);
   });
 
+  it("renders a TLV inner variant dropdown when an Option's leaf cell is selected", async () => {
+    const packet = psmlToRenderer(PRESETS.ipv4!);
+    // Seed an Options instance so the TLV catalog has something to switch.
+    const optionsField = packet.fields.find((f) => f.id === "options");
+    if (optionsField?.tlv) optionsField.tlv.instances = [{ kind: 7 }];
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="type#0"
+        controllers={{}}
+        onTlvChange={() => {}}
+        onControllerChange={() => {}}
+      />,
+    );
+    const select = container.querySelector("select");
+    expect(select, "TLV inner leaf must surface a <select>").not.toBeNull();
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/TLV variant/);
+  });
+
+  it("renders a ByteOrderToggle for pcieTlpFragment.address (LE override)", async () => {
+    const packet = psmlToRenderer(PRESETS.pcieTlpFragment!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="address"
+        controllers={{}}
+        onByteOrderChange={() => {}}
+        onControllerChange={() => {}}
+      />,
+    );
+    const radios = container.querySelectorAll('button[role="radio"]');
+    const labels = Array.from(radios).map((r) => r.textContent);
+    expect(labels).toContain("BE");
+    expect(labels).toContain("LE");
+  });
+
+  it("renders a free Repeat stepper for ospfHello on empty selection", async () => {
+    const packet = psmlToRenderer(PRESETS.ospfHello!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{}}
+        onControllerChange={() => {}}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/Repeats in this packet/);
+    expect(text).toMatch(/Neighbor List/);
+  });
+
+  it("renders a peek-switch picker for tlsExtensionsBlock on empty selection", async () => {
+    const packet = psmlToRenderer(PRESETS.tlsExtensionsBlock!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{}}
+        onControllerChange={() => {}}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/Peek-based switches/);
+  });
+
   it("renders the empty state for a plain TTL field", async () => {
     const packet = psmlToRenderer(PRESETS.ipv4!);
     const { container } = await mount(

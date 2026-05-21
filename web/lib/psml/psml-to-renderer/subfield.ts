@@ -58,6 +58,7 @@ export function plainFieldToRenderer(f: PsmlField): RendererField {
   if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
   if (f.type.kind === "berLength") out.isBerLength = true;
   if (f.type.kind === "enum") out.enumVariants = f.type.variants;
+  if (f.byteOrder) out.byteOrder = f.byteOrder;
   return out;
 }
 

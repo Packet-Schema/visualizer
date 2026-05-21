@@ -31,10 +31,63 @@ type Props = {
     next: { instances: ChainInstance[]; finalProto?: number },
   ) => void;
   onControllerChange?: (key: string, value: number) => void;
+  onByteOrderChange?: (fieldId: string, byteOrder: "BE" | "LE") => void;
 };
 
-function EmptyState({ message }: { message: string }) {
-  return <p className="m-0 text-sm-tight text-fg-faint">{message}</p>;
+function EmptyState({
+  message,
+  packet,
+  controllers,
+  onControllerChange,
+}: {
+  message: string;
+  packet: Packet;
+  controllers: ControllerState;
+  onControllerChange?: (key: string, value: number) => void;
+}) {
+  // Packet-level extras (free Repeats, peek Switches) surface here so the
+  // panel never reads as truly empty when the packet has stoppable knobs
+  // that aren't anchored to a single cell.
+  const free = packet.freeRepeats ?? [];
+  const peeks = packet.peekSwitches ?? [];
+  return (
+    <div className="space-y-3">
+      <p className="m-0 text-sm-tight text-fg-faint">{message}</p>
+      {free.length > 0 && onControllerChange ? (
+        <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+          <WidgetLabel>Repeats in this packet</WidgetLabel>
+          <div className="space-y-2">
+            {free.map((r) => (
+              <RepeatCountStepper
+                key={r.countKey}
+                name={r.name}
+                countKey={r.countKey}
+                controllers={controllers}
+                onChange={onControllerChange}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {peeks.length > 0 && onControllerChange ? (
+        <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+          <WidgetLabel>Peek-based switches</WidgetLabel>
+          <div className="space-y-2">
+            {peeks.map((p) => (
+              <PeekSwitchPicker
+                key={p.id}
+                switchName={p.name}
+                peekKey={p.peekKey}
+                cases={p.cases}
+                controllers={controllers}
+                onChange={onControllerChange}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export default function OverridePanel({
@@ -44,17 +97,42 @@ export default function OverridePanel({
   onTlvChange,
   onChainChange,
   onControllerChange,
+  onByteOrderChange,
 }: Props) {
+  // TLV inner leaf: cells emitted from a Repeat<Switch> have id
+  // `${leafFieldId}#${repeatIndex}`. Surface a variant dropdown that mutates
+  // `tlv.instances[idx].kind` so users can switch variants without opening
+  // the TlvEditor.
+  const tlvInner = selectedFieldId
+    ? findTlvInnerLeaf(packet, selectedFieldId)
+    : null;
+  if (tlvInner && onTlvChange) {
+    return (
+      <TlvInnerVariantDropdown
+        tlvField={tlvInner.tlvField}
+        instanceIndex={tlvInner.instanceIndex}
+        onChange={(next) => onTlvChange(tlvInner.tlvField, next)}
+      />
+    );
+  }
+
   const r = resolveSelection(packet, selectedFieldId);
 
+  const emptyProps = { packet, controllers, onControllerChange };
+
   if (r.kind === "empty") {
-    return <EmptyState message="Select a cell to edit its override." />;
+    return (
+      <EmptyState
+        message="Select a cell to edit its override."
+        {...emptyProps}
+      />
+    );
   }
   if (r.kind === "subfield-not-found") {
-    return <EmptyState message="Subfield not found." />;
+    return <EmptyState message="Subfield not found." {...emptyProps} />;
   }
   if (r.kind === "field-not-found") {
-    return <EmptyState message="Field not found." />;
+    return <EmptyState message="Field not found." {...emptyProps} />;
   }
 
   // Subfields can carry the same override metadata as top-level fields
@@ -70,7 +148,10 @@ export default function OverridePanel({
     );
     if (widgets.length === 0) {
       return (
-        <EmptyState message="Subfields share their parent's override. Select the parent cell." />
+        <EmptyState
+          message="Subfields share their parent's override. Select the parent cell."
+          {...emptyProps}
+        />
       );
     }
     return <div className="space-y-4">{widgets}</div>;
@@ -143,6 +224,17 @@ export default function OverridePanel({
     );
   }
 
+  if (field.byteOrder && onByteOrderChange) {
+    widgets.push(
+      <ByteOrderToggle
+        key="byteOrder"
+        fieldId={field.id}
+        current={field.byteOrder}
+        onChange={onByteOrderChange}
+      />,
+    );
+  }
+
   if (field.controlsLength && onControllerChange) {
     const drivenByTlv = packet.fields.some(
       (f) => f.tlv && f.tlv.drivesController === field.controlsLength,
@@ -160,7 +252,10 @@ export default function OverridePanel({
 
   if (widgets.length === 0) {
     return (
-      <EmptyState message="This field has no runtime override. Read-only display." />
+      <EmptyState
+        message="This field has no runtime override. Read-only display."
+        {...emptyProps}
+      />
     );
   }
 
@@ -230,6 +325,31 @@ function subfieldWidgets(
     );
   }
   return out;
+}
+
+/** Detect "leaf inside a TLV instance" — selectedFieldId has the form
+ *  `${leafFieldId}#${repeatIndex}`, the leafId is one of the active
+ *  variant's catalog fields, and instances[repeatIndex] exists. */
+function findTlvInnerLeaf(
+  packet: Packet,
+  selectedFieldId: string,
+): { tlvField: Field; instanceIndex: number } | null {
+  if (!selectedFieldId.includes("#")) return null;
+  if (selectedFieldId.includes(":")) return null;
+  const [leafId, idxStr] = selectedFieldId.split("#");
+  const idx = Number(idxStr);
+  if (!Number.isFinite(idx)) return null;
+  for (const parent of packet.fields) {
+    if (!parent.tlv) continue;
+    const inst = parent.tlv.instances[idx];
+    if (!inst) continue;
+    const entry = parent.tlv.catalog.find((e) => e.kind === inst.kind);
+    if (!entry) continue;
+    if (entry.fields?.some((f) => f.id === leafId)) {
+      return { tlvField: parent, instanceIndex: idx };
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -522,6 +642,223 @@ function OptionalToggle({ target, controllers, onChange }: WidgetProps) {
           ) : null}
         </span>
       </label>
+    </div>
+  );
+}
+
+type TlvInnerProps = {
+  tlvField: Field;
+  instanceIndex: number;
+  onChange: (next: TlvInstance[]) => void;
+};
+
+function TlvInnerVariantDropdown({
+  tlvField,
+  instanceIndex,
+  onChange,
+}: TlvInnerProps) {
+  const tlv = tlvField.tlv!;
+  const instance = tlv.instances[instanceIndex]!;
+  const selectId = `detail-tlv-inner-${tlvField.id}-${instanceIndex}`;
+  return (
+    <div>
+      <label htmlFor={selectId}>
+        <WidgetLabel>
+          TLV variant · {tlvField.name} #{instanceIndex}
+        </WidgetLabel>
+      </label>
+      <select
+        id={selectId}
+        value={instance.kind}
+        onChange={(e) => {
+          const newKind = Number(e.target.value);
+          if (!Number.isFinite(newKind)) return;
+          const entry = tlv.catalog.find((c) => c.kind === newKind);
+          const next = tlv.instances.map((inst, i) =>
+            i === instanceIndex
+              ? { kind: newKind, extras: entry?.defaultExtras }
+              : inst,
+          );
+          onChange(next);
+        }}
+        className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"
+        style={{
+          borderColor: "var(--border-strong)",
+          background: "var(--bg-elevated)",
+          color: "var(--fg)",
+        }}
+      >
+        {tlv.catalog.map((c) => (
+          <option key={c.kind} value={c.kind}>
+            {c.kind} — {c.name}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1.5 text-3xs text-fg-muted m-0">
+        Changes the variant of this {tlvField.name} record. Full list edit (add
+        / remove / reorder) lives in the TLV editor when you select the parent.
+      </p>
+    </div>
+  );
+}
+
+type RepeatCountStepperProps = {
+  name: string;
+  countKey: string;
+  controllers: ControllerState;
+  onChange: (key: string, value: number) => void;
+};
+
+function RepeatCountStepper({
+  name,
+  countKey,
+  controllers,
+  onChange,
+}: RepeatCountStepperProps) {
+  const value = controllers[countKey] ?? 0;
+  const min = 0;
+  const max = 64;
+  const numId = `detail-repeat-${countKey}-number`;
+  const clamp = (n: number) => Math.max(min, Math.min(max, n));
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex-1 text-sm-tight text-fg truncate" title={name}>
+        {name}
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={`Decrement ${name}`}
+          onClick={() => onChange(countKey, clamp(value - 1))}
+          className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
+          style={{
+            borderColor: "var(--border-strong)",
+            background: "var(--bg-elevated)",
+            color: "var(--fg)",
+          }}
+        >
+          −
+        </button>
+        <input
+          id={numId}
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(countKey, clamp(Number(e.target.value)))}
+          className="w-14 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight text-center"
+          style={{
+            borderColor: "var(--border-strong)",
+            background: "var(--bg-elevated)",
+            color: "var(--fg)",
+          }}
+        />
+        <button
+          type="button"
+          aria-label={`Increment ${name}`}
+          onClick={() => onChange(countKey, clamp(value + 1))}
+          className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
+          style={{
+            borderColor: "var(--border-strong)",
+            background: "var(--bg-elevated)",
+            color: "var(--fg)",
+          }}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type ByteOrderToggleProps = {
+  fieldId: string;
+  current: "BE" | "LE";
+  onChange: (fieldId: string, next: "BE" | "LE") => void;
+};
+
+function ByteOrderToggle({ fieldId, current, onChange }: ByteOrderToggleProps) {
+  const options: Array<"BE" | "LE"> = ["BE", "LE"];
+  return (
+    <div>
+      <WidgetLabel>
+        Byte order · sets schema attribute on{" "}
+        <code className="font-mono normal-case">{fieldId}</code>
+      </WidgetLabel>
+      <div role="radiogroup" className="flex gap-1.5">
+        {options.map((o) => {
+          const active = current === o;
+          return (
+            <button
+              key={o}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(fieldId, o)}
+              className="px-3 py-1 rounded-md border font-mono tabular-nums text-sm-tight cursor-pointer"
+              style={{
+                borderColor: active ? "var(--accent)" : "var(--border-strong)",
+                background: active ? "var(--accent)" : "var(--bg-elevated)",
+                color: active ? "var(--accent-fg)" : "var(--fg)",
+              }}
+            >
+              {o}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-3xs text-fg-muted m-0">
+        Edits the PSML schema (per-field byteOrder, RFC 791 §3 / PSML 0.4).
+        Persisted via the studio reducer.
+      </p>
+    </div>
+  );
+}
+
+type PeekSwitchPickerProps = {
+  switchName: string;
+  peekKey: string;
+  cases: { value: number; label: string }[];
+  controllers: ControllerState;
+  onChange: (key: string, value: number) => void;
+};
+
+function PeekSwitchPicker({
+  switchName,
+  peekKey,
+  cases,
+  controllers,
+  onChange,
+}: PeekSwitchPickerProps) {
+  const current = controllers[peekKey] ?? cases[0]?.value ?? 0;
+  const selectId = `detail-peek-${peekKey}`;
+  return (
+    <div>
+      <label htmlFor={selectId}>
+        <p className="m-0 mb-0.5 text-3xs uppercase tracking-wider font-bold text-fg-muted">
+          {switchName} · peek dispatch
+        </p>
+      </label>
+      <select
+        id={selectId}
+        value={current}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (Number.isFinite(v)) onChange(peekKey, v);
+        }}
+        className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"
+        style={{
+          borderColor: "var(--border-strong)",
+          background: "var(--bg-elevated)",
+          color: "var(--fg)",
+        }}
+      >
+        {cases.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.value} — {c.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

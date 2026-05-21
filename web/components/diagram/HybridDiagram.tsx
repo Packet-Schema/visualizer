@@ -58,6 +58,11 @@ export default function HybridDiagram({
   // does NOT include `controlsLength` / `tlv` / `chainCatalog` — those flags
   // live on the original renderer mirror only. We look them up by base id
   // (stripping the `#repeatIndex` suffix Repeat expansion adds).
+  // Build the set of base field ids whose cells should carry the override
+  // marker. Two sources:
+  //   1. Top-level Field / SubField with one of the override-metadata flags.
+  //   2. Leaf ids that appear inside any TLV catalog entry — clicking those
+  //      virtual cells opens the TLV-inner variant dropdown in OverridePanel.
   const overridableIds = useMemo(() => {
     const s = new Set<string>();
     for (const f of packet.fields) {
@@ -69,9 +74,26 @@ export default function HybridDiagram({
         f.varintEncoding ||
         f.isBerLength ||
         f.optionalGateFor ||
-        f.enumVariants
+        f.enumVariants ||
+        f.byteOrder
       ) {
         s.add(f.id);
+      }
+      for (const sf of f.subfields ?? []) {
+        if (
+          sf.switchCases ||
+          sf.varintEncoding ||
+          sf.isBerLength ||
+          sf.optionalGateFor ||
+          sf.enumVariants
+        ) {
+          s.add(sf.id);
+        }
+      }
+      if (f.tlv) {
+        for (const entry of f.tlv.catalog) {
+          for (const lf of entry.fields ?? []) s.add(lf.id);
+        }
       }
     }
     return s;

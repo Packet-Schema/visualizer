@@ -459,6 +459,17 @@ export default function PacketViewer() {
     [packet, replaceActivePacket],
   );
 
+  const handleByteOrderChange = useCallback(
+    (fieldId: string, next: "BE" | "LE") => {
+      const nextPacket = updatePacketField(packet, fieldId, (f) => ({
+        ...f,
+        byteOrder: next,
+      }));
+      replaceActivePacket(nextPacket);
+    },
+    [packet, replaceActivePacket],
+  );
+
   const handleChainChange = useCallback(
     (
       field: Field,
@@ -1011,6 +1022,7 @@ export default function PacketViewer() {
               onTlvChange={handleTlvChange}
               onChainChange={handleChainChange}
               onControllerChange={handleControllerChange}
+              onByteOrderChange={handleByteOrderChange}
             />
           </section>
         </div>

@@ -73,6 +73,7 @@ function rendererFieldToPsml(field: RendererField): Container[] {
       ...(field.defaultValue !== undefined
         ? { defaultValue: field.defaultValue }
         : {}),
+      ...(field.byteOrder ? { byteOrder: field.byteOrder } : {}),
     },
   ];
 }
