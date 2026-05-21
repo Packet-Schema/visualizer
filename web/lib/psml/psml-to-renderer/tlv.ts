@@ -13,6 +13,18 @@ import type {
 
 import { getSwitchFromRepeat, structFieldsToTlvFields } from "./shared";
 
+/** Pretty-print a camelCase identifier as "Camel Case". Returns null for
+ *  empty / non-string input so callers can chain a final fallback. */
+function prettifyId(id: string | undefined): string | null {
+  if (!id) return null;
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  return trimmed
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/^./, (ch) => ch.toUpperCase());
+}
+
 type TlvCatalogEntry = RendererTlvCatalogEntry;
 
 /** True when this Repeat's element is just a single Switch (the PSML
@@ -31,7 +43,10 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
     const fields = structFieldsToTlvFields(struct);
     const entry: TlvCatalogEntry = {
       kind: kindNum,
-      name: struct.name ?? `kind ${kindNum}`,
+      // Pretty fallback: when the PSML case struct doesn't declare a
+      // `name`, prefer its id (e.g. `recordRoute` → "Record Route")
+      // over the bare `kind N` label that ends up on the diagram cell.
+      name: struct.name ?? prettifyId(struct.id) ?? `kind ${kindNum}`,
     };
     // `fields` is optional on the catalog type; omit it when empty so
     // downstream helpers (which use fields-presence to decide whether
