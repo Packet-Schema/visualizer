@@ -61,10 +61,15 @@ function findTopLevelGroupSubfieldParentId(
   packet: PsmlPacket,
   field: NormalizedField,
 ): string | undefined {
+  const packetPrefix = `${packet.name}/`;
+  if (!field.originalContainerPath.startsWith(packetPrefix)) return undefined;
+  const relativeContainerPath = field.originalContainerPath.slice(
+    packetPrefix.length,
+  );
+
   for (const container of packet.body) {
     if (!isGroup(container)) continue;
-    const pathParts = field.originalContainerPath.split("/");
-    if (pathParts.length !== 2 || pathParts[1] !== container.id) continue;
+    if (relativeContainerPath !== container.id) continue;
     if (
       container.children.some(
         (child) =>

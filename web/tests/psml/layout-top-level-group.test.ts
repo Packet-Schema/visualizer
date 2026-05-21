@@ -42,4 +42,25 @@ describe("resolveLayout — top-level group detection", () => {
     expect(targets[0]?.field.sourceTopLevelGroupId).toBe("h");
     expect(targets[1]?.field.sourceTopLevelGroupId).toBeUndefined();
   });
+
+  it("does not depend on slash-free packet names when matching top-level groups", () => {
+    const packet: Packet = {
+      name: "Custom/Packet",
+      rowBits: 32,
+      body: [
+        {
+          kind: "group",
+          id: "flagsBits",
+          children: [
+            { id: "ack", name: "ACK", type: bits(1) },
+            { id: "rest", name: "Rest", type: bits(7) },
+          ],
+        },
+      ],
+    };
+
+    const layout = resolveLayout(packet);
+    const ack = layout.cells.find((c) => c.field.id === "ack");
+    expect(ack?.field.sourceTopLevelGroupId).toBe("flagsBits");
+  });
 });
