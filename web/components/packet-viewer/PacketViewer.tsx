@@ -495,7 +495,18 @@ export default function PacketViewer() {
           bytes: (e.fields ?? []).reduce((a, f) => a + f.bits, 0) / 8,
         }))
         .filter(({ bytes }) => bytes > 0 && Number.isInteger(bytes))
-        .sort((a, b) => a.bytes - b.bytes);
+        // Smallest byte size first. Tiebreak: deprioritise kind === 0,
+        // because in TLV protocols kind 0 is almost always a terminator
+        // (IPv4 EOL "End of Options", TCP EOL "End of Option List") that
+        // semantically ends the option list — repeating it as padding
+        // misrepresents the wire format. NOP / kind 1 is the canonical
+        // padding option.
+        .sort((a, b) => {
+          if (a.bytes !== b.bytes) return a.bytes - b.bytes;
+          const aTerm = a.entry.kind === 0 ? 1 : 0;
+          const bTerm = b.entry.kind === 0 ? 1 : 0;
+          return aTerm - bTerm;
+        });
       const smallest = sized[0];
       if (!smallest) return;
       const targetCount = Math.floor(totalBytes / smallest.bytes);
