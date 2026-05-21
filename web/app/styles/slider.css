@@ -1,7 +1,70 @@
 @layer components {
   /* ==========================================================================
-   Custom range slider
+   Custom form controls
    ========================================================================== */
+
+  /* ---- Toggle switch ---- */
+
+  .pv-switch-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .pv-switch-track {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    flex: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    transition:
+      background var(--pv-fast) var(--pv-ease),
+      border-color var(--pv-fast) var(--pv-ease),
+      box-shadow var(--pv-fast) var(--pv-ease);
+  }
+
+  .pv-switch-track::after {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--fg-faint);
+    content: "";
+    transition:
+      transform var(--pv-fast) var(--pv-ease),
+      background var(--pv-fast) var(--pv-ease);
+  }
+
+  .pv-switch-input:checked + .pv-switch-track {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .pv-switch-input:checked + .pv-switch-track::after {
+    background: var(--accent-fg);
+    transform: translateX(14px);
+  }
+
+  .pv-switch-input:focus-visible + .pv-switch-track {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .pv-switch-input:disabled + .pv-switch-track {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  /* ---- Custom range slider ---- */
 
   .pv-slider-wrap {
     position: relative;

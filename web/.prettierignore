@@ -3,3 +3,6 @@ build
 .next
 data
 out
+
+# Build-time generated files
+lib/psml/presets.generated.ts

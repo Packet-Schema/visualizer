@@ -6,7 +6,7 @@
 // the full app shell.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, useState } from "react";
+import { act, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import {
@@ -14,6 +14,7 @@ import {
   useFieldHighlight,
   useRovingTabindex,
 } from "@/components/packet-viewer/hooks";
+import { useFocusTrap } from "@/components/common/hooks/useFocusTrap";
 
 let mounted: { container: HTMLDivElement; root: Root }[] = [];
 
@@ -190,6 +191,60 @@ describe("useRovingTabindex", () => {
     expect(
       rootEl.querySelector('[data-field-id="c"]')?.getAttribute("tabindex"),
     ).toBe("0");
+  });
+});
+
+describe("useFocusTrap", () => {
+  let rootEl: HTMLDivElement;
+
+  function Harness({ open }: { open: boolean }) {
+    const ref = useRef<HTMLDivElement | null>(rootEl);
+    useFocusTrap({ open, containerRef: ref, onClose: () => {} });
+    return null;
+  }
+
+  beforeEach(() => {
+    rootEl = document.createElement("div");
+    rootEl.setAttribute("tabindex", "-1");
+    rootEl.innerHTML = `
+      <button data-testid="first">First</button>
+      <button data-testid="last">Last</button>
+    `;
+    document.body.appendChild(rootEl);
+    for (const el of rootEl.querySelectorAll<HTMLElement>("button")) {
+      el.getBoundingClientRect = () =>
+        ({
+          width: 10,
+          height: 10,
+          top: 0,
+          left: 0,
+          right: 10,
+          bottom: 10,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }) as DOMRect;
+    }
+  });
+
+  it("cycles Shift+Tab from the container itself to the last focusable", () => {
+    mount(<Harness open={true} />);
+    rootEl.focus();
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Tab",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+
+    expect(document.activeElement).toBe(
+      rootEl.querySelector('[data-testid="last"]'),
+    );
   });
 });
 
