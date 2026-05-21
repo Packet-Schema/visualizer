@@ -6,7 +6,8 @@
     "dev": "npm run build:presets && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
     "prebuild": "npm run build:presets",
-    "build": "next build",
+    "build": "opennextjs-cloudflare build",
+    "build:next": "next build",
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -15,7 +16,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:format": "vitest run tests/formats"
+    "test:format": "vitest run tests/formats",
+    "build:worker": "npm run build",
+    "preview:worker": "opennextjs-cloudflare preview",
+    "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "lz-string": "^1.5.0",
@@ -42,7 +46,9 @@
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "@opennextjs/cloudflare": "^1.8.6",
+    "wrangler": "^4.16.1"
   },
   "browserslist": [
     "Chrome >= 100",
