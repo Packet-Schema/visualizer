@@ -189,7 +189,7 @@ function renderSubfields(
       return [
         `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
         label
-          ? `<text x="${x + 6}" y="${y + 12}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}">${label}</text>`
+          ? `<text x="${x + 6}" y="${y + 12}" font-size="10" font-family="sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
           : "",
       ].join("");
     })
@@ -231,7 +231,7 @@ function renderCellBadges(
   }
   if (cell.headerProtected === true) {
     badges.push(
-      `<text x="${x + width - 28}" y="${y + height - 6}" font-size="9" font-weight="700" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.accent)}">HP</text>`,
+      `<text x="${x + width - 28}" y="${y + height - 6}" font-size="9" font-weight="700" font-family="monospace" fill="${xmlAttribute(theme.accent)}">HP</text>`,
     );
   }
   return badges.join("");
@@ -274,7 +274,7 @@ export function buildDiagramSvg(
     const tickHeight = major ? 10 : 6;
     const label =
       bit % 4 === 0
-        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
+        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
         : "";
     return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
   }).join("");
@@ -302,11 +302,10 @@ export function buildDiagramSvg(
           const stroke = cell.encryptedParentId
             ? theme.accent
             : theme.fieldStroke;
-          const clipId = clipPathIdForCell(cell);
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}">${escapedTitle}</text>`,
-            `<text clip-path="url(#${clipId})" x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}">${escapedSubtitle}</text>`,
+            `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden">${escapedTitle}</text>`,
+            `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(cell.subCells, cell, bitWidth, theme),
           ].join("");

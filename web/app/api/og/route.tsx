@@ -9,18 +9,10 @@ import { initialEnv } from "@/lib/psml/normalize";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 import { parseShareParams } from "@/lib/share-url";
 
-const WIDTH = 1200;
-const HEIGHT = 630;
 const FALLBACK_PRESET_KEY = "ipv4";
 const MAX_LAYOUT_RETRY = 32;
-
-function svgToDataUrl(svg: string): string {
-  const encoded = encodeURIComponent(svg)
-    .replace(/'/g, "%27")
-    .replace(/\(/g, "%28")
-    .replace(/\)/g, "%29");
-  return `data:image/svg+xml,${encoded}`;
-}
+const OG_WIDTH = 1200;
+const OG_HEIGHT = 630;
 
 export async function GET(request: NextRequest) {
   const builtInKeys = Object.keys(PRESETS);
@@ -67,7 +59,8 @@ export async function GET(request: NextRequest) {
     throw new Error("Failed to resolve layout for og image");
   }
   const svg = buildDiagramSvg(packet, layout, { bitWidth: 24 });
-  const svgUrl = svgToDataUrl(svg);
+  const svgBase64 = Buffer.from(svg).toString("base64");
+  const svgDataUrl = `data:image/svg+xml;base64,${svgBase64}`;
 
   return new ImageResponse(
     (
@@ -83,12 +76,10 @@ export async function GET(request: NextRequest) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={svgUrl}
-          width={WIDTH}
-          height={HEIGHT}
+          src={svgDataUrl}
           style={{
-            width: `${WIDTH}px`,
-            height: `${HEIGHT}px`,
+            width: "100%",
+            height: "100%",
             objectFit: "contain",
           }}
           alt="packet diagram"
@@ -96,8 +87,8 @@ export async function GET(request: NextRequest) {
       </div>
     ),
     {
-      width: WIDTH,
-      height: HEIGHT,
+      width: OG_WIDTH,
+      height: OG_HEIGHT,
       headers: {
         "content-type": "image/png",
         "cache-control": "public, immutable, no-transform, max-age=31536000",
