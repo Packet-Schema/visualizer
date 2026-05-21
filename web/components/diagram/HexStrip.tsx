@@ -3,7 +3,10 @@ import { useMemo, type CSSProperties } from "react";
 import type { Field, Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import { CATEGORY_TO_TOKEN, tokenToCssVar } from "@/lib/constants";
 
-import { selectableFieldId } from "./selectableFieldId";
+import {
+  encodeSubfieldSelection,
+  selectableFieldId,
+} from "./selectableFieldId";
 
 type Props = {
   packet: Packet;
@@ -16,7 +19,8 @@ type Props = {
 /** A single field owning some bits inside one byte. */
 type ByteOwner = {
   /** The id used to match `data-field-id` on diagram cells. For subfields,
-   *  this is `parentField.id:subfield.id`; for plain fields, just field.id. */
+   *  this is `encodeSubfieldSelection(parentField.id, subfield.id)`; for
+   *  plain fields, just field.id. */
   fieldId: string;
   /** Display name used in the aria-label. */
   name: string;
@@ -62,7 +66,10 @@ function computeByteOwners(
       for (const sub of cell.subCells) {
         const subAbsStart = cell.row * rowBits + sub.startBit;
         const subAbsEnd = cell.row * rowBits + sub.endBit;
-        const subFieldId = `${cell.field.id}:${sub.subfield.id}`;
+        const subFieldId = encodeSubfieldSelection(
+          cell.field.id,
+          sub.subfield.id,
+        );
         const subName = `${cell.field.name} / ${sub.subfield.name}`;
         addRange(owners, subAbsStart, subAbsEnd, {
           fieldId: subFieldId,

@@ -99,6 +99,7 @@ describe("PacketViewer (smoke)", () => {
       });
 
       expect(ackCell?.classList.contains("selected")).toBe(true);
+      expect(container.querySelector(".hex-byte.selected")).not.toBeNull();
       expect(container.textContent).toContain("ACK");
       expect(container.textContent).toContain("subfield of flagsBits");
       expect(container.textContent).not.toContain("Field not found");
