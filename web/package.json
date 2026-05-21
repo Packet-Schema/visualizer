@@ -6,7 +6,8 @@
     "dev": "npm run build:presets && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
     "prebuild": "npm run build:presets",
-    "build": "next build",
+    "build": "opennextjs-cloudflare build",
+    "build:next": "next build",
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -16,7 +17,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:format": "vitest run tests/formats",
-    "build:worker": "opennextjs-cloudflare build",
+    "build:worker": "npm run build",
     "preview:worker": "opennextjs-cloudflare preview",
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },

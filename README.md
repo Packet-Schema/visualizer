@@ -50,11 +50,12 @@ cd web
 npm run build
 ```
 
-For Cloudflare Workers (SSR-capable) artifacts:
+`npm run build` creates the Cloudflare Workers artifact via OpenNext.
+If you need to run only the raw Next.js build locally:
 
 ```sh
 cd web
-npm run build:worker
+npm run build:next
 ```
 
 Deploy to Cloudflare Workers:
