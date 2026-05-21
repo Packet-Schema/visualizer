@@ -68,7 +68,8 @@ export default function HybridDiagram({
         f.switchCases ||
         f.varintEncoding ||
         f.isBerLength ||
-        f.optionalGateFor
+        f.optionalGateFor ||
+        f.enumVariants
       ) {
         s.add(f.id);
       }

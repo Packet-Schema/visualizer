@@ -28,6 +28,7 @@ export function groupToSubfieldField(g: Group): RendererField | null {
     if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
     if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
     if (child.type.kind === "berLength") sf.isBerLength = true;
+    if (child.type.kind === "enum") sf.enumVariants = child.type.variants;
     subs.push(sf);
     total += bits;
     if (child.category && !category) category = child.category;
@@ -56,6 +57,7 @@ export function plainFieldToRenderer(f: PsmlField): RendererField {
   // Data-dependent type widths get an env-override widget in OverridePanel.
   if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
   if (f.type.kind === "berLength") out.isBerLength = true;
+  if (f.type.kind === "enum") out.enumVariants = f.type.variants;
   return out;
 }
 

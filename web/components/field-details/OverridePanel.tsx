@@ -110,6 +110,17 @@ export default function OverridePanel({
     );
   }
 
+  if (field.enumVariants && onControllerChange) {
+    widgets.push(
+      <EnumDropdown
+        key="enum"
+        target={fieldTarget}
+        controllers={controllers}
+        onChange={onControllerChange}
+      />,
+    );
+  }
+
   if ((field.varintEncoding || field.isBerLength) && onControllerChange) {
     widgets.push(
       <WidthPicker
@@ -175,6 +186,7 @@ function subfieldWidgets(
     varintEncoding: sub.varintEncoding,
     isBerLength: sub.isBerLength,
     optionalGateFor: sub.optionalGateFor,
+    enumVariants: sub.enumVariants,
   };
   const out: React.ReactNode[] = [];
   if (sub.switchCases) {
@@ -191,6 +203,16 @@ function subfieldWidgets(
     out.push(
       <WidthPicker
         key="width"
+        target={target}
+        controllers={controllers}
+        onChange={onControllerChange}
+      />,
+    );
+  }
+  if (sub.enumVariants) {
+    out.push(
+      <EnumDropdown
+        key="enum"
         target={target}
         controllers={controllers}
         onChange={onControllerChange}
@@ -224,6 +246,7 @@ type WidgetTarget = {
   varintEncoding?: Field["varintEncoding"];
   isBerLength?: Field["isBerLength"];
   optionalGateFor?: Field["optionalGateFor"];
+  enumVariants?: Field["enumVariants"];
 };
 
 function fieldAsTarget(f: Field): WidgetTarget {
@@ -235,6 +258,7 @@ function fieldAsTarget(f: Field): WidgetTarget {
     varintEncoding: f.varintEncoding,
     isBerLength: f.isBerLength,
     optionalGateFor: f.optionalGateFor,
+    enumVariants: f.enumVariants,
   };
 }
 
@@ -428,6 +452,47 @@ function pickerWidths(target: WidgetTarget): number[] {
     default:
       return [8, 16, 32, 64];
   }
+}
+
+function EnumDropdown({ target, controllers, onChange }: WidgetProps) {
+  const variants = target.enumVariants ?? {};
+  const entries = Object.entries(variants)
+    .map(([k, label]) => ({ value: Number(k), label }))
+    .filter((e) => Number.isFinite(e.value))
+    .sort((a, b) => a.value - b.value);
+  const selectId = `detail-enum-${target.id}`;
+  const current =
+    controllers[target.id] ?? target.defaultValue ?? entries[0]?.value ?? 0;
+  return (
+    <div>
+      <label htmlFor={selectId}>
+        <WidgetLabel>
+          Enum value · sets{" "}
+          <code className="font-mono normal-case">{target.id}</code>
+        </WidgetLabel>
+      </label>
+      <select
+        id={selectId}
+        value={current}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (Number.isFinite(v)) onChange(target.id, v);
+        }}
+        className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"
+        style={{
+          borderColor: "var(--border-strong)",
+          background: "var(--bg-elevated)",
+          color: "var(--fg)",
+        }}
+      >
+        {entries.map((e) => (
+          <option key={e.value} value={e.value}>
+            {e.value} — {e.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 function OptionalToggle({ target, controllers, onChange }: WidgetProps) {

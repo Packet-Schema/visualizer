@@ -30,6 +30,7 @@ export type SubField = {
   varintEncoding?: "quic" | "protobuf" | "cbor";
   isBerLength?: boolean;
   optionalGateFor?: string[];
+  enumVariants?: Record<number, string>;
   defaultValue?: number;
 };
 
@@ -157,6 +158,12 @@ export type Field = {
    * toggle UI can show what it gates. Populated by `psmlToRenderer`.
    */
   optionalGateFor?: string[];
+  /**
+   * Enum variant table when this field's PSML type is `enum`. Drives the
+   * EnumDropdown widget so users can pick a known value (e.g. `Protocol=6
+   * → TCP`) instead of typing a raw integer. Populated by `psmlToRenderer`.
+   */
+  enumVariants?: Record<number, string>;
 };
 
 export type Packet = {

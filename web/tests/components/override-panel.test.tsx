@@ -100,6 +100,23 @@ describe("OverridePanel widgets", () => {
     expect(checkbox, "mask must surface a checkbox").not.toBeNull();
   });
 
+  it("renders an EnumDropdown for the BOOTP op field on dhcpv4", async () => {
+    const packet = psmlToRenderer(PRESETS.dhcpv4!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="op"
+        controllers={{}}
+        onControllerChange={() => {}}
+      />,
+    );
+    const select = container.querySelector("select");
+    expect(select, "op (enum) must surface a <select>").not.toBeNull();
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/BOOTREQUEST/);
+    expect(text).toMatch(/BOOTREPLY/);
+  });
+
   it("renders the empty state for a plain TTL field", async () => {
     const packet = psmlToRenderer(PRESETS.ipv4!);
     const { container } = await mount(
