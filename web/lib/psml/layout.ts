@@ -116,11 +116,13 @@ type GroupedRun =
  * Walk the flat NormalizedField list and combine consecutive entries that
  * share the same `groupId` (i.e. they were emitted as siblings inside
  * the same `Group` container). The combined run becomes a single cell
- * whose `subfields[]` lists each child — canonical use: IPv4/TCP flags
- * (3 1-bit children of a Group become one cell with three sub-cells)
- * and TLV instance Groups (per-instance leaf list becomes one cell
- * named after the variant). Fields outside any Group stay flat. Single-
- * child Groups also stay flat (no benefit from a 1-child collapse).
+ * whose `subfields[]` lists each child — canonical uses:
+ *   * IPv4/TCP flags (3 1-bit children of a Group → one cell with three
+ *     sub-cells).
+ *   * TLV instance Groups (per-instance leaf list → one cell named after
+ *     the variant; NOP / EOL single-field variants also collapse so the
+ *     cell label is the variant name, not the leaf field's name).
+ * Fields outside any Group stay flat.
  */
 function groupConsecutiveByContainer(
   fields: NormalizedField[],
@@ -141,11 +143,10 @@ function groupConsecutiveByContainer(
       run.push(fields[j]);
       j++;
     }
-    if (run.length === 1) {
-      out.push({ kind: "flat", field: f });
-      i = j;
-      continue;
-    }
+    // Even for a single-child run we collapse: the parent Group's name
+    // (e.g. "NOP" for a 1-field IPv4 Option) is more informative than
+    // the lone child's name ("Type=1"), and the diagram cell should
+    // read as the variant, not its first byte's label.
     out.push({
       kind: "collapsed",
       parentId: groupId,
