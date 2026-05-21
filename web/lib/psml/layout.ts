@@ -124,9 +124,7 @@ type GroupedRun =
  *     cell label is the variant name, not the leaf field's name).
  * Fields outside any Group stay flat.
  */
-function groupConsecutiveByContainer(
-  fields: NormalizedField[],
-): GroupedRun[] {
+function groupConsecutiveByContainer(fields: NormalizedField[]): GroupedRun[] {
   const out: GroupedRun[] = [];
   let i = 0;
   while (i < fields.length) {
@@ -143,10 +141,20 @@ function groupConsecutiveByContainer(
       run.push(fields[j]);
       j++;
     }
-    // Even for a single-child run we collapse: the parent Group's name
-    // (e.g. "NOP" for a 1-field IPv4 Option) is more informative than
-    // the lone child's name ("Type=1"), and the diagram cell should
-    // read as the variant, not its first byte's label.
+    // Single-child collapse policy:
+    //   * Groups synthesised by `applyTlvInstances` always collapse — even
+    //     a 1-field variant (NOP / EOL) reads as "NOP" rather than its
+    //     leaf's `Type=1`. These groups carry the `__inst_N` id suffix.
+    //   * Hand-authored Groups (TCP / IPv4 flags etc.) only collapse when
+    //     they have 2+ children. A 1-child Group whose author intended the
+    //     leaf to be the visible label (e.g. a wrapper used for grouping
+    //     metadata) stays flat so we don't silently rename it.
+    const isTlvInstance = /__inst_\d+$/.test(groupId);
+    if (run.length === 1 && !isTlvInstance) {
+      out.push({ kind: "flat", field: f });
+      i = j;
+      continue;
+    }
     out.push({
       kind: "collapsed",
       parentId: groupId,

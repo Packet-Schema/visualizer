@@ -40,6 +40,29 @@ describe("applyTlvInstances", () => {
     expect((type.n as { value: number }).value).toBe(8);
   });
 
+  it("prefixes each instance's child ids with the Group id so duplicate variants get distinct field ids", () => {
+    const psml = PRESETS.ipv4!;
+    const mirror = psmlToRenderer(psml);
+    const opt = mirror.fields.find((f) => f.id === "options");
+    if (!opt?.tlv) throw new Error("options field missing tlv");
+    opt.tlv.instances = [{ kind: 1 }, { kind: 1 }, { kind: 1 }];
+    const out = applyTlvInstances(psml, mirror, { options: 4 });
+    const groups = out.body.filter(
+      (c) => c.kind === "group" && c.id.startsWith("options__inst_"),
+    );
+    expect(groups).toHaveLength(3);
+    const childIds = groups.flatMap((g) => {
+      const children = (g as { children?: Array<{ id: string }> }).children;
+      return children?.map((c) => c.id) ?? [];
+    });
+    expect(new Set(childIds).size).toBe(childIds.length);
+    expect(childIds).toEqual([
+      "options__inst_0__type",
+      "options__inst_1__type",
+      "options__inst_2__type",
+    ]);
+  });
+
   it("emits a trailing 'remaining' placeholder when instances total < slot", () => {
     const psml = PRESETS.ipv4!;
     const mirror = psmlToRenderer(psml);

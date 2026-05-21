@@ -9,6 +9,7 @@ import type {
   SubField,
 } from "@/lib/psml/renderer";
 import { categoryColor } from "@/lib/render-tokens";
+import { tlvBaseId } from "@/components/field-details/tlv-cell-id";
 
 type Props = {
   packet: Packet;
@@ -134,12 +135,14 @@ export default function HybridDiagram({
             // cells) and the `__inst_N` suffix (Group-collapsed TLV
             // instance cells) so the lookup against `overridableIds` lands
             // on the original TLV field's id.
+            // `cell.field.id` may be a TLV-rewrite synthetic
+            // (`<X>__inst_N` / `<X>__remaining`) or a flat repeat leaf
+            // (`<X>#N`). `tlvBaseId` peels those back to the original
+            // TLV's field id so the overridable marker lookup hits.
             const idForLookup = cell.field.id;
             const baseId = idForLookup.includes("#")
               ? idForLookup.split("#")[0]
-              : idForLookup
-                  .replace(/__inst_\d+$/, "")
-                  .replace(/__remaining$/, "");
+              : tlvBaseId(idForLookup);
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}

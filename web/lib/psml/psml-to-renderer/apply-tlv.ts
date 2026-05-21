@@ -83,12 +83,19 @@ export function applyTlvInstances(
         if (!entry?.fields || entry.fields.length === 0) continue;
         const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
         instanceBytes += bits / 8;
+        const groupId = `${c.id}__inst_${i}`;
         const group: PsmlGroup = {
           kind: "group",
-          id: `${c.id}__inst_${i}`,
+          id: groupId,
           name: entry.name,
           children: entry.fields.map<PsmlField>((f) => ({
-            id: f.id,
+            // Prefix the child id with the instance group's id so two
+            // copies of the same variant (e.g. NOP × 8) produce
+            // distinct NormalizedField ids. Without this, normalize
+            // emits N fields with the same `id: "type"` and React keys
+            // collide, plus `selectedFieldId.split(":")` lookups land
+            // on the first match instead of the actually clicked one.
+            id: `${groupId}__${f.id}`,
             name: f.name,
             type: { kind: "bits", n: f.bits },
             ...(f.description ? { doc: f.description } : {}),
@@ -98,12 +105,10 @@ export function applyTlvInstances(
         newBody.push(group);
       }
 
-      // Stage 2b: tail placeholder when the user-declared slot is bigger
-      // than the sum of what's been added. Lets the diagram visually
-      // close on the controller boundary instead of leaving a phantom
-      // gap. When records overshoot the slot we don't trim — overruns
-      // mean the user grew Options beyond IHL, which is its own UX
-      // surface (and the wire format would also be out of spec).
+      // Stage 2b: trailing placeholder when the user-declared slot is
+      // bigger than the records that have been added so far. Lets the
+      // diagram visually close on the controller boundary instead of
+      // leaving a phantom gap.
       if (slot > instanceBytes) {
         const remaining = slot - instanceBytes;
         newBody.push({
@@ -113,6 +118,13 @@ export function applyTlvInstances(
           ...(c.category ? { category: c.category } : {}),
         });
       }
+      // Stage 2c (overshoot, `instanceBytes > slot`): the user added
+      // more record bytes than the controller declares. Wire format is
+      // malformed (IHL would need to grow). We currently let the
+      // instance cells overflow past the controller boundary in the
+      // diagram without a visible warning — a follow-up should surface
+      // this as a banner above the diagram or auto-grow IHL to match.
+      // See PR #115 sub-agent review for the rationale.
       continue;
     }
     newBody.push(c);

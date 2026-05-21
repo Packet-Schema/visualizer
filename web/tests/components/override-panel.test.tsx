@@ -125,7 +125,7 @@ describe("OverridePanel widgets", () => {
     const { container } = await mount(
       <OverridePanel
         packet={packet}
-        selectedFieldId="type#0"
+        selectedFieldId="options__inst_0"
         controllers={{}}
         onTlvChange={() => {}}
         onControllerChange={() => {}}

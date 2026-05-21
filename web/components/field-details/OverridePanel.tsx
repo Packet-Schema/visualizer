@@ -13,6 +13,7 @@ import SliderTooltip from "../controls/SliderTooltip";
 import ChainEditor from "./ChainEditor";
 import TlvEditor from "./TlvEditor";
 import { resolveSelection } from "./selection-resolver";
+import { parseTlvCellId } from "./tlv-cell-id";
 
 // `OverridePanel` is the editing surface for a selected diagram cell. It
 // dispatches one of six widgets based on what the cell's logical parent
@@ -99,40 +100,39 @@ export default function OverridePanel({
   onControllerChange,
   onByteOrderChange,
 }: Props) {
-  // TLV inner leaf: cells emitted from a Repeat<Switch> have id
-  // `${leafFieldId}#${repeatIndex}`. Surface a variant dropdown that mutates
-  // `tlv.instances[idx].kind` so users can switch variants without opening
-  // the TlvEditor.
-  const tlvInner = selectedFieldId
-    ? findTlvInnerLeaf(packet, selectedFieldId)
-    : null;
-  if (tlvInner && onTlvChange) {
-    return (
-      <TlvInnerVariantDropdown
-        tlvField={tlvInner.tlvField}
-        instanceIndex={tlvInner.instanceIndex}
-        onChange={(next) => onTlvChange(tlvInner.tlvField, next)}
-      />
-    );
-  }
-
-  // Trailing "Options remaining (N B)" cell — emitted by applyTlvInstances
-  // when the instance list doesn't fill the controller-derived slot. Clicking
-  // it should land on the parent TLV's full TlvEditor so the user can append
-  // more records or extend an existing one. The synthetic id is
-  // `<repeatId>__remaining` and does NOT live in `packet.fields`, so plain
-  // `resolveSelection` would return "Field not found".
-  if (selectedFieldId && selectedFieldId.endsWith("__remaining")) {
-    const repeatId = selectedFieldId.slice(0, -"__remaining".length);
-    const parent = packet.fields.find((f) => f.id === repeatId && f.tlv);
-    if (parent?.tlv && onTlvChange) {
-      return (
-        <TlvEditor
-          field={parent}
-          controllers={controllers}
-          onChange={(next) => onTlvChange(parent, next)}
-        />
+  // TLV cells emitted by `applyTlvInstances` carry synthetic ids that
+  // don't live in `packet.fields`. `parseTlvCellId` peels back the role
+  // so we can route each click to the right editor:
+  //   * instance / leaf  → inline variant dropdown for that one record
+  //   * remaining        → full TlvEditor so the user can append more
+  // Plain ids fall through to `resolveSelection` below.
+  if (selectedFieldId) {
+    const role = parseTlvCellId(selectedFieldId);
+    if (role.kind === "instance" || role.kind === "leaf") {
+      const parent = packet.fields.find(
+        (f) => f.id === role.baseId && f.tlv?.instances[role.instanceIndex],
       );
+      if (parent?.tlv && onTlvChange) {
+        return (
+          <TlvInnerVariantDropdown
+            tlvField={parent}
+            instanceIndex={role.instanceIndex}
+            onChange={(next) => onTlvChange(parent, next)}
+          />
+        );
+      }
+    }
+    if (role.kind === "remaining") {
+      const parent = packet.fields.find((f) => f.id === role.baseId && f.tlv);
+      if (parent?.tlv && onTlvChange) {
+        return (
+          <TlvEditor
+            field={parent}
+            controllers={controllers}
+            onChange={(next) => onTlvChange(parent, next)}
+          />
+        );
+      }
     }
   }
 
@@ -345,55 +345,6 @@ function subfieldWidgets(
     );
   }
   return out;
-}
-
-/**
- * Detect that the user clicked into / onto a TLV instance. Two paths:
- *
- *   1. `<repeatId>__inst_<N>` — the instance's parent cell (= the Group
- *      collapse emitted by `applyTlvInstances` for the N-th instance).
- *      This is the canonical click since switching variant only makes
- *      sense at the instance level.
- *   2. `<leafFieldId>#<repeatIndex>` — legacy path when the Repeat was
- *      walked flat (no Group collapse, e.g. when instances weren't
- *      populated yet and `applyTlvInstances` left the original Repeat
- *      intact). Kept so the dropdown also works on the env-driven cells.
- *
- * Subfield selections (id containing `:`) are NOT routed here; the
- * subfield-detail view stays in DetailPanel and the variant change is
- * still reachable by clicking the parent cell.
- */
-function findTlvInnerLeaf(
-  packet: Packet,
-  selectedFieldId: string,
-): { tlvField: Field; instanceIndex: number } | null {
-  if (selectedFieldId.includes(":")) return null;
-  // Case (1): instance Group cell — id is `<repeatId>__inst_<N>`.
-  const groupMatch = selectedFieldId.match(/^(.+)__inst_(\d+)$/);
-  if (groupMatch) {
-    const [, repeatId, idxStr] = groupMatch;
-    const idx = Number(idxStr);
-    const parent = packet.fields.find(
-      (f) => f.id === repeatId && f.tlv && f.tlv.instances[idx],
-    );
-    if (parent) return { tlvField: parent, instanceIndex: idx };
-  }
-  // Case (2): legacy flat leaf — id is `<leafFieldId>#<repeatIndex>`.
-  if (!selectedFieldId.includes("#")) return null;
-  const [leafId, idxStr] = selectedFieldId.split("#");
-  const idx = Number(idxStr);
-  if (!Number.isFinite(idx)) return null;
-  for (const parent of packet.fields) {
-    if (!parent.tlv) continue;
-    const inst = parent.tlv.instances[idx];
-    if (!inst) continue;
-    const entry = parent.tlv.catalog.find((e) => e.kind === inst.kind);
-    if (!entry) continue;
-    if (entry.fields?.some((f) => f.id === leafId)) {
-      return { tlvField: parent, instanceIndex: idx };
-    }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------

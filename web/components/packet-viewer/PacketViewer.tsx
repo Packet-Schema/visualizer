@@ -86,13 +86,11 @@ const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
 const CUSTOM_PRESET_NAME_MAX = 80;
 const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 
-// When the user moves a length-controller slider on a built-in preset whose
-// PSML hardcodes `<count_ref> = controller - offset` (see the env wiring
-// around `resolveLayout`), mirror that derivation into the renderer's
-// `tlv.instances` so applyTlvInstances has per-instance variants to
-// expand. Without this, the diagram falls back to the env-driven Repeat
-// dispatch where every iteration sees the same `optType` (= the
-// "Type=0 everywhere" symptom).
+// Mapping from a length-controller slider to its TLV Options *slot*: the
+// number of bytes the user has carved out by setting the controller.
+// `applyTlvInstances` reads this to size the Stage 1 placeholder and the
+// Stage 2 trailing-remaining cell, so the diagram closes cleanly on the
+// controller boundary even when `tlv.instances` is empty or partial.
 const TLV_LENGTH_SYNC: Array<{
   presetKey: string;
   controllerKey: string;
@@ -471,16 +469,11 @@ export default function PacketViewer() {
     [packetKey, renderedPresets, importedPackets],
   );
 
+  // Plain controller update; the TLV slot size derives from `controllers`
+  // inside `tlvSlotBytes` and flows to `applyTlvInstances`, so this hook
+  // doesn't need to do anything else.
   const handleControllerChange = useCallback((key: string, value: number) => {
     setControllers((prev) => ({ ...prev, [key]: value }));
-    // TLV_LENGTH_SYNC is consulted by `applyTlvInstances` (via
-    // `tlvSlotBytes`) to size the Options *placeholder* cell — the
-    // slot the user has carved out by moving IHL / Data Offset. We
-    // intentionally do NOT pre-populate `tlv.instances` here. The
-    // user's mental model is:
-    //   IHL=7  →  empty Options slot of 8 bytes appears
-    //   click  →  TlvEditor lets the user pick which records fill it
-    // Auto-padding the slot with NOPs short-circuited that flow.
   }, []);
 
   // TLV edits replace the field's `tlv.instances` immutably and re-sync
@@ -854,6 +847,23 @@ export default function PacketViewer() {
   // entry, never on the whole `customPresets` map. Pulling this out lets
   // `psmlRefs` (an AST walk) re-run only when the body actually changes,
   // not every time another preset is edited.
+  // Memoise the slot-byte vector against only the controllers TLV_LENGTH_SYNC
+  // reads, so unrelated slider drags (TTL, Source Address, …) don't invalidate
+  // `targetPsml` and re-walk the whole PSML body.
+  const tlvSlotBytes: TlvSlotBytes = useMemo(() => {
+    const slotBytes: TlvSlotBytes = {};
+    for (const rule of TLV_LENGTH_SYNC) {
+      if (rule.presetKey !== packetKey) continue;
+      const ctrl = Number(controllers[rule.controllerKey] ?? 0);
+      slotBytes[rule.tlvFieldId] = Math.max(0, ctrl - rule.offset) * 4;
+    }
+    return slotBytes;
+    // The TLV_LENGTH_SYNC entries are static per preset, so reading every
+    // controller they reference is the right minimum dep set. Listing them
+    // by key keeps useMemo from re-running on irrelevant slider drags.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
+
   const targetPsml: PsmlPacket = useMemo(() => {
     const base = editMode
       ? studioState.packet
@@ -864,22 +874,15 @@ export default function PacketViewer() {
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
     // are attached yet) or a trailing "remaining" placeholder after the
-    // instance Groups. Computed inline so the hook also re-runs whenever
-    // the controller value changes.
-    const slotBytes: TlvSlotBytes = {};
-    for (const rule of TLV_LENGTH_SYNC) {
-      if (rule.presetKey !== packetKey) continue;
-      const ctrl = Number(controllers[rule.controllerKey] ?? 0);
-      slotBytes[rule.tlvFieldId] = Math.max(0, ctrl - rule.offset) * 4;
-    }
-    return applyTlvInstances(base, packet, slotBytes);
+    // instance Groups.
+    return applyTlvInstances(base, packet, tlvSlotBytes);
   }, [
     editMode,
     studioState.packet,
     packetKey,
     customPresets,
     packet,
-    controllers,
+    tlvSlotBytes,
   ]);
 
   // Set of ref-names that the active packet expects in `env`. Cached against
