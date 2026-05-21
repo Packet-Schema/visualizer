@@ -102,8 +102,7 @@ describe("TlvEditor", () => {
       <TlvEditor field={mkField()} controllers={{}} onChange={onChange} />,
     );
     // The append selector is the only <select> at mount time (no rows yet).
-    const appendSelect =
-      container.querySelector<HTMLSelectElement>("select")!;
+    const appendSelect = container.querySelector<HTMLSelectElement>("select")!;
     act(() => {
       appendSelect.value = "1";
       appendSelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -115,8 +114,7 @@ describe("TlvEditor", () => {
     const { container } = mount(
       <TlvEditor field={mkField()} controllers={{}} onChange={onChange} />,
     );
-    const appendSelect =
-      container.querySelector<HTMLSelectElement>("select")!;
+    const appendSelect = container.querySelector<HTMLSelectElement>("select")!;
     act(() => {
       appendSelect.value = "";
       appendSelect.dispatchEvent(new Event("change", { bubbles: true }));

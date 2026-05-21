@@ -79,7 +79,9 @@ describe("PacketViewer (smoke)", () => {
         '[data-field-id="dataOffset"]',
       );
       await act(async () => {
-        dataOffsetCell?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        dataOffsetCell?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
       });
       const dataOffset = container.querySelector<HTMLInputElement>(
         "#detail-ctrl-dataOffset-number",
