@@ -247,6 +247,15 @@ describe("PacketViewer (smoke)", () => {
   });
 });
 
+function findButton(
+  container: HTMLElement,
+  label: string,
+): HTMLButtonElement | undefined {
+  return Array.from(
+    container.querySelectorAll<HTMLButtonElement>("button"),
+  ).find((btn) => btn.textContent?.trim() === label);
+}
+
 async function mountPacketViewer(path = "/"): Promise<{
   container: HTMLDivElement;
   cleanup: () => Promise<void>;

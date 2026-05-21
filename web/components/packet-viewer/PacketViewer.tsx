@@ -240,6 +240,14 @@ export default function PacketViewer() {
     viewMode,
     shareStatus,
   } = ui;
+  // Export must follow the same source of truth as the live diagram. While the
+  // studio is open, layout is derived from in-progress PSML edits rather than
+  // the last selected preset/import, so lower that edited packet for consumers
+  // that still need renderer metadata such as `name` and `rowBits`.
+  const exportPacket = useMemo(
+    () => (editMode ? psmlToRenderer(studioState.packet) : packet),
+    [editMode, packet, studioState.packet],
+  );
   const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
   const [urlHydrated, setUrlHydrated] = useState(false);
 
@@ -1031,8 +1039,9 @@ export default function PacketViewer() {
       <ImportExportDrawer
         open={drawerMode !== null}
         mode={drawerMode ?? "export"}
-        packet={packet}
+        packet={exportPacket}
         controllers={controllers}
+        layout={layout}
         onClose={() => uiDispatch({ type: "close-drawer" })}
         onImport={handleImport}
       />
