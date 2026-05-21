@@ -7,10 +7,7 @@
 import { describe, it, expect } from "vitest";
 
 import { PRESETS } from "@/lib/psml/presets.generated";
-import {
-  applyTlvInstances,
-  psmlToRenderer,
-} from "@/lib/psml/psml-to-renderer";
+import { applyTlvInstances, psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 
 describe("applyTlvInstances", () => {
   it("returns the packet unchanged when no instances are present", () => {
@@ -20,29 +17,29 @@ describe("applyTlvInstances", () => {
     expect(out).toBe(psml);
   });
 
-  it("replaces a TLV Repeat with one Group per instance", () => {
+  it("replaces a TLV Repeat with one bytes-typed Field sized to the instance total", () => {
     const psml = PRESETS.ipv4!;
     const mirror = psmlToRenderer(psml);
     const opt = mirror.fields.find((f) => f.id === "options");
     expect(opt?.tlv).toBeDefined();
     if (!opt?.tlv) throw new Error("options field missing tlv");
+    // Record Route (kind 7) = 15 bytes, NOP (kind 1) = 1 byte → 16 bytes
+    // total. The replacement Field should be `bytes(n=16)`.
     opt.tlv.instances = [{ kind: 7 }, { kind: 1 }];
     const out = applyTlvInstances(psml, mirror);
     expect(out).not.toBe(psml);
-    const repeatPositions = out.body
-      .map((c, i) => ({ c, i }))
-      .filter(({ c }) => c.kind === "repeat" && c.id === "options");
-    expect(
-      repeatPositions,
-      "TLV Repeat should be gone from the body",
-    ).toHaveLength(0);
-    const expansions = out.body.filter(
-      (c) => c.kind === "group" && c.id.startsWith("options__inst_"),
+    const repeats = out.body.filter(
+      (c) => c.kind === "repeat" && c.id === "options",
     );
-    expect(expansions).toHaveLength(2);
-    // Each Group's name matches the variant's catalog entry name. The exact
-    // labels depend on the IPv4 preset, so we just assert non-empty.
-    expect((expansions[0] as { name?: string }).name).toBeTruthy();
-    expect((expansions[1] as { name?: string }).name).toBeTruthy();
+    expect(repeats, "TLV Repeat should be gone from the body").toHaveLength(0);
+    const optionsField = out.body.find(
+      (c) =>
+        (!("kind" in c) || c.kind === "field") &&
+        (c as { id: string }).id === "options",
+    );
+    expect(optionsField, "options field should be re-emitted").toBeDefined();
+    const type = (optionsField as { type: { kind: string; n: unknown } }).type;
+    expect(type.kind).toBe("bytes");
+    expect((type.n as { value: number }).value).toBe(16);
   });
 });
