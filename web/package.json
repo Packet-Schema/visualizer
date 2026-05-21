@@ -15,7 +15,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:format": "vitest run tests/formats"
+    "test:format": "vitest run tests/formats",
+    "build:worker": "opennextjs-cloudflare build",
+    "preview:worker": "opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "lz-string": "^1.5.0",
@@ -42,7 +45,9 @@
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "@opennextjs/cloudflare": "^1.8.6",
+    "wrangler": "^4.16.1"
   },
   "browserslist": [
     "Chrome >= 100",

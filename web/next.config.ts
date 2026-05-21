@@ -1,10 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
-  // Static export — no image optimisation at runtime.
-  images: { unoptimized: true },
+  // SSR enabled: build for server/runtime execution (Cloudflare Workers via OpenNext).
   reactStrictMode: true,
+  images: { unoptimized: true },
 };
 
 export default nextConfig;

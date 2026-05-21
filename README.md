@@ -43,15 +43,26 @@ npm run dev
 
 Then open the local URL printed by Next.js in your browser.
 
-For a production-style static build:
+For production build verification:
 
 ```sh
 cd web
 npm run build
 ```
 
-The app is exported as static files at build time; it does not require
-application server logic at runtime.
+For Cloudflare Workers (SSR-capable) artifacts:
+
+```sh
+cd web
+npm run build:worker
+```
+
+Deploy to Cloudflare Workers:
+
+```sh
+cd web
+npm run deploy
+```
 
 ## Presets and supported formats
 
