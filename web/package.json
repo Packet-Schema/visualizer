@@ -18,7 +18,7 @@
     "test:format": "vitest run tests/formats",
     "build:worker": "opennextjs-cloudflare build",
     "preview:worker": "opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare deploy"
+    "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "lz-string": "^1.5.0",
