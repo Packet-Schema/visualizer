@@ -696,7 +696,7 @@ function DrawerInner({
                 onChange={(e) =>
                   onExportThemeModeChange(e.target.value as DiagramThemeMode)
                 }
-                className="text-sm px-2 py-1 rounded-md border"
+                className="w-28 text-sm px-2 py-1 rounded-md border"
                 style={{
                   borderColor: "var(--border-strong)",
                   background: "var(--bg-elevated)",
@@ -722,9 +722,9 @@ function DrawerInner({
                   color: "var(--fg)",
                 }}
               >
-                <option value="24">24</option>
-                <option value="32">32</option>
-                <option value="40">40</option>
+                <option value="24">24 px</option>
+                <option value="32">32 px</option>
+                <option value="40">40 px</option>
               </select>
             </label>
             <div className="flex items-center justify-between gap-3">
