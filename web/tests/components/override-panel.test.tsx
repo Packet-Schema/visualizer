@@ -183,6 +183,31 @@ describe("OverridePanel widgets", () => {
     expect(text).toMatch(/Peek-based switches/);
   });
 
+  it("opens the TLV editor when the trailing 'Options remaining' cell is clicked", async () => {
+    const packet = psmlToRenderer(PRESETS.ipv4!);
+    const optionsField = packet.fields.find((f) => f.id === "options");
+    if (optionsField?.tlv) optionsField.tlv.instances = [{ kind: 1 }];
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="options__remaining"
+        controllers={{ ihl: 7 }}
+        onTlvChange={() => {}}
+        onControllerChange={() => {}}
+      />,
+    );
+    // TlvEditor surfaces the `+ Add record` append <select>; finding any
+    // <select> here is enough to confirm the routing hit the full editor
+    // and not the empty / not-found fallback states.
+    const select = container.querySelector("select");
+    expect(
+      select,
+      "remaining cell must surface the full TlvEditor",
+    ).not.toBeNull();
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/Add record/);
+  });
+
   it("renders the empty state for a plain TTL field", async () => {
     const packet = psmlToRenderer(PRESETS.ipv4!);
     const { container } = await mount(

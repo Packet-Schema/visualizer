@@ -137,7 +137,9 @@ export default function HybridDiagram({
             const idForLookup = cell.field.id;
             const baseId = idForLookup.includes("#")
               ? idForLookup.split("#")[0]
-              : idForLookup.replace(/__inst_\d+$/, "");
+              : idForLookup
+                  .replace(/__inst_\d+$/, "")
+                  .replace(/__remaining$/, "");
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}

@@ -116,6 +116,26 @@ export default function OverridePanel({
     );
   }
 
+  // Trailing "Options remaining (N B)" cell — emitted by applyTlvInstances
+  // when the instance list doesn't fill the controller-derived slot. Clicking
+  // it should land on the parent TLV's full TlvEditor so the user can append
+  // more records or extend an existing one. The synthetic id is
+  // `<repeatId>__remaining` and does NOT live in `packet.fields`, so plain
+  // `resolveSelection` would return "Field not found".
+  if (selectedFieldId && selectedFieldId.endsWith("__remaining")) {
+    const repeatId = selectedFieldId.slice(0, -"__remaining".length);
+    const parent = packet.fields.find((f) => f.id === repeatId && f.tlv);
+    if (parent?.tlv && onTlvChange) {
+      return (
+        <TlvEditor
+          field={parent}
+          controllers={controllers}
+          onChange={(next) => onTlvChange(parent, next)}
+        />
+      );
+    }
+  }
+
   const r = resolveSelection(packet, selectedFieldId);
 
   const emptyProps = { packet, controllers, onControllerChange };
