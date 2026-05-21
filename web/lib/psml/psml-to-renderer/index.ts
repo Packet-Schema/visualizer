@@ -89,7 +89,24 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
     }
     if (c.kind === "repeat") {
       if (isLikelyChainRepeat(c)) {
-        fields.push(repeatToChainField(c));
+        // IPv6-style preset: a plain 8-bit `nextHeader` Field is followed by
+        // a `nextHeader_chain` Repeat. The renderer mirror is happier when
+        // those two surface as ONE field — the visible cell carries the
+        // chain editor as its override. If we can't find a matching base
+        // field, fall back to emitting the chain as its own (invisible)
+        // field so the catalog is still discoverable.
+        const chainField = repeatToChainField(c);
+        const baseId = chainField.id.replace(/_chain$/, "");
+        const baseField =
+          baseId !== chainField.id
+            ? fields.find((f) => f.id === baseId)
+            : undefined;
+        if (baseField) {
+          baseField.chainCatalog = chainField.chainCatalog;
+          baseField.chainInstances = chainField.chainInstances;
+        } else {
+          fields.push(chainField);
+        }
       } else if (isTlvRepeat(c)) {
         fields.push(repeatToTlvField(c));
       }
