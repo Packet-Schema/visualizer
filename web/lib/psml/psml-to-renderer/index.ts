@@ -28,6 +28,7 @@ import { groupToSubfieldField, plainFieldToRenderer } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
 
 export { rendererToPsml } from "./to-psml";
+export { applyTlvInstances } from "./apply-tlv";
 
 /**
  * Inspect a Constraint of the form `ref(fieldA) * lit(N) == ref(fieldB)`

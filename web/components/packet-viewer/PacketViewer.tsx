@@ -18,7 +18,11 @@ import {
   syncChainControllers,
   syncTlvControllers,
 } from "@/lib/psml/renderer-helpers";
-import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
+import {
+  applyTlvInstances,
+  psmlToRenderer,
+  rendererToPsml,
+} from "@/lib/psml/psml-to-renderer";
 import { updatePacketField } from "@/lib/psml/packet-update";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
@@ -80,6 +84,33 @@ const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
 const CUSTOM_PRESET_NAME_MAX = 80;
 const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
+
+// When the user moves a length-controller slider on a built-in preset whose
+// PSML hardcodes `<count_ref> = controller - offset` (see the env wiring
+// around `resolveLayout`), mirror that derivation into the renderer's
+// `tlv.instances` so applyTlvInstances has per-instance variants to
+// expand. Without this, the diagram falls back to the env-driven Repeat
+// dispatch where every iteration sees the same `optType` (= the
+// "Type=0 everywhere" symptom).
+const TLV_LENGTH_SYNC: Array<{
+  presetKey: string;
+  controllerKey: string;
+  tlvFieldId: string;
+  offset: number;
+}> = [
+  {
+    presetKey: "ipv4",
+    controllerKey: "ihl",
+    tlvFieldId: "options",
+    offset: 5,
+  },
+  {
+    presetKey: "tcp",
+    controllerKey: "dataOffset",
+    tlvFieldId: "options",
+    offset: 5,
+  },
+];
 
 // Width threshold at which the floating field popover is enabled. Below this
 // we rely on the inline DetailPanel only.
@@ -371,10 +402,6 @@ export default function PacketViewer() {
     [customPresets, importedPackets, renderedPresets],
   );
 
-  const handleControllerChange = useCallback((key: string, value: number) => {
-    setControllers((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
   // Everything in the hybrid renderer is an HTMLElement, so anchorRect is a
   // straight getBoundingClientRect() — no SVG branching required.
   const handleFieldClick = useCallback(
@@ -441,6 +468,40 @@ export default function PacketViewer() {
       }
     },
     [packetKey, renderedPresets, importedPackets],
+  );
+
+  const handleControllerChange = useCallback(
+    (key: string, value: number) => {
+      setControllers((prev) => ({ ...prev, [key]: value }));
+      const rule = TLV_LENGTH_SYNC.find(
+        (r) => r.presetKey === packetKey && r.controllerKey === key,
+      );
+      if (!rule) return;
+      const targetCount = Math.max(0, value - rule.offset);
+      const tlvField = packet.fields.find(
+        (f) => f.id === rule.tlvFieldId && f.tlv,
+      );
+      if (!tlvField?.tlv) return;
+      const cur = tlvField.tlv.instances;
+      if (cur.length === targetCount) return;
+      // Pick a "meaningful default" variant — the first catalog entry with
+      // more than one field, so growing IHL shows e.g. Record Route's full
+      // shape rather than two 1-byte EOL markers.
+      const defaultEntry =
+        tlvField.tlv.catalog.find((e) => (e.fields?.length ?? 0) > 1) ??
+        tlvField.tlv.catalog[0];
+      if (!defaultEntry) return;
+      const next: typeof cur = [];
+      for (let i = 0; i < targetCount; i++) {
+        next.push(cur[i] ?? { kind: defaultEntry.kind });
+      }
+      const nextPacket = updatePacketField(packet, rule.tlvFieldId, (f) => ({
+        ...f,
+        tlv: { ...f.tlv!, instances: next },
+      }));
+      replaceActivePacket(nextPacket);
+    },
+    [packet, packetKey, replaceActivePacket],
   );
 
   // TLV edits replace the field's `tlv.instances` immutably and re-sync
@@ -814,15 +875,17 @@ export default function PacketViewer() {
   // entry, never on the whole `customPresets` map. Pulling this out lets
   // `psmlRefs` (an AST walk) re-run only when the body actually changes,
   // not every time another preset is edited.
-  const targetPsml: PsmlPacket = useMemo(
-    () =>
-      editMode
-        ? studioState.packet
-        : (PRESETS[packetKey] ??
-          customPresets[packetKey] ??
-          rendererToPsml(packet)),
-    [editMode, studioState.packet, packetKey, customPresets, packet],
-  );
+  const targetPsml: PsmlPacket = useMemo(() => {
+    const base = editMode
+      ? studioState.packet
+      : (PRESETS[packetKey] ??
+        customPresets[packetKey] ??
+        rendererToPsml(packet));
+    // Expand TLV Repeats so each iteration shows its instance's variant
+    // (PSML normalize only supports one Switch dispatch per Repeat). When
+    // there are no instances, falls back to the original Repeat.
+    return applyTlvInstances(base, packet);
+  }, [editMode, studioState.packet, packetKey, customPresets, packet]);
 
   // Set of ref-names that the active packet expects in `env`. Cached against
   // `targetPsml` so slider drag (which mutates `controllers` every frame but
