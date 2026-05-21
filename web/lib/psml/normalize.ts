@@ -126,6 +126,10 @@ type WalkState = {
    * deduplication would silently drop or duplicate cells.
    */
   repeatIndex?: number;
+  /** Stack of enclosing Groups (innermost last). Used to tag emitted
+   *  fields with their immediate Group parent so the layout adapter can
+   *  collapse Group children into one cell with sub-cells. */
+  groupStack?: Array<{ id: string; name: string }>;
 };
 
 type EmitExtra = Pick<NormalizedField, "repeatIndex" | "switchCase">;
@@ -164,6 +168,13 @@ function emit(
     }
   }
   if (field.byteOrder) nf.byteOrder = field.byteOrder;
+  // Tag emitted field with its innermost Group parent so the layout
+  // adapter can collapse consecutive Group children into one cell.
+  if (state.groupStack && state.groupStack.length > 0) {
+    const top = state.groupStack[state.groupStack.length - 1];
+    nf.groupId = top.id;
+    nf.groupName = top.name;
+  }
   state.out.push(nf);
   state.offset += bits;
 }
@@ -210,7 +221,10 @@ function walkContainer(c: Container, path: string, state: WalkState): void {
 
 function walkGroup(g: Group, path: string, state: WalkState): void {
   const sub = `${path}/${g.id}`;
+  const stack = state.groupStack ?? [];
+  state.groupStack = [...stack, { id: g.id, name: g.name ?? g.id }];
   for (const child of g.children) walkContainer(child, sub, state);
+  state.groupStack = stack;
 }
 
 function walkRepeat(r: Repeat, path: string, state: WalkState): void {

@@ -17,14 +17,12 @@ describe("applyTlvInstances", () => {
     expect(out).toBe(psml);
   });
 
-  it("replaces a TLV Repeat with one bytes-typed Field sized to the instance total", () => {
+  it("replaces a TLV Repeat with one Group per instance (variant fields as Group children)", () => {
     const psml = PRESETS.ipv4!;
     const mirror = psmlToRenderer(psml);
     const opt = mirror.fields.find((f) => f.id === "options");
     expect(opt?.tlv).toBeDefined();
     if (!opt?.tlv) throw new Error("options field missing tlv");
-    // Record Route (kind 7) = 15 bytes, NOP (kind 1) = 1 byte → 16 bytes
-    // total. The replacement Field should be `bytes(n=16)`.
     opt.tlv.instances = [{ kind: 7 }, { kind: 1 }];
     const out = applyTlvInstances(psml, mirror);
     expect(out).not.toBe(psml);
@@ -32,14 +30,11 @@ describe("applyTlvInstances", () => {
       (c) => c.kind === "repeat" && c.id === "options",
     );
     expect(repeats, "TLV Repeat should be gone from the body").toHaveLength(0);
-    const optionsField = out.body.find(
-      (c) =>
-        (!("kind" in c) || c.kind === "field") &&
-        (c as { id: string }).id === "options",
+    const groups = out.body.filter(
+      (c) => c.kind === "group" && c.id.startsWith("options__inst_"),
     );
-    expect(optionsField, "options field should be re-emitted").toBeDefined();
-    const type = (optionsField as { type: { kind: string; n: unknown } }).type;
-    expect(type.kind).toBe("bytes");
-    expect((type.n as { value: number }).value).toBe(16);
+    expect(groups).toHaveLength(2);
+    expect((groups[0] as { children?: unknown[] }).children).toHaveLength(6);
+    expect((groups[1] as { children?: unknown[] }).children).toHaveLength(1);
   });
 });

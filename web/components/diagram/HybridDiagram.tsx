@@ -130,9 +130,14 @@ export default function HybridDiagram({
           {rowCells.map((cell) => {
             const tabIndex = cellGlobalIndex === 0 ? 0 : -1;
             cellGlobalIndex += 1;
-            const baseId = cell.field.id.includes("#")
-              ? cell.field.id.split("#")[0]
-              : cell.field.id;
+            // Strip both the `#repeatIndex` suffix (legacy flat-Repeat
+            // cells) and the `__inst_N` suffix (Group-collapsed TLV
+            // instance cells) so the lookup against `overridableIds` lands
+            // on the original TLV field's id.
+            const idForLookup = cell.field.id;
+            const baseId = idForLookup.includes("#")
+              ? idForLookup.split("#")[0]
+              : idForLookup.replace(/__inst_\d+$/, "");
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}

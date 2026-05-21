@@ -295,6 +295,19 @@ export type NormalizedField = {
   headerProtected?: boolean;
   /** Per-field byte order override (PSML 0.4) — propagated from Field.byteOrder. */
   byteOrder?: "BE" | "LE";
+  /**
+   * When set, this field was emitted as the immediate child of a `Group`
+   * named `groupId`. The layout adapter collapses consecutive siblings
+   * with the same `groupId` into one cell with `subCells[]`. Other
+   * containers (Repeat / Switch / Encrypted / Optional) intentionally
+   * leave this undefined so their children stay separate cells — Group
+   * is the only PSML primitive whose semantic the renderer treats as
+   * "visual grouping of leaf fields".
+   */
+  groupId?: string;
+  /** Human-readable name carried alongside groupId (the Group's own
+   *  name, falling back to the id). */
+  groupName?: string;
 };
 
 export type Normalized = {

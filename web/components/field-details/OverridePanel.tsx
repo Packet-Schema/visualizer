@@ -327,15 +327,39 @@ function subfieldWidgets(
   return out;
 }
 
-/** Detect "leaf inside a TLV instance" — selectedFieldId has the form
- *  `${leafFieldId}#${repeatIndex}`, the leafId is one of the active
- *  variant's catalog fields, and instances[repeatIndex] exists. */
+/**
+ * Detect that the user clicked into / onto a TLV instance. Two paths:
+ *
+ *   1. `<repeatId>__inst_<N>` — the instance's parent cell (= the Group
+ *      collapse emitted by `applyTlvInstances` for the N-th instance).
+ *      This is the canonical click since switching variant only makes
+ *      sense at the instance level.
+ *   2. `<leafFieldId>#<repeatIndex>` — legacy path when the Repeat was
+ *      walked flat (no Group collapse, e.g. when instances weren't
+ *      populated yet and `applyTlvInstances` left the original Repeat
+ *      intact). Kept so the dropdown also works on the env-driven cells.
+ *
+ * Subfield selections (id containing `:`) are NOT routed here; the
+ * subfield-detail view stays in DetailPanel and the variant change is
+ * still reachable by clicking the parent cell.
+ */
 function findTlvInnerLeaf(
   packet: Packet,
   selectedFieldId: string,
 ): { tlvField: Field; instanceIndex: number } | null {
-  if (!selectedFieldId.includes("#")) return null;
   if (selectedFieldId.includes(":")) return null;
+  // Case (1): instance Group cell — id is `<repeatId>__inst_<N>`.
+  const groupMatch = selectedFieldId.match(/^(.+)__inst_(\d+)$/);
+  if (groupMatch) {
+    const [, repeatId, idxStr] = groupMatch;
+    const idx = Number(idxStr);
+    const parent = packet.fields.find(
+      (f) => f.id === repeatId && f.tlv && f.tlv.instances[idx],
+    );
+    if (parent) return { tlvField: parent, instanceIndex: idx };
+  }
+  // Case (2): legacy flat leaf — id is `<leafFieldId>#<repeatIndex>`.
+  if (!selectedFieldId.includes("#")) return null;
   const [leafId, idxStr] = selectedFieldId.split("#");
   const idx = Number(idxStr);
   if (!Number.isFinite(idx)) return null;
