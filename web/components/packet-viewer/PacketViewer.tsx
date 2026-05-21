@@ -174,8 +174,16 @@ function collectPsmlRefs(packet: PsmlPacket): Set<string> {
   return out;
 }
 
-export default function PacketViewer() {
-  const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
+type PacketViewerProps = {
+  initialPacketKey?: string;
+  initialControllers?: ControllerState;
+};
+
+export default function PacketViewer({
+  initialPacketKey = DEFAULT_PACKET_KEY,
+  initialControllers,
+}: PacketViewerProps) {
+  const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
   // Imported packets are kept in the renderer shape so the editors can mutate
   // their TLV/Chain/subfield state directly. Built-in presets live in PSML
   // and are lowered to the renderer shape on demand.
@@ -210,16 +218,17 @@ export default function PacketViewer() {
     customRenderer ??
     renderedPresets[DEFAULT_PACKET_KEY];
 
-  const [controllers, setControllers] = useState<ControllerState>(() =>
-    initialState(psmlToRenderer(PRESETS[DEFAULT_PACKET_KEY])),
-  );
+  const [controllers, setControllers] = useState<ControllerState>(() => {
+    const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+    return initialControllers ?? initialState(psmlToRenderer(packet));
+  });
 
   // Custom Packet Studio reducer. Seeded from the default preset; we
   // reseed via 'replace-packet' on preset switch so history doesn't span
   // unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    PRESETS[DEFAULT_PACKET_KEY],
+    PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
