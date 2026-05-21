@@ -477,23 +477,33 @@ export default function PacketViewer() {
         (r) => r.presetKey === packetKey && r.controllerKey === key,
       );
       if (!rule) return;
-      const targetCount = Math.max(0, value - rule.offset);
+      // IHL / Data Offset count 32-bit words. The slot available for options
+      // is `(value - offset) × 4` bytes — we have to fill this exactly so
+      // the diagram stays aligned to the controller boundary. A large
+      // default variant (Record Route = 15 bytes) overshoots the slot and
+      // rows wrap awkwardly; use the smallest catalog entry instead
+      // (typically NOP = 1 byte for IPv4 / TCP) so each IHL unit maps
+      // cleanly to 4 cells.
+      const totalBytes = Math.max(0, value - rule.offset) * 4;
       const tlvField = packet.fields.find(
         (f) => f.id === rule.tlvFieldId && f.tlv,
       );
       if (!tlvField?.tlv) return;
+      const sized = tlvField.tlv.catalog
+        .map((e) => ({
+          entry: e,
+          bytes: (e.fields ?? []).reduce((a, f) => a + f.bits, 0) / 8,
+        }))
+        .filter(({ bytes }) => bytes > 0 && Number.isInteger(bytes))
+        .sort((a, b) => a.bytes - b.bytes);
+      const smallest = sized[0];
+      if (!smallest) return;
+      const targetCount = Math.floor(totalBytes / smallest.bytes);
       const cur = tlvField.tlv.instances;
       if (cur.length === targetCount) return;
-      // Pick a "meaningful default" variant — the first catalog entry with
-      // more than one field, so growing IHL shows e.g. Record Route's full
-      // shape rather than two 1-byte EOL markers.
-      const defaultEntry =
-        tlvField.tlv.catalog.find((e) => (e.fields?.length ?? 0) > 1) ??
-        tlvField.tlv.catalog[0];
-      if (!defaultEntry) return;
       const next: typeof cur = [];
       for (let i = 0; i < targetCount; i++) {
-        next.push(cur[i] ?? { kind: defaultEntry.kind });
+        next.push(cur[i] ?? { kind: smallest.entry.kind });
       }
       const nextPacket = updatePacketField(packet, rule.tlvFieldId, (f) => ({
         ...f,
