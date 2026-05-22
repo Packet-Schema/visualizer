@@ -27,7 +27,8 @@ async function getFont(origin: string): Promise<ArrayBuffer> {
 }
 
 export async function GET(request: NextRequest) {
-  const builtInKeys = Object.keys(PRESETS);
+  try {
+    const builtInKeys = Object.keys(PRESETS);
   const parsed = parseShareParams(request.nextUrl.searchParams, builtInKeys);
   const fallbackPsml = PRESETS[FALLBACK_PRESET_KEY] ?? PRESETS[builtInKeys[0]];
   const psml =
@@ -109,4 +110,13 @@ export async function GET(request: NextRequest) {
       },
     },
   );
+  } catch (error) {
+    console.error("OGP generation failed:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : "";
+    return new Response(
+      `Error: ${message}\n\nStack: ${stack}`,
+      { status: 500 }
+    );
+  }
 }
