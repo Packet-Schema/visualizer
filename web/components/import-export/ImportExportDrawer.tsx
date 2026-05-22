@@ -97,7 +97,6 @@ export default function ImportExportDrawer({
   const exportSessionRef = useRef(0);
   useFocusTrap({ open, containerRef: drawerRef, onClose });
 
-
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
   const availableFormats: FormatKey[] = useMemo(
