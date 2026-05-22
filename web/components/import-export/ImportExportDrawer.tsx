@@ -265,20 +265,24 @@ export default function ImportExportDrawer({
   const isImageExportMode =
     currentMode === "export" && (format === "svg" || format === "png");
 
+  // Resolve "follow-ui" to the actual theme so hooks can use it directly
+  // without reading from the DOM at call time.
+  const resolvedThemeMode =
+    exportThemeMode === "follow-ui" ? uiTheme : exportThemeMode;
+
   const previewSvg = useMemo(() => {
     if (!isImageExportMode) return null;
     return buildDiagramSvg(packet, layout, {
-      theme: readDiagramTheme(exportThemeMode),
+      theme: readDiagramTheme(resolvedThemeMode),
       bitWidth: diagramWidth,
       transparentBackground,
     });
   }, [
     diagramWidth,
-    exportThemeMode,
+    resolvedThemeMode,
     isImageExportMode,
     layout,
     packet,
-    uiTheme,
     transparentBackground,
   ]);
 
@@ -287,7 +291,7 @@ export default function ImportExportDrawer({
     try {
       setImageBusy(true);
       const svg = buildDiagramSvg(packet, layout, {
-        theme: readDiagramTheme(exportThemeMode),
+        theme: readDiagramTheme(resolvedThemeMode),
         bitWidth: diagramWidth,
         transparentBackground,
       });
@@ -325,12 +329,11 @@ export default function ImportExportDrawer({
     }
   }, [
     diagramWidth,
-    exportThemeMode,
+    resolvedThemeMode,
     format,
     layout,
     packet,
     pngScale,
-    uiTheme,
     transparentBackground,
   ]);
 
