@@ -4,9 +4,7 @@ import type { NextRequest } from "next/server";
 import {
   DEFAULT_THEME,
   LAYOUT,
-  cellGeometry,
   fieldFill,
-  rowY,
   rowsFor,
   textForCell,
 } from "@/lib/diagram-export";
@@ -23,7 +21,7 @@ const FALLBACK_PRESET_KEY = "ipv4";
 const MAX_LAYOUT_RETRY = 32;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
-const BIT_WIDTH = 24;
+const OG_MARGIN = 60;
 const FONT_NAME = "Noto Sans";
 
 function buildOgElement(
@@ -36,28 +34,49 @@ function buildOgElement(
     packet.fields.map((field) => [field.id, field]),
   );
 
-  const svgWidth = LAYOUT.padding * 2 + packet.rowBits * BIT_WIDTH;
-  const svgHeight =
+  const availableW = OG_WIDTH - OG_MARGIN * 2;
+  const availableH = OG_HEIGHT - OG_MARGIN * 2;
+
+  // X: stretch bit width to fill available width exactly
+  const bitWidth = (availableW - LAYOUT.padding * 2) / packet.rowBits;
+
+  // Y: scale all vertical values to fill available height exactly
+  const naturalH =
     LAYOUT.padding * 2 +
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
     rows.length * LAYOUT.rowHeight +
     Math.max(rows.length - 1, 0) * LAYOUT.rowGap;
+  const yScale = availableH / naturalH;
 
-  // SVG layer: only shapes (no <text> nodes — not supported in Satori SVG)
+  const scaledPaddingY = LAYOUT.padding * yScale;
+  const scaledRulerHeight = LAYOUT.rulerHeight * yScale;
+  const scaledRulerGap = LAYOUT.rulerGap * yScale;
+  const scaledRowHeight = LAYOUT.rowHeight * yScale;
+  const scaledRowGap = LAYOUT.rowGap * yScale;
+  const scaledCellInset = LAYOUT.cellInset * yScale;
+
+  const scaledRowY = (row: number) =>
+    scaledPaddingY +
+    scaledRulerHeight +
+    scaledRulerGap +
+    row * (scaledRowHeight + scaledRowGap);
+
+  // SVG layer: ruler ticks
+  const rulerBottom = scaledPaddingY + scaledRulerHeight;
   const rulerLines = Array.from(
     { length: packet.rowBits },
     (_, bit): React.ReactElement => {
-      const x = LAYOUT.padding + bit * BIT_WIDTH;
+      const x = LAYOUT.padding + bit * bitWidth;
       const major = bit % 8 === 0;
-      const tickHeight = major ? 10 : 6;
+      const tickHeight = (major ? 10 : 6) * yScale;
       return (
         <line
           key={`tick-${bit}`}
           x1={x}
-          y1={LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}
+          y1={rulerBottom - tickHeight}
           x2={x}
-          y2={LAYOUT.padding + LAYOUT.rulerHeight}
+          y2={rulerBottom}
           stroke={theme.rulerTick}
           strokeWidth={1}
           opacity={major ? 1 : 0.6}
@@ -66,9 +85,10 @@ function buildOgElement(
     },
   );
 
+  // SVG layer: row bands and cell rects
   const shapeLayers = rows.flatMap(
     (cells: Cell[], rowIndex: number): React.ReactElement[] => {
-      const y = rowY(rowIndex);
+      const y = scaledRowY(rowIndex);
       const bandFill = rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd;
 
       const band = (
@@ -76,20 +96,19 @@ function buildOgElement(
           key={`band-${rowIndex}`}
           x={LAYOUT.padding}
           y={y}
-          width={packet.rowBits * BIT_WIDTH}
-          height={LAYOUT.rowHeight}
+          width={packet.rowBits * bitWidth}
+          height={scaledRowHeight}
           rx={8}
           fill={bandFill}
         />
       );
 
       const cellRects = cells.map((cell: Cell): React.ReactElement => {
-        const {
-          x,
-          y: cy,
-          width: cw,
-          height: ch,
-        } = cellGeometry(cell, BIT_WIDTH);
+        const x = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
+        const cy = y + scaledCellInset;
+        const cw =
+          (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
+        const ch = scaledRowHeight - scaledCellInset * 2;
         const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
         const fill = fieldFill(exportField, theme);
         const strokeColor = cell.encryptedParentId
@@ -121,7 +140,7 @@ function buildOgElement(
     { length: packet.rowBits },
     (_, bit): React.ReactElement | null => {
       if (bit % 4 !== 0) return null;
-      const x = LAYOUT.padding + bit * BIT_WIDTH;
+      const x = LAYOUT.padding + bit * bitWidth;
       return (
         <div
           key={`rlabel-${bit}`}
@@ -129,7 +148,7 @@ function buildOgElement(
             display: "flex",
             position: "absolute",
             left: x - 6,
-            top: LAYOUT.padding,
+            top: scaledPaddingY,
             fontSize: 10,
             fontFamily: FONT_NAME,
             color: theme.rulerLabel,
@@ -143,9 +162,10 @@ function buildOgElement(
   ).filter((el): el is React.ReactElement => el !== null);
 
   // HTML text layer: cell labels
-  const cellLabels = rows.flatMap((cells: Cell[]): React.ReactElement[] => {
-    return cells.map((cell: Cell): React.ReactElement => {
-      const { x, y: cy } = cellGeometry(cell, BIT_WIDTH);
+  const cellLabels = rows.flatMap((cells: Cell[]): React.ReactElement[] =>
+    cells.map((cell: Cell): React.ReactElement => {
+      const x = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
+      const cy = scaledRowY(cell.row) + scaledCellInset;
       const { title, subtitle } = textForCell(cell);
       const titleColor = cell.isFirst
         ? theme.fieldLabel
@@ -186,8 +206,8 @@ function buildOgElement(
           </span>
         </div>
       );
-    });
-  });
+    }),
+  );
 
   return (
     <div
@@ -203,24 +223,22 @@ function buildOgElement(
       <div
         style={{
           position: "relative",
-          width: svgWidth,
-          height: svgHeight,
+          width: availableW,
+          height: availableH,
           display: "flex",
         }}
       >
-        {/* SVG layer: shapes only */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width={svgWidth}
-          height={svgHeight}
+          width={availableW}
+          height={availableH}
           style={{ position: "absolute", top: 0, left: 0 }}
         >
-          <rect width={svgWidth} height={svgHeight} fill={theme.background} />
+          <rect width={availableW} height={availableH} fill={theme.background} />
           {rulerLines}
           {shapeLayers}
         </svg>
 
-        {/* HTML text layers */}
         {rulerLabels}
         {cellLabels}
       </div>
