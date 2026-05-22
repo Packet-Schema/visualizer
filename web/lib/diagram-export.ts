@@ -80,6 +80,8 @@ const LAYOUT = {
   subfieldHeight: 18,
 } as const;
 
+export { DEFAULT_THEME, LAYOUT };
+
 function xmlEscape(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -93,14 +95,14 @@ function xmlAttribute(value: string): string {
   return xmlEscape(value);
 }
 
-function resolveToken(field: Field): string {
+export function resolveToken(field: Field): string {
   if (field.category && CATEGORY_TO_TOKEN[field.category]) {
     return CATEGORY_TO_TOKEN[field.category];
   }
   return field.color ?? "slate";
 }
 
-function fieldFill(field: Field, theme: DiagramExportTheme): string {
+export function fieldFill(field: Field, theme: DiagramExportTheme): string {
   const token = resolveToken(field);
   if (theme.fieldPalette[token]) return theme.fieldPalette[token];
   const cssVariable = token.match(/^var\((--[^)]+)\)$/);
@@ -112,7 +114,7 @@ function fieldFill(field: Field, theme: DiagramExportTheme): string {
     : token;
 }
 
-function rowsFor(layout: ResolvedLayout): Cell[][] {
+export function rowsFor(layout: ResolvedLayout): Cell[][] {
   // ResolvedLayout contract: row indices are non-negative integers.
   const rowsTotal = layout.cells.length
     ? Math.max(...layout.cells.map((cell) => cell.row)) + 1
@@ -127,7 +129,7 @@ function rowsFor(layout: ResolvedLayout): Cell[][] {
   return rows;
 }
 
-function rowY(row: number): number {
+export function rowY(row: number): number {
   return (
     LAYOUT.padding +
     LAYOUT.rulerHeight +
@@ -136,7 +138,7 @@ function rowY(row: number): number {
   );
 }
 
-function cellGeometry(cell: Cell, bitWidth: number) {
+export function cellGeometry(cell: Cell, bitWidth: number) {
   const x = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
   const y = rowY(cell.row) + LAYOUT.cellInset;
   const width =
@@ -153,7 +155,7 @@ function clipPathIdForCell(cell: Cell): string {
   return `cell-${cell.row}-${cell.segmentIndex}-${encodedFieldId}`;
 }
 
-function textForCell(cell: Cell): { title: string; subtitle: string } {
+export function textForCell(cell: Cell): { title: string; subtitle: string } {
   if (!cell.isFirst) {
     return {
       title: `… ${cell.field.variable ? `~${cell.field.name}` : cell.field.name}`,
@@ -304,7 +306,7 @@ export function buildDiagramSvg(
             : theme.fieldStroke;
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden">${escapedTitle}</text>`,
+            `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
             `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(cell.subCells, cell, bitWidth, theme),

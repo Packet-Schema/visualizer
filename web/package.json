@@ -22,6 +22,7 @@
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
     "lz-string": "^1.5.0",
     "next": "^15.0.3",
     "react": "^19.0.0",
