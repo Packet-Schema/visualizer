@@ -6,11 +6,13 @@ on:
     paths:
       - ".github/workflows/validate-presets.yml"
       - "data/presets/**"
+      - "schemas/**"
       - "web/scripts/build-presets.ts"
   pull_request:
     paths:
       - ".github/workflows/validate-presets.yml"
       - "data/presets/**"
+      - "schemas/**"
       - "web/scripts/build-presets.ts"
 
 concurrency:
