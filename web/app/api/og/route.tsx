@@ -8,12 +8,11 @@ import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams } from "@/lib/share-url";
+import { parseShareParams, SHARE_URL_WARN_BYTES } from "@/lib/share-url";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
-const MAX_QUERY_LENGTH = 4096;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
@@ -21,18 +20,19 @@ const FONT_NAME = "Geist";
 
 export async function GET(request: NextRequest) {
   try {
-    if (request.nextUrl.search.length > MAX_QUERY_LENGTH) {
-      return new Response("Bad Request", { status: 400 });
-    }
-
     const builtInKeys = Object.keys(PRESETS);
-    const parsed = parseShareParams(request.nextUrl.searchParams, builtInKeys);
     const fallbackPsml =
       PRESETS[FALLBACK_PRESET_KEY] ?? PRESETS[builtInKeys[0]];
+
+    // URL が長すぎる場合は共有 PSML のデコードをスキップしてフォールバック
+    const parsed =
+      request.nextUrl.search.length <= SHARE_URL_WARN_BYTES
+        ? parseShareParams(request.nextUrl.searchParams, builtInKeys)
+        : null;
     const psml =
-      parsed.kind === "psml"
+      parsed?.kind === "psml"
         ? parsed.packet
-        : parsed.kind === "preset"
+        : parsed?.kind === "preset"
           ? (PRESETS[parsed.presetKey] ?? fallbackPsml)
           : fallbackPsml;
 
@@ -40,13 +40,18 @@ export async function GET(request: NextRequest) {
     const env = initialEnv(psml);
     const mergedControllers = {
       ...initialState(packet),
-      ...parsed.controllers,
+      ...(parsed?.controllers ?? {}),
     };
     for (const [key, value] of Object.entries(mergedControllers)) {
       env.set(key, value);
     }
 
-    // Seed all referenced fields to 0 to ensure resolveLayout succeeds
+    // ihl/dataOffset から派生カウントを補完（UI の PacketViewer と同じ処理）
+    const ihl = Number(env.get("ihl") ?? 5);
+    env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
+    const dataOffset = Number(env.get("dataOffset") ?? 5);
+    env.set("tcpOptionsCount", Math.max(0, dataOffset - 5));
+
     const refs = collectPsmlRefs(psml);
     for (const ref of refs) {
       if (!env.has(ref)) {
