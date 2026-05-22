@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run setup:fonts && npm run build:presets && next dev",
+    "dev": "npm run build:presets && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
-    "setup:fonts": "tsx scripts/setup-fonts.ts",
-    "prebuild": "npm run setup:fonts && npm run build:presets",
+    "prebuild": "npm run build:presets",
     "build": "opennextjs-cloudflare build",
     "build:next": "next build",
     "start": "next start",
