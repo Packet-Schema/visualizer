@@ -11,7 +11,7 @@ import { parseShareParams } from "@/lib/share-url";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
-const MAX_LAYOUT_RETRY = 32;
+const OG_MAX_LAYOUT_RETRY = 3;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   env.set("tcpOptionsCount", Math.max(0, dataOffset - 5));
 
   let layout;
-  for (let i = 0; i < MAX_LAYOUT_RETRY; i++) {
+  for (let i = 0; i < OG_MAX_LAYOUT_RETRY; i++) {
     try {
       layout = resolveLayout(psml, { env });
       break;
