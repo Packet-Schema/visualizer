@@ -138,10 +138,8 @@ export default function ImportExportDrawer({
     });
   }, [open, mode, snapFormatForMode]);
 
-  // Watch for theme changes when in follow-ui mode to trigger diagram re-render
+  // Watch for theme changes to update state (used in follow-ui mode to trigger diagram re-render)
   useEffect(() => {
-    if (exportThemeMode !== "follow-ui") return;
-
     const observer = new MutationObserver(() => {
       const newTheme =
         document.documentElement.getAttribute("data-theme") ?? "light";
@@ -154,7 +152,7 @@ export default function ImportExportDrawer({
     });
 
     return () => observer.disconnect();
-  }, [exportThemeMode]);
+  }, []);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
