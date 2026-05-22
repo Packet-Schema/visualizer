@@ -112,7 +112,6 @@ export function useDrawerFocusTrap({
     };
     // `onClose` is captured via `onCloseRef`; including it here would
     // re-run the effect on every parent render with an inline handler.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, containerRef]);
 
   // Restore focus once we close.
