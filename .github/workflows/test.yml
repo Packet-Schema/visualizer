@@ -3,14 +3,32 @@ name: test
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/test.yml"
+      - "web/**"
+      - "data/presets/**"
+      - "schemas/**"
   pull_request:
+    paths:
+      - ".github/workflows/test.yml"
+      - "web/**"
+      - "data/presets/**"
+      - "schemas/**"
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +41,8 @@ jobs:
       - run: npm ci
 
       - run: npm run lint
+
+      - run: npm run typecheck
 
       - run: npm run build
 
