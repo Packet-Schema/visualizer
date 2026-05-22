@@ -1,20 +1,22 @@
-import { writeFileSync, mkdirSync } from "fs";
+import { copyFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
-import { execSync } from "child_process";
 
 const fontsDir = resolve(process.cwd(), "public", "fonts");
 mkdirSync(fontsDir, { recursive: true });
 
-const geistPath = resolve(fontsDir, "geist-regular.ttf");
-
 try {
-  // Download Geist TTF from vercel/geist-font repository
-  if (!require("fs").existsSync(geistPath)) {
-    execSync(
-      `curl -sL -o "${geistPath}" https://github.com/vercel/geist-font/raw/main/packages/font/files/GeistVF.ttf`,
-      { stdio: "pipe" },
-    );
-  }
+  // Copy Geist WOFF from @fontsource/geist npm package
+  const sourceWoff = resolve(
+    process.cwd(),
+    "node_modules",
+    "@fontsource",
+    "geist",
+    "files",
+    "geist-latin-400-normal.woff",
+  );
+  const destWoff = resolve(fontsDir, "geist-regular.woff");
+  copyFileSync(sourceWoff, destWoff);
+
   console.log("✓ Geist font setup complete");
 } catch (error) {
   console.error("Failed to setup Geist font:", error);

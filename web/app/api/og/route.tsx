@@ -19,11 +19,9 @@ const FONT_NAME = "Geist";
 
 let fontBuffer: ArrayBuffer | null = null;
 
-async function getFont(): Promise<ArrayBuffer> {
+async function getFont(origin: string): Promise<ArrayBuffer> {
   if (fontBuffer) return fontBuffer;
-  const resp = await fetch(
-    "https://cdn.jsdelivr.net/npm/@fontsource/geist@latest/files/geist-latin-400-normal.woff",
-  );
+  const resp = await fetch(`${origin}/fonts/geist-regular.woff`);
   fontBuffer = await resp.arrayBuffer();
   return fontBuffer;
 }
@@ -73,7 +71,8 @@ export async function GET(request: NextRequest) {
     throw new Error("Failed to resolve layout for og image");
   }
 
-  const fontData = await getFont();
+  const origin = new URL(request.url).origin;
+  const fontData = await getFont(origin);
 
   const availableW = OG_WIDTH - OG_MARGIN * 2;
   const availableH = OG_HEIGHT - OG_MARGIN * 2;
