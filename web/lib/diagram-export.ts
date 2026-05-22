@@ -307,7 +307,7 @@ export function buildDiagramSvg(
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
             `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden">${escapedSubtitle}</text>`,
+            `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(cell.subCells, cell, bitWidth, theme),
           ].join("");

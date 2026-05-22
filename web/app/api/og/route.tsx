@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
   env.set("tcpOptionsCount", Math.max(0, dataOffset - 5));
 
   let layout;
+  const resolvedRefs = new Set<string>();
   for (let i = 0; i < MAX_LAYOUT_RETRY; i++) {
     try {
       layout = resolveLayout(psml, { env });
@@ -71,8 +72,15 @@ export async function GET(request: NextRequest) {
       const text = error instanceof Error ? error.message : String(error);
       const match = text.match(/missing reference "([^"]+)"/i);
       if (!match) throw error;
-      if (!env.has(match[1])) {
-        env.set(match[1], 0);
+      const refName = match[1];
+      if (resolvedRefs.has(refName)) {
+        throw new Error(
+          `Failed to resolve reference "${refName}" after assignment`,
+        );
+      }
+      resolvedRefs.add(refName);
+      if (!env.has(refName)) {
+        env.set(refName, 0);
         continue;
       }
       throw error;

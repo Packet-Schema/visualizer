@@ -97,8 +97,10 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
-  const [uiTheme, setUiTheme] = useState<string>(
-    document.documentElement.getAttribute("data-theme") ?? "light",
+  const [uiTheme, setUiTheme] = useState<string>(() =>
+    typeof document !== "undefined"
+      ? (document.documentElement.getAttribute("data-theme") ?? "light")
+      : "light",
   );
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
