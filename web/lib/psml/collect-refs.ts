@@ -1,4 +1,4 @@
-import type { Expr, Packet as PsmlPacket } from "./types";
+import type { Container, Expr, Packet as PsmlPacket } from "./types";
 
 /**
  * PSML packet 内で参照されている ref フィールド名を全て集める。
@@ -30,54 +30,36 @@ export function collectPsmlRefs(packet: PsmlPacket): Set<string> {
         return;
     }
   };
-  type AnyNode = {
-    kind?: string;
-    type?: { kind: string; n?: Expr };
-    children?: AnyNode[];
-    element?: { fields: AnyNode[] };
-    cases?: Record<string, { fields: AnyNode[] }>;
-    default?: { fields: AnyNode[] };
-    on?: Expr;
-    count?: Expr | string | { until: Expr };
-    plaintext?: { fields: AnyNode[] };
-    wireBits?: Expr;
-    when?: Expr;
-    field?: AnyNode;
-  };
-  const walk = (containers: AnyNode[]): void => {
+  const walk = (containers: Container[]): void => {
     for (const c of containers) {
       if (!c.kind || c.kind === "field") {
-        if (c.type?.kind === "bytes" && c.type.n) visit(c.type.n);
+        if (c.type.kind === "bytes") visit(c.type.n);
         continue;
       }
-      if (c.kind === "group" && c.children) walk(c.children);
+      if (c.kind === "group") walk(c.children);
       if (c.kind === "switch") {
-        if (c.on) visit(c.on);
-        for (const v of Object.values(c.cases ?? {})) walk(v.fields);
+        visit(c.on);
+        for (const v of Object.values(c.cases)) walk(v.fields);
         if (c.default) walk(c.default.fields);
       }
       if (c.kind === "repeat") {
-        if (c.count && typeof c.count === "object" && "kind" in c.count) {
-          visit(c.count as Expr);
-        } else if (
-          c.count &&
-          typeof c.count === "object" &&
-          "until" in c.count
-        ) {
+        if (typeof c.count === "object" && "kind" in c.count) {
+          visit(c.count);
+        } else if (typeof c.count === "object" && "until" in c.count) {
           visit(c.count.until);
         }
-        if (c.element) walk(c.element.fields);
+        walk(c.element.fields);
       }
       if (c.kind === "encrypted") {
         if (c.wireBits) visit(c.wireBits);
-        if (c.plaintext) walk(c.plaintext.fields);
+        walk(c.plaintext.fields);
       }
       if (c.kind === "optional") {
-        if (c.when) visit(c.when);
-        if (c.field) walk([c.field]);
+        visit(c.when);
+        walk([c.field]);
       }
     }
   };
-  walk(packet.body as AnyNode[]);
+  walk(packet.body);
   return out;
 }

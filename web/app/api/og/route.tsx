@@ -56,8 +56,6 @@ export async function GET(request: NextRequest) {
 
     const layout = resolveLayout(psml, { env });
 
-    const fontData = OG_FONT_BUFFER;
-
     const availableW = OG_WIDTH - OG_MARGIN * 2;
     const availableH = OG_HEIGHT - OG_MARGIN * 2;
 
@@ -95,7 +93,7 @@ export async function GET(request: NextRequest) {
         fonts: [
           {
             name: FONT_NAME,
-            data: fontData,
+            data: OG_FONT_BUFFER,
             weight: 400,
             style: "normal",
           },
