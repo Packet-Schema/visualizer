@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   buildDiagramSvg,
@@ -139,7 +146,7 @@ export default function ImportExportDrawer({
   }, [open, mode, snapFormatForMode]);
 
   // Watch for theme changes to update state (used in follow-ui mode to trigger diagram re-render)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const observer = new MutationObserver(() => {
       const newTheme =
         document.documentElement.getAttribute("data-theme") ?? "light";
