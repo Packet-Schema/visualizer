@@ -12,6 +12,7 @@ import {
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialEnv } from "@/lib/psml/normalize";
+import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import {
   initialState,
   packetCategories,
@@ -84,95 +85,6 @@ const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 // Width threshold at which the floating field popover is enabled. Below this
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
-
-// PSML packet 内で参照されている ref フィールド名を全て集める。
-// PacketViewer の env 構築で controllers に無い ref を 0 で fallback seed
-// するために使う。 PSML 0.4 の全 Container kind (group / switch / repeat /
-// encrypted / optional) を再帰的に walk する。
-//
-// 動機: 既存設計では preset ごとに PacketViewer.tsx の `if (packetKey ===
-// "ipv4")` のような手動 seed を必要としていた (ipv4OptionsCount /
-// tcpOptionsCount 等)。 issue #91 で 8 個の preset を追加した時にこの
-// wiring を全部 PacketViewer に書くと脆くなるので、 packet 側の式を walk
-// して env を自動で補う形に汎化する。
-function collectPsmlRefs(packet: PsmlPacket): Set<string> {
-  const out = new Set<string>();
-  const visit = (e: Expr): void => {
-    switch (e.kind) {
-      case "lit":
-        return;
-      case "ref":
-        out.add(e.field);
-        return;
-      case "op":
-        visit(e.a);
-        visit(e.b);
-        return;
-      case "cond":
-        visit(e.test);
-        visit(e.t);
-        visit(e.f);
-        return;
-      case "peek":
-        // peek.bits は定数 (number) で ref を含まない一方、 peek.offset は
-        // Expr なので ref を含み得る (lookahead パターンで、 offset を同
-        // packet の長さ field で動かすなど)。 ここを walk しないと該当
-        // パケットが MissingRefError で落ちる。
-        if (e.offset) visit(e.offset);
-        return;
-    }
-  };
-  type AnyNode = {
-    kind?: string;
-    type?: { kind: string; n?: Expr };
-    children?: AnyNode[];
-    element?: { fields: AnyNode[] };
-    cases?: Record<string, { fields: AnyNode[] }>;
-    default?: { fields: AnyNode[] };
-    on?: Expr;
-    count?: Expr | string | { until: Expr };
-    plaintext?: { fields: AnyNode[] };
-    wireBits?: Expr;
-    when?: Expr;
-    field?: AnyNode;
-  };
-  const walk = (containers: AnyNode[]): void => {
-    for (const c of containers) {
-      if (!c.kind || c.kind === "field") {
-        if (c.type?.kind === "bytes" && c.type.n) visit(c.type.n);
-        continue;
-      }
-      if (c.kind === "group" && c.children) walk(c.children);
-      if (c.kind === "switch") {
-        if (c.on) visit(c.on);
-        for (const v of Object.values(c.cases ?? {})) walk(v.fields);
-        if (c.default) walk(c.default.fields);
-      }
-      if (c.kind === "repeat") {
-        if (c.count && typeof c.count === "object" && "kind" in c.count) {
-          visit(c.count as Expr);
-        } else if (
-          c.count &&
-          typeof c.count === "object" &&
-          "until" in c.count
-        ) {
-          visit(c.count.until);
-        }
-        if (c.element) walk(c.element.fields);
-      }
-      if (c.kind === "encrypted") {
-        if (c.wireBits) visit(c.wireBits);
-        if (c.plaintext) walk(c.plaintext.fields);
-      }
-      if (c.kind === "optional") {
-        if (c.when) visit(c.when);
-        if (c.field) walk([c.field]);
-      }
-    }
-  };
-  walk(packet.body as AnyNode[]);
-  return out;
-}
 
 type PacketViewerProps = {
   initialPacketKey?: string;

@@ -6,12 +6,12 @@ import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
+import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 import { parseShareParams } from "@/lib/share-url";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
-const OG_MAX_LAYOUT_RETRY = 3;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
@@ -46,30 +46,16 @@ export async function GET(request: NextRequest) {
   for (const [key, value] of Object.entries(mergedControllers)) {
     env.set(key, value);
   }
-  const ihl = Number(env.get("ihl") ?? 5);
-  env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
-  const dataOffset = Number(env.get("dataOffset") ?? 5);
-  env.set("tcpOptionsCount", Math.max(0, dataOffset - 5));
 
-  let layout;
-  for (let i = 0; i < OG_MAX_LAYOUT_RETRY; i++) {
-    try {
-      layout = resolveLayout(psml, { env });
-      break;
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      const match = text.match(/missing reference "([^"]+)"/i);
-      if (!match) throw error;
-      if (!env.has(match[1])) {
-        env.set(match[1], 0);
-        continue;
-      }
-      throw error;
+  // Seed all referenced fields to 0 to ensure resolveLayout succeeds
+  const refs = collectPsmlRefs(psml);
+  for (const ref of refs) {
+    if (!env.has(ref)) {
+      env.set(ref, 0);
     }
   }
-  if (!layout) {
-    throw new Error("Failed to resolve layout for og image");
-  }
+
+  const layout = resolveLayout(psml, { env });
 
   const origin = new URL(request.url).origin;
   const fontData = await getFont(origin);
