@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run build:presets && eslint . --max-warnings 0",
+    "pretypecheck": "npm run build:presets && npm run generate:og-font",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:presets",
     "test": "vitest run",
