@@ -94,7 +94,10 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "set-popover-anchor":
       return { ...state, popoverAnchor: action.anchor };
     case "open-drawer":
-      return { ...state, drawerMode: action.mode };
+      return {
+        ...state,
+        drawerMode: action.mode,
+      };
     case "close-drawer":
       return { ...state, drawerMode: null };
     case "set-tour-open":
@@ -139,6 +142,10 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         popoverAnchor: null,
         editMode: false,
         showJsonPane: false,
+        // Close any modal-class surface so it doesn't keep pointing at
+        // the previous preset's packet/layout after the swap.
+        drawerMode: null,
+        showSaveDialog: false,
         // hexStripUserSet intentionally preserved so the user's hex
         // visibility choice survives a preset change.
       };

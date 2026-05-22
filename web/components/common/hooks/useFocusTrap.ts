@@ -41,13 +41,12 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
 /**
  * Trap keyboard focus inside `containerRef` while `open` is true, escape
  * closes via `onClose`, and the previously focused element is restored
- * once the drawer is dismissed.
+ * once the modal is dismissed.
  *
- * Pulled out of `ImportExportDrawer` so the drawer component shrinks to a
- * presentational surface and the same trap can be reused if another modal
- * surface appears.
+ * Originally pulled out of `ImportExportDrawer`; now shared with other
+ * modal surfaces (hence the move to the `common/hooks` directory).
  */
-export function useDrawerFocusTrap({
+export function useFocusTrap({
   open,
   containerRef,
   onClose,
@@ -74,9 +73,24 @@ export function useDrawerFocusTrap({
         ? document.activeElement
         : null;
 
-    // Move focus into the trap.
-    const focusables = getFocusables(containerRef.current);
-    if (focusables.length > 0) focusables[0].focus();
+    // Prefer focusing the container itself (typically the dialog card
+    // with an explicit tabindex="-1") so a screen reader announces the
+    // dialog title via aria-labelledby before Tab moves the user into
+    // the form controls. Fall back to the first focusable when the
+    // container doesn't opt into receiving focus.
+    const root = containerRef.current;
+    if (root?.hasAttribute("tabindex")) {
+      root.focus({ preventScroll: true });
+    }
+    if (
+      !root ||
+      !document.activeElement ||
+      !root.contains(document.activeElement) ||
+      document.activeElement === document.body
+    ) {
+      const focusables = getFocusables(root);
+      if (focusables.length > 0) focusables[0].focus();
+    }
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -94,7 +108,11 @@ export function useDrawerFocusTrap({
         const last = list[list.length - 1];
         const active = document.activeElement;
         if (e.shiftKey) {
-          if (active === first || !containerRef.current.contains(active)) {
+          if (
+            active === first ||
+            active === containerRef.current ||
+            !containerRef.current.contains(active)
+          ) {
             e.preventDefault();
             last.focus();
           }
@@ -110,8 +128,10 @@ export function useDrawerFocusTrap({
     return () => {
       document.removeEventListener("keydown", handleKey);
     };
-    // `onClose` is captured via `onCloseRef`; including it here would
-    // re-run the effect on every parent render with an inline handler.
+    // `onClose` is captured via `onCloseRef` (see above), so it's
+    // deliberately absent from the dependency list — that lets callers
+    // pass inline arrow functions without re-firing the effect each
+    // render.
   }, [open, containerRef]);
 
   // Restore focus once we close.

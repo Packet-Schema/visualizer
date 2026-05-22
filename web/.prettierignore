@@ -5,6 +5,6 @@ coverage
 data
 out
 
-# Generated files:
+# Build-time generated files
 lib/psml/presets.generated.ts
 next-env.d.ts

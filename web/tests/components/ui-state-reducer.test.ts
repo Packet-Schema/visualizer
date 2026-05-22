@@ -75,6 +75,8 @@ describe("uiReducer", () => {
       showJsonPane: true,
       hexStripUserSet: true,
       hexStripVisible: true,
+      drawerMode: "export",
+      showSaveDialog: true,
     };
     const next = uiReducer(dirty, { type: "preset-switched" });
     expect(next.selectedFieldId).toBeNull();
@@ -83,6 +85,10 @@ describe("uiReducer", () => {
     expect(next.showJsonPane).toBe(false);
     expect(next.hexStripUserSet).toBe(true);
     expect(next.hexStripVisible).toBe(true);
+    // Modal-class surfaces are reset so they don't keep pointing at the
+    // previous preset after the swap.
+    expect(next.drawerMode).toBeNull();
+    expect(next.showSaveDialog).toBe(false);
   });
 
   it("set-share-status / clear-share-status drive the share toast", () => {
