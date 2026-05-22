@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run build:presets && next dev",
+    "dev": "npm run setup:fonts && npm run build:presets && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
-    "prebuild": "npm run build:presets",
+    "setup:fonts": "tsx scripts/setup-fonts.ts",
+    "prebuild": "npm run setup:fonts && npm run build:presets",
     "build": "opennextjs-cloudflare build",
     "build:next": "next build",
     "start": "next start",
@@ -23,6 +24,7 @@
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@fontsource/geist": "^5.2.9",
     "@resvg/resvg-wasm": "^2.6.2",
     "lz-string": "^1.5.0",
     "next": "^15.0.3",

@@ -18,6 +18,9 @@
 # production
 /build
 
+# fonts (auto-populated from npm)
+/public/fonts
+
 # misc
 .DS_Store
 *.pem

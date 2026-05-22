@@ -17,7 +17,7 @@ const MAX_LAYOUT_RETRY = 32;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
-const FONT_NAME = "Noto Sans";
+const FONT_NAME = "Geist";
 
 let fontBuffer: ArrayBuffer | null = null;
 
@@ -28,7 +28,7 @@ async function getFont(): Promise<ArrayBuffer> {
       process.cwd(),
       "public",
       "fonts",
-      "NotoSans-Regular.ttf",
+      "geist-regular.ttf",
     );
     const buffer = readFileSync(fontPath);
     fontBuffer = buffer.buffer.slice(
