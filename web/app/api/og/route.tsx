@@ -8,7 +8,7 @@ import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams, SHARE_URL_WARN_BYTES } from "@/lib/share-url";
+import { parseShareParams } from "@/lib/share-url";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
@@ -16,6 +16,7 @@ const FALLBACK_PRESET_KEY = "ipv4";
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
+const OG_MAX_QUERY_LENGTH = 2048;
 const FONT_NAME = "Geist";
 
 export async function GET(request: NextRequest) {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     // URL が長すぎる場合は共有 PSML のデコードをスキップしてフォールバック
     const parsed =
-      request.nextUrl.search.length <= SHARE_URL_WARN_BYTES
+      request.nextUrl.search.length <= OG_MAX_QUERY_LENGTH
         ? parseShareParams(request.nextUrl.searchParams, builtInKeys)
         : null;
     const psml =
