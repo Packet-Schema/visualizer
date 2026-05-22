@@ -135,8 +135,17 @@ function mergeInitialControllers(
 }
 
 async function getRequestOrigin(): Promise<string> {
+  const envOrigin = process.env.APP_URL ?? process.env.NEXTAUTH_URL;
+  if (envOrigin) return envOrigin;
+
   const headerList = await headers();
-  const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
-  const protocol = headerList.get("x-forwarded-proto") ?? "https";
-  return host ? `${protocol}://${host}` : "http://localhost:3000";
+  const forwardedHost = headerList.get("x-forwarded-host");
+  const forwardedProto = headerList.get("x-forwarded-proto");
+  const hostHeader = headerList.get("host");
+
+  const host =
+    forwardedHost?.split(",")[0]?.trim() ?? hostHeader ?? "localhost:3000";
+  const protocol = forwardedProto?.split(",")[0]?.trim() ?? "https";
+
+  return `${protocol}://${host}`;
 }

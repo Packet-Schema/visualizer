@@ -90,6 +90,9 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
+  const [uiTheme, setUiTheme] = useState<string>(
+    document.documentElement.getAttribute("data-theme") ?? "light",
+  );
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -134,6 +137,24 @@ export default function ImportExportDrawer({
       return mode;
     });
   }, [open, mode, snapFormatForMode]);
+
+  // Watch for theme changes when in follow-ui mode to trigger diagram re-render
+  useEffect(() => {
+    if (exportThemeMode !== "follow-ui") return;
+
+    const observer = new MutationObserver(() => {
+      const newTheme =
+        document.documentElement.getAttribute("data-theme") ?? "light";
+      setUiTheme(newTheme);
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => observer.disconnect();
+  }, [exportThemeMode]);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
@@ -232,6 +253,7 @@ export default function ImportExportDrawer({
       bitWidth: diagramWidth,
       transparentBackground,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uiTheme tracks DOM mutations
   }, [
     diagramWidth,
     exportThemeMode,
@@ -239,6 +261,7 @@ export default function ImportExportDrawer({
     layout,
     packet,
     transparentBackground,
+    uiTheme,
   ]);
 
   const handleImageDownload = useCallback(async () => {
