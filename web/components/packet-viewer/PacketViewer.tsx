@@ -50,7 +50,7 @@ import type {
   SubField,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { Expr, PsmlPacket } from "@/lib/psml/types";
+import type { PsmlPacket } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
 import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
