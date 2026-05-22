@@ -1,7 +1,5 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
-import { readFileSync } from "fs";
-import { resolve } from "path";
 
 import { DEFAULT_THEME } from "@/lib/diagram-export";
 import { PRESETS } from "@/lib/psml/presets";
@@ -21,25 +19,10 @@ const FONT_NAME = "Geist";
 
 let fontBuffer: ArrayBuffer | null = null;
 
-async function getFont(): Promise<ArrayBuffer> {
+async function getFont(origin: string): Promise<ArrayBuffer> {
   if (fontBuffer) return fontBuffer;
-  try {
-    const fontPath = resolve(
-      process.cwd(),
-      "public",
-      "fonts",
-      "geist-regular.ttf",
-    );
-    const buffer = readFileSync(fontPath);
-    fontBuffer = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
-    );
-  } catch (error) {
-    throw new Error(
-      `Failed to load font: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  const resp = await fetch(`${origin}/fonts/geist-regular.woff`);
+  fontBuffer = await resp.arrayBuffer();
   return fontBuffer;
 }
 
@@ -69,7 +52,6 @@ export async function GET(request: NextRequest) {
   env.set("tcpOptionsCount", Math.max(0, dataOffset - 5));
 
   let layout;
-  const resolvedRefs = new Set<string>();
   for (let i = 0; i < MAX_LAYOUT_RETRY; i++) {
     try {
       layout = resolveLayout(psml, { env });
@@ -78,15 +60,8 @@ export async function GET(request: NextRequest) {
       const text = error instanceof Error ? error.message : String(error);
       const match = text.match(/missing reference "([^"]+)"/i);
       if (!match) throw error;
-      const refName = match[1];
-      if (resolvedRefs.has(refName)) {
-        throw new Error(
-          `Failed to resolve reference "${refName}" after assignment`,
-        );
-      }
-      resolvedRefs.add(refName);
-      if (!env.has(refName)) {
-        env.set(refName, 0);
+      if (!env.has(match[1])) {
+        env.set(match[1], 0);
         continue;
       }
       throw error;
@@ -96,7 +71,8 @@ export async function GET(request: NextRequest) {
     throw new Error("Failed to resolve layout for og image");
   }
 
-  const fontData = await getFont();
+  const origin = new URL(request.url).origin;
+  const fontData = await getFont(origin);
 
   const availableW = OG_WIDTH - OG_MARGIN * 2;
   const availableH = OG_HEIGHT - OG_MARGIN * 2;
