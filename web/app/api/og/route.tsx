@@ -23,17 +23,23 @@ let fontBuffer: ArrayBuffer | null = null;
 
 async function getFont(): Promise<ArrayBuffer> {
   if (fontBuffer) return fontBuffer;
-  const fontPath = resolve(
-    process.cwd(),
-    "public",
-    "fonts",
-    "NotoSans-Regular.ttf",
-  );
-  const buffer = readFileSync(fontPath);
-  fontBuffer = buffer.buffer.slice(
-    buffer.byteOffset,
-    buffer.byteOffset + buffer.byteLength,
-  );
+  try {
+    const fontPath = resolve(
+      process.cwd(),
+      "public",
+      "fonts",
+      "NotoSans-Regular.ttf",
+    );
+    const buffer = readFileSync(fontPath);
+    fontBuffer = buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength,
+    );
+  } catch (error) {
+    throw new Error(
+      `Failed to load font: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   return fontBuffer;
 }
 
