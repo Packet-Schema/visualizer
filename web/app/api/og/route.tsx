@@ -13,6 +13,7 @@ import { OG_FONT_BUFFER } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
+const MAX_QUERY_LENGTH = 4096;
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
@@ -20,6 +21,10 @@ const FONT_NAME = "Geist";
 
 export async function GET(request: NextRequest) {
   try {
+    if (request.nextUrl.search.length > MAX_QUERY_LENGTH) {
+      return new Response("Bad Request", { status: 400 });
+    }
+
     const builtInKeys = Object.keys(PRESETS);
     const parsed = parseShareParams(request.nextUrl.searchParams, builtInKeys);
     const fallbackPsml =

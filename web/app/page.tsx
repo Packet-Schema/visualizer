@@ -145,7 +145,7 @@ async function getRequestOrigin(): Promise<string> {
 
   const host =
     forwardedHost?.split(",")[0]?.trim() ?? hostHeader ?? "localhost:3000";
-  const protocol = forwardedProto?.split(",")[0]?.trim() ?? "http";
+  const protocol = forwardedProto?.split(",")[0]?.trim() ?? "https";
 
   return `${protocol}://${host}`;
 }
