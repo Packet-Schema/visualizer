@@ -1,5 +1,10 @@
 # Ignore artifacts:
 build
 .next
+coverage
 data
 out
+
+# Build-time generated files
+lib/psml/presets.generated.ts
+next-env.d.ts
