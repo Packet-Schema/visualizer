@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
           layout={layout}
           theme={DEFAULT_THEME}
           fontFamily={FONT_NAME}
+          targetHeight={availableH}
         />
       </div>
     </div>,

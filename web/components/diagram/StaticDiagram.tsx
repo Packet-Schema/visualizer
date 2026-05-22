@@ -2,16 +2,19 @@ import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import { fieldFill, rowsFor, textForCell } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
-const RULER_HEIGHT = 22;
-const RULER_GAP = 6;
-const ROW_HEIGHT = 56;
-const ROW_GAP = 4;
+const BASE_RULER_HEIGHT = 22;
+const BASE_RULER_GAP = 6;
+const BASE_ROW_HEIGHT = 56;
+const BASE_ROW_GAP = 4;
 
 type Props = {
   packet: Packet;
   layout: ResolvedLayout;
   theme: DiagramExportTheme;
   fontFamily?: string;
+  /** When set, all dimension and font-size values are scaled so the diagram
+   *  fills exactly this height. Omit to render at natural size. */
+  targetHeight?: number;
 };
 
 /**
@@ -27,10 +30,32 @@ export function StaticDiagram({
   layout,
   theme,
   fontFamily = "Noto Sans, system-ui, sans-serif",
+  targetHeight,
 }: Props) {
   const rows = rowsFor(layout);
   const { rowBits } = packet;
   const packetFieldsById = new Map(packet.fields.map((f) => [f.id, f]));
+
+  const rowCount = rows.length;
+  let scale = 1;
+  if (targetHeight != null && rowCount > 0) {
+    const naturalH =
+      BASE_RULER_HEIGHT +
+      BASE_RULER_GAP +
+      rowCount * BASE_ROW_HEIGHT +
+      Math.max(rowCount - 1, 0) * BASE_ROW_GAP;
+    scale = targetHeight / naturalH;
+  }
+
+  const rulerHeight = BASE_RULER_HEIGHT * scale;
+  const rulerGap = BASE_RULER_GAP * scale;
+  const rowHeight = BASE_ROW_HEIGHT * scale;
+  const rowGap = BASE_ROW_GAP * scale;
+  const titleFontSize = Math.round(12 * scale);
+  const subtitleFontSize = Math.round(10 * scale);
+  const rulerFontSize = Math.round(10 * scale);
+  const majorTickH = Math.round(10 * scale);
+  const minorTickH = Math.round(6 * scale);
 
   return (
     <div
@@ -45,8 +70,8 @@ export function StaticDiagram({
       <div
         style={{
           display: "flex",
-          height: RULER_HEIGHT,
-          marginBottom: RULER_GAP,
+          height: rulerHeight,
+          marginBottom: rulerGap,
         }}
       >
         {Array.from({ length: rowBits }, (_, bit) => {
@@ -68,7 +93,7 @@ export function StaticDiagram({
                     position: "absolute",
                     top: 0,
                     left: 0,
-                    fontSize: 10,
+                    fontSize: rulerFontSize,
                     lineHeight: "1",
                     color: theme.rulerLabel,
                   }}
@@ -79,7 +104,7 @@ export function StaticDiagram({
               <div
                 style={{
                   width: 1,
-                  height: major ? 10 : 6,
+                  height: major ? majorTickH : minorTickH,
                   background: theme.rulerTick,
                   opacity: major ? 1 : 0.6,
                 }}
@@ -94,7 +119,7 @@ export function StaticDiagram({
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: ROW_GAP,
+          gap: rowGap,
         }}
       >
         {rows.map((cells: Cell[], rowIdx: number) => (
@@ -106,7 +131,7 @@ export function StaticDiagram({
               padding: "4px 0",
               borderRadius: 8,
               background: rowIdx % 2 === 0 ? theme.rowEven : theme.rowOdd,
-              minHeight: ROW_HEIGHT,
+              minHeight: rowHeight,
             }}
           >
             {cells.map((cell: Cell) => {
@@ -138,7 +163,7 @@ export function StaticDiagram({
                 >
                   <span
                     style={{
-                      fontSize: 12,
+                      fontSize: titleFontSize,
                       fontWeight: 600,
                       color: cell.isFirst
                         ? theme.fieldLabel
@@ -154,7 +179,7 @@ export function StaticDiagram({
                   </span>
                   <span
                     style={{
-                      fontSize: 10,
+                      fontSize: subtitleFontSize,
                       color: theme.fieldSublabel,
                       marginTop: 2,
                       whiteSpace: "nowrap",
