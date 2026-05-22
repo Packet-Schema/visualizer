@@ -19,7 +19,7 @@
     "test:coverage": "vitest run --coverage",
     "test:format": "vitest run tests/formats",
     "build:worker": "npm run build",
-    "preview:worker": "opennextjs-cloudflare preview",
+    "preview:worker": "npm run build:worker && opennextjs-cloudflare preview",
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {

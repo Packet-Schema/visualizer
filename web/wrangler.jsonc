@@ -10,5 +10,6 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
+    "run_worker_first": true,
   },
 }
