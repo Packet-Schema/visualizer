@@ -104,10 +104,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("OGP generation failed:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : "";
-    return new Response(`Error: ${message}\n\nStack: ${stack}`, {
-      status: 500,
-    });
+    return new Response("Internal Server Error", { status: 500 });
   }
 }
