@@ -11,14 +11,15 @@
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "npm run build:presets && eslint .",
+    "lint": "npm run build:presets && eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit",
     "pretest": "npm run build:presets",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:format": "vitest run tests/formats",
     "build:worker": "npm run build",
-    "preview:worker": "opennextjs-cloudflare preview",
+    "preview:worker": "npm run build:worker && opennextjs-cloudflare preview",
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {

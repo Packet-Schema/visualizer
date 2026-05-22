@@ -121,7 +121,6 @@ export default function OnboardingTour({ steps, onClose }: Props) {
       }
     };
     // mount-only: focus restoration must not re-fire on every step.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
