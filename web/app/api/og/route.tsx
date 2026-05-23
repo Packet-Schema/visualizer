@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         ],
         headers: {
           "content-type": "image/png",
-          "cache-control": "public, immutable, no-transform, max-age=31536000",
+          "cache-control": "public, no-transform, max-age=86400",
           "x-robots-tag": "noindex",
         },
       },

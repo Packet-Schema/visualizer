@@ -139,13 +139,12 @@ async function getRequestOrigin(): Promise<string> {
   if (envOrigin) return envOrigin;
 
   const headerList = await headers();
-  const forwardedHost = headerList.get("x-forwarded-host");
   const forwardedProto = headerList.get("x-forwarded-proto");
-  const hostHeader = headerList.get("host");
+  const host = headerList.get("host") ?? "localhost:3000";
 
-  const host =
-    forwardedHost?.split(",")[0]?.trim() ?? hostHeader ?? "localhost:3000";
-  const protocol = forwardedProto?.split(",")[0]?.trim() ?? "https";
+  const isLocalhost = /^localhost(:\d+)?$/.test(host);
+  const protocol =
+    forwardedProto?.split(",")[0]?.trim() ?? (isLocalhost ? "http" : "https");
 
   return `${protocol}://${host}`;
 }
