@@ -58,16 +58,14 @@ export async function generateMetadata({
   const packet =
     parsed.kind === "preset"
       ? (PRESETS[parsed.presetKey] ?? PRESETS[DEFAULT_PACKET_KEY])
-      : PRESETS[DEFAULT_PACKET_KEY];
-  const title =
-    parsed.kind === "preset"
-      ? `${packet.name} | Packet Visualizer`
-      : "Packet Visualizer";
+      : parsed.kind === "psml"
+        ? parsed.packet
+        : PRESETS[DEFAULT_PACKET_KEY];
+  const title = packet
+    ? `${packet.name} | Packet Visualizer`
+    : "Packet Visualizer";
   const description =
-    parsed.kind === "preset"
-      ? (packet.description ??
-        "Visual viewer for common network packet headers.")
-      : "Visual viewer for common network packet headers.";
+    packet?.description ?? "Visual viewer for common network packet headers.";
   return {
     title,
     description,
