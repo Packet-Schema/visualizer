@@ -74,7 +74,11 @@ export function resolveLayout(
       bitPos = emitField(synthetic, nf, bitPos, packet.rowBits, cells);
       continue;
     }
-    // Collapsed group: synthesise one parent cell with subfields.
+    // Collapsed group: synthesise one parent cell with subfields. Per-child
+    // encryption / byteOrder decoration flows through to the SubCells via
+    // `childNFs`; the parent cell's own flags stay neutral unless every
+    // child agrees (so a mixed-encrypted-and-cleartext Group doesn't
+    // mistakenly claim its whole row is encrypted).
     const first = g.children[0];
     const totalBits = g.children.reduce((a, f) => a + f.bits, 0);
     if (totalBits === 0) continue;
@@ -92,13 +96,41 @@ export function resolveLayout(
         ? { category: g.children.find((c) => c.category)!.category! }
         : {}),
     };
+    const allEncrypted = g.children.every((c) => c.encrypted);
+    const sharedEncryptedParentId =
+      g.children[0].encryptedParentId &&
+      g.children.every(
+        (c) => c.encryptedParentId === g.children[0].encryptedParentId,
+      )
+        ? g.children[0].encryptedParentId
+        : undefined;
+    const allHeaderProtected = g.children.every((c) => c.headerProtected);
+    const allSameByteOrder =
+      g.children[0].byteOrder &&
+      g.children.every((c) => c.byteOrder === g.children[0].byteOrder)
+        ? g.children[0].byteOrder
+        : undefined;
     const proxy: typeof first = {
       ...first,
       id: g.parentId,
       name: g.parentName,
       bits: totalBits,
+      encrypted: allEncrypted ? true : undefined,
+      encryptedParentId: sharedEncryptedParentId,
+      encryptedContextNote: sharedEncryptedParentId
+        ? g.children[0].encryptedContextNote
+        : undefined,
+      headerProtected: allHeaderProtected ? true : undefined,
+      byteOrder: allSameByteOrder,
     };
-    bitPos = emitField(synthetic, proxy, bitPos, packet.rowBits, cells);
+    bitPos = emitField(
+      synthetic,
+      proxy,
+      bitPos,
+      packet.rowBits,
+      cells,
+      g.children,
+    );
   }
   return { cells, totalBits: norm.totalBits };
 }
@@ -172,6 +204,7 @@ function emitField(
   bitPos: number,
   rowBits: number,
   cells: Cell[],
+  childNFs?: NormalizedField[],
 ): number {
   const bits = nf.bits;
   if (bits === 0) return bitPos;
@@ -212,6 +245,7 @@ function emitField(
         cell.fieldEndOffset,
         colInRow,
         rowBits,
+        childNFs,
       );
     }
     cells.push(cell);
@@ -239,10 +273,12 @@ function buildSubCells(
   fieldEndOffset: number,
   segmentColInRow: number,
   _rowBits: number,
+  childNFs?: NormalizedField[],
 ): SubCell[] {
   const out: SubCell[] = [];
   let cursor = 0;
-  for (const sf of subfields) {
+  for (let i = 0; i < subfields.length; i++) {
+    const sf = subfields[i];
     const subStart = cursor;
     const subEnd = cursor + sf.bits;
     cursor = subEnd;
@@ -251,7 +287,8 @@ function buildSubCells(
     if (lo >= hi) continue;
     const startBit = segmentColInRow + (lo - fieldStartOffset);
     const endBit = startBit + (hi - lo) - 1;
-    out.push({
+    const childNF = childNFs?.[i];
+    const sub: SubCell = {
       parentField,
       subfield: sf,
       id: `${parentField.id}:${sf.id}`,
@@ -260,7 +297,17 @@ function buildSubCells(
       isFirst: lo === subStart,
       isLast: hi === subEnd,
       bitsTotal: sf.bits,
-    });
+    };
+    if (childNF?.encrypted) sub.encrypted = true;
+    if (childNF?.encryptedParentId !== undefined) {
+      sub.encryptedParentId = childNF.encryptedParentId;
+    }
+    if (childNF?.encryptedContextNote !== undefined) {
+      sub.encryptedContextNote = childNF.encryptedContextNote;
+    }
+    if (childNF?.headerProtected) sub.headerProtected = true;
+    if (childNF?.byteOrder) sub.byteOrder = childNF.byteOrder;
+    out.push(sub);
   }
   return out;
 }

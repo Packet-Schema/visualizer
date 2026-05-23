@@ -941,6 +941,73 @@ body:
 The generated file (`web/lib/psml/presets.generated.ts`) is gitignored;
 do not edit it by hand and do not commit it.
 
+## Renderer interpretation
+
+PSML is intentionally semantic-only — the schema declares structure and
+intent (`category`, Group / Repeat / Switch), the renderer decides how to
+draw it. The first design principle ("Semantic, not presentational")
+already calls this out for `category → CSS color`; the diagram-first UI
+extends the same idea to layout.
+
+### Group collapse → parent cell + sub-cells
+
+A `Group` whose children are all leaf `Field`s renders as **one parent
+cell with sub-cells** rather than N flat sibling cells:
+
+| PSML | Renderer |
+| --- | --- |
+| `Group { children: [R, DF, MF] }` (IPv4 flags) | One `flagsBits` cell with three 1-bit sub-cells `R / DF / MF` |
+| `Group { children: [Type, Length, Pointer, Addr 1, Addr 2, Addr 3] }` (Record Route option) | One `Record Route` cell with the variant's six sub-cells |
+
+Groups containing compound children (nested `Repeat`/`Switch`/`Group`)
+fall back to the splice behaviour PSML documents — those structurally
+have to flatten. Other consumers (RFC ASCII / JSON / Kaitai) keep the
+flat read of `NormalizedField[]`; only the layout pass interprets
+adjacency.
+
+### Slot-based TLV workflow
+
+A TLV `Repeat<Switch>` rewrites to one of three diagram shapes depending
+on the renderer mirror's `tlv.instances` and a caller-supplied slot
+size (= the number of bytes the upstream length controller has reserved,
+e.g. `(IHL − 5) × 4` for IPv4):
+
+1. **Slot only** (no instances yet) — emit a single `bytes(slot)` cell
+   labelled `Options`. Clicking it opens the full `TlvEditor` so the
+   user can append the first record.
+2. **Populated** — emit one `Group` per instance (= the variant's leaf
+   fields). Each instance renders as a single cell whose sub-cells
+   show the Type / Length / Value internals.
+3. **Populated + remaining** — when instances total bytes are less than
+   the slot, emit a trailing `bytes(remaining)` placeholder. The
+   diagram visually closes on the controller boundary.
+
+The rewrite happens in `web/lib/psml/psml-to-renderer/apply-tlv.ts`. It
+runs only at layout time — `NormalizedField[]` and the on-disk PSML are
+unchanged, so a roundtrip through JSON / share-URL stays canonical.
+
+### Override surfaces
+
+Editing affordances are derived from PSML primitives, not declared in
+the schema:
+
+| Primitive | Affordance |
+| --- | --- |
+| `Constraint` of `ref × lit = ref` (or `± lit`) | length-controller slider in `OverridePanel` |
+| `Switch on ref(X)` (top-level / Group subfield) | dropdown that sets env[X] |
+| `Switch on peek(...)` | synthetic case picker in panel extras |
+| `Optional when ref(X)` | toggle that sets env[X] to 0/1 |
+| `TypeVarint` / `TypeBerLength` | width radio (`8 / 16 / 32 / 64` bits etc.) |
+| `TypeEnum` | dropdown of variants |
+| Field-level `byteOrder: "BE" | "LE"` | BE/LE toggle (schema-edit via studio reducer) |
+| `Repeat<Switch>` (TLV catalog) | `TlvEditor` (append + per-row variant + reorder + remove) |
+| `Repeat<Switch>` (chain catalog) | `ChainEditor` (IPv6 extension headers) |
+| `Repeat { count: until / eos / ref(X) }` (non-TLV / non-chain) | stepper in the panel extras |
+
+This list IS the surface area of `OverridePanel` and the matching
+widgets. PSML doesn't need a `ui:` field — the renderer picks an
+affordance based on the structure alone.
+
 ## Out of scope
 
 - Actual decryption — PSML 0.3 models the *shape* of an encrypted

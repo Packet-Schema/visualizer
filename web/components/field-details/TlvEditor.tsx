@@ -21,9 +21,20 @@ type Props = {
   field: Field;
   controllers: ControllerState;
   onChange: (next: TlvInstance[]) => void;
+  /** Controller-derived slot the user has reserved for this TLV (bytes).
+   *  When the sum of `tlv.instances` exceeds it, the editor shows a
+   *  warning banner — the wire format would be malformed because the
+   *  upstream length controller (IHL / Data Offset) wouldn't cover the
+   *  expanded payload. */
+  slotBytes?: number;
 };
 
-export default function TlvEditor({ field, controllers, onChange }: Props) {
+export default function TlvEditor({
+  field,
+  controllers,
+  onChange,
+  slotBytes,
+}: Props) {
   const tlv = field.tlv;
 
   const summary = useMemo(() => tlvTotalBits(field), [field]);
@@ -86,12 +97,30 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
     const entry = catalogByKind.get(newKind);
     if (!entry) return;
     update((list) => {
+      // Preserve user-edited extras across a variant switch: layer the new
+      // variant's `defaultExtras` underneath the previous instance's
+      // `extras` so any shared keys (typical: a per-record count like
+      // Timestamp's address slot count) keep the user's value rather than
+      // silently snapping back to the default. The runtime ignores keys
+      // the new variant doesn't use, so there's no risk of stale state
+      // leaking into a different shape.
+      const prevExtras = list[idx]?.extras;
+      const mergedExtras = {
+        ...(entry.defaultExtras ?? {}),
+        ...(prevExtras ?? {}),
+      };
       const inst: TlvInstance = { kind: newKind };
-      if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
+      if (Object.keys(mergedExtras).length > 0) inst.extras = mergedExtras;
       list[idx] = inst;
       return list;
     });
   };
+
+  const totalBytesUsed = Math.ceil(summary.totalBits / 8);
+  const overshootBy =
+    slotBytes !== undefined && totalBytesUsed > slotBytes
+      ? totalBytesUsed - slotBytes
+      : 0;
 
   return (
     <div>
@@ -100,6 +129,22 @@ export default function TlvEditor({ field, controllers, onChange }: Props) {
         Recursive TLV container. Add typed records below; the total length
         drives <code className="font-mono">{tlv.drivesController || ""}</code>.
       </p>
+      {overshootBy > 0 ? (
+        <p
+          role="alert"
+          className="text-xs m-0 mb-2 px-2 py-1.5 rounded border"
+          style={{
+            borderColor: "var(--field-rose)",
+            background:
+              "color-mix(in oklch, var(--field-rose) 12%, transparent)",
+            color: "var(--fg)",
+          }}
+        >
+          ⚠ Records total {totalBytesUsed} B but the slot is only {slotBytes} B
+          ({overshootBy} B over). Grow the upstream length controller or remove
+          records to keep the wire format valid.
+        </p>
+      ) : null}
 
       <div
         className="rounded-md border divide-y"

@@ -202,6 +202,15 @@ export type SubCell = {
   isFirst: boolean;
   isLast: boolean;
   bitsTotal: number;
+  /** Per-child decoration flags propagated from the source NormalizedField.
+   *  When a Group collapse spans children with non-uniform encryption /
+   *  byteOrder, the parent cell stays neutral and these per-sub-cell flags
+   *  drive the visual treatment (lock icon, [LE] suffix etc.) instead. */
+  encrypted?: boolean;
+  encryptedParentId?: string;
+  encryptedContextNote?: string;
+  headerProtected?: boolean;
+  byteOrder?: "BE" | "LE";
 };
 
 export type Cell = {

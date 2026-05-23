@@ -33,6 +33,9 @@ type Props = {
   ) => void;
   onControllerChange?: (key: string, value: number) => void;
   onByteOrderChange?: (fieldId: string, byteOrder: "BE" | "LE") => void;
+  /** Controller-derived slot bytes per TLV field id (= `(IHL−5)*4` for
+   *  IPv4 / TCP). Used to warn the user when records exceed the slot. */
+  tlvSlotBytes?: Record<string, number>;
 };
 
 function EmptyState({
@@ -99,6 +102,7 @@ export default function OverridePanel({
   onChainChange,
   onControllerChange,
   onByteOrderChange,
+  tlvSlotBytes,
 }: Props) {
   // TLV cells emitted by `applyTlvInstances` carry synthetic ids that
   // don't live in `packet.fields`. `parseTlvCellId` peels back the role
@@ -130,6 +134,7 @@ export default function OverridePanel({
             field={parent}
             controllers={controllers}
             onChange={(next) => onTlvChange(parent, next)}
+            slotBytes={tlvSlotBytes?.[parent.id]}
           />
         );
       }
@@ -186,6 +191,7 @@ export default function OverridePanel({
         field={field}
         controllers={controllers}
         onChange={(next) => onTlvChange(field, next)}
+        slotBytes={tlvSlotBytes?.[field.id]}
       />
     );
   }
@@ -669,11 +675,21 @@ function TlvInnerVariantDropdown({
           const newKind = Number(e.target.value);
           if (!Number.isFinite(newKind)) return;
           const entry = tlv.catalog.find((c) => c.kind === newKind);
-          const next = tlv.instances.map((inst, i) =>
-            i === instanceIndex
-              ? { kind: newKind, extras: entry?.defaultExtras }
-              : inst,
-          );
+          // Preserve user-edited extras across the variant switch: defaults
+          // for the new variant go in first, then the previous instance's
+          // extras layer on top. Same policy as TlvEditor.handleKindChange.
+          const next = tlv.instances.map((inst, i) => {
+            if (i !== instanceIndex) return inst;
+            const mergedExtras = {
+              ...(entry?.defaultExtras ?? {}),
+              ...(inst.extras ?? {}),
+            };
+            const updated: typeof inst = { kind: newKind };
+            if (Object.keys(mergedExtras).length > 0) {
+              updated.extras = mergedExtras;
+            }
+            return updated;
+          });
           onChange(next);
         }}
         className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"

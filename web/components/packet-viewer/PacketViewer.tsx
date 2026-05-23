@@ -1084,6 +1084,7 @@ export default function PacketViewer() {
               onChainChange={handleChainChange}
               onControllerChange={handleControllerChange}
               onByteOrderChange={handleByteOrderChange}
+              tlvSlotBytes={tlvSlotBytes}
             />
           </section>
         </div>

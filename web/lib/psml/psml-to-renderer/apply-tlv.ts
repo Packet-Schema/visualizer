@@ -82,7 +82,18 @@ export function applyTlvInstances(
         const entry = tlv.catalog.find((e) => e.kind === inst.kind);
         if (!entry?.fields || entry.fields.length === 0) continue;
         const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
-        instanceBytes += bits / 8;
+        if (bits % 8 !== 0) {
+          // The slot accounting (and the trailing "remaining" placeholder)
+          // assumes byte-aligned variants. Real-world TLV catalogs all are,
+          // but a bespoke preset could declare a non-aligned variant — fail
+          // loudly in dev and ceil to the next byte so the diagram still
+          // renders something sensible.
+          console.warn(
+            `[applyTlvInstances] TLV variant kind=${inst.kind} has ${bits} bits (not byte-aligned). ` +
+              `Rounding up for slot accounting; consider padding the catalog entry.`,
+          );
+        }
+        instanceBytes += Math.ceil(bits / 8);
         const groupId = `${c.id}__inst_${i}`;
         const group: PsmlGroup = {
           kind: "group",
