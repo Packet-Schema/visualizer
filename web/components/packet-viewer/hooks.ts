@@ -220,14 +220,49 @@ export function useRovingTabindex(
           next = group[Math.max(0, idx - 1)] ?? null;
           break;
         case "ArrowDown":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, +1);
+          if (isSubfieldCell) {
+            // Subfields live on a single row of the parent — descending
+            // out of a sub-cell exits back to the row of the OWNING
+            // field cell and steps to the row below it.
+            const parentId = (target as HTMLElement).dataset.parentFieldId;
+            const parentCell = parentId
+              ? root.querySelector<HTMLElement>(
+                  `.field-cell[data-field-id="${CSS.escape(parentId)}"]`,
+                )
+              : null;
+            const allFieldCells = Array.from(
+              root.querySelectorAll<HTMLElement>(".field-cell"),
+            );
+            next = parentCell
+              ? findRowNeighbor(allFieldCells, parentCell, +1)
+              : null;
+          } else if (
+            (target as HTMLElement).classList.contains("has-subfields")
+          ) {
+            // Descending into a cell that has sub-cells enters the
+            // first sub-cell — gives keyboard / screen-reader users
+            // access to the children of a collapsed Group.
+            next = (target as HTMLElement).querySelector<HTMLElement>(
+              ".subfield-cell",
+            );
+          } else {
+            next = findRowNeighbor(group, target as HTMLElement, +1);
+          }
           break;
         case "ArrowUp":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, -1);
+          if (isSubfieldCell) {
+            // Ascending from a sub-cell exits back to its parent
+            // field cell. Lets the user "pop out" of an expanded
+            // Group / TLV variant.
+            const parentId = (target as HTMLElement).dataset.parentFieldId;
+            next = parentId
+              ? root.querySelector<HTMLElement>(
+                  `.field-cell[data-field-id="${CSS.escape(parentId)}"]`,
+                )
+              : null;
+          } else {
+            next = findRowNeighbor(group, target as HTMLElement, -1);
+          }
           break;
         case "Home":
           next = group[0] ?? null;
@@ -241,10 +276,19 @@ export function useRovingTabindex(
 
       if (next && next !== target) {
         e.preventDefault();
-        // Move the single tabindex=0 to the focused element.
-        for (const c of group) {
-          c.setAttribute("tabindex", c === next ? "0" : "-1");
+        // Move the single tabindex=0 to the focused element. When the
+        // jump crosses focus-group boundaries (subfield → field-cell or
+        // vice versa) we also reset the *other* group so we don't end
+        // up with two tab stops live at once.
+        const groups: HTMLElement[][] = next.classList.contains("subfield-cell")
+          ? [cells, group]
+          : isSubfieldCell
+            ? [group, cells]
+            : [group];
+        for (const g of groups) {
+          for (const c of g) c.setAttribute("tabindex", "-1");
         }
+        next.setAttribute("tabindex", "0");
         next.focus();
       }
     },

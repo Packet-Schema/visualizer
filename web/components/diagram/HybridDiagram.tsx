@@ -67,6 +67,12 @@ export default function HybridDiagram({
   const overridableIds = useMemo(() => {
     const s = new Set<string>();
     for (const f of packet.fields) {
+      // `byteOrder` is intentionally NOT included here. It marks a schema
+      // attribute every multi-byte int could surface a toggle for, so
+      // including it would paint a marker on essentially every address /
+      // length / checksum cell — drowning out the cells that actually
+      // expose a runtime knob (length controller, TLV, Switch, Optional).
+      // Users still reach the BE/LE toggle by clicking the cell.
       if (
         f.controlsLength ||
         f.tlv ||
@@ -75,8 +81,7 @@ export default function HybridDiagram({
         f.varintEncoding ||
         f.isBerLength ||
         f.optionalGateFor ||
-        f.enumVariants ||
-        f.byteOrder
+        f.enumVariants
       ) {
         s.add(f.id);
       }
@@ -354,6 +359,7 @@ function FieldCellImpl({
           parent={cell.field}
           parentStartBit={cell.startBit}
           parentSpan={span}
+          parentRow={cell.row}
           subCells={cell.subCells!}
           selectedFieldId={selectedFieldId}
           onSubfieldClick={onSubfieldClick}
@@ -403,6 +409,10 @@ type SubfieldRowProps = {
   parent: Field;
   parentStartBit: number;
   parentSpan: number;
+  /** Row index of the owning parent cell. Sub-cells inherit it via
+   *  `data-row` so downstream readers (HexStrip, the roving-tabindex
+   *  keyboard handler) see a real row coord rather than a bit column. */
+  parentRow: number;
   subCells: SubCell[];
   selectedFieldId: string | null;
   onSubfieldClick: (
@@ -417,6 +427,7 @@ function SubfieldRow({
   parent,
   parentStartBit,
   parentSpan,
+  parentRow,
   subCells,
   selectedFieldId,
   onSubfieldClick,
@@ -447,7 +458,11 @@ function SubfieldRow({
             aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
             data-field-id={`${parent.id}:${sub.subfield.id}`}
             data-parent-field-id={parent.id}
-            data-row={String(sub.startBit)}
+            // Sub-cells live inside the parent cell's row, so they
+            // share the parent's `data-row`. (Previously this stored
+            // `sub.startBit` — the bit column — which clashed with
+            // every reader that treats `data-row` as a row index.)
+            data-row={String(parentRow)}
             data-start-bit={sub.startBit}
             data-end-bit={sub.endBit}
             style={subStyle}

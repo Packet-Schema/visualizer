@@ -20,6 +20,7 @@ import type {
   ResolvedLayout,
   SubCell,
 } from "./renderer";
+import { isTlvInstanceGroupId } from "./psml-to-renderer/tlv-cell-id";
 
 export type LayoutOptions = {
   /** Environment overlay merged on top of preset defaults. */
@@ -181,8 +182,7 @@ function groupConsecutiveByContainer(fields: NormalizedField[]): GroupedRun[] {
     //     they have 2+ children. A 1-child Group whose author intended the
     //     leaf to be the visible label (e.g. a wrapper used for grouping
     //     metadata) stays flat so we don't silently rename it.
-    const isTlvInstance = /__inst_\d+$/.test(groupId);
-    if (run.length === 1 && !isTlvInstance) {
+    if (run.length === 1 && !isTlvInstanceGroupId(groupId)) {
       out.push({ kind: "flat", field: f });
       i = j;
       continue;
