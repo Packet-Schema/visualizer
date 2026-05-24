@@ -46,6 +46,7 @@ const FALLBACK_LETTER_SPACING = "0.025em";
 
 const MAX_CONTROLLER_VALUE = 100; // Slider max value from UI controls
 const MAX_ROW_BITS = 256; // Safety limit to prevent memory/rendering issues with oversized packets
+const OG_MAX_ROWS = 6; // Maximum rows to display in OG image; excess rows shown as ellipsis
 
 function renderFallbackImage() {
   return new ImageResponse(
@@ -192,6 +193,7 @@ export async function GET(request: NextRequest) {
             theme={DEFAULT_THEME}
             fontFamily={FONT_NAME}
             targetHeight={availableH}
+            maxRows={OG_MAX_ROWS}
           />
         </div>
       </div>,

@@ -22,6 +22,8 @@ type Props = {
   /** When set, all dimension and font-size values are scaled so the diagram
    *  fills exactly this height. Omit to render at natural size. */
   targetHeight?: number;
+  /** Maximum number of rows to display. If rows exceed this, show ellipsis. */
+  maxRows?: number;
 };
 
 /** Satori-compatible renderer; uses flexbox + inline styles only (no CSS classes) for next/og compatibility. */
@@ -31,11 +33,14 @@ export function StaticDiagram({
   theme,
   fontFamily = "Noto Sans, system-ui, sans-serif",
   targetHeight,
+  maxRows,
 }: Props) {
-  const rows = rowsFor(layout);
+  const allRows = rowsFor(layout);
   const { rowBits } = packet;
   const packetFieldsById = new Map(packet.fields.map((f) => [f.id, f]));
 
+  const isTruncated = maxRows != null && allRows.length > maxRows;
+  const rows = maxRows != null ? allRows.slice(0, maxRows) : allRows;
   const rowCount = rows.length;
   let scale = 1;
   if (targetHeight != null && rowCount > 0) {
@@ -199,6 +204,23 @@ export function StaticDiagram({
             })}
           </div>
         ))}
+        {isTruncated ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: `${rowPaddingVertical}px 0`,
+              fontSize: titleFontSize,
+              color: theme.fieldLabel,
+              fontWeight: 600,
+              minHeight: rowHeight,
+              letterSpacing: "0.15em",
+            }}
+          >
+            ...
+          </div>
+        ) : null}
       </div>
     </div>
   );
