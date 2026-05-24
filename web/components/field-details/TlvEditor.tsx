@@ -6,7 +6,7 @@
 // The parent owns the field; we call `onChange(newInstances)` for every
 // mutation and let it re-sync controllers.
 
-import { useMemo } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { tlvRecordBits, tlvTotalBits } from "@/lib/psml/renderer-helpers";
 import { useListItemKeys } from "@/lib/use-list-item-keys";
@@ -41,6 +41,34 @@ export default function TlvEditor({
 
   const instances = tlv?.instances || [];
   const itemKeys = useListItemKeys(instances);
+
+  // Staged-add: a separate Add button (mirrors ChainEditor) so keyboard-
+  // only users scrolling through `<select>` options don't append a new
+  // record per arrow press (sub-agent Round 7 HIGH).
+  const [stagedKind, setStagedKind] = useState<string>("");
+  const addSelectId = useId();
+
+  // Announce list mutations to screen readers and restore focus context
+  // after add / remove so SR users aren't dropped on an empty body
+  // when the row their focus lived on is gone (sub-agent Round 7 HIGH).
+  const [liveMsg, setLiveMsg] = useState<string>("");
+  const prevLengthRef = useRef(instances.length);
+  const addSelectRef = useRef<HTMLSelectElement | null>(null);
+  useEffect(() => {
+    const prev = prevLengthRef.current;
+    const next = instances.length;
+    if (next > prev) {
+      setLiveMsg(`Record ${next} added.`);
+    } else if (next < prev) {
+      setLiveMsg(
+        `Record removed. ${next} record${next === 1 ? "" : "s"} attached.`,
+      );
+      // The deleted row's Remove button no longer exists; refocus the
+      // add picker so keyboard users keep a reachable target.
+      addSelectRef.current?.focus();
+    }
+    prevLengthRef.current = next;
+  }, [instances.length]);
 
   if (!tlv) return null;
 
@@ -203,14 +231,14 @@ export default function TlvEditor({
                   </span>
                   <div className="ml-auto flex items-center gap-1 shrink-0">
                     <IconBtn
-                      label="Move up"
+                      label={`Move record ${i} up`}
                       disabled={i === 0}
                       onClick={() => handleMoveUp(i)}
                     >
                       ↑
                     </IconBtn>
                     <IconBtn
-                      label="Move down"
+                      label={`Move record ${i} down`}
                       disabled={i === instances.length - 1}
                       onClick={() => handleMoveDown(i)}
                     >
@@ -265,25 +293,14 @@ export default function TlvEditor({
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-xs text-fg-muted">+ Add record:</label>
+        <label htmlFor={addSelectId} className="text-xs text-fg-muted">
+          + Add record:
+        </label>
         <select
-          value=""
-          onChange={(e) => {
-            const v = e.target.value;
-            if (!v) return;
-            // 1-click add: picking a variant immediately appends, no extra
-            // confirm step. Native <select> resets visually because `value=""`
-            // re-renders on the next React tick.
-            const kind = Number(v);
-            const entry = catalogByKind.get(kind);
-            if (!entry) return;
-            const inst: TlvInstance = { kind };
-            if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
-            update((list) => {
-              list.push(inst);
-              return list;
-            });
-          }}
+          id={addSelectId}
+          ref={addSelectRef}
+          value={stagedKind}
+          onChange={(e) => setStagedKind(e.target.value)}
           className="px-2 py-1 rounded border text-xs"
           style={{
             borderColor: "var(--border-strong)",
@@ -298,6 +315,36 @@ export default function TlvEditor({
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={() => {
+            if (!stagedKind) return;
+            const kind = Number(stagedKind);
+            const entry = catalogByKind.get(kind);
+            if (!entry) return;
+            const inst: TlvInstance = { kind };
+            if (entry.defaultExtras) inst.extras = { ...entry.defaultExtras };
+            update((list) => {
+              list.push(inst);
+              return list;
+            });
+            setStagedKind("");
+          }}
+          disabled={!stagedKind}
+          className="text-xs px-2.5 py-1 rounded border"
+          style={{
+            borderColor: "var(--border-strong)",
+            background: "var(--accent)",
+            color: "var(--accent-fg, #fff)",
+            opacity: stagedKind ? 1 : 0.5,
+          }}
+        >
+          Add
+        </button>
+      </div>
+
+      <div role="status" aria-live="polite" className="sr-only">
+        {liveMsg}
       </div>
 
       <p className="text-xs mt-2.5 mb-0 text-fg-muted">

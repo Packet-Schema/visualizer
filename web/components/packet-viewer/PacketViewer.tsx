@@ -535,13 +535,12 @@ export default function PacketViewer() {
       if (!name.trim()) return;
       const normalizedName = normalizeCustomPresetName(name);
       const key = `custom:${normalizedName}`;
-      // Merge the renderer mirror's TLV / chain instances onto the
-      // studio packet before persistence. Without this, TLV records
-      // added via the diagram (which only update the mirror) are silent-
-      // dropped from the saved preset (sub-agent CRITICAL #1).
-      const mergedStudio = mergeInstancesIntoPsml(studioState.packet, packet);
+      // Merge the renderer mirror's TLV / chain / byteOrder edits onto
+      // the studio packet before persistence — without this, diagram-
+      // driven edits (which only land on the mirror) silently drop on
+      // save (sub-agent CRITICAL).
       const packetToSave: PsmlPacket = {
-        ...mergedStudio,
+        ...mergedStudioPacket,
         name: normalizedName,
       };
       saveCustomPreset(key, packetToSave);
@@ -699,8 +698,9 @@ export default function PacketViewer() {
       ? // In editMode the diagram draws from studioState.packet but TLV /
         // chain edits only land on the renderer mirror — without the
         // merge, the shared URL silently drops every record the user
-        // added through the diagram (sub-agent CRITICAL #2).
-        mergeInstancesIntoPsml(studioState.packet, packet)
+        // added through the diagram (sub-agent CRITICAL #2). Re-uses the
+        // memo so we don't walk the body twice per share click.
+        mergedStudioPacket
       : builtInPsml
         ? builtInPsml
         : hasCustomRendererOverride
@@ -808,10 +808,24 @@ export default function PacketViewer() {
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }
-      uiDispatch({
-        type: "set-share-status",
-        status: { msg: "Share URL copied.", kind: "ok" },
-      });
+      // Surface oversize URLs through the share-status toast — a console
+      // warn alone is invisible to users who don't open devtools, and a
+      // share URL pushed past common browser limits (e.g. ~2 KB) silently
+      // truncates on paste (sub-agent Round 7 HIGH).
+      if (bytes > SHARE_URL_WARN_BYTES) {
+        uiDispatch({
+          type: "set-share-status",
+          status: {
+            msg: `Share URL copied — ${bytes} B may exceed browser limits.`,
+            kind: "error",
+          },
+        });
+      } else {
+        uiDispatch({
+          type: "set-share-status",
+          status: { msg: "Share URL copied.", kind: "ok" },
+        });
+      }
     } catch (err) {
       uiDispatch({
         type: "set-share-status",
@@ -884,12 +898,25 @@ export default function PacketViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
 
+  // Memoise the studio-packet-with-mirror-state merge so it isn't
+  // recomputed on every render. Without the memo, every controller drag
+  // walks the whole PSML body and JsonPane re-stringifies its 200+ leaves
+  // (sub-agent Round 7 MEDIUM). Save-As and share both reuse this value.
+  const mergedStudioPacket: PsmlPacket = useMemo(
+    () => mergeInstancesIntoPsml(studioState.packet, packet),
+    [studioState.packet, packet],
+  );
+
+  // Narrow the `customPresets` dependency to only the active key —
+  // editing another preset in the same map shouldn't re-walk the active
+  // packet's PSML (sub-agent Round 7 MEDIUM). React's strict-equality
+  // useMemo dep check is satisfied by the same object reference, so
+  // structuring as a hoisted memo keeps the original semantics.
+  const activeCustomPreset = customPresets[packetKey];
   const targetPsml: PsmlPacket = useMemo(() => {
     const base = editMode
       ? studioState.packet
-      : (PRESETS[packetKey] ??
-        customPresets[packetKey] ??
-        rendererToPsml(packet));
+      : (PRESETS[packetKey] ?? activeCustomPreset ?? rendererToPsml(packet));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
@@ -900,7 +927,7 @@ export default function PacketViewer() {
     editMode,
     studioState.packet,
     packetKey,
-    customPresets,
+    activeCustomPreset,
     packet,
     tlvSlotBytes,
   ]);
@@ -1063,7 +1090,7 @@ export default function PacketViewer() {
             onToggleJsonPane={() => uiDispatch({ type: "toggle-json-pane" })}
             onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
-            jsonPacket={mergeInstancesIntoPsml(studioState.packet, packet)}
+            jsonPacket={mergedStudioPacket}
           />
         ) : null}
 

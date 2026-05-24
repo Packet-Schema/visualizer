@@ -119,10 +119,36 @@ function validateType(type: Type, ctx: string): void {
   }
 }
 
+/**
+ * Reserved-id suffixes that `applyTlvInstances` mints. A user-authored
+ * Field with one of these in its id would collide with synthetic TLV
+ * instance / remaining cells and corrupt `parseTlvCellId` routing —
+ * clicks on the real field would dispatch to non-existent TLV state.
+ * Catch it at validation time so a malformed preset / share URL fails
+ * fast rather than crashing inside OverridePanel later (sub-agent
+ * Round 7 CRITICAL).
+ */
+const RESERVED_ID_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
+  {
+    re: /__inst_\d+(?:__|$)/,
+    reason: "reserved `__inst_<N>` TLV-instance suffix",
+  },
+  { re: /__remaining$/, reason: "reserved `__remaining` TLV-remaining suffix" },
+];
+
+function ensureUnreservedFieldId(id: string, ctx: string): void {
+  for (const { re, reason } of RESERVED_ID_PATTERNS) {
+    if (re.test(id)) {
+      throw new Error(`${ctx}: field id "${id}" uses ${reason}.`);
+    }
+  }
+}
+
 function validateField(field: Field, ctx: string): void {
   if (typeof field.id !== "string" || field.id.length === 0) {
     throw new Error(`${ctx}: field is missing an id.`);
   }
+  ensureUnreservedFieldId(field.id, ctx);
   if (typeof field.name !== "string") {
     throw new Error(`${ctx}: field "${field.id}" is missing a name.`);
   }

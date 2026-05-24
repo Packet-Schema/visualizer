@@ -149,6 +149,13 @@ export default function HybridDiagram({
             // shapes uniformly, so the marker lookup always lands on
             // the underlying renderer-mirror field id.
             const baseId = tlvBaseId(cell.field.id);
+            // Parent cells inherit the marker from any overridable
+            // subfield so a Group whose only override-bearing child is
+            // a SubField (e.g. `flagsBits` with `flags_df` having an
+            // `optionalGateFor`) still surfaces the dot at the parent
+            // level (sub-agent Round 7 HIGH).
+            const subOverridable =
+              cell.subCells?.some((sc) => overridableIds.has(sc.id)) ?? false;
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}
@@ -158,7 +165,8 @@ export default function HybridDiagram({
                 onSubfieldClick={onSubfieldClick}
                 onFieldHover={onFieldHover}
                 tabIndex={tabIndex}
-                isOverridable={overridableIds.has(baseId)}
+                isOverridable={overridableIds.has(baseId) || subOverridable}
+                overridableSubIds={overridableIds}
               />
             );
           })}
@@ -184,6 +192,9 @@ type FieldCellProps = {
    *  (length controller, TLV catalog, or chain catalog). Drives the
    *  `data-overridable` marker dot. */
   isOverridable: boolean;
+  /** Pass-through for the parent grid's overridable-id set so sub-cells
+   *  can each decide whether to paint their own marker dot. */
+  overridableSubIds: Set<string>;
 };
 
 // Treat a selectedFieldId as "owned by this cell" when it matches the cell's
@@ -211,6 +222,7 @@ const FieldCell = memo(FieldCellImpl, (prev, next) => {
   if (prev.onSubfieldClick !== next.onSubfieldClick) return false;
   if (prev.onFieldHover !== next.onFieldHover) return false;
   if (prev.isOverridable !== next.isOverridable) return false;
+  if (prev.overridableSubIds !== next.overridableSubIds) return false;
   // Re-render only the cell that *was* selected (directly or via one of its
   // subfields) and the cell that *is now* selected — everything else can
   // skip. The subfield prefix match below is what fixes the bug where
@@ -240,6 +252,7 @@ function FieldCellImpl({
   onFieldHover,
   tabIndex,
   isOverridable,
+  overridableSubIds,
 }: FieldCellProps) {
   const isSelected = cell.field.id === selectedFieldId;
   const span = cell.endBit - cell.startBit + 1;
@@ -365,6 +378,7 @@ function FieldCellImpl({
           selectedFieldId={selectedFieldId}
           onSubfieldClick={onSubfieldClick}
           onFieldHover={onFieldHover}
+          overridableSubIds={overridableSubIds}
         />
       ) : null}
     </div>
@@ -422,6 +436,7 @@ type SubfieldRowProps = {
     element: HTMLElement,
   ) => void;
   onFieldHover?: (fieldId: string | null) => void;
+  overridableSubIds: Set<string>;
 };
 
 function SubfieldRow({
@@ -433,6 +448,7 @@ function SubfieldRow({
   selectedFieldId,
   onSubfieldClick,
   onFieldHover,
+  overridableSubIds,
 }: SubfieldRowProps) {
   // Nested grid: parentSpan columns wide so subfield positions track the
   // parent geometry exactly.
@@ -448,6 +464,7 @@ function SubfieldRow({
         const subStyle: CSSProperties = {
           gridColumn: `${startCol} / span ${subSpan}`,
         };
+        const isSubOverridable = overridableSubIds.has(sub.id);
         return (
           <span
             key={`sub-${sub.id}`}
@@ -459,6 +476,7 @@ function SubfieldRow({
             aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
             data-field-id={`${parent.id}:${sub.subfield.id}`}
             data-parent-field-id={parent.id}
+            {...(isSubOverridable ? { "data-overridable": "true" } : {})}
             // Sub-cells live inside the parent cell's row, so they
             // share the parent's `data-row`. (Previously this stored
             // `sub.startBit` — the bit column — which clashed with

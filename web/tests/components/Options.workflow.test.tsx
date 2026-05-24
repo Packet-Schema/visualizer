@@ -108,7 +108,13 @@ describe("Options workflow (slot-based TLV)", () => {
       "TlvEditor append <select> must be visible",
     ).not.toBeNull();
 
-    await setSelectValue(appendSelect as HTMLSelectElement, "1"); // NOP
+    await setSelectValue(appendSelect as HTMLSelectElement, "1"); // NOP — staged
+    // Round 7 HIGH: staged-add requires clicking Add to commit.
+    const addBtn = Array.from(
+      overrideSection?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+    ).find((b) => b.textContent === "Add");
+    expect(addBtn).toBeTruthy();
+    await click(addBtn ?? null);
 
     // After the append, the diagram now has an instance cell for NOP.
     const inst = container.querySelector('[data-field-id="options__inst_0"]');
@@ -128,6 +134,10 @@ describe("Options workflow (slot-based TLV)", () => {
     const appendSelect =
       overrideSection?.querySelector<HTMLSelectElement>("select");
     await setSelectValue(appendSelect ?? null, "7");
+    const addBtn = Array.from(
+      overrideSection?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+    ).find((b) => b.textContent === "Add");
+    await click(addBtn ?? null);
 
     // After the append, we should be inside the inner-variant dropdown
     // (clicking the instance is the natural next step). The full TlvEditor

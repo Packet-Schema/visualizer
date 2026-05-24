@@ -114,6 +114,13 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
         if (baseField) {
           baseField.chainCatalog = chainField.chainCatalog;
           baseField.chainInstances = chainField.chainInstances;
+          // Forward the terminal Next-Header pick to the base field too —
+          // `syncChainControllers` later reads `field.chainFinalProto`
+          // and without this hand-off the value silently reverts to the
+          // catalog default on every reload / re-export (Codex P1).
+          if (typeof chainField.chainFinalProto === "number") {
+            baseField.chainFinalProto = chainField.chainFinalProto;
+          }
         } else {
           fields.push(chainField);
         }

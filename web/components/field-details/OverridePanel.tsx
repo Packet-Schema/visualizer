@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import type {
   ChainInstance,
@@ -134,11 +134,14 @@ function UnanchoredTlvCard({
   onChange: (next: TlvInstance[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
   return (
     <div>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={panelId}
         className="w-full px-2 py-1.5 rounded border text-left text-sm-tight cursor-pointer"
         style={{
           borderColor: "var(--border-strong)",
@@ -152,7 +155,7 @@ function UnanchoredTlvCard({
         </span>
       </button>
       {open ? (
-        <div className="mt-2">
+        <div id={panelId} className="mt-2">
           <TlvEditor
             field={field}
             controllers={controllers}
@@ -830,8 +833,14 @@ function RepeatCountStepper({
   // guard the NaN flows into `controllers`, contaminates `layout`'s env,
   // and the displayed value goes to `value={NaN}` (= empty input
   // controlled by an invalid value). Codex P2.
+  // Cap upward growth at SOFT_MAX. Earlier the `+` button bypassed the
+  // cap so a held key with autorepeat could push the value past the
+  // input's `max` attribute and hang the diagram when a chained Repeat
+  // drove layout (sub-agent Round 7 MEDIUM).
   const safe = (n: number) =>
-    Number.isFinite(n) ? Math.max(min, Math.floor(n)) : value;
+    Number.isFinite(n)
+      ? Math.max(min, Math.min(SOFT_MAX, Math.floor(n)))
+      : value;
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm-tight text-fg truncate" title={name}>

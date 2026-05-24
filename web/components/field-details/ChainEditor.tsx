@@ -3,7 +3,7 @@
 // Ported from `renderChainDetail` in app.js. Lists each chain block and
 // offers a final-protocol selector (TCP=6, UDP=17, etc.) at the bottom.
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { useListItemKeys } from "@/lib/use-list-item-keys";
 import type {
@@ -31,11 +31,28 @@ export default function ChainEditor({ field, onChange }: Props) {
   const catalog = field.chainCatalog || [];
   const instances = field.chainInstances || [];
   const finalProto = field.chainFinalProto;
+  const addSelectId = useId();
 
   const catalogByProto = new Map<number, ChainCatalogEntry>(
     catalog.map((c) => [c.proto, c]),
   );
   const itemKeys = useListItemKeys(instances);
+
+  // SR live-region + focus restore after add/remove (sub-agent Round 7).
+  const [liveMsg, setLiveMsg] = useState<string>("");
+  const prevLengthRef = useRef(instances.length);
+  const addSelectRef = useRef<HTMLSelectElement | null>(null);
+  useEffect(() => {
+    const prev = prevLengthRef.current;
+    const next = instances.length;
+    if (next > prev) {
+      setLiveMsg(`Extension header ${next} added.`);
+    } else if (next < prev) {
+      setLiveMsg(`Extension header removed. ${next} attached.`);
+      addSelectRef.current?.focus();
+    }
+    prevLengthRef.current = next;
+  }, [instances.length]);
 
   const emit = (
     nextList: ChainInstance[],
@@ -125,14 +142,14 @@ export default function ChainEditor({ field, onChange }: Props) {
                   </span>
                   <div className="ml-auto flex items-center gap-1">
                     <IconBtn
-                      label="Move up"
+                      label={`Move header ${i} up`}
                       disabled={i === 0}
                       onClick={() => handleMoveUp(i)}
                     >
                       ↑
                     </IconBtn>
                     <IconBtn
-                      label="Move down"
+                      label={`Move header ${i} down`}
                       disabled={i === instances.length - 1}
                       onClick={() => handleMoveDown(i)}
                     >
@@ -163,9 +180,17 @@ export default function ChainEditor({ field, onChange }: Props) {
         )}
       </div>
 
+      <div role="status" aria-live="polite" className="sr-only">
+        {liveMsg}
+      </div>
+
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <label className="text-xs text-fg-muted">Add extension header:</label>
+        <label htmlFor={addSelectId} className="text-xs text-fg-muted">
+          Add extension header:
+        </label>
         <select
+          id={addSelectId}
+          ref={addSelectRef}
           value={addProto}
           onChange={(e) => setAddProto(e.target.value)}
           className="px-2 py-1 rounded border text-xs"
