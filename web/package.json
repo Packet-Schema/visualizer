@@ -3,17 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run build:presets && npm run generate:og-font && next dev",
+    "dev": "npm run build:presets && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
-    "generate:og-font": "tsx scripts/generate-og-font.ts",
-    "prebuild": "npm run build:presets && npm run generate:og-font",
+    "prebuild": "npm run build:presets",
     "build": "opennextjs-cloudflare build",
-    "build:next": "npm run generate:og-font && next build",
+    "build:next": "next build",
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run build:presets && eslint . --max-warnings 0",
-    "pretypecheck": "npm run build:presets && npm run generate:og-font",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:presets",
     "test": "vitest run",
@@ -25,18 +23,14 @@
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
-    "@fontsource/geist": "^5.2.9",
-    "@resvg/resvg-wasm": "^2.6.2",
     "lz-string": "^1.5.0",
     "next": "^15.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sharp": "^0.34.5",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
-    "@opennextjs/cloudflare": "^1.8.6",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",
@@ -54,7 +48,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.6",
-    "wrangler": "^4.94.0"
+    "@opennextjs/cloudflare": "^1.8.6",
+    "wrangler": "^4.16.1"
   },
   "browserslist": [
     "Chrome >= 100",
