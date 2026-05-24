@@ -25,7 +25,6 @@
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
-    "@fontsource/geist": "^5.2.9",
     "lz-string": "^1.5.0",
     "next": "^15.0.3",
     "react": "^19.0.0",
@@ -34,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@fontsource/geist": "^5.2.9",
     "@opennextjs/cloudflare": "^1.8.6",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.1",
