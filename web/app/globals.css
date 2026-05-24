@@ -79,21 +79,6 @@
   --pv-fast: 180ms;
   --pv-med: 220ms;
 
-  /* Diagram layout dimensions (synchronized with LAYOUT in diagram-export.ts) */
-  --diagram-ruler-height: 22px;
-  --diagram-ruler-gap: 6px;
-  --diagram-row-height: 56px;
-  --diagram-row-gap: 4px;
-  --diagram-row-padding-vertical: 4px;
-  --diagram-cell-padding-vertical: 6px;
-  --diagram-cell-padding-horizontal: 8px;
-  --diagram-gap: 4px;
-  --row-gap-2: 3px;
-  --cell-gap: 2px;
-  --row-border-radius: 8px;
-  --cell-border-radius: 10px;
-  --subfield-border-radius: 6px;
-
   color-scheme: light;
 }
 
