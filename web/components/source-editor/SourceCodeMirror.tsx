@@ -3,7 +3,12 @@
 import { useEffect, useRef } from "react";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { bracketMatching, indentOnInput } from "@codemirror/language";
+import {
+  HighlightStyle,
+  bracketMatching,
+  indentOnInput,
+  syntaxHighlighting,
+} from "@codemirror/language";
 import { yaml } from "@codemirror/lang-yaml";
 import { lintGutter, linter, type Diagnostic } from "@codemirror/lint";
 import { EditorState } from "@codemirror/state";
@@ -15,8 +20,47 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
+import { tags as t } from "@lezer/highlight";
 
 import { lintSource } from "@/lib/psml/source-format";
+
+/**
+ * PSML (YAML) 用の構文ハイライトスタイル。 既存テーマ (CSS 変数) と
+ * 噛み合わせるため `var(--category-*)` 系のトークンを直接当てている。
+ * `@lezer/highlight` の tag は lang-yaml が emit するものに対応:
+ *   - propertyName: マッピングのキー (`name:`, `body:` 等)
+ *   - string / atom: スカラー値
+ *   - number / bool: 数値・真偽値
+ *   - keyword: アンカー (`*`/`&`) や document marker (`---`)
+ *   - comment: コメント
+ *   - punctuation: `:` / `-` / `,` / `[` / `]` / `{` / `}`
+ */
+const psmlYamlHighlight = HighlightStyle.define([
+  {
+    tag: [t.propertyName, t.tagName],
+    color: "var(--accent, oklch(56% 0.16 250))",
+    fontWeight: "600",
+  },
+  { tag: t.string, color: "var(--field-emerald, oklch(52% 0.13 145))" },
+  {
+    tag: [t.number, t.bool, t.null, t.atom],
+    color: "var(--field-amber, oklch(55% 0.14 80))",
+  },
+  {
+    tag: [t.keyword, t.modifier, t.definitionKeyword],
+    color: "var(--field-violet, oklch(55% 0.16 295))",
+  },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment],
+    color: "var(--fg-faint, oklch(60% 0.02 260))",
+    fontStyle: "italic",
+  },
+  {
+    tag: [t.punctuation, t.separator, t.bracket],
+    color: "var(--fg-muted, oklch(45% 0.02 260))",
+  },
+  { tag: t.invalid, color: "var(--field-rose, #b00020)" },
+]);
 
 type Props = {
   id: string;
@@ -72,6 +116,10 @@ export default function SourceCodeMirror({
           indentOnInput(),
           bracketMatching(),
           yaml(),
+          // 構文ハイライト — yaml() は parser だけを供給するので、 token
+          // を色に紐づける HighlightStyle を `syntaxHighlighting` で組み
+          // 込まないと真っ黒のまま (Round 4 修正点)。
+          syntaxHighlighting(psmlYamlHighlight),
           lintGutter(),
           linter((view) => buildDiagnostics(view.state.doc.toString())),
           keymap.of([...defaultKeymap, ...historyKeymap]),
