@@ -44,11 +44,12 @@ export function StaticDiagram({
   const rowCount = rows.length;
   let scale = 1;
   if (targetHeight != null && rowCount > 0) {
+    const totalRows = isTruncated ? rowCount + 1 : rowCount;
     const naturalH =
       BASE_RULER_HEIGHT +
       BASE_RULER_GAP +
-      rowCount * (BASE_ROW_HEIGHT + BASE_ROW_PADDING_VERTICAL * 2) +
-      Math.max(rowCount - 1, 0) * BASE_ROW_GAP;
+      totalRows * (BASE_ROW_HEIGHT + BASE_ROW_PADDING_VERTICAL * 2) +
+      Math.max(totalRows - 1, 0) * BASE_ROW_GAP;
     scale = targetHeight / naturalH;
   }
 
