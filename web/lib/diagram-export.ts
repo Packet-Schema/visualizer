@@ -46,6 +46,15 @@ export type DiagramSvgOptions = {
   transparentBackground?: boolean;
 };
 
+export type CellVisual = {
+  fill: string;
+  stroke: string;
+  isDashed: boolean;
+  titleColor: string;
+  title: string;
+  subtitle: string;
+};
+
 const DEFAULT_THEME: DiagramExportTheme = {
   background: "#ffffff",
   rowEven: "#f5f7fb",
@@ -176,6 +185,38 @@ export function textForCell(cell: Cell): { title: string; subtitle: string } {
   return { title, subtitle };
 }
 
+export function cellVisual(
+  cell: Cell,
+  field: Field,
+  theme: DiagramExportTheme,
+): CellVisual {
+  const { title, subtitle } = textForCell(cell);
+  return {
+    fill: fieldFill(field, theme),
+    stroke: cell.encryptedParentId ? theme.accent : theme.fieldStroke,
+    isDashed: cell.encrypted === true,
+    titleColor: cell.isFirst ? theme.fieldLabel : theme.fieldContinuation,
+    title,
+    subtitle,
+  };
+}
+
+export function naturalDiagramHeight(rowCount: number): number {
+  return (
+    LAYOUT.rulerHeight +
+    LAYOUT.rulerGap +
+    rowCount * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2) +
+    Math.max(rowCount - 1, 0) * LAYOUT.rowGap
+  );
+}
+
+export function rowBandColor(
+  rowIndex: number,
+  theme: DiagramExportTheme,
+): string {
+  return rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd;
+}
+
 function renderSubfields(
   subCells: SubCell[] | undefined,
   cell: Cell,
@@ -266,12 +307,7 @@ export function buildDiagramSvg(
     packet.fields.map((field) => [field.id, field]),
   );
   const width = LAYOUT.padding * 2 + packet.rowBits * bitWidth;
-  const height =
-    LAYOUT.padding * 2 +
-    LAYOUT.rulerHeight +
-    LAYOUT.rulerGap +
-    rows.length * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2) +
-    Math.max(rows.length - 1, 0) * LAYOUT.rowGap;
+  const height = LAYOUT.padding * 2 + naturalDiagramHeight(rows.length);
 
   const ruler = Array.from({ length: packet.rowBits }, (_, bit) => {
     const x = LAYOUT.padding + bit * bitWidth;
@@ -287,9 +323,10 @@ export function buildDiagramSvg(
   const body = rows
     .map((cells, rowIndex) => {
       const y = rowY(rowIndex);
+      const bandColor = rowBandColor(rowIndex, theme);
       const band = transparentBackground
         ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2}" rx="8" fill="${xmlAttribute(rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd)}" />`;
+        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2}" rx="8" fill="${xmlAttribute(bandColor)}" />`;
       const renderedCells = cells
         .map((cell) => {
           const {
@@ -298,20 +335,17 @@ export function buildDiagramSvg(
             width: cw,
             height: ch,
           } = cellGeometry(cell, bitWidth);
-          const { title, subtitle } = textForCell(cell);
+          const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
+          const { fill, stroke, isDashed, titleColor, title, subtitle } =
+            cellVisual(cell, exportField, theme);
           const escapedTitle = xmlEscape(title);
           const escapedSubtitle = xmlEscape(subtitle);
-          const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
-          const fill = fieldFill(exportField, theme);
-          const dash = cell.encrypted ? ' stroke-dasharray="5 3"' : "";
-          const stroke = cell.encryptedParentId
-            ? theme.accent
-            : theme.fieldStroke;
+          const dash = isDashed ? ' stroke-dasharray="5 3"' : "";
           // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text x="${x + cw / 2}" y="${cy + 23}" text-anchor="middle" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + 23}" text-anchor="middle" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
             `<text x="${x + cw / 2}" y="${cy + 36}" text-anchor="middle" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(cell.subCells, cell, bitWidth, theme),
