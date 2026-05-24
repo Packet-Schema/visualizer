@@ -74,6 +74,14 @@
     background: var(--row-band-odd);
   }
 
+  /* ---- export dialog preview ---- */
+
+  .diagram-export-preview svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   /* ---- cell ---- */
 
   .cell.field-cell {

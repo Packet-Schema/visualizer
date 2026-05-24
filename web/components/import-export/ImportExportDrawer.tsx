@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  buildDiagramSvg,
+  downloadBlobFile,
+  downloadTextFile,
+  readDiagramTheme,
+  svgToPngBlob,
+  type DiagramThemeMode,
+} from "@/lib/diagram-export";
+import {
   EXPORTABLE_FORMATS,
   FORMATS,
   IMPORTABLE_FORMATS,
@@ -14,9 +22,13 @@ import {
   slugify,
 } from "@/lib/preset-file-io";
 import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
-import type { ControllerState, Packet } from "@/lib/psml/renderer";
+import type {
+  ControllerState,
+  Packet,
+  ResolvedLayout,
+} from "@/lib/psml/renderer";
 
-import { useDrawerFocusTrap } from "./hooks/useDrawerFocusTrap";
+import { useFocusTrap } from "@/components/common/hooks/useFocusTrap";
 import { useDropzone } from "./hooks/useDropzone";
 
 export type DrawerMode = "import" | "export";
@@ -29,6 +41,8 @@ type Props = {
   packet: Packet;
   /** Current controller state (used to seed Export). */
   controllers: ControllerState;
+  /** Current resolved layout (used to export the live diagram). */
+  layout: ResolvedLayout;
   onClose: () => void;
   onImport: (packet: Packet, controllers: ControllerState) => void;
 };
@@ -40,11 +54,29 @@ const FORMAT_LABELS: Record<FormatKey, string> = Object.fromEntries(
   FORMATS.map((f) => [f.id, f.label]),
 ) as Record<FormatKey, string>;
 
+function copyTextFallback(text: string): void {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.readOnly = true;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const ok = document.execCommand("copy");
+  textarea.remove();
+  if (!ok) {
+    throw new Error("Copy command was rejected by the browser.");
+  }
+}
+
 export default function ImportExportDrawer({
   open,
   mode,
   packet,
   controllers,
+  layout,
   onClose,
   onImport,
 }: Props) {
@@ -52,10 +84,58 @@ export default function ImportExportDrawer({
   const [text, setText] = useState<string>("");
   const [status, setStatus] = useState<Status>(null);
   const [currentMode, setCurrentMode] = useState<DrawerMode>(mode);
+  const [exportThemeMode, setExportThemeMode] =
+    useState<DiagramThemeMode>("follow-ui");
+  const [diagramWidth, setDiagramWidth] = useState<24 | 32 | 40>(32);
+  const [transparentBackground, setTransparentBackground] = useState(false);
+  const [pngScale, setPngScale] = useState(2);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [uiTheme, setUiTheme] = useState<"light" | "dark">(() => {
+    if (typeof document === "undefined") return "light";
+    return document.documentElement.getAttribute("data-theme") === "dark"
+      ? "dark"
+      : "light";
+  });
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  useDrawerFocusTrap({ open, containerRef: drawerRef, onClose });
+  const openRef = useRef(open);
+  const exportSessionRef = useRef(0);
+  useFocusTrap({ open, containerRef: drawerRef, onClose });
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const syncTheme = () => {
+      setUiTheme(root.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    };
+    syncTheme();
+
+    const observer = new MutationObserver((records) => {
+      if (records.some((record) => record.attributeName === "data-theme")) {
+        syncTheme();
+      }
+    });
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Re-open can happen after the drawer subtree stayed hidden for a while.
+  // Re-read the root theme when opening so Follow UI preview always picks up
+  // the latest mode even if no mutation was observed while closed.
+  useEffect(() => {
+    if (!open) return;
+    if (typeof document === "undefined") return;
+    const next =
+      document.documentElement.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "light";
+    setUiTheme(next);
+  }, [open]);
 
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
@@ -73,21 +153,37 @@ export default function ImportExportDrawer({
     setFormat((prev) => (allowed.includes(prev) ? prev : allowed[0]));
   }, []);
 
-  // Sync mode + reset transient state when the parent re-opens the drawer.
-  // Format normalisation lives in `snapFormatForMode` so we don't need a
-  // second effect to "snap" after the mode flip.
+  // Sync mode when the parent re-opens the drawer. Transient state
+  // (`text`, `status`) is reset *only* when the requested mode differs
+  // from the one we currently show — otherwise a quick detour through
+  // another modal and back would wipe
+  // text the user had typed or pasted.
   useEffect(() => {
-    if (!open) return;
-    setCurrentMode(mode);
-    snapFormatForMode(mode);
-    setText("");
-    setStatus(null);
+    openRef.current = open;
+    exportSessionRef.current += 1;
+    if (!open) {
+      setImageBusy(false);
+      return;
+    }
+    setCurrentMode((prev) => {
+      if (prev !== mode) {
+        snapFormatForMode(mode);
+        setText("");
+        setStatus(null);
+      }
+      return mode;
+    });
   }, [open, mode, snapFormatForMode]);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
     if (!open) return;
     if (currentMode !== "export") return;
+    if (format === "svg" || format === "png") {
+      setText("");
+      setStatus(null);
+      return;
+    }
     try {
       // Lower the runtime packet to PSML for the format hub. controllers is a
       // plain object keyed by controller id; PSML's PacketEnv is a Map.
@@ -166,6 +262,81 @@ export default function ImportExportDrawer({
     }
   }, [format, packet.name, text]);
 
+  const isImageExportMode =
+    currentMode === "export" && (format === "svg" || format === "png");
+
+  // Resolve "follow-ui" to the actual theme so hooks can use it directly
+  // without reading from the DOM at call time.
+  const resolvedThemeMode =
+    exportThemeMode === "follow-ui" ? uiTheme : exportThemeMode;
+
+  const previewSvg = useMemo(() => {
+    if (!isImageExportMode) return null;
+    return buildDiagramSvg(packet, layout, {
+      theme: readDiagramTheme(resolvedThemeMode),
+      bitWidth: diagramWidth,
+      transparentBackground,
+    });
+  }, [
+    diagramWidth,
+    resolvedThemeMode,
+    isImageExportMode,
+    layout,
+    packet,
+    transparentBackground,
+  ]);
+
+  const handleImageDownload = useCallback(async () => {
+    const exportSession = exportSessionRef.current;
+    try {
+      setImageBusy(true);
+      const svg = buildDiagramSvg(packet, layout, {
+        theme: readDiagramTheme(resolvedThemeMode),
+        bitWidth: diagramWidth,
+        transparentBackground,
+      });
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
+        return;
+      }
+      if (format === "svg") {
+        const filename = `${slugify(packet.name)}-diagram.svg`;
+        downloadTextFile(filename, "image/svg+xml", svg);
+        setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
+        return;
+      }
+      if (format !== "png") {
+        throw new Error(`Format "${format}" is not an image export format.`);
+      }
+      const blob = await svgToPngBlob(svg, pngScale);
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
+        return;
+      }
+      const filename = `${slugify(packet.name)}-diagram-${pngScale}x.png`;
+      downloadBlobFile(filename, blob);
+      setStatus({ msg: `Downloaded ${filename}.`, kind: "ok" });
+    } catch (e) {
+      if (!openRef.current || exportSessionRef.current !== exportSession) {
+        return;
+      }
+      setStatus({
+        msg: `Image export failed: ${(e as Error).message}`,
+        kind: "error",
+      });
+    } finally {
+      if (openRef.current && exportSessionRef.current === exportSession) {
+        setImageBusy(false);
+      }
+    }
+  }, [
+    diagramWidth,
+    resolvedThemeMode,
+    format,
+    layout,
+    packet,
+    pngScale,
+    transparentBackground,
+  ]);
+
   // Shared file ingestion used by both the file picker and DnD. Reads the
   // file as text, drops it into the textarea, and snaps the format selector
   // to whatever the extension implies.
@@ -205,6 +376,35 @@ export default function ImportExportDrawer({
 
   const handleCopy = useCallback(async () => {
     try {
+      if (isImageExportMode) {
+        if (!previewSvg) {
+          throw new Error("Image preview is not available.");
+        }
+        if (format === "svg") {
+          let copied = false;
+          if (navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(previewSvg);
+              copied = true;
+            } catch {
+              // fall through to textarea fallback below
+            }
+          }
+          if (!copied) {
+            copyTextFallback(previewSvg);
+          }
+        } else {
+          if (!navigator.clipboard?.write) {
+            throw new Error("Clipboard image write was not available.");
+          }
+          const png = await svgToPngBlob(previewSvg, pngScale);
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": png }),
+          ]);
+        }
+        setStatus({ msg: "Copied to clipboard.", kind: "ok" });
+        return;
+      }
       // Try the async Clipboard API first, then fall through to the
       // legacy execCommand path if the API is missing *or* rejected
       // (Permissions-Policy / NotAllowedError / non-secure context).
@@ -238,7 +438,7 @@ export default function ImportExportDrawer({
     } catch (e) {
       setStatus({ msg: `Copy failed: ${(e as Error).message}`, kind: "error" });
     }
-  }, [text]);
+  }, [format, isImageExportMode, pngScale, previewSvg, text]);
 
   // Slide-and-fade entry is handled by CSS (`@starting-style` on the
   // `.pv-drawer-backdrop` / `.pv-drawer` classes in styles/drawer.css).
@@ -263,6 +463,7 @@ export default function ImportExportDrawer({
         .pv-drawer { width: 100%; }
         @media (min-width: 900px) {
           .pv-drawer { width: 40%; min-width: 480px; }
+          .pv-drawer-image { width: 56%; min-width: 640px; }
         }
       `}</style>
       <aside
@@ -270,7 +471,7 @@ export default function ImportExportDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="pv-import-export-title"
-        className="pv-drawer h-full max-w-full flex flex-col shadow-2xl"
+        className={`pv-drawer h-full max-w-full flex flex-col shadow-2xl ${isImageExportMode ? "pv-drawer-image" : ""}`}
         style={{
           background: "var(--bg-elevated)",
           color: "var(--fg)",
@@ -280,6 +481,13 @@ export default function ImportExportDrawer({
         <DrawerInner
           currentMode={currentMode}
           format={format}
+          exportThemeMode={exportThemeMode}
+          diagramWidth={diagramWidth}
+          transparentBackground={transparentBackground}
+          pngScale={pngScale}
+          imageBusy={imageBusy}
+          previewSvg={previewSvg}
+          isImageExportMode={isImageExportMode}
           text={text}
           status={status}
           availableFormats={availableFormats}
@@ -287,10 +495,15 @@ export default function ImportExportDrawer({
           fileInputRef={fileInputRef}
           onModeChange={handleModeChange}
           onFormatChange={setFormat}
+          onExportThemeModeChange={setExportThemeMode}
+          onDiagramWidthChange={setDiagramWidth}
+          onTransparentBackgroundChange={setTransparentBackground}
+          onPngScaleChange={setPngScale}
           onTextChange={setText}
           onApply={handleApply}
           onCopy={handleCopy}
           onDownload={handleDownload}
+          onImageDownload={handleImageDownload}
           onUploadClick={handleUploadClick}
           onFileInputChange={handleFileInputChange}
           onFileDropped={handleFileSelected}
@@ -304,6 +517,13 @@ export default function ImportExportDrawer({
 type InnerProps = {
   currentMode: DrawerMode;
   format: FormatKey;
+  exportThemeMode: DiagramThemeMode;
+  diagramWidth: 24 | 32 | 40;
+  transparentBackground: boolean;
+  pngScale: number;
+  imageBusy: boolean;
+  previewSvg: string | null;
+  isImageExportMode: boolean;
   text: string;
   status: Status;
   availableFormats: FormatKey[];
@@ -311,10 +531,15 @@ type InnerProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onModeChange: (mode: DrawerMode) => void;
   onFormatChange: (fmt: FormatKey) => void;
+  onExportThemeModeChange: (mode: DiagramThemeMode) => void;
+  onDiagramWidthChange: (width: 24 | 32 | 40) => void;
+  onTransparentBackgroundChange: (value: boolean) => void;
+  onPngScaleChange: (value: number) => void;
   onTextChange: (txt: string) => void;
   onApply: () => void;
   onCopy: () => void;
   onDownload: () => void;
+  onImageDownload: () => Promise<void>;
   onUploadClick: () => void;
   onFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onFileDropped: (file: File) => void;
@@ -324,6 +549,13 @@ type InnerProps = {
 function DrawerInner({
   currentMode,
   format,
+  exportThemeMode,
+  diagramWidth,
+  transparentBackground,
+  pngScale,
+  imageBusy,
+  previewSvg,
+  isImageExportMode,
   text,
   status,
   availableFormats,
@@ -331,10 +563,15 @@ function DrawerInner({
   fileInputRef,
   onModeChange,
   onFormatChange,
+  onExportThemeModeChange,
+  onDiagramWidthChange,
+  onTransparentBackgroundChange,
+  onPngScaleChange,
   onTextChange,
   onApply,
   onCopy,
   onDownload,
+  onImageDownload,
   onUploadClick,
   onFileInputChange,
   onFileDropped,
@@ -344,6 +581,24 @@ function DrawerInner({
     enabled: currentMode === "import",
     onFile: onFileDropped,
   });
+  const previewSize = useMemo(() => {
+    if (!previewSvg) return null;
+    const svg = new DOMParser().parseFromString(
+      previewSvg,
+      "image/svg+xml",
+    ).documentElement;
+    const width = Number(svg.getAttribute("width"));
+    const height = Number(svg.getAttribute("height"));
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+    return { width, height };
+  }, [previewSvg]);
+  const pngWidthOptions = useMemo(() => {
+    if (!previewSize) return [];
+    return [1, 2, 3, 4, 5, 6, 7, 8].map((scale) => ({
+      scale,
+      label: `${previewSize.width * scale}px x ${previewSize.height * scale}px`,
+    }));
+  }, [previewSize]);
   return (
     <>
       <header className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -432,6 +687,97 @@ function DrawerInner({
             />
           </div>
         ) : null}
+        {isImageExportMode ? (
+          <div
+            className="rounded-md border p-3 text-sm grid gap-2"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <label className="flex items-center justify-between gap-3">
+              <span>Theme</span>
+              <select
+                value={exportThemeMode}
+                onChange={(e) =>
+                  onExportThemeModeChange(e.target.value as DiagramThemeMode)
+                }
+                className="w-28 text-sm px-2 py-1 rounded-md border"
+                style={{
+                  borderColor: "var(--border-strong)",
+                  background: "var(--bg-elevated)",
+                  color: "var(--fg)",
+                }}
+              >
+                <option value="follow-ui">Follow UI</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between gap-3">
+              <span>Bit width</span>
+              <select
+                value={String(diagramWidth)}
+                onChange={(e) =>
+                  onDiagramWidthChange(Number(e.target.value) as 24 | 32 | 40)
+                }
+                className="text-sm px-2 py-1 rounded-md border"
+                style={{
+                  borderColor: "var(--border-strong)",
+                  background: "var(--bg-elevated)",
+                  color: "var(--fg)",
+                }}
+              >
+                <option value="24">24 px</option>
+                <option value="32">32 px</option>
+                <option value="40">40 px</option>
+              </select>
+            </label>
+            <div className="flex items-center justify-between gap-3">
+              <span>Transparent background</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={transparentBackground}
+                onClick={() =>
+                  onTransparentBackgroundChange(!transparentBackground)
+                }
+                className="relative h-6 w-11 rounded-full border transition-colors"
+                style={{
+                  background: transparentBackground
+                    ? "var(--accent)"
+                    : "var(--bg-subtle)",
+                  borderColor: transparentBackground
+                    ? "var(--accent)"
+                    : "var(--border-strong)",
+                }}
+              >
+                <span
+                  className="absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white transition-transform"
+                  style={{ left: transparentBackground ? "22px" : "2px" }}
+                />
+              </button>
+            </div>
+            {format === "png" ? (
+              <label className="flex items-center justify-between gap-3">
+                <span>PNG size</span>
+                <select
+                  value={pngScale}
+                  onChange={(e) => onPngScaleChange(Number(e.target.value))}
+                  className="w-44 text-sm px-2 py-1 rounded-md border"
+                  style={{
+                    borderColor: "var(--border-strong)",
+                    background: "var(--bg-elevated)",
+                    color: "var(--fg)",
+                  }}
+                >
+                  {pngWidthOptions.map((option) => (
+                    <option key={option.scale} value={option.scale}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
         <div
           className={`flex-1 min-h-[200px] flex rounded-md ${dragActive ? "drawer-drop-active" : ""}`}
           onDragOver={dropHandlers?.onDragOver}
@@ -442,23 +788,34 @@ function DrawerInner({
             outlineOffset: "-2px",
           }}
         >
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => onTextChange(e.target.value)}
-            spellCheck={false}
-            placeholder={
-              currentMode === "import"
-                ? "Paste packet definition here, then click Apply."
-                : ""
-            }
-            className="flex-1 min-h-[200px] resize-none text-xs font-mono rounded-md border p-2"
-            style={{
-              background: "var(--bg-subtle)",
-              color: "var(--fg)",
-              borderColor: "var(--border)",
-            }}
-          />
+          {isImageExportMode ? (
+            <div
+              className="diagram-export-preview w-full min-h-[200px] rounded-md border p-2 overflow-auto"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--bg-subtle)",
+              }}
+              dangerouslySetInnerHTML={{ __html: previewSvg ?? "" }}
+            />
+          ) : (
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => onTextChange(e.target.value)}
+              spellCheck={false}
+              placeholder={
+                currentMode === "import"
+                  ? "Paste packet definition here, then click Apply."
+                  : ""
+              }
+              className="flex-1 min-h-[200px] resize-none text-xs font-mono rounded-md border p-2"
+              style={{
+                background: "var(--bg-subtle)",
+                color: "var(--fg)",
+                borderColor: "var(--border)",
+              }}
+            />
+          )}
         </div>
         <div
           className={`text-xs min-h-[1.25rem] ${
@@ -498,6 +855,30 @@ function DrawerInner({
           >
             Apply
           </button>
+        ) : isImageExportMode ? (
+          <>
+            <button
+              type="button"
+              onClick={onCopy}
+              className="text-sm px-3 py-1.5 rounded-md border font-semibold"
+              style={{
+                background: "transparent",
+                color: "var(--fg)",
+                borderColor: "var(--border-strong)",
+              }}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={() => void onImageDownload()}
+              disabled={imageBusy}
+              className="text-sm px-3 py-1.5 rounded-md border font-semibold bg-accent text-accent-fg border-accent"
+              style={{ opacity: imageBusy ? 0.7 : 1 }}
+            >
+              {imageBusy ? "Exporting..." : "Download"}
+            </button>
+          </>
         ) : (
           <>
             <button

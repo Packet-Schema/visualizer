@@ -1,8 +1,8 @@
 // PSML 0.3 — PSML → renderer adapter (top-level).
 //
 // Lowers a PSML Packet to the renderer Packet shape consumed by React
-// components (DetailPanel, ControlsPanel, TlvEditor, ChainEditor,
-// DependencyOverlay, …). The renderer model is intentionally lossier than
+// components (DetailPanel, ControlsPanel, TlvEditor, ChainEditor, …).
+// The renderer model is intentionally lossier than
 // PSML: Repeat<Switch> TLV catalogs are flattened to a `tlv` extension on a
 // single variable-length placeholder Field, subfield Groups collapse to a
 // `subfields[]` array, etc. The PSML Packet is still the canonical source —

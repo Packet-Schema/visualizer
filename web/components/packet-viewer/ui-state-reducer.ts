@@ -35,7 +35,6 @@ export type UiState = {
   /** True once the user has explicitly toggled hex visibility — used to
    *  stop the wide-viewport auto-default from clobbering their pick. */
   hexStripUserSet: boolean;
-  dependenciesVisible: boolean;
   viewMode: ViewMode;
   editMode: boolean;
   showJsonPane: boolean;
@@ -50,7 +49,6 @@ export const initialUiState: UiState = {
   tourOpen: false,
   hexStripVisible: false,
   hexStripUserSet: false,
-  dependenciesVisible: false,
   viewMode: "wire",
   editMode: false,
   showJsonPane: false,
@@ -67,7 +65,6 @@ export type UiAction =
   | { type: "set-tour-open"; open: boolean }
   | { type: "set-hex-strip-visible"; visible: boolean; userInitiated: boolean }
   | { type: "toggle-hex-strip" }
-  | { type: "toggle-dependencies" }
   | { type: "toggle-view-mode" }
   | { type: "set-edit-mode"; editing: boolean }
   | { type: "toggle-edit-mode" }
@@ -94,7 +91,10 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "set-popover-anchor":
       return { ...state, popoverAnchor: action.anchor };
     case "open-drawer":
-      return { ...state, drawerMode: action.mode };
+      return {
+        ...state,
+        drawerMode: action.mode,
+      };
     case "close-drawer":
       return { ...state, drawerMode: null };
     case "set-tour-open":
@@ -111,8 +111,6 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         hexStripVisible: !state.hexStripVisible,
         hexStripUserSet: true,
       };
-    case "toggle-dependencies":
-      return { ...state, dependenciesVisible: !state.dependenciesVisible };
     case "toggle-view-mode":
       return {
         ...state,
@@ -139,6 +137,10 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         popoverAnchor: null,
         editMode: false,
         showJsonPane: false,
+        // Close any modal-class surface so it doesn't keep pointing at
+        // the previous preset's packet/layout after the swap.
+        drawerMode: null,
+        showSaveDialog: false,
         // hexStripUserSet intentionally preserved so the user's hex
         // visibility choice survives a preset change.
       };

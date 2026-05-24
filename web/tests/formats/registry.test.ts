@@ -30,13 +30,17 @@ describe("format registry shape", () => {
       FORMATS.filter((f) => !!f.parse).map((f) => f.id),
     );
     expect(EXPORTABLE_FORMATS).toEqual(
-      FORMATS.filter((f) => !!f.render).map((f) => f.id),
+      FORMATS.filter((f) => f.exportable === true || !!f.render).map(
+        (f) => f.id,
+      ),
     );
     // AAD is import-only, rfc-ascii is export-only.
     expect(IMPORTABLE_FORMATS).toContain("aug-ascii");
     expect(EXPORTABLE_FORMATS).not.toContain("aug-ascii");
     expect(EXPORTABLE_FORMATS).toContain("rfc-ascii");
     expect(IMPORTABLE_FORMATS).not.toContain("rfc-ascii");
+    expect(EXPORTABLE_FORMATS).toContain("svg");
+    expect(EXPORTABLE_FORMATS).toContain("png");
   });
 
   it("looks up adapters by id and throws on unknown", () => {
@@ -108,5 +112,12 @@ A Frame is formatted as follows:
     const result = getFormat("aug-ascii").parse!(aad);
     expect(result.packet.body.length).toBe(2);
     expect(Array.isArray(result.warnings)).toBe(true);
+  });
+
+  it("svg/png are export-only selector entries without text renderers", () => {
+    expect(getFormat("svg").render).toBeUndefined();
+    expect(getFormat("png").render).toBeUndefined();
+    expect(getFormat("svg").exportable).toBe(true);
+    expect(getFormat("png").exportable).toBe(true);
   });
 });

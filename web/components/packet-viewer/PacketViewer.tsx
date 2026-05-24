@@ -56,7 +56,6 @@ import type {
   TlvInstance,
 } from "@/lib/psml/renderer";
 import type { Expr, PsmlPacket } from "@/lib/psml/types";
-import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
@@ -267,10 +266,17 @@ export default function PacketViewer() {
     drawerMode,
     tourOpen,
     hexStripVisible,
-    dependenciesVisible,
     viewMode,
     shareStatus,
   } = ui;
+  // Export must follow the same source of truth as the live diagram. While the
+  // studio is open, layout is derived from in-progress PSML edits rather than
+  // the last selected preset/import, so lower that edited packet for consumers
+  // that still need renderer metadata such as `name` and `rowBits`.
+  const exportPacket = useMemo(
+    () => (editMode ? psmlToRenderer(studioState.packet) : packet),
+    [editMode, packet, studioState.packet],
+  );
   const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
   const [urlHydrated, setUrlHydrated] = useState(false);
 
@@ -1041,7 +1047,6 @@ export default function PacketViewer() {
           importedPackets={importedPackets}
           customPresets={customPresets}
           hexStripVisible={hexStripVisible}
-          dependenciesVisible={dependenciesVisible}
           editMode={editMode}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
@@ -1056,8 +1061,6 @@ export default function PacketViewer() {
               uiDispatch({ type: "open-drawer", mode: "export" }),
             onShare: handleShare,
             onToggleHexStrip: () => uiDispatch({ type: "toggle-hex-strip" }),
-            onToggleDependencies: () =>
-              uiDispatch({ type: "toggle-dependencies" }),
             onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
             onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
@@ -1114,11 +1117,6 @@ export default function PacketViewer() {
                 onByteHover={handleFieldHover}
               />
             ) : null}
-            <DependencyOverlay
-              packet={packet}
-              containerRef={diagramRef}
-              visible={dependenciesVisible}
-            />
           </div>
           <Legend categories={categories} />
         </div>
@@ -1194,8 +1192,9 @@ export default function PacketViewer() {
       <ImportExportDrawer
         open={drawerMode !== null}
         mode={drawerMode ?? "export"}
-        packet={packet}
+        packet={exportPacket}
         controllers={controllers}
+        layout={layout}
         onClose={() => uiDispatch({ type: "close-drawer" })}
         onImport={handleImport}
       />
