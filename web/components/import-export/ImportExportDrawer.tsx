@@ -90,30 +90,12 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
-  const [themeChangeId, setThemeChangeId] = useState(0);
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const openRef = useRef(open);
   const exportSessionRef = useRef(0);
   useFocusTrap({ open, containerRef: drawerRef, onClose });
-
-  useEffect(() => {
-    if (exportThemeMode !== "follow-ui") return;
-    if (typeof document === "undefined") return;
-
-    const root = document.documentElement;
-    const observer = new MutationObserver((records) => {
-      if (records.some((record) => record.attributeName === "data-theme")) {
-        setThemeChangeId((prev) => prev + 1);
-      }
-    });
-    observer.observe(root, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-    return () => observer.disconnect();
-  }, [exportThemeMode]);
 
   // Format availability per mode — derived from each adapter's parse/render
   // presence so a new entry in `FORMATS` shows up automatically.
@@ -256,7 +238,6 @@ export default function ImportExportDrawer({
     isImageExportMode,
     layout,
     packet,
-    themeChangeId,
     transparentBackground,
   ]);
 
@@ -308,7 +289,6 @@ export default function ImportExportDrawer({
     layout,
     packet,
     pngScale,
-    themeChangeId,
     transparentBackground,
   ]);
 
