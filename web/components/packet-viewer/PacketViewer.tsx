@@ -544,6 +544,17 @@ export default function PacketViewer() {
     [packet, replaceActivePacket],
   );
 
+  // Memoise the studio-packet-with-mirror-state merge so it isn't
+  // recomputed on every render. Without the memo, every controller drag
+  // walks the whole PSML body and JsonPane re-stringifies its 200+ leaves
+  // (sub-agent Round 7 MEDIUM). Save-As and share both reuse this value.
+  // Declared above `handleSaveAsPreset` / `buildCurrentShareUrl` so those
+  // callbacks can reference it in their dep arrays without a TDZ.
+  const mergedStudioPacket: PsmlPacket = useMemo(
+    () => mergeInstancesIntoPsml(studioState.packet, packet),
+    [studioState.packet, packet],
+  );
+
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
   // key namespace keeps user-saved presets separate from built-ins and
   // imports so the picker can group them cleanly.
@@ -581,7 +592,7 @@ export default function PacketViewer() {
       uiDispatch({ type: "close-save-dialog" });
       uiDispatch({ type: "set-edit-mode", editing: false });
     },
-    [studioState.packet, packet],
+    [mergedStudioPacket],
   );
 
   // Drop in-progress edits and revert the reducer to the active preset.
@@ -771,10 +782,10 @@ export default function PacketViewer() {
     controllers,
     customPresets,
     editMode,
+    mergedStudioPacket,
     packet,
     packetKey,
     renderedPresets,
-    studioState.packet,
   ]);
 
   useEffect(() => {
@@ -944,15 +955,6 @@ export default function PacketViewer() {
     // by key keeps useMemo from re-running on irrelevant slider drags.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
-
-  // Memoise the studio-packet-with-mirror-state merge so it isn't
-  // recomputed on every render. Without the memo, every controller drag
-  // walks the whole PSML body and JsonPane re-stringifies its 200+ leaves
-  // (sub-agent Round 7 MEDIUM). Save-As and share both reuse this value.
-  const mergedStudioPacket: PsmlPacket = useMemo(
-    () => mergeInstancesIntoPsml(studioState.packet, packet),
-    [studioState.packet, packet],
-  );
 
   // Narrow the `customPresets` dependency to only the active key —
   // editing another preset in the same map shouldn't re-walk the active
