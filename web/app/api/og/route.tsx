@@ -44,6 +44,9 @@ const FALLBACK_TITLE_FONT_SIZE = 120;
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
 
+const MAX_CONTROLLER_VALUE = 100;
+const MAX_ROW_BITS = 256;
+
 function buildShareQuery(params: URLSearchParams): string {
   const out = new URLSearchParams();
   for (const key of ["preset", "psml"]) {
@@ -55,6 +58,19 @@ function buildShareQuery(params: URLSearchParams): string {
     out.append(key, value);
   }
   return out.toString();
+}
+
+function sanitizeControllers(
+  controllers: Record<string, unknown>,
+): Record<string, number> {
+  const sanitized: Record<string, number> = {};
+  for (const [key, value] of Object.entries(controllers)) {
+    const num = Number(value);
+    if (Number.isInteger(num)) {
+      sanitized[key] = Math.max(0, Math.min(num, MAX_CONTROLLER_VALUE));
+    }
+  }
+  return sanitized;
 }
 
 export async function GET(request: NextRequest) {
@@ -115,11 +131,47 @@ export async function GET(request: NextRequest) {
           ? (PRESETS[parsed.presetKey] ?? fallbackPsml)
           : fallbackPsml;
 
+    if (psml.rowBits > MAX_ROW_BITS) {
+      return new ImageResponse(
+        <div
+          style={{
+            width: OG_WIDTH,
+            height: OG_HEIGHT,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: FALLBACK_GRADIENT,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 20,
+              fontSize: FALLBACK_TITLE_FONT_SIZE,
+              fontWeight: 600,
+              color: FALLBACK_TITLE_COLOR,
+              fontFamily: FONT_NAME,
+              letterSpacing: FALLBACK_LETTER_SPACING,
+              lineHeight: 1,
+            }}
+          >
+            <div>Packet</div>
+            <div>Visualizer</div>
+          </div>
+        </div>,
+        createOGImageResponseOptions(),
+      );
+    }
+
     const packet = psmlToRenderer(psml);
     const env = initialEnv(psml);
+    const sanitized = sanitizeControllers(parsed.controllers ?? {});
     const mergedControllers = {
       ...initialState(packet),
-      ...(parsed.controllers ?? {}),
+      ...sanitized,
     };
     for (const [key, value] of Object.entries(mergedControllers)) {
       env.set(key, value);
