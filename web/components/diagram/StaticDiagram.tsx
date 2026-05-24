@@ -176,7 +176,7 @@ export function StaticDiagram({
                       style={{
                         fontSize: smallFontSize,
                         color: theme.fieldSublabel,
-                        marginTop: 2,
+                        marginTop: LAYOUT.cellSubtitleMarginTop,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         maxWidth: "100%",
