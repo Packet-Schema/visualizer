@@ -40,6 +40,8 @@ export function StaticDiagram({
   if (targetHeight != null && rowCount > 0) {
     const totalRows = isTruncated ? rowCount + 1 : rowCount;
     const naturalH = naturalDiagramHeight(totalRows);
+    // Scale up to fit targetHeight, but cap at 2x to avoid over-enlargement in SSR contexts
+    // (OG images with small content should not be upscaled beyond readability limits)
     scale = Math.min(targetHeight / naturalH, 2.0);
   }
 

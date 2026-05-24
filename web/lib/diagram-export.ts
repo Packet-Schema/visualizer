@@ -14,11 +14,7 @@
 //   href>`, or `<foreignObject>` to the SVG, audit cross-origin handling
 //   here before extending the contract.
 
-import {
-  CATEGORY_TO_TOKEN,
-  FIELD_PALETTE_TOKENS,
-  FIELD_FILL_OPACITY,
-} from "./constants";
+import { CATEGORY_TO_TOKEN, FIELD_FILL_OPACITY } from "./constants";
 import type {
   Cell,
   Field,

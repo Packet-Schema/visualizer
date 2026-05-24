@@ -422,24 +422,6 @@ describe("diagram export helpers", () => {
     });
   });
 
-  function installThemeStyles(): void {
-    const style = document.createElement("style");
-    style.dataset.testTheme = "true";
-    style.textContent = `
-      :root {
-        --bg-elevated: rgb(250, 250, 250);
-        --accent: rgb(7, 8, 9);
-        --field-blue: rgb(4, 5, 6);
-        --custom-fill: rgb(240, 240, 240);
-      }
-      [data-theme="dark"] {
-        --bg-elevated: rgb(15, 15, 15);
-        --accent: rgb(20, 21, 22);
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
   it("returns explicit light/dark theme independent from current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 

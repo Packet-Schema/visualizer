@@ -5,7 +5,6 @@ import {
   LIGHT_DIAGRAM_THEME,
   DARK_DIAGRAM_THEME,
   THEME_MOTION,
-  type DiagramTheme,
 } from "./colors";
 
 // Re-export color constants for backward compatibility
