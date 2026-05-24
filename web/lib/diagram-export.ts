@@ -14,7 +14,7 @@
 //   href>`, or `<foreignObject>` to the SVG, audit cross-origin handling
 //   here before extending the contract.
 
-import { CATEGORY_TO_TOKEN, FIELD_PALETTE_TOKENS } from "./constants";
+import { CATEGORY_TO_TOKEN, FIELD_PALETTE_TOKENS, FIELD_FILL_OPACITY } from "./constants";
 import type {
   Cell,
   Field,
@@ -53,30 +53,6 @@ export type CellVisual = {
   titleColor: string;
   title: string;
   subtitle: string;
-};
-
-const DEFAULT_THEME: DiagramExportTheme = {
-  background: "#ffffff",
-  rowEven: "#f5f7fb",
-  rowOdd: "#fbfcfe",
-  rulerTick: "#667085",
-  rulerLabel: "#475467",
-  accent: "#2563eb",
-  fieldStroke: "#344054",
-  fieldLabel: "#101828",
-  fieldSublabel: "#344054",
-  fieldContinuation: "#667085",
-  fieldPalette: {
-    blue: "#7fb7ff",
-    indigo: "#a8a6ff",
-    violet: "#d1a5ff",
-    teal: "#8ed7d1",
-    green: "#a8df9f",
-    amber: "#f3d77e",
-    orange: "#f7b27a",
-    rose: "#f4a1ae",
-    slate: "#c3c8d3",
-  },
 };
 
 const LAYOUT = {
@@ -376,7 +352,7 @@ export function buildDiagramSvg(
           // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
+            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${FIELD_FILL_OPACITY}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
