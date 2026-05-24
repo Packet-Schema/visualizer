@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const layout = resolveLayout(psml, { env });
+    const layout = resolveLayout(psml, { env, viewMode: "semantic" });
 
     const availableW = OG_WIDTH - OG_MARGIN * 2;
     const availableH = OG_HEIGHT - OG_MARGIN * 2;
