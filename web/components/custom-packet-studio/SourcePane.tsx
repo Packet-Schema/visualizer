@@ -8,7 +8,6 @@ import {
   decodeSource,
   encodeSource,
   SourceParseError,
-  type SourceFormat,
 } from "@/lib/psml/source-format";
 import type { PsmlPacket } from "@/lib/psml/types";
 
@@ -22,7 +21,7 @@ type ParseError = { message: string; line: number | null };
 const DEBOUNCE_MS = 200;
 
 /**
- * Custom Packet Studio の "source" ビュー — PSML を YAML / JSON で直編集する
+ * Custom Packet Studio の "source" ビュー — PSML を YAML で直編集する
  * 単純な textarea。 issue #87 の「Markdown エディタみたいに PSML を書ける」
  * 動線を「上部の diagram を live preview として共有」 の形で実装する。
  *
@@ -33,27 +32,25 @@ const DEBOUNCE_MS = 200;
  *   ここで mini preview を出すと「同じ diagram が 2 個並ぶ」 視覚的混乱が
  *   起きる。 ユーザーは textarea を見ながら同時に上の diagram を見れば
  *   十分。
+ * - **format は YAML 一択**。 PSML preset と同じ書き味で書ける YAML を
+ *   canonical な authoring 形式にする。 wire JSON は import/export drawer
+ *   経由で扱うので、 ここでは混入させない。
  * - studio reducer 経由で `replace-packet` を dispatch する。 dirty=true
- *   の間は upstream sync をスキップして、 ユーザーの type 中に textarea が
- *   勝手に上書きされる事故を防ぐ (旧 JsonPane と同じポリシー)。
- * - format toggle は dirty=true なら pending edit を即座に確定 dispatch
- *   してから new format で再 encode する (Round 1 P0 #1 対策)。
+ *   の間は upstream sync をスキップして、 ユーザーの type 中に textarea
+ *   が勝手に上書きされる事故を防ぐ (旧 JsonPane と同じポリシー)。
  *
  * a11y
  * ----
- * - format toggle は radiogroup として実装し、 ArrowLeft / ArrowRight の
- *   keyboard navigation を備える (WAI-ARIA APG 準拠)。
- * - mount 時に textarea へ自動 focus。
+ * - mount 時に textarea へ自動 focus、 すぐ書き始められる状態にする。
  */
 export default function SourcePane({ packet, dispatch }: Props) {
-  const [format, setFormat] = useState<SourceFormat>("yaml");
-  const upstreamText = encodeSource(packet, format);
+  const upstreamText = encodeSource(packet);
   const [text, setText] = useState<string>(upstreamText);
   const [dirty, setDirty] = useState(false);
   const [parseError, setParseError] = useState<ParseError | null>(null);
 
   // dispatch ref — 親が memoize していない実装でも debounce が再 attach
-  // されないように、 useEffect の依存性から外す (Round 1 P0 #3 対策)。
+  // されないように、 useEffect の依存性から外す。
   const dispatchRef = useRef(dispatch);
   useEffect(() => {
     dispatchRef.current = dispatch;
@@ -73,7 +70,7 @@ export default function SourcePane({ packet, dispatch }: Props) {
     if (!dirty) return;
     const handle = window.setTimeout(() => {
       try {
-        const next = decodeSource(text, format);
+        const next = decodeSource(text);
         setParseError(null);
         dispatchRef.current({ type: "replace-packet", packet: next });
         setDirty(false);
@@ -89,37 +86,7 @@ export default function SourcePane({ packet, dispatch }: Props) {
       }
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [text, dirty, format]);
-
-  /**
-   * format toggle — dirty=true (ユーザー編集中) の場合は pending を即座に
-   * 確定 dispatch してから text を新 format で再 encode する。 こうすると
-   * 「古い text が古い format で stale decode される」 race も「format
-   * toggle で未保存編集が消える」 race も両方起きない。
-   */
-  const handleFormatChange = useCallback(
-    (next: SourceFormat) => {
-      if (next === format) return;
-      if (parseError) {
-        // parse 失敗中は text 据え置きで format だけ切替。 未確定の編集を
-        // 残してユーザーが直せる状態を維持する。
-        setFormat(next);
-        return;
-      }
-      const source = dirty ? safeDecode(text, format) : packet;
-      if (!source) {
-        setFormat(next);
-        return;
-      }
-      if (dirty) {
-        dispatchRef.current({ type: "replace-packet", packet: source });
-      }
-      setText(encodeSource(source, next));
-      setDirty(false);
-      setFormat(next);
-    },
-    [format, parseError, dirty, text, packet],
-  );
+  }, [text, dirty]);
 
   const handleTextChange = useCallback((next: string) => {
     setText(next);
@@ -128,42 +95,13 @@ export default function SourcePane({ packet, dispatch }: Props) {
 
   /**
    * Discard — 未保存編集を捨てて upstream packet (= studio reducer の最新)
-   * を再 encode した text に巻き戻す。 dirty / parseError 状態を解除する
-   * だけで pane 自体は閉じない。
+   * を再 encode した text に巻き戻す。 dirty / parseError 状態を解除する。
    */
   const handleDiscardLocal = useCallback(() => {
-    setText(encodeSource(packet, format));
+    setText(encodeSource(packet));
     setDirty(false);
     setParseError(null);
-  }, [packet, format]);
-
-  // a11y: ArrowLeft / ArrowRight で format toggle の隣項目に focus を移し、
-  // Space / Enter で選択する。 role="radio" の WAI-ARIA APG に従う。
-  const radioRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const handleRadioKeyDown = useCallback(
-    (
-      e: React.KeyboardEvent<HTMLButtonElement>,
-      idx: number,
-      value: SourceFormat,
-    ) => {
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        const dir = e.key === "ArrowLeft" ? -1 : 1;
-        const total = radioRefs.current.length;
-        const nextIdx = (idx + dir + total) % total;
-        const target = radioRefs.current[nextIdx];
-        target?.focus();
-        const formats: SourceFormat[] = ["yaml", "json"];
-        handleFormatChange(formats[nextIdx]);
-        return;
-      }
-      if (e.key === " " || e.key === "Enter") {
-        e.preventDefault();
-        handleFormatChange(value);
-      }
-    },
-    [handleFormatChange],
-  );
+  }, [packet]);
 
   // mount 時に textarea にカーソルを置く。 GUI ↔ Source 切替直後に
   // すぐ書き始められる。
@@ -179,59 +117,28 @@ export default function SourcePane({ packet, dispatch }: Props) {
     <section aria-label="PSML source editor" className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-fg-muted uppercase tracking-wider font-bold">
-          PSML source
+          PSML source (YAML)
         </span>
-        <div className="flex items-center gap-2">
-          <div
-            role="radiogroup"
-            aria-label="Source format"
-            className="inline-flex rounded border text-xs overflow-hidden"
-            style={{ borderColor: "var(--border)" }}
-          >
-            {(["yaml", "json"] as const).map((f, idx) => (
-              <button
-                key={f}
-                type="button"
-                role="radio"
-                ref={(el) => {
-                  radioRefs.current[idx] = el;
-                }}
-                aria-checked={format === f}
-                tabIndex={format === f ? 0 : -1}
-                onClick={() => handleFormatChange(f)}
-                onKeyDown={(e) => handleRadioKeyDown(e, idx, f)}
-                className="px-3 py-1 uppercase tracking-wide"
-                style={{
-                  background:
-                    format === f ? "var(--accent)" : "var(--bg-subtle)",
-                  color: format === f ? "var(--accent-fg)" : "var(--fg)",
-                }}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={handleDiscardLocal}
-            disabled={!canDiscard}
-            aria-label="Discard unsaved source changes"
-            className="text-xs px-2 py-1 rounded border"
-            style={{
-              borderColor: "var(--border)",
-              background: "var(--bg-subtle)",
-              opacity: canDiscard ? 1 : 0.5,
-              cursor: canDiscard ? "pointer" : "not-allowed",
-            }}
-          >
-            Discard
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleDiscardLocal}
+          disabled={!canDiscard}
+          aria-label="Discard unsaved source changes"
+          className="text-xs px-2 py-1 rounded border"
+          style={{
+            borderColor: "var(--border)",
+            background: "var(--bg-subtle)",
+            opacity: canDiscard ? 1 : 0.5,
+            cursor: canDiscard ? "pointer" : "not-allowed",
+          }}
+        >
+          Discard
+        </button>
       </div>
       <div className="min-h-[360px]" ref={textareaWrapperRef}>
         <SourceTextarea
           id="psml-source-pane"
-          ariaLabel={`PSML ${format.toUpperCase()} source`}
+          ariaLabel="PSML YAML source"
           value={text}
           onChange={handleTextChange}
           errorLine={parseError?.line ?? null}
@@ -260,12 +167,4 @@ export default function SourcePane({ packet, dispatch }: Props) {
       )}
     </section>
   );
-}
-
-function safeDecode(text: string, format: SourceFormat): PsmlPacket | null {
-  try {
-    return decodeSource(text, format);
-  } catch {
-    return null;
-  }
 }

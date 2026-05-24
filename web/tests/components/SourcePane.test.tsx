@@ -1,18 +1,17 @@
 // @vitest-environment jsdom
 //
-// SourcePane (= Custom Packet Studio の source pane) のスモークテスト。
+// SourcePane (= Custom Packet Studio の source view) のスモークテスト。
 //
 // 観点
-// - mount → 既定 packet の YAML が textarea に出る、 preview に cell が
-//   生える、 textarea に focus が当たる
+// - mount → 既定 packet の YAML が textarea に出る、 textarea に focus が
+//   当たる、 内部に diagram preview は描かない
 // - YAML 編集 → debounce 後 dispatch が "replace-packet" を発行
 // - 不正な YAML 入力時に alert が表示され dispatch されない
-// - format toggle が dispatch を発火しない (dirty=false)
-// - format toggle 中の編集 (dirty=true) でも race にならず replace-packet
-//   が 1 回だけ走る
-// - dispatch reference が変わってもループしない (useRef cache の確認)
-// - radiogroup の ArrowRight でフォーカスと format が連動する
-// - 空 YAML / 空 JSON で固有のエラー文が出る
+// - 親 dispatch reference が変わっても debounce が壊れない (useRef cache)
+// - 空 YAML で固有のエラー文が出る
+// - Discard ボタンで未保存編集を捨てて upstream に戻す
+// - upstream packet 変化 (preset 切替 / undo / form 編集) で dirty=false
+//   なら textarea が自動同期する
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
@@ -72,17 +71,6 @@ async function mount(packet: PsmlPacket, dispatch: (a: EditAction) => void) {
   };
 }
 
-function findFormatButton(
-  container: HTMLElement,
-  label: "yaml" | "json",
-): HTMLButtonElement {
-  const btn = Array.from(
-    container.querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
-  ).find((b) => b.textContent?.toLowerCase().includes(label));
-  if (!btn) throw new Error(`format button "${label}" not found`);
-  return btn;
-}
-
 describe("SourcePane", () => {
   it("renders the upstream packet as YAML by default and focuses the textarea", async () => {
     const dispatch = vi.fn();
@@ -97,25 +85,6 @@ describe("SourcePane", () => {
       // が live preview を兼ねる設計)。 textarea だけ並んでいることを確認。
       const cells = container.querySelectorAll(".field-cell");
       expect(cells.length).toBe(0);
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("toggles to JSON without dispatching replace-packet", async () => {
-    const dispatch = vi.fn();
-    const { container, cleanup } = await mount(sample, dispatch);
-    try {
-      const jsonBtn = findFormatButton(container, "json");
-      await act(async () => {
-        jsonBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      });
-      await settleDebounce();
-      const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
-      expect(textarea.value).toContain('"format": "psml"');
-      // format toggle 単体では reducer 側を汚さない
-      expect(dispatch).not.toHaveBeenCalled();
     } finally {
       await cleanup();
     }
@@ -164,74 +133,6 @@ describe("SourcePane", () => {
     }
   });
 
-  it("flushes the pending edit exactly once when format toggles mid-debounce", async () => {
-    // dirty=true な状態で format toggle すると、 SourcePane は pending
-    // 編集を即座に確定 dispatch して text を新 format で再 encode する。
-    // 200ms debounce timer が走る前に toggle が起きるシナリオ。
-    //
-    // 親側で dispatch を受けて packet を update する mini-reducer を作り、
-    // 実際の PacketViewer の dispatch チェーンを最小限に模擬する。
-    const calls: EditAction[] = [];
-    let currentPacket = sample;
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    let root: Root | null = null;
-    const render = async () => {
-      await act(async () => {
-        if (!root) root = createRoot(container);
-        root.render(
-          <SourcePane
-            packet={currentPacket}
-            dispatch={(a) => {
-              calls.push(a);
-              if (a.type === "replace-packet") {
-                currentPacket = a.packet;
-                void render();
-              }
-            }}
-          />,
-        );
-      });
-    };
-    await render();
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    const textarea =
-      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
-    const edited =
-      'name: "Flushed"\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n';
-    await act(async () => {
-      nativeSetTextareaValue(textarea, edited);
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    // debounce が満了する前に format toggle
-    const jsonBtn = findFormatButton(container, "json");
-    await act(async () => {
-      jsonBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settleDebounce();
-    // dispatch は format toggle ハンドラ内の 1 回だけ
-    const replacePacketCalls = calls.filter((c) => c.type === "replace-packet");
-    expect(replacePacketCalls.length).toBe(1);
-    expect(
-      (replacePacketCalls[0] as Extract<EditAction, { type: "replace-packet" }>)
-        .packet.name,
-    ).toBe("Flushed");
-    // textarea は JSON 形式になっている (親が packet を更新して
-    // upstream sync で encode し直された結果も "Flushed" を保持)
-    const ta2 =
-      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
-    expect(ta2.value).toContain('"format": "psml"');
-    expect(ta2.value).toContain('"Flushed"');
-
-    await act(async () => {
-      root?.unmount();
-    });
-    container.remove();
-  });
-
   it("uses the latest dispatch ref even if the parent passes a new function each render", async () => {
     // 親が dispatch を毎 render 違う reference で渡してきても、 debounce
     // が再 attach されて pending edit が消えるなどの事故が起きないこと。
@@ -272,28 +173,6 @@ describe("SourcePane", () => {
       root?.unmount();
     });
     container.remove();
-  });
-
-  it("supports ArrowRight on the radiogroup to move focus and switch format", async () => {
-    const dispatch = vi.fn();
-    const { container, cleanup } = await mount(sample, dispatch);
-    try {
-      const yamlBtn = findFormatButton(container, "yaml");
-      const jsonBtn = findFormatButton(container, "json");
-      yamlBtn.focus();
-      await act(async () => {
-        yamlBtn.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
-        );
-      });
-      await settleDebounce();
-      expect(document.activeElement).toBe(jsonBtn);
-      const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
-      expect(textarea.value).toContain('"format": "psml"');
-    } finally {
-      await cleanup();
-    }
   });
 
   it("surfaces a friendly error for empty YAML source", async () => {
@@ -347,31 +226,6 @@ describe("SourcePane", () => {
         container.querySelectorAll<HTMLButtonElement>("button"),
       ).find((b) => b.textContent === "Discard");
       expect(discardAfter?.disabled).toBe(true);
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("returns a friendly error for an empty JSON object", async () => {
-    const dispatch = vi.fn();
-    const { container, cleanup } = await mount(sample, dispatch);
-    try {
-      // JSON モードに切替
-      const jsonBtn = findFormatButton(container, "json");
-      await act(async () => {
-        jsonBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      });
-      await settleDebounce();
-      const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
-      await act(async () => {
-        nativeSetTextareaValue(textarea, "{}");
-        textarea.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      await settleDebounce();
-      const alert = container.querySelector('[role="alert"]');
-      expect(alert?.textContent ?? "").toMatch(/empty/i);
-      expect(dispatch).not.toHaveBeenCalled();
     } finally {
       await cleanup();
     }

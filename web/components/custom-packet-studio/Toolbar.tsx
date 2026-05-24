@@ -103,68 +103,78 @@ export default function Toolbar({
   const undoDisabled = historyLength === 0;
   const redoDisabled = futureLength === 0;
 
+  // form-only ボタン群 (+Field / +Struct / +Group / +Repeat / +Switch /
+  // +Encrypted) は source view では意味を持たない (テキスト編集中に slot
+  // 追加 dispatch を打つと text が再 encode で上書きされる)。 view モード
+  // で完全に隠して、 同時に「アフレ」 を減らす。
+  const formOnly = view === "form";
+
   return (
     <div
       role="toolbar"
       aria-label="Custom Packet Studio toolbar"
       className="flex flex-wrap items-center gap-1.5 p-2 border-b bg-bg-subtle border-border-strong"
     >
-      <button
-        type="button"
-        onClick={addField}
-        aria-label="Add field"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle()}
-      >
-        + Field
-      </button>
-      <button
-        type="button"
-        onClick={() => addContainer("struct")}
-        aria-label="Add struct"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle()}
-      >
-        + Struct
-      </button>
-      <button
-        type="button"
-        onClick={() => addContainer("group")}
-        aria-label="Add group"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle()}
-      >
-        + Group
-      </button>
-      <button
-        type="button"
-        onClick={() => addContainer("repeat")}
-        aria-label="Add repeat"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle()}
-      >
-        + Repeat
-      </button>
-      <button
-        type="button"
-        onClick={() => addContainer("switch")}
-        aria-label="Add switch"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle()}
-      >
-        + Switch
-      </button>
-      <button
-        type="button"
-        onClick={() => addContainer("encrypted")}
-        aria-label="Add encrypted"
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle()}
-      >
-        + Encrypted
-      </button>
+      {formOnly ? (
+        <>
+          <button
+            type="button"
+            onClick={addField}
+            aria-label="Add field"
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={btnStyle()}
+          >
+            + Field
+          </button>
+          <button
+            type="button"
+            onClick={() => addContainer("struct")}
+            aria-label="Add struct"
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={btnStyle()}
+          >
+            + Struct
+          </button>
+          <button
+            type="button"
+            onClick={() => addContainer("group")}
+            aria-label="Add group"
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={btnStyle()}
+          >
+            + Group
+          </button>
+          <button
+            type="button"
+            onClick={() => addContainer("repeat")}
+            aria-label="Add repeat"
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={btnStyle()}
+          >
+            + Repeat
+          </button>
+          <button
+            type="button"
+            onClick={() => addContainer("switch")}
+            aria-label="Add switch"
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={btnStyle()}
+          >
+            + Switch
+          </button>
+          <button
+            type="button"
+            onClick={() => addContainer("encrypted")}
+            aria-label="Add encrypted"
+            className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
+            style={btnStyle()}
+          >
+            + Encrypted
+          </button>
 
-      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
+          <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
+        </>
+      ) : null}
 
       <button
         type="button"

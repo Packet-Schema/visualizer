@@ -15,61 +15,38 @@ const sample: PsmlPacket = {
 };
 
 describe("source-format", () => {
-  describe("encodeSource → decodeSource round-trip", () => {
-    it("preserves a minimal packet through YAML", () => {
-      const text = encodeSource(sample, "yaml");
-      const back = decodeSource(text, "yaml");
+  describe("encodeSource → decodeSource round-trip (YAML)", () => {
+    it("preserves a minimal packet", () => {
+      const text = encodeSource(sample);
+      const back = decodeSource(text);
       expect(back).toEqual(sample);
     });
 
-    it("preserves a minimal packet through JSON", () => {
-      const text = encodeSource(sample, "json");
-      const back = decodeSource(text, "json");
-      expect(back).toEqual(sample);
-    });
-
-    it("round-trips every built-in preset through YAML", () => {
+    it("round-trips every built-in preset", () => {
       for (const [key, preset] of Object.entries(PRESETS)) {
-        const text = encodeSource(preset, "yaml");
-        const back = decodeSource(text, "yaml");
-        expect(back, `preset ${key}`).toEqual(preset);
-      }
-    });
-
-    it("round-trips every built-in preset through JSON", () => {
-      for (const [key, preset] of Object.entries(PRESETS)) {
-        const text = encodeSource(preset, "json");
-        const back = decodeSource(text, "json");
+        const text = encodeSource(preset);
+        const back = decodeSource(text);
         expect(back, `preset ${key}`).toEqual(preset);
       }
     });
   });
 
   describe("decodeSource", () => {
-    it("strips the on-wire `format` / `version` markers if present", () => {
-      const text = JSON.stringify(
-        {
-          format: "psml",
-          version: "0.4",
-          name: "Tagged",
-          rowBits: 8,
-          body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
-        },
-        null,
-        2,
-      );
-      const back = decodeSource(text, "json");
+    it("accepts plain YAML (preset shape, no wire markers)", () => {
+      const text =
+        "name: Bare\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n";
+      const back = decodeSource(text);
+      expect(back.name).toBe("Bare");
+      expect(back.body.length).toBe(1);
+    });
+
+    it("strips wire `format` / `version` markers if a user pastes them", () => {
+      const text =
+        'format: psml\nversion: "0.4"\nname: Tagged\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n';
+      const back = decodeSource(text);
       expect((back as { format?: unknown }).format).toBeUndefined();
       expect((back as { version?: unknown }).version).toBeUndefined();
       expect(back.name).toBe("Tagged");
-    });
-
-    it("accepts YAML input that omits `format`/`version` (preset shape)", () => {
-      const text =
-        "name: Bare\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n";
-      const back = decodeSource(text, "yaml");
-      expect(back.name).toBe("Bare");
-      expect(back.body.length).toBe(1);
     });
 
     it("reports the YAML line on parse failure", () => {
@@ -77,7 +54,7 @@ describe("source-format", () => {
         "name: Bad\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 }\n";
       let thrown: unknown;
       try {
-        decodeSource(text, "yaml");
+        decodeSource(text);
       } catch (e) {
         thrown = e;
       }
@@ -86,24 +63,32 @@ describe("source-format", () => {
       expect(err.line).toBeGreaterThanOrEqual(1);
     });
 
+    it("rejects an empty document with a friendly hint", () => {
+      let thrown: unknown;
+      try {
+        decodeSource("");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(SourceParseError);
+      expect((thrown as Error).message).toMatch(/empty/i);
+    });
+
     it("rejects a top-level array", () => {
-      expect(() => decodeSource("[]", "json")).toThrow(SourceParseError);
+      expect(() => decodeSource("- a\n- b\n")).toThrow(SourceParseError);
     });
 
     it("rejects validation failures (empty name)", () => {
-      const bad: unknown = { name: "", rowBits: 8, body: [] };
-      const text = JSON.stringify(bad);
-      expect(() => decodeSource(text, "json")).toThrow();
+      const text = 'name: ""\nrowBits: 8\nbody: []\n';
+      expect(() => decodeSource(text)).toThrow();
     });
   });
 
   describe("encodeSource", () => {
-    it("emits the on-wire `format`/`version` only for JSON", () => {
-      const yamlOut = encodeSource(sample, "yaml");
-      const jsonOut = encodeSource(sample, "json");
-      expect(yamlOut.includes("format:")).toBe(false);
-      expect(jsonOut.includes('"format": "psml"')).toBe(true);
-      expect(jsonOut.includes('"version": "0.4"')).toBe(true);
+    it("never emits wire-only `format`/`version` markers", () => {
+      const out = encodeSource(sample);
+      expect(out.includes("format:")).toBe(false);
+      expect(out.includes("version:")).toBe(false);
     });
   });
 });
