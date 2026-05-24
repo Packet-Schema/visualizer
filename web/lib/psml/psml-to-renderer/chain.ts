@@ -54,7 +54,16 @@ export function repeatToChainField(r: Repeat): RendererField {
           );
           return [];
         }
-        return [{ proto: inst.proto }];
+        // Carry per-instance extras through round-trip (Codex P2). The
+        // PSML schema accepts them and the renderer-side ChainInstance
+        // is structurally compatible — keeping them avoids a lossy
+        // path through `repeatToChainField → chainFieldToRepeat`.
+        return [
+          {
+            proto: inst.proto,
+            ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+          },
+        ];
       })
     : [];
   const field: RendererField = {
@@ -64,6 +73,9 @@ export function repeatToChainField(r: Repeat): RendererField {
     chainCatalog: catalog,
     chainInstances,
   };
+  if (typeof r.chainFinalProto === "number") {
+    field.chainFinalProto = r.chainFinalProto;
+  }
   if (r.category) field.category = r.category;
   if (r.doc) field.description = r.doc;
   return field;
@@ -133,5 +145,8 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
     },
     count: { kind: "ref", field: `${baseId}_chainCount` },
     ...(chainInstances.length > 0 ? { chainInstances } : {}),
+    ...(typeof field.chainFinalProto === "number"
+      ? { chainFinalProto: field.chainFinalProto }
+      : {}),
   };
 }

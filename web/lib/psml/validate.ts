@@ -195,6 +195,16 @@ function validateRepeat(r: Repeat, ctx: string): void {
   // payload fields). The shape diverges from TLV instances (`proto` rather
   // than `kind`, `extras` keys map to leaf field ids), so use a separate
   // key on the PSML side and validate independently.
+  if (r.chainFinalProto !== undefined) {
+    if (
+      typeof r.chainFinalProto !== "number" ||
+      !Number.isInteger(r.chainFinalProto)
+    ) {
+      throw new Error(
+        `${sub}: repeat 'chainFinalProto' must be an integer, got ${String(r.chainFinalProto)}.`,
+      );
+    }
+  }
   if (r.chainInstances !== undefined) {
     if (!Array.isArray(r.chainInstances)) {
       throw new Error(`${sub}: repeat 'chainInstances' must be an array.`);

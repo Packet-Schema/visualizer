@@ -193,6 +193,12 @@ export type Repeat = {
    *  the PSML body, every export path that goes through
    *  `rendererToPsml` silently drops the chain. */
   chainInstances?: ChainInstancePsml[];
+  /** Terminal Next-Header value after the last chain entry (IPv6's
+   *  "what comes after all the extension headers?"). Optional; only
+   *  meaningful on chain Repeats. Persisting it on the Repeat itself
+   *  keeps the user's choice from reverting to the catalog default on
+   *  Save-As / share-URL round-trips (sub-agent H1). */
+  chainFinalProto?: number;
 };
 
 /** Switch: choose a variant struct by evaluating a discriminator. */

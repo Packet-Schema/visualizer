@@ -299,6 +299,9 @@ type Repeat = {
   // ...
   instances?: TlvInstancePsml[];
   chainInstances?: ChainInstancePsml[];
+  /** Terminal Next-Header value after the last chain entry (IPv6's
+   *  "what comes after all the extension headers?"). */
+  chainFinalProto?: number;
 };
 ```
 

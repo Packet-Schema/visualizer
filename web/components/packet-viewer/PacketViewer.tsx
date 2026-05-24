@@ -571,11 +571,21 @@ export default function PacketViewer() {
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
+    // Also evict the renderer mirror back to its source-of-truth shape.
+    // Without this, diagram-driven edits (TLV / chain instances,
+    // byteOrder, controllers) survive on the mirror past the discard,
+    // so re-entering editMode still shows the records and a follow-up
+    // Save-As resurrects them via `mergeInstancesIntoPsml` (sub-agent
+    // CRITICAL C2). Rebuilding from `activePsmlPacket` is cheap and
+    // makes "discard" actually mean discard.
+    replaceActivePacket(psmlToRenderer(activePsmlPacket));
+    setControllers(initialState(psmlToRenderer(activePsmlPacket)));
+    uiDispatch({ type: "clear-selection" });
     uiDispatch({ type: "set-edit-mode", editing: false });
     // showJsonPane is part of the same UI shell — keep them in sync by
     // toggling off if it was open.
     if (showJsonPane) uiDispatch({ type: "toggle-json-pane" });
-  }, [activePsmlPacket, showJsonPane]);
+  }, [activePsmlPacket, showJsonPane, replaceActivePacket]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.

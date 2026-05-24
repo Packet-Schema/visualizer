@@ -250,6 +250,10 @@
               }
             }
           }
+        },
+        "chainFinalProto": {
+          "type": "integer",
+          "description": "Terminal Next-Header value after the last chain entry. Only meaningful on chain Repeats; non-chain Repeats omit it."
         }
       }
     },
