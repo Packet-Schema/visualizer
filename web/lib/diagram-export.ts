@@ -14,7 +14,11 @@
 //   href>`, or `<foreignObject>` to the SVG, audit cross-origin handling
 //   here before extending the contract.
 
-import { CATEGORY_TO_TOKEN, FIELD_PALETTE_TOKENS, FIELD_FILL_OPACITY } from "./constants";
+import {
+  CATEGORY_TO_TOKEN,
+  FIELD_PALETTE_TOKENS,
+  FIELD_FILL_OPACITY,
+} from "./constants";
 import type {
   Cell,
   Field,
@@ -22,6 +26,7 @@ import type {
   ResolvedLayout,
   SubCell,
 } from "./psml/renderer";
+import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "./diagram-themes";
 
 export type DiagramExportTheme = {
   background: string;
@@ -35,7 +40,6 @@ export type DiagramExportTheme = {
   fieldSublabel: string;
   fieldContinuation: string;
   fieldPalette: Record<string, string>;
-  resolveCssColor?: (name: string, fallback: string) => string;
 };
 
 export type DiagramThemeMode = "follow-ui" | "light" | "dark";
@@ -115,12 +119,7 @@ export function resolveToken(field: Field): string {
 
 export function fieldFill(field: Field, theme: DiagramExportTheme): string {
   const token = resolveToken(field);
-  if (theme.fieldPalette[token]) return theme.fieldPalette[token];
-  const cssVariable = token.match(/^var\((--[^)]+)\)$/);
-  return cssVariable
-    ? (theme.resolveCssColor?.(cssVariable[1], "") ??
-        cssColor(cssVariable[1], ""))
-    : token;
+  return theme.fieldPalette[token] ?? "black";
 }
 
 export function rowsFor(layout: ResolvedLayout): Cell[][] {
@@ -303,7 +302,7 @@ export function buildDiagramSvg(
   layout: ResolvedLayout,
   options: DiagramSvgOptions = {},
 ): string {
-  const theme = options.theme ?? readDiagramThemeFromDocument();
+  const theme = options.theme ?? LIGHT_DIAGRAM_THEME;
   const bitWidth = options.bitWidth ?? 24;
   const transparentBackground = options.transparentBackground === true;
   const rows = rowsFor(layout);
@@ -389,179 +388,26 @@ export function buildDiagramSvg(
   ].join("");
 }
 
-function cssColor(name: string, fallback: string): string {
-  if (typeof document === "undefined" || !document.body) return fallback;
-  try {
-    const rawValue = getComputedStyle(
-      document.documentElement,
-    ).getPropertyValue(name);
-    if (rawValue.trim()) return `var(${name})`;
-  } catch {
-    // Fall back to computed color if CSS variable read fails
-  }
-  const probe = document.createElement("span");
-  probe.style.color = `var(${name})`;
-  probe.style.display = "none";
-  document.body.appendChild(probe);
-  const color = getComputedStyle(probe).color || fallback;
-  probe.remove();
-  return color;
-}
-
-type ThemeVariableMaps = {
-  light: Map<string, string>;
-  dark: Map<string, string>;
-};
-
-function collectThemeVariables(): ThemeVariableMaps {
-  const light = new Map<string, string>();
-  const dark = new Map<string, string>();
-  if (typeof document === "undefined") {
-    return { light, dark };
-  }
-
-  const hasCssLayerBlockRule = typeof CSSLayerBlockRule !== "undefined";
-
-  const visitRules = (rules: CSSRuleList): void => {
-    for (const rule of Array.from(rules)) {
-      if (rule instanceof CSSStyleRule) {
-        const selector = rule.selectorText;
-        const target =
-          selector.includes('[data-theme="dark"]') ||
-          selector === "[data-theme='dark']"
-            ? dark
-            : selector.includes(":root")
-              ? light
-              : null;
-        if (!target) continue;
-        for (const name of Array.from(rule.style)) {
-          if (!name.startsWith("--")) continue;
-          target.set(name, rule.style.getPropertyValue(name).trim());
-        }
-        continue;
-      }
-      if (
-        rule instanceof CSSMediaRule ||
-        (hasCssLayerBlockRule && rule instanceof CSSLayerBlockRule)
-      ) {
-        visitRules(rule.cssRules);
-      }
-    }
-  };
-
-  for (const sheet of Array.from(document.styleSheets)) {
-    try {
-      visitRules(sheet.cssRules);
-    } catch {
-      // Ignore cross-origin or inaccessible stylesheets.
-    }
-  }
-
-  return { light, dark };
-}
-
-function resolveThemeVariable(
-  maps: ThemeVariableMaps,
-  mode: DiagramThemeMode,
-  name: string,
-  fallback: string,
-): string {
-  if (mode === "follow-ui") {
-    return cssColor(name, fallback);
-  }
-  const value =
-    (mode === "dark" ? maps.dark.get(name) : maps.light.get(name)) ??
-    maps.light.get(name) ??
-    fallback;
-  return value || fallback;
-}
-
-function readCssColorFromRoot(
-  root: ParentNode,
-  name: string,
-  fallback: string,
-): string {
-  if (typeof document === "undefined") return fallback;
-  try {
-    const rawValue = getComputedStyle(
-      document.documentElement,
-    ).getPropertyValue(name);
-    if (rawValue.trim()) return `var(${name})`;
-  } catch {
-    // Fall back to computed color if CSS variable read fails
-  }
-  const probe = document.createElement("span");
-  probe.style.color = `var(${name})`;
-  probe.style.display = "none";
-  root.appendChild(probe);
-  const color = getComputedStyle(probe).color || fallback;
-  probe.remove();
-  return color;
-}
-
-function buildTheme(
-  resolveCssColor: (name: string, fallback: string) => string,
-): DiagramExportTheme {
-  return {
-    background: resolveCssColor("--bg-elevated", ""),
-    rowEven: resolveCssColor("--row-band-even", ""),
-    rowOdd: resolveCssColor("--row-band-odd", ""),
-    rulerTick: resolveCssColor("--ruler-tick", ""),
-    rulerLabel: resolveCssColor("--ruler-label", ""),
-    accent: resolveCssColor("--accent", ""),
-    fieldStroke: resolveCssColor("--field-stroke", ""),
-    fieldLabel: resolveCssColor("--field-label", ""),
-    fieldSublabel: resolveCssColor("--field-sublabel", ""),
-    fieldContinuation: resolveCssColor("--field-continuation", ""),
-    fieldPalette: Object.fromEntries(
-      FIELD_PALETTE_TOKENS.map((token) => [
-        token,
-        resolveCssColor(`--field-${token}`, ""),
-      ]),
-    ),
-    resolveCssColor,
-  };
-}
-
-function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
-  const resolveCssColor = (name: string, fallback: string): string =>
-    readCssColorFromRoot(root, name, fallback);
-
-  return buildTheme(resolveCssColor);
-}
-
 /**
  * Resolve a {@link DiagramExportTheme} for the requested mode.
  *
- * - `"follow-ui"`: reads the currently applied `:root` / `[data-theme]`
- *   variables from `document.body`, so a Dark UI exports a Dark image.
- * - `"light"` / `"dark"`: walks the stylesheets to find the requested
- *   palette without mutating `document.documentElement` (so picking
- *   "Light" while in Dark mode doesn't flash the page).
- *
- * Falls back to the bundled {@link DEFAULT_THEME} when no `document` is
- * available (SSR) or the required CSS variables aren't loaded.
+ * - `"follow-ui"`: returns the theme matching the current `data-theme` attribute
+ * - `"light"`: returns the light theme
+ * - `"dark"`: returns the dark theme
  */
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
-  if (typeof document === "undefined" || !document.body) {
-    return readDiagramThemeFromDocument();
+  if (mode === "dark") {
+    return DARK_DIAGRAM_THEME;
   }
-
-  if (mode === "follow-ui") {
-    return readDiagramThemeFromRoot(document.body);
+  if (mode === "light") {
+    return LIGHT_DIAGRAM_THEME;
   }
-
-  const maps = collectThemeVariables();
-  const resolveCssColor = (name: string, fallback: string): string =>
-    resolveThemeVariable(maps, mode, name, fallback);
-  return buildTheme(resolveCssColor);
-}
-
-export function readDiagramThemeFromDocument(): DiagramExportTheme {
-  if (typeof document === "undefined" || !document.body) {
-    return buildTheme(() => "");
+  // "follow-ui": read current theme from data-theme attribute
+  if (typeof document !== "undefined") {
+    const theme = document.documentElement.getAttribute("data-theme");
+    return theme === "dark" ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME;
   }
-  return readDiagramThemeFromRoot(document.body);
+  return LIGHT_DIAGRAM_THEME;
 }
 
 export function downloadTextFile(

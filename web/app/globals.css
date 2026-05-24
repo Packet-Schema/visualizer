@@ -37,31 +37,16 @@
   --accent-fg: oklch(99% 0 0);
   --accent-glow: oklch(65% 0.2 265 / 0.45);
 
-  /* Diagram surface */
-  --row-band-even: oklch(98% 0.008 260);
-  --row-band-odd: oklch(99.5% 0.005 260);
+  /* Diagram theme colors are now injected via SSR (generateThemeCssVariables) */
+
+  /* UI-specific diagram variables */
   --grid-major: oklch(85% 0.014 260);
   --grid-minor: oklch(93% 0.01 260);
-  --ruler-tick: oklch(58% 0.02 270);
-  --ruler-label: oklch(42% 0.02 270);
-  --field-stroke: oklch(38% 0.04 270);
   --field-stroke-selected: oklch(22% 0.04 270);
-  --field-label: oklch(22% 0.02 270);
-  --field-sublabel: oklch(28% 0.03 270);
-  --field-continuation: oklch(48% 0.02 270);
   --field-fill-opacity: 0.78;
   --field-fill-opacity-hover: 0.95;
   --variable-stripe: oklch(22% 0.02 270 / 0.18);
 
-  /* Curated field palette (light mode), OKLCH for the new diagram. */
-  --field-blue: oklch(70% 0.14 255);
-  --field-indigo: oklch(68% 0.16 280);
-  --field-violet: oklch(70% 0.16 310);
-  --field-teal: oklch(74% 0.11 195);
-  --field-green: oklch(78% 0.13 145);
-  --field-amber: oklch(82% 0.13 85);
-  --field-orange: oklch(74% 0.14 50);
-  --field-rose: oklch(72% 0.14 18);
   /* Prose-only strong variant of `--field-rose`. Use through the
      `text-field-rose-strong` Tailwind utility for `role="alert"` and
      similar error text where the standard rose (~3:1) is fine for legend
@@ -69,7 +54,6 @@
      background (`bg-field-rose-strong`) — the chroma is calibrated for
      foreground contrast, not as a fill surface. */
   --field-rose-strong: oklch(50% 0.18 18);
-  --field-slate: oklch(72% 0.02 270);
 
   /* Chroma applied to non-matching cells while a legend item is hovered. */
   --legend-dim-chroma: 0.04;
@@ -109,31 +93,16 @@
   --accent-fg: oklch(18% 0.025 270);
   --accent-glow: oklch(72% 0.16 265 / 0.55);
 
-  --row-band-even: oklch(24% 0.03 270);
-  --row-band-odd: oklch(22% 0.028 270);
+  /* Diagram theme colors are now injected via SSR (generateThemeCssVariables) */
+
+  /* UI-specific diagram variables */
   --grid-major: oklch(40% 0.034 270);
   --grid-minor: oklch(30% 0.028 270);
-  --ruler-tick: oklch(60% 0.025 270);
-  --ruler-label: oklch(78% 0.02 270);
-  --field-stroke: oklch(28% 0.03 270);
   --field-stroke-selected: oklch(96% 0.012 270);
-  --field-label: oklch(18% 0.025 270);
-  --field-sublabel: oklch(22% 0.03 270);
-  --field-continuation: oklch(85% 0.015 270);
   --field-fill-opacity: 0.85;
   --field-fill-opacity-hover: 1;
   --variable-stripe: oklch(99% 0 0 / 0.22);
-
-  --field-blue: oklch(74% 0.14 255);
-  --field-indigo: oklch(72% 0.17 280);
-  --field-violet: oklch(74% 0.17 310);
-  --field-teal: oklch(78% 0.11 195);
-  --field-green: oklch(80% 0.14 145);
-  --field-amber: oklch(85% 0.14 85);
-  --field-orange: oklch(78% 0.15 50);
-  --field-rose: oklch(76% 0.15 18);
   --field-rose-strong: oklch(82% 0.17 18);
-  --field-slate: oklch(78% 0.02 270);
 
   color-scheme: dark;
 }
