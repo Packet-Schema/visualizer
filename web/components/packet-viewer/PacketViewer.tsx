@@ -20,6 +20,7 @@ import {
 } from "@/lib/psml/renderer-helpers";
 import {
   applyTlvInstances,
+  mergeInstancesIntoPsml,
   psmlToRenderer,
   rendererToPsml,
 } from "@/lib/psml/psml-to-renderer";
@@ -534,8 +535,13 @@ export default function PacketViewer() {
       if (!name.trim()) return;
       const normalizedName = normalizeCustomPresetName(name);
       const key = `custom:${normalizedName}`;
+      // Merge the renderer mirror's TLV / chain instances onto the
+      // studio packet before persistence. Without this, TLV records
+      // added via the diagram (which only update the mirror) are silent-
+      // dropped from the saved preset (sub-agent CRITICAL #1).
+      const mergedStudio = mergeInstancesIntoPsml(studioState.packet, packet);
       const packetToSave: PsmlPacket = {
-        ...studioState.packet,
+        ...mergedStudio,
         name: normalizedName,
       };
       saveCustomPreset(key, packetToSave);
@@ -559,7 +565,7 @@ export default function PacketViewer() {
       uiDispatch({ type: "close-save-dialog" });
       uiDispatch({ type: "set-edit-mode", editing: false });
     },
-    [studioState.packet],
+    [studioState.packet, packet],
   );
 
   // Drop in-progress edits and revert the reducer to the active preset.
@@ -680,7 +686,11 @@ export default function PacketViewer() {
     const hasCustomRendererOverride =
       !builtInPsml && renderedPresets[packetKey] !== undefined;
     const sharePacket = editMode
-      ? studioState.packet
+      ? // In editMode the diagram draws from studioState.packet but TLV /
+        // chain edits only land on the renderer mirror — without the
+        // merge, the shared URL silently drops every record the user
+        // added through the diagram (sub-agent CRITICAL #2).
+        mergeInstancesIntoPsml(studioState.packet, packet)
       : builtInPsml
         ? builtInPsml
         : hasCustomRendererOverride
@@ -1043,6 +1053,7 @@ export default function PacketViewer() {
             onToggleJsonPane={() => uiDispatch({ type: "toggle-json-pane" })}
             onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
+            jsonPacket={mergeInstancesIntoPsml(studioState.packet, packet)}
           />
         ) : null}
 

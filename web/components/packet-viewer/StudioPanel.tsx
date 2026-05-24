@@ -11,6 +11,7 @@ import type { EditAction, EditState } from "@/lib/psml/edit-reducer";
 import type {
   Container as PsmlContainer,
   Field as PsmlField,
+  Packet as PsmlPacket,
 } from "@/lib/psml/types";
 
 type Props = {
@@ -20,6 +21,11 @@ type Props = {
   onToggleJsonPane: () => void;
   onSaveAs: () => void;
   onDiscard: () => void;
+  /** Packet to show in the JSON pane. Falls back to `state.packet` but
+   *  the parent should pass the instance-merged form so the pane mirrors
+   *  what's actually in the diagram and what every export path emits
+   *  (sub-agent CRITICAL #3). */
+  jsonPacket?: PsmlPacket;
 };
 
 export default function StudioPanel({
@@ -29,6 +35,7 @@ export default function StudioPanel({
   onToggleJsonPane,
   onSaveAs,
   onDiscard,
+  jsonPacket,
 }: Props) {
   return (
     <section
@@ -88,7 +95,7 @@ export default function StudioPanel({
       </div>
       {showJsonPane ? (
         <div className="mt-4">
-          <JsonPane packet={state.packet} dispatch={dispatch} />
+          <JsonPane packet={jsonPacket ?? state.packet} dispatch={dispatch} />
         </div>
       ) : null}
     </section>

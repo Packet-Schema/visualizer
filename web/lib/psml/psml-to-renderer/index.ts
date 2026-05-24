@@ -29,6 +29,7 @@ import { isTlvRepeat, repeatToTlvField } from "./tlv";
 
 export { rendererToPsml } from "./to-psml";
 export { applyTlvInstances } from "./apply-tlv";
+export { mergeInstancesIntoPsml } from "./merge-instances";
 
 /**
  * Inspect a Constraint of the form `ref(fieldA) * lit(N) == ref(fieldB)`

@@ -158,6 +158,16 @@ export type TlvInstancePsml = {
   extras?: Record<string, number>;
 };
 
+/** A single IPv6-extension-header entry currently attached to a chain
+ *  `Repeat<Switch on proto>`. The shape parallels `TlvInstancePsml` but
+ *  keys on `proto` (the wire's Next-Header value) rather than TLV `kind`
+ *  so the schema reads naturally. Lifted separately on the renderer side
+ *  via `chainInstances`. */
+export type ChainInstancePsml = {
+  proto: number;
+  extras?: Record<string, number>;
+};
+
 /** Repeat: N copies of a struct, where N is computed each layout pass. */
 export type Repeat = {
   kind: "repeat";
@@ -178,6 +188,11 @@ export type Repeat = {
    *  user's selections faithfully. Non-TLV Repeats may leave this
    *  undefined. */
   instances?: TlvInstancePsml[];
+  /** Persisted chain instance list (IPv6 extension-header style). Same
+   *  reason as `instances`: without persisting the user's choices on
+   *  the PSML body, every export path that goes through
+   *  `rendererToPsml` silently drops the chain. */
+  chainInstances?: ChainInstancePsml[];
 };
 
 /** Switch: choose a variant struct by evaluating a discriminator. */

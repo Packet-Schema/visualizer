@@ -68,12 +68,27 @@ export function repeatToTlvField(r: Repeat): RendererField {
   const catalog = sw ? switchToTlvCatalog(sw) : [];
   // Persisted instances on the PSML side travel back into the renderer
   // mirror so a user's record selections survive JSON / share-URL /
-  // "Save as preset" round-trips.
+  // "Save as preset" round-trips. Filter out unknown-kind entries up
+  // front so a malformed / catalog-mismatched share URL doesn't ride
+  // the populated branch in `applyTlvInstances` and silently render an
+  // empty Repeat (Codex P2). The unknown entries are also unrecoverable
+  // — without a catalog match we can't reify the per-record fields.
+  const knownKinds = new Set(catalog.map((c) => c.kind));
   const instances = r.instances
-    ? r.instances.map((inst) => ({
-        kind: inst.kind,
-        ...(inst.extras ? { extras: { ...inst.extras } } : {}),
-      }))
+    ? r.instances.flatMap((inst) => {
+        if (!knownKinds.has(inst.kind)) {
+          console.warn(
+            `[repeatToTlvField] dropping instance with unknown kind=${inst.kind} on Repeat "${r.id}" — not present in the catalog.`,
+          );
+          return [];
+        }
+        return [
+          {
+            kind: inst.kind,
+            ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+          },
+        ];
+      })
     : [];
   const field: RendererField = {
     id: r.id,

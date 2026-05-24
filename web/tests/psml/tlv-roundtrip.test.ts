@@ -10,10 +10,7 @@
 import { describe, it, expect } from "vitest";
 
 import { PRESETS } from "@/lib/psml/presets.generated";
-import {
-  psmlToRenderer,
-  rendererToPsml,
-} from "@/lib/psml/psml-to-renderer";
+import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
 
 describe("TLV instances round-trip", () => {
   it("preserves IPv4 Options across renderer → PSML → renderer", () => {

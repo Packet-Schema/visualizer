@@ -40,12 +40,29 @@ export function switchToChainCatalog(sw: Switch): ChainCatalogEntry[] {
 export function repeatToChainField(r: Repeat): RendererField {
   const sw = getSwitchFromRepeat(r);
   const catalog = sw ? switchToChainCatalog(sw) : [];
+  // Persisted chain instances ride back into the renderer mirror so the
+  // IPv6 ext-header chain survives JSON / share-URL / preset round-trips
+  // (symmetric to TLV `instances` — sub-agent HIGH). Unknown-proto
+  // entries are filtered with a warn since the renderer can't materialise
+  // them without a catalog match.
+  const knownProtos = new Set(catalog.map((c) => c.proto));
+  const chainInstances = r.chainInstances
+    ? r.chainInstances.flatMap((inst) => {
+        if (!knownProtos.has(inst.proto)) {
+          console.warn(
+            `[repeatToChainField] dropping chain instance with unknown proto=${inst.proto} on Repeat "${r.id}" — not present in the catalog.`,
+          );
+          return [];
+        }
+        return [{ proto: inst.proto }];
+      })
+    : [];
   const field: RendererField = {
     id: r.id,
     name: r.name ?? r.id,
     bits: 0,
     chainCatalog: catalog,
-    chainInstances: [],
+    chainInstances,
   };
   if (r.category) field.category = r.category;
   if (r.doc) field.description = r.doc;
@@ -91,6 +108,12 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
   const repeatName = field.name.endsWith(" (chain)")
     ? field.name
     : `${field.name} (chain)`;
+  // Symmetric to TLV `instances`: persist chain selections back onto
+  // the PSML Repeat so JSON / share URL / "Save as preset" all carry
+  // the user's chosen extension headers (sub-agent HIGH).
+  const chainInstances = (field.chainInstances ?? []).map((inst) => ({
+    proto: inst.proto,
+  }));
   return {
     kind: "repeat",
     id: `${baseId}_chain`,
@@ -109,5 +132,6 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
       ],
     },
     count: { kind: "ref", field: `${baseId}_chainCount` },
+    ...(chainInstances.length > 0 ? { chainInstances } : {}),
   };
 }
