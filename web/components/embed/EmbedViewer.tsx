@@ -46,20 +46,21 @@ type EmbedState = {
   theme: EmbedTheme | null;
 };
 
-const DEFAULT_EMBED_STATE = makePresetState(DEFAULT_PACKET_KEY, {}, null, null);
-
 export default function EmbedViewer() {
   const rootRef = useRef<HTMLElement | null>(null);
   const searchParams = useSearchParams();
-  const searchString = searchParams ? `?${searchParams.toString()}` : "";
+  const searchParamsString = searchParams?.toString() ?? "";
+  const windowSearchString =
+    typeof window === "undefined"
+      ? ""
+      : new URLSearchParams(window.location.search).toString();
+  const searchString = searchParamsString || windowSearchString;
 
-  const [embedState, setEmbedState] = useState<EmbedState>(DEFAULT_EMBED_STATE);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setEmbedState(readEmbedState(window.location.search));
-  }, [searchString]);
+  const embedState = useMemo(
+    () => readEmbedState(searchString ? `?${searchString}` : ""),
+    [searchString],
+  );
 
   useEmbedTheme(embedState.theme);
   useEmbedSizeReporter(rootRef);

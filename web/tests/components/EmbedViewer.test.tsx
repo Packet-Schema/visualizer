@@ -100,6 +100,20 @@ describe("EmbedViewer", () => {
     }
   });
 
+  it("applies URL state before the first size observer pass", async () => {
+    const observedLabels: string[] = [];
+    mockResizeObserver((target) => {
+      observedLabels.push(target.getAttribute("aria-label") ?? "");
+    });
+
+    const { cleanup } = await mountEmbedViewer("/embed?preset=tcp");
+    try {
+      expect(observedLabels[0]).toBe("TCP Header embed");
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("renders an encoded PSML payload", async () => {
     const shared = mkPacket("Embedded Packet", "embedded-field");
     const { container, cleanup } = await mountEmbedViewer(
@@ -246,7 +260,7 @@ function mockMatchMedia(matches: boolean): void {
   });
 }
 
-function mockResizeObserver(): void {
+function mockResizeObserver(onObserve?: (target: Element) => void): void {
   class TestResizeObserver implements ResizeObserver {
     private callback: ResizeObserverCallback;
 
@@ -256,6 +270,7 @@ function mockResizeObserver(): void {
 
     observe(target: Element, _options?: ResizeObserverOptions): void {
       void _options;
+      onObserve?.(target);
       this.callback(
         [
           {
