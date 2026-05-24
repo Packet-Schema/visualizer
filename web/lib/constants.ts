@@ -60,3 +60,5 @@ export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [
 ];
 
 export const THEME_STORAGE_KEY = "packet-view-theme";
+
+export const FIELD_FILL_OPACITY = 0.78;

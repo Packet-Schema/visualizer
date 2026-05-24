@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
+import { FIELD_FILL_OPACITY } from "@/lib/constants";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
@@ -37,7 +38,7 @@ const OG_HEADERS = {
   "x-robots-tag": "noindex",
 } as const;
 
-const OG_THEME = {
+const createOGTheme = (): DiagramExportTheme => ({
   background: "#ffffff",
   rowEven: "#f5f7fb",
   rowOdd: "#fbfcfe",
@@ -49,17 +50,19 @@ const OG_THEME = {
   fieldSublabel: "#344054",
   fieldContinuation: "#667085",
   fieldPalette: {
-    blue: "#7fb7ff",
-    indigo: "#a8a6ff",
-    violet: "#d1a5ff",
-    teal: "#8ed7d1",
-    green: "#a8df9f",
-    amber: "#f3d77e",
-    orange: "#f7b27a",
-    rose: "#f4a1ae",
-    slate: "#c3c8d3",
+    blue: `rgba(127, 183, 255, ${FIELD_FILL_OPACITY})`,
+    indigo: `rgba(168, 166, 255, ${FIELD_FILL_OPACITY})`,
+    violet: `rgba(209, 165, 255, ${FIELD_FILL_OPACITY})`,
+    teal: `rgba(142, 215, 209, ${FIELD_FILL_OPACITY})`,
+    green: `rgba(168, 223, 159, ${FIELD_FILL_OPACITY})`,
+    amber: `rgba(243, 215, 126, ${FIELD_FILL_OPACITY})`,
+    orange: `rgba(247, 178, 122, ${FIELD_FILL_OPACITY})`,
+    rose: `rgba(244, 161, 174, ${FIELD_FILL_OPACITY})`,
+    slate: `rgba(195, 200, 211, ${FIELD_FILL_OPACITY})`,
   },
-} satisfies DiagramExportTheme;
+});
+
+const OG_THEME = createOGTheme();
 
 const createOGImageResponseOptions = () => ({
   width: OG_WIDTH,
