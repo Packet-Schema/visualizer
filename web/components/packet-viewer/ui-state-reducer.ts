@@ -72,6 +72,10 @@ export type UiAction =
   | { type: "set-edit-mode"; editing: boolean }
   | { type: "toggle-edit-mode" }
   | { type: "toggle-source-pane" }
+  /** 明示的に source pane を閉じる (toggle と違い必ず false)。
+   *  import / save-as / delete のように lifecycle 上 packet が swap して
+   *  未保存編集が孤立する場面で使う。 */
+  | { type: "close-source-pane" }
   | { type: "open-save-dialog" }
   | { type: "close-save-dialog" }
   | { type: "set-share-status"; status: ShareStatus }
@@ -119,11 +123,20 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         viewMode: state.viewMode === "semantic" ? "wire" : "semantic",
       };
     case "set-edit-mode":
-      return { ...state, editMode: action.editing };
+      return {
+        ...state,
+        editMode: action.editing,
+        // editMode を OFF にする時は form 編集 UI が消えるが、
+        // showSourcePane は editMode から独立した動線にしたので
+        // ここでは触らない。 source pane は Save As / Discard 等の
+        // 個別 action 側でハンドリングするか、明示的に閉じる。
+      };
     case "toggle-edit-mode":
       return { ...state, editMode: !state.editMode };
     case "toggle-source-pane":
       return { ...state, showSourcePane: !state.showSourcePane };
+    case "close-source-pane":
+      return { ...state, showSourcePane: false };
     case "open-save-dialog":
       return { ...state, showSaveDialog: true };
     case "close-save-dialog":

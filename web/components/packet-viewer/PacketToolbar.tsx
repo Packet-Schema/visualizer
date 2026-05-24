@@ -19,6 +19,8 @@ export type PacketToolbarActions = {
   onToggleDependencies: () => void;
   onToggleViewMode: () => void;
   onToggleEditMode: () => void;
+  /** PSML 直編集 pane を開閉する。 editMode (form 編集) と独立に動く。 */
+  onToggleSourcePane: () => void;
   onDeleteCustomPreset: () => void;
 };
 
@@ -29,6 +31,8 @@ type Props = {
   hexStripVisible: boolean;
   dependenciesVisible: boolean;
   editMode: boolean;
+  /** PSML 直編集 pane の開閉状態 (editMode と独立)。 */
+  sourcePaneOpen: boolean;
   viewMode: ViewMode;
   headerSizeLabel: string;
   shareStatus: { msg: string; kind: "ok" | "error" } | null;
@@ -42,6 +46,7 @@ export default function PacketToolbar({
   hexStripVisible,
   dependenciesVisible,
   editMode,
+  sourcePaneOpen,
   viewMode,
   headerSizeLabel,
   shareStatus,
@@ -58,6 +63,7 @@ export default function PacketToolbar({
     onToggleDependencies,
     onToggleViewMode,
     onToggleEditMode,
+    onToggleSourcePane,
     onDeleteCustomPreset,
   } = actions;
   return (
@@ -118,6 +124,17 @@ export default function PacketToolbar({
           ariaLabel={editMode ? "Exit edit mode" : "Enter edit mode"}
         >
           Edit packet
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={onToggleSourcePane}
+          pressed={sourcePaneOpen}
+          ariaLabel={
+            sourcePaneOpen
+              ? "Close PSML source editor"
+              : "Open PSML source editor"
+          }
+        >
+          Edit source
         </ToolbarButton>
         {packetKey.startsWith("custom:") ? (
           <ToolbarButton

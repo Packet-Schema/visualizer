@@ -89,7 +89,17 @@ export function decodeSource(
   } catch (e) {
     throw toParseError(e);
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+  if (raw === null || raw === undefined) {
+    // 空テキスト / 空ドキュメントは YAML として `null` にパースされる。
+    // generic な「object/mapping」 のエラー文より、 何が足りないかを直接
+    // 伝える方が初見ユーザーに優しい (Round 1 P2 #8)。
+    throw new SourceParseError(
+      "PSML source is empty. Add at least `name`, `rowBits`, and `body`.",
+      null,
+      null,
+    );
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new SourceParseError(
       "PSML source must be a top-level object/mapping.",
       null,

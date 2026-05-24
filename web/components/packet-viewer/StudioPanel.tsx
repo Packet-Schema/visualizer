@@ -4,7 +4,6 @@ import {
   ConstraintEditor,
   ContainerRow,
   FieldRow,
-  SourcePane,
   Toolbar,
 } from "@/components/custom-packet-studio";
 import type { EditAction, EditState } from "@/lib/psml/edit-reducer";
@@ -16,8 +15,6 @@ import type {
 type Props = {
   state: EditState;
   dispatch: Dispatch<EditAction>;
-  showSourcePane: boolean;
-  onToggleSourcePane: () => void;
   onSaveAs: () => void;
   onDiscard: () => void;
 };
@@ -25,8 +22,6 @@ type Props = {
 export default function StudioPanel({
   state,
   dispatch,
-  showSourcePane,
-  onToggleSourcePane,
   onSaveAs,
   onDiscard,
 }: Props) {
@@ -47,8 +42,6 @@ export default function StudioPanel({
         insertPath={[state.packet.body.length]}
         historyLength={state.history.length}
         futureLength={state.future.length}
-        sourceOpen={showSourcePane}
-        onToggleSource={onToggleSourcePane}
         onSaveAs={onSaveAs}
         onDiscard={onDiscard}
       />
@@ -86,11 +79,6 @@ export default function StudioPanel({
           dispatch={dispatch}
         />
       </div>
-      {showSourcePane ? (
-        <div className="mt-4">
-          <SourcePane packet={state.packet} dispatch={dispatch} />
-        </div>
-      ) : null}
     </section>
   );
 }

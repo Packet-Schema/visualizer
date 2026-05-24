@@ -7,8 +7,6 @@ type Props = {
   insertPath: (string | number)[];
   historyLength: number;
   futureLength: number;
-  sourceOpen: boolean;
-  onToggleSource: () => void;
   onSaveAs: () => void;
   onDiscard: () => void;
 };
@@ -82,8 +80,6 @@ export default function Toolbar({
   insertPath,
   historyLength,
   futureLength,
-  sourceOpen,
-  onToggleSource,
   onSaveAs,
   onDiscard,
 }: Props) {
@@ -204,19 +200,6 @@ export default function Toolbar({
         style={btnStyle()}
       >
         Discard
-      </button>
-
-      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong" />
-
-      <button
-        type="button"
-        onClick={onToggleSource}
-        aria-label="Edit source (YAML / JSON)"
-        aria-pressed={sourceOpen}
-        className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle(sourceOpen)}
-      >
-        Edit source
       </button>
     </div>
   );

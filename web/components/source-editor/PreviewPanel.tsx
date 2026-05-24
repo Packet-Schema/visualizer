@@ -58,7 +58,6 @@ export default function PreviewPanel({ packet, layout }: Props) {
         {packet.byteOrder || DEFAULT_BYTE_ORDER}
       </p>
       <div
-        id="diagram"
         className="rounded-[10px] border p-3.5 overflow-x-auto"
         style={{
           background: "var(--bg-elevated)",
