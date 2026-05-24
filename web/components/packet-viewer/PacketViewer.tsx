@@ -398,6 +398,17 @@ export default function PacketViewer() {
       // fall back to `studioState.packet` (still pointing at the previous
       // preset) and the diagram would render mixed cells.
       uiDispatch({ type: "preset-switched" });
+      // Restore focus to the diagram so an editMode focus inside the
+      // editor (now unmounted) doesn't strand the user on `<body>`
+      // (sub-agent Round 9 HIGH). Defer one frame for the re-render.
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          const grid = diagramRef.current?.querySelector<HTMLElement>(
+            '[role="gridcell"][tabindex="0"]',
+          );
+          grid?.focus();
+        });
+      }
     },
     [customPresets, importedPackets, renderedPresets],
   );
@@ -569,6 +580,19 @@ export default function PacketViewer() {
 
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
+    // Confirm before nuking history if the user has actually done any
+    // schema editing (history-driven). Diagram-driven edits don't enter
+    // the reducer's history, so we use the history-length signal to
+    // skip the dialog when there's nothing in the schema to lose —
+    // matching the symmetric `handleDeleteCustomPreset` confirm pattern
+    // (sub-agent Round 9 HIGH).
+    if (
+      studioState.history.length > 0 &&
+      typeof window !== "undefined" &&
+      !window.confirm("Discard all unsaved schema edits?")
+    ) {
+      return;
+    }
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
     // Also evict the renderer mirror back to its source-of-truth shape.
     // Without this, diagram-driven edits (TLV / chain instances,
@@ -584,7 +608,24 @@ export default function PacketViewer() {
     // showJsonPane is part of the same UI shell — keep them in sync by
     // toggling off if it was open.
     if (showJsonPane) uiDispatch({ type: "toggle-json-pane" });
-  }, [activePsmlPacket, showJsonPane, replaceActivePacket]);
+    // Send focus somewhere reachable — the diagram root — so SR and
+    // keyboard users aren't dropped on `<body>` when the editor unmounts
+    // (sub-agent Round 9 HIGH). Defer one frame so React has finished
+    // unmounting the now-orphaned focus target.
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        const grid = diagramRef.current?.querySelector<HTMLElement>(
+          '[role="gridcell"][tabindex="0"]',
+        );
+        grid?.focus();
+      });
+    }
+  }, [
+    activePsmlPacket,
+    showJsonPane,
+    replaceActivePacket,
+    studioState.history.length,
+  ]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.

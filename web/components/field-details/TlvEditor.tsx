@@ -385,6 +385,7 @@ function IconBtn({
     <button
       type="button"
       aria-label={label}
+      title={label}
       onClick={onClick}
       disabled={disabled}
       className="text-3xs w-6 h-6 rounded border font-mono"

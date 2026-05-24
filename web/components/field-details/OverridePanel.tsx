@@ -585,8 +585,22 @@ type WidgetProps = {
 function SwitchDropdown({ target, controllers, onChange }: WidgetProps) {
   const cases = target.switchCases ?? [];
   const selectId = `detail-switch-${target.id}`;
+  // Defensive: a degenerate preset with no Switch cases would otherwise
+  // produce an empty `<select>` with `value={undefined}` — uncontrolled
+  // input, no options to pick. Bail out with a clear empty state instead
+  // (sub-agent Round 9 MEDIUM).
+  if (cases.length === 0) {
+    return (
+      <div>
+        <WidgetLabel>Switch case · sets {target.id}</WidgetLabel>
+        <p className="text-xs text-fg-muted m-0">
+          No cases declared for this switch.
+        </p>
+      </div>
+    );
+  }
   const current =
-    controllers[target.id] ?? target.defaultValue ?? cases[0]?.value;
+    controllers[target.id] ?? target.defaultValue ?? cases[0].value;
   return (
     <div>
       <label htmlFor={selectId}>
@@ -676,8 +690,24 @@ function EnumDropdown({ target, controllers, onChange }: WidgetProps) {
     .filter((e) => Number.isFinite(e.value))
     .sort((a, b) => a.value - b.value);
   const selectId = `detail-enum-${target.id}`;
+  // Symmetric to SwitchDropdown's empty guard — a degenerate enum with
+  // zero variants would otherwise render an unselectable `<select>`
+  // (sub-agent Round 9 MEDIUM).
+  if (entries.length === 0) {
+    return (
+      <div>
+        <WidgetLabel>
+          Enum value · sets{" "}
+          <code className="font-mono normal-case">{target.id}</code>
+        </WidgetLabel>
+        <p className="text-xs text-fg-muted m-0">
+          No variants declared for this enum.
+        </p>
+      </div>
+    );
+  }
   const current =
-    controllers[target.id] ?? target.defaultValue ?? entries[0]?.value ?? 0;
+    controllers[target.id] ?? target.defaultValue ?? entries[0].value;
   return (
     <div>
       <label htmlFor={selectId}>
