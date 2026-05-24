@@ -8,3 +8,7 @@ out
 # Build-time generated files
 lib/psml/presets.generated.ts
 next-env.d.ts
+
+# Cloudflare Workers & Open Next
+.wrangler
+.open-next
