@@ -63,7 +63,10 @@ export async function GET(request: NextRequest) {
     // 共有パラメータの長さが上限を超えた場合はデコードをスキップしてフォールバック
     const parsed =
       shareQuery.length <= OG_MAX_QUERY_LENGTH
-        ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
+        ? parseShareParams(
+            new URLSearchParams(shareQuery),
+            Object.keys(PRESETS),
+          )
         : null;
 
     // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
