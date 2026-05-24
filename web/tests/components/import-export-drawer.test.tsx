@@ -155,4 +155,60 @@ describe("ImportExportDrawer", () => {
     expect(previewDiv).toBeDefined();
     expect(previewDiv?.innerHTML).toContain("<svg");
   });
+
+  it("resolves follow-ui theme mode to current document theme", () => {
+    const packet = {
+      name: "TCP",
+      rowBits: 32,
+      fields: [{ id: "sport", name: "Sport", bits: 16 }],
+    } as const;
+    const layout = {
+      totalBits: 32,
+      cells: [
+        {
+          field: packet.fields[0],
+          bitsTotal: 16,
+          row: 0,
+          startBit: 0,
+          endBit: 15,
+          segmentIndex: 0,
+          totalSegments: 1,
+          isFirst: true,
+          isLast: true,
+          fieldStartOffset: 0,
+          fieldEndOffset: 15,
+        },
+      ],
+    };
+
+    document.documentElement.setAttribute("data-theme", "dark");
+    const { container } = mount(
+      <ImportExportDrawer
+        open={true}
+        mode="export"
+        packet={packet as never}
+        controllers={{}}
+        layout={layout as never}
+        onClose={() => {}}
+        onImport={() => {}}
+      />,
+    );
+
+    const themeSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[0];
+    act(() => {
+      themeSelect.value = "follow-ui";
+      themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const formatSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[1];
+    act(() => {
+      formatSelect.value = "svg";
+      formatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const previewDiv = container.querySelector(".diagram-export-preview");
+    expect(previewDiv?.innerHTML).toContain('data-bg="dark-bg"');
+  });
 });

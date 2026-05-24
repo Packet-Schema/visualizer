@@ -33,30 +33,38 @@ export function collectPsmlRefs(packet: PsmlPacket): Set<string> {
   const walk = (containers: Container[]): void => {
     for (const c of containers) {
       if (!c.kind || c.kind === "field") {
-        if (c.type.kind === "bytes") visit(c.type.n);
+        if (c.type?.kind === "bytes" && c.type.n) visit(c.type.n);
         continue;
       }
-      if (c.kind === "group") walk(c.children);
+      if (c.kind === "group" && c.children) walk(c.children);
       if (c.kind === "switch") {
-        visit(c.on);
-        for (const v of Object.values(c.cases)) walk(v.fields);
-        if (c.default) walk(c.default.fields);
+        if (c.on) visit(c.on);
+        if (c.cases) {
+          for (const v of Object.values(c.cases)) {
+            if (v?.fields) walk(v.fields);
+          }
+        }
+        if (c.default?.fields) walk(c.default.fields);
       }
       if (c.kind === "repeat") {
-        if (typeof c.count === "object" && "kind" in c.count) {
-          visit(c.count);
-        } else if (typeof c.count === "object" && "until" in c.count) {
+        if (typeof c.count === "object" && c.count && "kind" in c.count) {
+          visit(c.count as Expr);
+        } else if (
+          typeof c.count === "object" &&
+          c.count &&
+          "until" in c.count
+        ) {
           visit(c.count.until);
         }
-        walk(c.element.fields);
+        if (c.element?.fields) walk(c.element.fields);
       }
       if (c.kind === "encrypted") {
         if (c.wireBits) visit(c.wireBits);
-        walk(c.plaintext.fields);
+        if (c.plaintext?.fields) walk(c.plaintext.fields);
       }
       if (c.kind === "optional") {
-        visit(c.when);
-        walk([c.field]);
+        if (c.when) visit(c.when);
+        if (c.field) walk([c.field]);
       }
     }
   };

@@ -16,7 +16,7 @@ const FALLBACK_PRESET_KEY = "ipv4";
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;
 export const OG_MAX_QUERY_LENGTH = 2048;
-const OG_MARGIN = 60;
+const OG_MARGIN = 60; // Safe margin around diagram edges for padding
 const FONT_NAME = "Geist";
 
 const OG_HEADERS = {
@@ -44,8 +44,8 @@ const FALLBACK_TITLE_FONT_SIZE = 120;
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
 
-const MAX_CONTROLLER_VALUE = 100;
-const MAX_ROW_BITS = 256;
+const MAX_CONTROLLER_VALUE = 100; // Slider max value from UI controls
+const MAX_ROW_BITS = 256; // Safety limit to prevent memory/rendering issues with oversized packets
 
 function renderFallbackImage() {
   return new ImageResponse(
