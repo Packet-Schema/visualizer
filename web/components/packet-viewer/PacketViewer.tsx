@@ -13,6 +13,7 @@ import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
+import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
 import {
   initialState,
   packetCategories,
@@ -752,17 +753,7 @@ export default function PacketViewer({
     const env = new Map(
       Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
     );
-    // Derive secondary repeat-count keys for presets whose UI slider drives a
-    // bytes-counter rather than the PSML count ref. Each TLV editor sets
-    // {opts}_count directly via syncTlvControllers; this fallback covers the
-    // IHL / Data Offset slider path where the user grows the header without
-    // touching the TLV editor.
-    // We compute these generically based on the environment so that custom
-    // presets (with different packetKeys) can still resolve their layout refs.
-    const ihl = env.get("ihl") ?? 5;
-    env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
-    const off = env.get("dataOffset") ?? 5;
-    env.set("tcpOptionsCount", Math.max(0, off - 5));
+    setupDerivedCounts(env);
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、

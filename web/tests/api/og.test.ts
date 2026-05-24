@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildShareQueryFromParams, isShareQueryLengthValid, parseShareParams } from "@/lib/share-url";
+import {
+  buildShareQueryFromParams,
+  isShareQueryLengthValid,
+  parseShareParams,
+} from "@/lib/share-url";
 import { PRESETS } from "@/lib/psml/presets";
 
 describe("OG API integration - share URL utilities", () => {
@@ -19,7 +23,10 @@ describe("OG API integration - share URL utilities", () => {
   });
 
   it("parses preset parameters for OG image generation", () => {
-    const parsed = parseShareParams("?preset=ipv4&controllers.ihl=6", Object.keys(PRESETS));
+    const parsed = parseShareParams(
+      "?preset=ipv4&controllers.ihl=6",
+      Object.keys(PRESETS),
+    );
     expect(parsed.kind).toBe("preset");
     if (parsed.kind === "preset") {
       expect(parsed.presetKey).toBe("ipv4");
@@ -28,7 +35,10 @@ describe("OG API integration - share URL utilities", () => {
   });
 
   it("handles unknown presets gracefully", () => {
-    const parsed = parseShareParams("?preset=nonexistent", Object.keys(PRESETS));
+    const parsed = parseShareParams(
+      "?preset=nonexistent",
+      Object.keys(PRESETS),
+    );
     expect(parsed.kind).toBe("none");
     if (parsed.kind === "none") {
       expect(parsed.error).toMatch(/Unknown preset/);
@@ -36,7 +46,10 @@ describe("OG API integration - share URL utilities", () => {
   });
 
   it("validates controller values are integers", () => {
-    const parsed = parseShareParams("?preset=ipv4&controllers.ihl=10&controllers.bad=NaN", Object.keys(PRESETS));
+    const parsed = parseShareParams(
+      "?preset=ipv4&controllers.ihl=10&controllers.bad=NaN",
+      Object.keys(PRESETS),
+    );
     expect(parsed.kind).toBe("preset");
     if (parsed.kind === "preset") {
       expect(parsed.controllers.ihl).toBe(10);
@@ -45,7 +58,10 @@ describe("OG API integration - share URL utilities", () => {
   });
 
   it("clamps controller values to safe integer range", () => {
-    const parsed = parseShareParams("?preset=ipv4&controllers.ihl=999", Object.keys(PRESETS));
+    const parsed = parseShareParams(
+      "?preset=ipv4&controllers.ihl=999",
+      Object.keys(PRESETS),
+    );
     expect(parsed.kind).toBe("preset");
     if (parsed.kind === "preset") {
       expect(typeof parsed.controllers.ihl).toBe("number");
@@ -57,7 +73,10 @@ describe("OG API integration - share URL utilities", () => {
     const parsed = parseShareParams("?", Object.keys(PRESETS));
     expect(parsed.kind).toBe("none");
 
-    const withControllers = parseShareParams("?controllers.x=1", Object.keys(PRESETS));
+    const withControllers = parseShareParams(
+      "?controllers.x=1",
+      Object.keys(PRESETS),
+    );
     expect(withControllers.kind).toBe("preset");
     if (withControllers.kind === "preset") {
       expect(withControllers.presetKey).toBe("ipv4");

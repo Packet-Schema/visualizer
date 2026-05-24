@@ -7,6 +7,7 @@ import { resolveLayout } from "@/lib/psml/layout";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
+import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 import {
   parseShareParams,
@@ -154,11 +155,7 @@ export async function GET(request: NextRequest) {
       env.set(key, value);
     }
 
-    // ihl/dataOffset から派生カウントを補完（UI の PacketViewer と同じ処理）
-    const ihl = Number(env.get("ihl") ?? 5);
-    env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
-    const dataOffset = Number(env.get("dataOffset") ?? 5);
-    env.set("tcpOptionsCount", Math.max(0, dataOffset - 5));
+    setupDerivedCounts(env);
 
     const refs = collectPsmlRefs(psml);
     for (const ref of refs) {
@@ -206,6 +203,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("OGP generation failed:", message);
-    return new Response(`OG generation failed: ${message}`, { status: 500 });
+    return renderFallbackImage();
   }
 }
