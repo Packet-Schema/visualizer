@@ -19,14 +19,20 @@ type Props = {
 
 const DEFAULT_PACKET_KEY = "ipv4";
 
+function parseShareParamsOrFallback(
+  shareQuery: string,
+): ReturnType<typeof parseShareParams> {
+  return isShareQueryLengthValid(shareQuery)
+    ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
+    : { kind: "none" as const, controllers: {} };
+}
+
 export async function generateMetadata({
   searchParams,
 }: Props): Promise<Metadata> {
   const params = await searchParams;
   const shareQuery = buildShareQueryFromParams(params);
-  const parsed = isShareQueryLengthValid(shareQuery)
-    ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
-    : { kind: "none" as const, controllers: {} };
+  const parsed = parseShareParamsOrFallback(shareQuery);
 
   const imageUrl = new URL(
     shareQuery ? `/api/og?${shareQuery}` : "/api/og",
@@ -66,9 +72,7 @@ export async function generateMetadata({
 export default async function Page({ searchParams }: Props) {
   const params = await searchParams;
   const shareQuery = buildShareQueryFromParams(params);
-  const parsed = isShareQueryLengthValid(shareQuery)
-    ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
-    : { kind: "none" as const, controllers: {} };
+  const parsed = parseShareParamsOrFallback(shareQuery);
 
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
