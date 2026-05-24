@@ -105,6 +105,7 @@ const LAYOUT = {
   subfieldBorderRadius: 6,
   titleFontSize: 12,
   subtitleFontSize: 10,
+  subfieldFontSize: 9,
   majorTickHeight: 10,
   minorTickHeight: 6,
 } as const;
@@ -380,7 +381,7 @@ export function buildDiagramSvg(
               cell,
               bitWidth,
               theme,
-              subtitleFontSize,
+              LAYOUT.subfieldFontSize,
             ),
           ].join("");
         })
@@ -681,6 +682,11 @@ export function injectLayoutStyles(): void {
     "--cell-subtitle-margin-top",
     `${LAYOUT.cellSubtitleMarginTop}px`,
   );
+  root.style.setProperty("--subtitle-font-size", `${LAYOUT.subtitleFontSize}px`);
+  root.style.setProperty("--major-tick-height", `${LAYOUT.majorTickHeight}px`);
+  root.style.setProperty("--minor-tick-height", `${LAYOUT.minorTickHeight}px`);
+  root.style.setProperty("--subfield-height", `${LAYOUT.subfieldHeight}px`);
+  root.style.setProperty("--subfield-font-size", `${LAYOUT.subfieldFontSize}px`);
 }
 
 // Initialize layout styles on module load (client-side only)
