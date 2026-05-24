@@ -118,24 +118,39 @@ export default function PacketToolbar({
         >
           Decrypted view
         </ToolbarButton>
-        <ToolbarButton
-          onClick={onToggleEditMode}
-          pressed={editMode}
-          ariaLabel={editMode ? "Exit edit mode" : "Enter edit mode"}
+        <span
+          aria-hidden="true"
+          className="mx-0.5 h-5 w-px"
+          style={{ background: "var(--border)" }}
+        />
+        <div
+          role="group"
+          aria-label="Edit packet mode"
+          className="flex items-center gap-1.5"
         >
-          Edit packet
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={onToggleSourcePane}
-          pressed={sourcePaneOpen}
-          ariaLabel={
-            sourcePaneOpen
-              ? "Close PSML source editor"
-              : "Open PSML source editor"
-          }
-        >
-          Edit source
-        </ToolbarButton>
+          <ToolbarButton
+            onClick={onToggleEditMode}
+            pressed={editMode}
+            ariaLabel={
+              editMode
+                ? "Exit form editor"
+                : "Open form editor (add/edit fields, containers, constraints)"
+            }
+          >
+            Edit packet
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={onToggleSourcePane}
+            pressed={sourcePaneOpen}
+            ariaLabel={
+              sourcePaneOpen
+                ? "Close PSML source editor"
+                : "Open PSML source editor (YAML / JSON direct edit)"
+            }
+          >
+            Edit source
+          </ToolbarButton>
+        </div>
         {packetKey.startsWith("custom:") ? (
           <ToolbarButton
             onClick={onDeleteCustomPreset}

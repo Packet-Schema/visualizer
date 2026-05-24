@@ -1064,7 +1064,11 @@ export default function PacketViewer() {
         </div>
 
         {showSourcePane ? (
-          <SourcePane packet={studioState.packet} dispatch={dispatch} />
+          <SourcePane
+            packet={studioState.packet}
+            dispatch={dispatch}
+            onClose={() => uiDispatch({ type: "close-source-pane" })}
+          />
         ) : null}
 
         {editMode ? (

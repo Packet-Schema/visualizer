@@ -107,6 +107,17 @@ export function decodeSource(
     );
   }
   const obj = stripWireMarkers(raw as Record<string, unknown>);
+  // JSON で `{}` (空オブジェクト) が来た時、 後段の validatePsmlPacket は
+  // "missing a name" などの低レベル文言で reject する。 ユーザーには
+  // 「最低限これだけ書け」 の方が早いので、 空オブジェクトは empty と同じ
+  // メッセージで返す (Round 2 P1, 一貫性)。
+  if (Object.keys(obj).length === 0) {
+    throw new SourceParseError(
+      "PSML source is empty. Add at least `name`, `rowBits`, and `body`.",
+      null,
+      null,
+    );
+  }
   // 構造チェック (PsmlPacket としての invariants)。throw されたらそのまま
   // 上に投げる — banner で表示される。
   validatePsmlPacket(obj as PsmlPacket);

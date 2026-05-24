@@ -123,18 +123,33 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         viewMode: state.viewMode === "semantic" ? "wire" : "semantic",
       };
     case "set-edit-mode":
+      // editMode と showSourcePane は同時 ON で edit race が起きるため
+      // 排他にする (Round 2 P0)。 editMode を ON にする時は source pane
+      // を閉じ、 OFF にする時は触らない (個別 close-source-pane に任せる)。
       return {
         ...state,
         editMode: action.editing,
-        // editMode を OFF にする時は form 編集 UI が消えるが、
-        // showSourcePane は editMode から独立した動線にしたので
-        // ここでは触らない。 source pane は Save As / Discard 等の
-        // 個別 action 側でハンドリングするか、明示的に閉じる。
+        showSourcePane: action.editing ? false : state.showSourcePane,
       };
-    case "toggle-edit-mode":
-      return { ...state, editMode: !state.editMode };
-    case "toggle-source-pane":
-      return { ...state, showSourcePane: !state.showSourcePane };
+    case "toggle-edit-mode": {
+      const nextEditMode = !state.editMode;
+      return {
+        ...state,
+        editMode: nextEditMode,
+        // ON にする時のみ source pane を閉じる。 OFF にした瞬間に source
+        // pane を勝手に開かない。
+        showSourcePane: nextEditMode ? false : state.showSourcePane,
+      };
+    }
+    case "toggle-source-pane": {
+      const nextSource = !state.showSourcePane;
+      return {
+        ...state,
+        showSourcePane: nextSource,
+        // source pane を ON にする時は editMode を閉じる (排他)。
+        editMode: nextSource ? false : state.editMode,
+      };
+    }
     case "close-source-pane":
       return { ...state, showSourcePane: false };
     case "open-save-dialog":

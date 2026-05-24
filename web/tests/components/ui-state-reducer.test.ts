@@ -85,6 +85,56 @@ describe("uiReducer", () => {
     expect(next.hexStripVisible).toBe(true);
   });
 
+  it("toggle-source-pane mutually excludes editMode (closes form when source opens)", () => {
+    const inEdit: UiState = { ...seed, editMode: true, showSourcePane: false };
+    const opened = uiReducer(inEdit, { type: "toggle-source-pane" });
+    expect(opened.showSourcePane).toBe(true);
+    expect(opened.editMode).toBe(false);
+    const closed = uiReducer(opened, { type: "toggle-source-pane" });
+    expect(closed.showSourcePane).toBe(false);
+    // 閉じる時は editMode は触らない
+    expect(closed.editMode).toBe(false);
+  });
+
+  it("toggle-edit-mode mutually excludes showSourcePane (closes source when form opens)", () => {
+    const inSource: UiState = {
+      ...seed,
+      editMode: false,
+      showSourcePane: true,
+    };
+    const opened = uiReducer(inSource, { type: "toggle-edit-mode" });
+    expect(opened.editMode).toBe(true);
+    expect(opened.showSourcePane).toBe(false);
+  });
+
+  it("set-edit-mode true closes the source pane; set-edit-mode false leaves it alone", () => {
+    const inSource: UiState = {
+      ...seed,
+      editMode: false,
+      showSourcePane: true,
+    };
+    const turnedOn = uiReducer(inSource, {
+      type: "set-edit-mode",
+      editing: true,
+    });
+    expect(turnedOn.editMode).toBe(true);
+    expect(turnedOn.showSourcePane).toBe(false);
+
+    const inEdit: UiState = { ...seed, editMode: true, showSourcePane: false };
+    const turnedOff = uiReducer(inEdit, {
+      type: "set-edit-mode",
+      editing: false,
+    });
+    expect(turnedOff.editMode).toBe(false);
+    expect(turnedOff.showSourcePane).toBe(false);
+  });
+
+  it("close-source-pane forces showSourcePane false regardless of prior state", () => {
+    const inSource: UiState = { ...seed, showSourcePane: true };
+    const closed = uiReducer(inSource, { type: "close-source-pane" });
+    expect(closed.showSourcePane).toBe(false);
+  });
+
   it("set-share-status / clear-share-status drive the share toast", () => {
     const set = uiReducer(seed, {
       type: "set-share-status",

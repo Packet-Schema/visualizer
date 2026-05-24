@@ -20,6 +20,8 @@ import type { PsmlPacket } from "@/lib/psml/types";
 type Props = {
   packet: PsmlPacket;
   dispatch: (a: EditAction) => void;
+  /** Close ボタンで source pane 自体を畳む経路。 親で showSourcePane=false。 */
+  onClose: () => void;
 };
 
 type ParseError = { message: string; line: number | null };
@@ -55,7 +57,7 @@ const DEBOUNCE_MS = 200;
  *   keyboard navigation を備える (WAI-ARIA APG 準拠)。
  * - mount 時に textarea へ自動 focus。
  */
-export default function SourcePane({ packet, dispatch }: Props) {
+export default function SourcePane({ packet, dispatch, onClose }: Props) {
   const [format, setFormat] = useState<SourceFormat>("yaml");
   const upstreamText = useMemo(
     () => encodeSource(packet, format),
@@ -192,6 +194,18 @@ export default function SourcePane({ packet, dispatch }: Props) {
     setDirty(true);
   }, []);
 
+  /**
+   * Discard — 未保存編集を捨てて upstream packet (= studio reducer の最新)
+   * を再 encode した text に巻き戻す。 SourcePane を閉じずに編集だけリセット。
+   * Round 2 (Agent 2) P0 で指摘された「SourcePane only な状態で破棄経路が
+   * 無い」 の対策。
+   */
+  const handleDiscardLocal = useCallback(() => {
+    setText(encodeSource(packet, format));
+    setDirty(false);
+    setParseError(null);
+  }, [packet, format]);
+
   // a11y: ArrowLeft / ArrowRight で format toggle の隣項目に focus を移し、
   // Space / Enter で選択する。 role="radio" の WAI-ARIA APG に従う。
   const radioRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -244,33 +258,63 @@ export default function SourcePane({ packet, dispatch }: Props) {
         <h2 className="text-xs m-0 uppercase tracking-wider font-bold text-fg-muted">
           PSML source
         </h2>
-        <div
-          role="radiogroup"
-          aria-label="Source format"
-          className="inline-flex rounded border text-xs overflow-hidden"
-          style={{ borderColor: "var(--border)" }}
-        >
-          {(["yaml", "json"] as const).map((f, idx) => (
-            <button
-              key={f}
-              type="button"
-              role="radio"
-              ref={(el) => {
-                radioRefs.current[idx] = el;
-              }}
-              aria-checked={format === f}
-              tabIndex={format === f ? 0 : -1}
-              onClick={() => handleFormatChange(f)}
-              onKeyDown={(e) => handleRadioKeyDown(e, idx, f)}
-              className="px-3 py-1 uppercase tracking-wide"
-              style={{
-                background: format === f ? "var(--accent)" : "var(--bg-subtle)",
-                color: format === f ? "var(--accent-fg)" : "var(--fg)",
-              }}
-            >
-              {f}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div
+            role="radiogroup"
+            aria-label="Source format"
+            className="inline-flex rounded border text-xs overflow-hidden"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {(["yaml", "json"] as const).map((f, idx) => (
+              <button
+                key={f}
+                type="button"
+                role="radio"
+                ref={(el) => {
+                  radioRefs.current[idx] = el;
+                }}
+                aria-checked={format === f}
+                tabIndex={format === f ? 0 : -1}
+                onClick={() => handleFormatChange(f)}
+                onKeyDown={(e) => handleRadioKeyDown(e, idx, f)}
+                className="px-3 py-1 uppercase tracking-wide"
+                style={{
+                  background:
+                    format === f ? "var(--accent)" : "var(--bg-subtle)",
+                  color: format === f ? "var(--accent-fg)" : "var(--fg)",
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleDiscardLocal}
+            disabled={!dirty && parseError === null}
+            aria-label="Revert unsaved source changes"
+            className="text-xs px-2 py-1 rounded border"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--bg-subtle)",
+              opacity: !dirty && parseError === null ? 0.5 : 1,
+              cursor: !dirty && parseError === null ? "not-allowed" : "pointer",
+            }}
+          >
+            Revert
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close source editor"
+            className="text-xs px-2 py-1 rounded border"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--bg-subtle)",
+            }}
+          >
+            Close
+          </button>
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 min-h-[260px] lg:min-h-[360px]">
