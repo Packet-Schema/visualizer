@@ -134,6 +134,13 @@ const RESERVED_ID_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
     reason: "reserved `__inst_<N>` TLV-instance suffix",
   },
   { re: /__remaining$/, reason: "reserved `__remaining` TLV-remaining suffix" },
+  // The renderer composes parent / sub-cell ids as `${parent}:${sub}` and
+  // the diagram dispatches clicks via that shape. A field id containing
+  // a literal `:` would collide with the separator and prevent
+  // selection-resolver / parseTlvCellId from disambiguating clicks
+  // (Codex P2 × 2). Reject the character up front so a hand-authored
+  // preset can't break the click-routing.
+  { re: /:/, reason: "reserved `:` separator (used in sub-cell ids)" },
 ];
 
 function ensureUnreservedFieldId(id: string, ctx: string): void {

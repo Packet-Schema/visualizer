@@ -35,7 +35,12 @@ export function parseTlvCellId(id: string): TlvCellRole {
   // the click. Otherwise fall through to "plain" — real packet-level
   // subfield clicks are handled by `selection-resolver` downstream.
   if (id.includes(":")) {
-    const colonIdx = id.indexOf(":");
+    // Split on the rightmost colon so a TLV synthetic id whose parent
+    // half happens to contain a colon (degenerate / hand-authored
+    // preset) still routes correctly. `validatePsmlPacket` also rejects
+    // `:` in user-authored field ids, so this only ever fires on
+    // renderer-minted shapes; defense in depth is cheap (Codex P2).
+    const colonIdx = id.lastIndexOf(":");
     const parentPart = id.slice(0, colonIdx);
     const subPart = id.slice(colonIdx + 1);
     const instMatch = parentPart.match(INSTANCE_RE);
