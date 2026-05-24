@@ -26,7 +26,7 @@ import type {
   ResolvedLayout,
   SubCell,
 } from "./psml/renderer";
-import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "./diagram-themes";
+import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "./colors";
 
 export type DiagramExportTheme = {
   background: string;

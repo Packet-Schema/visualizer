@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { generateLayoutCssVariables } from "@/lib/diagram-export";
-import { generateThemeCssVariables } from "@/lib/diagram-themes";
+import { generateThemeCssVariables } from "@/lib/colors";
 import "./globals.css";
 
 export const metadata: Metadata = {
