@@ -2,6 +2,10 @@ import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import { fieldFill, rowsFor, textForCell } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
+// Note: This component renders the same diagram as buildDiagramSvg (used for live exports),
+// but as JSX instead of SVG strings for Satori/next/og compatibility. When modifying
+// diagram layout, dimensions, or rendering logic, update both implementations to stay in sync.
+
 const BASE_RULER_HEIGHT = 22;
 const BASE_RULER_GAP = 6;
 const BASE_ROW_HEIGHT = 56;

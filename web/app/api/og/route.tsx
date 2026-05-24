@@ -112,7 +112,12 @@ export async function GET(request: NextRequest) {
             new URLSearchParams(shareQuery),
             Object.keys(PRESETS),
           )
-        : null;
+        : (() => {
+            console.warn(
+              `OG URL too long: ${shareQuery.length} bytes > ${OG_MAX_QUERY_LENGTH} bytes limit`,
+            );
+            return null;
+          })();
 
     // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
     if (!parsed || parsed.kind === "none") {

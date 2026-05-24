@@ -211,4 +211,75 @@ describe("ImportExportDrawer", () => {
     const previewDiv = container.querySelector(".diagram-export-preview");
     expect(previewDiv?.innerHTML).toContain('data-bg="dark-bg"');
   });
+
+  it("updates preview when document theme changes with follow-ui mode", async () => {
+    const packet = {
+      name: "ICMP",
+      rowBits: 32,
+      fields: [{ id: "type", name: "Type", bits: 8 }],
+    } as const;
+    const layout = {
+      totalBits: 32,
+      cells: [
+        {
+          field: packet.fields[0],
+          bitsTotal: 8,
+          row: 0,
+          startBit: 0,
+          endBit: 7,
+          segmentIndex: 0,
+          totalSegments: 1,
+          isFirst: true,
+          isLast: true,
+          fieldStartOffset: 0,
+          fieldEndOffset: 7,
+        },
+      ],
+    };
+
+    document.documentElement.setAttribute("data-theme", "light");
+    const { container } = mount(
+      <ImportExportDrawer
+        open={true}
+        mode="export"
+        packet={packet as never}
+        controllers={{}}
+        layout={layout as never}
+        onClose={() => {}}
+        onImport={() => {}}
+      />,
+    );
+
+    const formatSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[1];
+    act(() => {
+      formatSelect.value = "svg";
+      formatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const themeSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[2];
+    act(() => {
+      themeSelect.value = "follow-ui";
+      themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    let previewDiv = container.querySelector(".diagram-export-preview");
+    expect(previewDiv?.innerHTML).toContain('data-bg="light-bg"');
+
+    // Simulate document theme change
+    act(() => {
+      document.documentElement.setAttribute("data-theme", "dark");
+      // Trigger MutationObserver callback
+      const event = new MutationEvent("DOMAttrModified", {
+        attrName: "data-theme",
+      });
+      document.documentElement.dispatchEvent(event);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    previewDiv = container.querySelector(".diagram-export-preview");
+    expect(previewDiv?.innerHTML).toContain('data-bg="dark-bg"');
+  });
 });
