@@ -229,6 +229,17 @@ export default function PacketViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !urlHydrated) return;
+    const builtInPsml = PRESETS[packetKey];
+    const customSource = customPresets[packetKey];
+    const psml = builtInPsml ?? (customSource || PRESETS[DEFAULT_PACKET_KEY]);
+    const title = psml
+      ? `${psml.name} | Packet Visualizer`
+      : "Packet Visualizer";
+    document.title = title;
+  }, [packetKey, customPresets, urlHydrated]);
+
   // The active PSML packet for the studio reducer. Prefers built-in PSML,
   // then a custom preset, then a lifted version of the imported renderer
   // packet (lossy but acceptable as a starting point for editing).

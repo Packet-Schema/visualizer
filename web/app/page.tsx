@@ -54,23 +54,24 @@ export async function generateMetadata({
       : parsed.packet
     : null;
 
-  const title = packet
+  const htmlTitle = packet
     ? `${packet.name} | Packet Visualizer`
     : "Packet Visualizer";
+  const ogTitle = "Packet Visualizer";
   const description =
     packet?.description ?? "Visual viewer for common network packet headers.";
 
   return {
-    title,
+    title: htmlTitle,
     description,
     openGraph: {
-      title,
+      title: ogTitle,
       description,
       images: [{ url: imageUrl, width: OG_WIDTH, height: OG_HEIGHT }],
     },
     twitter: {
       card: "summary_large_image",
-      title,
+      title: ogTitle,
       description,
       images: [imageUrl],
     },
