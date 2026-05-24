@@ -72,10 +72,13 @@ const DEFAULT_THEME: DiagramExportTheme = {
 
 const LAYOUT = {
   padding: 16,
-  rulerHeight: 26,
-  rulerGap: 8,
-  rowHeight: 64,
-  rowGap: 6,
+  rulerHeight: 22,
+  rulerGap: 6,
+  rowHeight: 56,
+  rowGap: 4,
+  rowPaddingVertical: 4,
+  cellPaddingVertical: 6,
+  cellPaddingHorizontal: 8,
   cellInset: 2,
   subfieldHeight: 18,
 } as const;
@@ -134,13 +137,13 @@ export function rowY(row: number): number {
     LAYOUT.padding +
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
-    row * (LAYOUT.rowHeight + LAYOUT.rowGap)
+    row * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2 + LAYOUT.rowGap)
   );
 }
 
 export function cellGeometry(cell: Cell, bitWidth: number) {
   const x = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
-  const y = rowY(cell.row) + LAYOUT.cellInset;
+  const y = rowY(cell.row) + LAYOUT.rowPaddingVertical + LAYOUT.cellInset;
   const width =
     (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
   const height = LAYOUT.rowHeight - LAYOUT.cellInset * 2;
@@ -267,7 +270,7 @@ export function buildDiagramSvg(
     LAYOUT.padding * 2 +
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
-    rows.length * LAYOUT.rowHeight +
+    rows.length * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2) +
     Math.max(rows.length - 1, 0) * LAYOUT.rowGap;
 
   const ruler = Array.from({ length: packet.rowBits }, (_, bit) => {
@@ -286,7 +289,7 @@ export function buildDiagramSvg(
       const y = rowY(rowIndex);
       const band = transparentBackground
         ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${xmlAttribute(rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd)}" />`;
+        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2}" rx="8" fill="${xmlAttribute(rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd)}" />`;
       const renderedCells = cells
         .map((cell) => {
           const {
@@ -308,8 +311,8 @@ export function buildDiagramSvg(
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + 18}" text-anchor="middle" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + 33}" text-anchor="middle" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(cell.subCells, cell, bitWidth, theme),
           ].join("");
