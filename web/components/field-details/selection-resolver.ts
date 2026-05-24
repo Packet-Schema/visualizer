@@ -32,19 +32,22 @@ export function resolveSelection(
   // (e.g. `flagsBits#0:flags_df`), so strip the repeat tag only from
   // the parent half. Splitting on `#` first would have swallowed the
   // `:flags_df` portion entirely.
+  // Repeat decoration may be multi-segment when Groups nest inside
+  // multiple Repeats (`flagsBits#0_1` for `[0][1]`). Strip the whole
+  // `#a(_b)*` chain, not just the trailing `#N` (Codex P1).
+  const STRIP_REPEAT_TAG = /#\d+(?:_\d+)*$/;
   if (selectedFieldId.includes(":")) {
     const [parentRaw, subId] = selectedFieldId.split(":");
-    const parentId = parentRaw.replace(/#\d+$/, "");
+    const parentId = parentRaw.replace(STRIP_REPEAT_TAG, "");
     const parent = packet.fields.find((f) => f.id === parentId);
     const sub = parent?.subfields?.find((s) => s.id === subId);
     return parent && sub
       ? { kind: "subfield", parent, sub }
       : { kind: "subfield-not-found" };
   }
-  // Non-subfield ids strip `#<N>` and the various TLV synthetic
-  // suffixes alike — the recovery target is always the underlying
-  // renderer-mirror field.
-  const baseId = selectedFieldId.replace(/#\d+$/, "");
+  // Non-subfield ids strip the same chain — the recovery target is
+  // always the underlying renderer-mirror field.
+  const baseId = selectedFieldId.replace(STRIP_REPEAT_TAG, "");
   // Bare subfield id (groups whose children render as their own top-level
   // cells lose the `parent:` prefix in the id stream).
   for (const parent of packet.fields) {
