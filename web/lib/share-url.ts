@@ -10,6 +10,7 @@ import type { Packet as PsmlPacket, PacketEnv } from "./psml/types";
 
 export const CONTROLLER_PARAM_PREFIX = "controllers.";
 export const SHARE_URL_WARN_BYTES = 2048;
+export const SHARE_URL_MAX_LENGTH = 2048;
 export const SHARE_PARAM_KEYS = ["preset", "psml"] as const;
 
 export type ParsedShareParams =
@@ -182,6 +183,12 @@ export function buildShareQueryFromParams(
   }
 
   return out.toString();
+}
+
+export function isShareQueryLengthValid(shareQuery: string): boolean {
+  return (
+    new URLSearchParams(shareQuery).toString().length <= SHARE_URL_MAX_LENGTH
+  );
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {

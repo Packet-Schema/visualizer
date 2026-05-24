@@ -8,16 +8,27 @@ import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams, buildShareQueryFromParams } from "@/lib/share-url";
+import {
+  parseShareParams,
+  buildShareQueryFromParams,
+  isShareQueryLengthValid,
+} from "@/lib/share-url";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;
-export const OG_MAX_QUERY_LENGTH = 2048;
-const OG_MARGIN = 60; // Safe margin around diagram edges for padding
+const OG_MARGIN = 60;
 const FONT_NAME = "Geist";
+
+function getDefaultPreset() {
+  const primary = PRESETS[FALLBACK_PRESET_KEY];
+  if (primary) return primary;
+  const builtIn = Object.values(PRESETS);
+  if (builtIn.length > 0) return builtIn[0];
+  throw new Error("No presets available");
+}
 
 const OG_HEADERS = {
   "content-type": "image/png",
@@ -106,28 +117,21 @@ export async function GET(request: NextRequest) {
 
   try {
     const shareQuery = buildShareQueryFromParams(request.nextUrl.searchParams);
-    // 共有パラメータの長さが上限を超えた場合はデコードをスキップしてフォールバック
-    const parsed =
-      shareQuery.length <= OG_MAX_QUERY_LENGTH
-        ? parseShareParams(
-            new URLSearchParams(shareQuery),
-            Object.keys(PRESETS),
-          )
-        : (() => {
-            console.warn(
-              `OG URL too long: ${shareQuery.length} bytes > ${OG_MAX_QUERY_LENGTH} bytes limit`,
-            );
-            return null;
-          })();
+    const isValidLength = isShareQueryLengthValid(shareQuery);
+    const parsed = isValidLength
+      ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
+      : (() => {
+          console.warn(
+            `OG URL too long: ${shareQuery.length} bytes. Falling back to default image.`,
+          );
+          return null;
+        })();
 
-    // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
     if (!parsed || parsed.kind === "none") {
       return renderFallbackImage();
     }
 
-    const builtInKeys = Object.keys(PRESETS);
-    const fallbackPsml =
-      PRESETS[FALLBACK_PRESET_KEY] ?? PRESETS[builtInKeys[0]];
+    const fallbackPsml = getDefaultPreset();
     const psml =
       parsed.kind === "psml"
         ? parsed.packet
