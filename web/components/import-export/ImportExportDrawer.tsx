@@ -262,7 +262,6 @@ export default function ImportExportDrawer({
     layout,
     packet,
     transparentBackground,
-    uiThemeAttr,
   ]);
 
   const handleImageDownload = useCallback(async () => {
