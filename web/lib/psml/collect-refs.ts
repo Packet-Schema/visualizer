@@ -1,5 +1,23 @@
 import type { Container, Expr, Packet as PsmlPacket } from "./types";
 
+function isExpr(value: unknown): value is Expr {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    typeof (value as Record<string, unknown>).kind === "string"
+  );
+}
+
+function isUntilCount(value: unknown): value is { until: Expr } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "until" in value &&
+    isExpr((value as Record<string, unknown>).until)
+  );
+}
+
 /**
  * PSML packet 内で参照されている ref フィールド名を全て集める。
  * PSML 0.4 の全 Container kind (group / switch / repeat / encrypted / optional) を再帰的に walk する。
@@ -47,13 +65,9 @@ export function collectPsmlRefs(packet: PsmlPacket): Set<string> {
         if (c.default?.fields) walk(c.default.fields);
       }
       if (c.kind === "repeat") {
-        if (typeof c.count === "object" && c.count && "kind" in c.count) {
-          visit(c.count as Expr);
-        } else if (
-          typeof c.count === "object" &&
-          c.count &&
-          "until" in c.count
-        ) {
+        if (isExpr(c.count)) {
+          visit(c.count);
+        } else if (isUntilCount(c.count)) {
           visit(c.count.until);
         }
         if (c.element?.fields) walk(c.element.fields);
