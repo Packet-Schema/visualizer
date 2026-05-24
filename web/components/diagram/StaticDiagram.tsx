@@ -1,8 +1,6 @@
 import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
 import {
-  fieldFill,
   rowsFor,
-  textForCell,
   cellVisual,
   naturalDiagramHeight,
   rowBandColor,
