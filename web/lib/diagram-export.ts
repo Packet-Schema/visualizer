@@ -96,6 +96,10 @@ const LAYOUT = {
   rowBorderRadius: 8,
   cellBorderRadius: 10,
   subfieldBorderRadius: 6,
+  titleFontSize: 12,
+  subtitleFontSize: 10,
+  majorTickHeight: 10,
+  minorTickHeight: 6,
 } as const;
 
 export { DEFAULT_THEME, LAYOUT };
@@ -228,6 +232,7 @@ function renderSubfields(
   cell: Cell,
   bitWidth: number,
   theme: DiagramExportTheme,
+  subfieldFontSize: number,
 ): string {
   if (!subCells?.length) return "";
   const parent = cellGeometry(cell, bitWidth);
@@ -241,7 +246,7 @@ function renderSubfields(
       return [
         `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
         label
-          ? `<text x="${x + 6}" y="${y + 12}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
+          ? `<text x="${x + 6}" y="${y + 12}" font-size="${subfieldFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
           : "",
       ].join("");
     })
@@ -314,14 +319,18 @@ export function buildDiagramSvg(
   );
   const width = LAYOUT.padding * 2 + packet.rowBits * bitWidth;
   const height = LAYOUT.padding * 2 + naturalDiagramHeight(rows.length);
+  const titleFontSize = LAYOUT.titleFontSize;
+  const subtitleFontSize = LAYOUT.subtitleFontSize;
+  const majorTickH = LAYOUT.majorTickHeight;
+  const minorTickH = LAYOUT.minorTickHeight;
 
   const ruler = Array.from({ length: packet.rowBits }, (_, bit) => {
     const x = LAYOUT.padding + bit * bitWidth;
     const major = bit % 8 === 0;
-    const tickHeight = major ? 10 : 6;
+    const tickHeight = major ? majorTickH : minorTickH;
     const label =
       bit % 4 === 0
-        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
+        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
         : "";
     return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
   }).join("");
@@ -332,7 +341,7 @@ export function buildDiagramSvg(
       const bandColor = rowBandColor(rowIndex, theme);
       const band = transparentBackground
         ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2}" rx="8" fill="${xmlAttribute(bandColor)}" />`;
+        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2}" rx="${LAYOUT.rowBorderRadius}" fill="${xmlAttribute(bandColor)}" />`;
       const renderedCells = cells
         .map((cell) => {
           const {
@@ -350,11 +359,17 @@ export function buildDiagramSvg(
           // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text x="${x + cw / 2}" y="${cy + 23}" text-anchor="middle" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + cw / 2}" y="${cy + 36}" text-anchor="middle" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
+            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
+            `<text x="${x + cw / 2}" y="${cy + 23}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + 36}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
-            renderSubfields(cell.subCells, cell, bitWidth, theme),
+            renderSubfields(
+              cell.subCells,
+              cell,
+              bitWidth,
+              theme,
+              subtitleFontSize,
+            ),
           ].join("");
         })
         .join("");

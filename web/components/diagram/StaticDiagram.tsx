@@ -53,10 +53,10 @@ export function StaticDiagram({
   const cellPaddingHorizontal = Math.round(
     LAYOUT.cellPaddingHorizontal * scale,
   );
-  const titleFontSize = Math.round(12 * scale);
-  const smallFontSize = Math.round(10 * scale);
-  const majorTickH = Math.round(10 * scale);
-  const minorTickH = Math.round(6 * scale);
+  const titleFontSize = Math.round(LAYOUT.titleFontSize * scale);
+  const smallFontSize = Math.round(LAYOUT.subtitleFontSize * scale);
+  const majorTickH = Math.round(LAYOUT.majorTickHeight * scale);
+  const minorTickH = Math.round(LAYOUT.minorTickHeight * scale);
 
   return (
     <div
@@ -128,9 +128,9 @@ export function StaticDiagram({
               key={rowIdx}
               style={{
                 display: "flex",
-                gap: 3,
+                gap: LAYOUT.rowGap2,
                 padding: `${rowPaddingVertical}px 0`,
-                borderRadius: 8,
+                borderRadius: LAYOUT.rowBorderRadius,
                 background: bandColor,
                 minHeight: rowHeight,
               }}
@@ -153,7 +153,7 @@ export function StaticDiagram({
                       justifyContent: "center",
                       background: fill,
                       border: `1px ${isDashed ? "dashed" : "solid"} ${stroke}`,
-                      borderRadius: 10,
+                      borderRadius: LAYOUT.cellBorderRadius,
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                       overflow: "hidden",
                       minWidth: 0,
