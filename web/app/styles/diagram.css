@@ -194,7 +194,8 @@
   }
 
   .cell.field-cell .cell-name,
-  .cell.field-cell .cell-continuation {
+  .cell.field-cell .cell-continuation,
+  .cell.field-cell .cell-sublabel {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

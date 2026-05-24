@@ -168,7 +168,6 @@ export function StaticDiagram({
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       maxWidth: "100%",
-                      textAlign: "center",
                       display: "block",
                     }}
                   >
@@ -182,7 +181,6 @@ export function StaticDiagram({
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       maxWidth: "100%",
-                      textAlign: "center",
                       display: "block",
                     }}
                   >
