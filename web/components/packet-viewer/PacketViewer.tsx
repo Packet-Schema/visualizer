@@ -610,12 +610,6 @@ export default function PacketViewer({
     }
   }, [buildCurrentShareUrl, urlHydrated]);
 
-  useEffect(() => {
-    document.title = packet.name
-      ? `${packet.name} | Packet Visualizer`
-      : "Packet Visualizer";
-  }, [packet.name]);
-
   useAutoClearStatus(shareStatus, 2400, () =>
     uiDispatch({ type: "clear-share-status" }),
   );
@@ -807,8 +801,13 @@ export default function PacketViewer({
   // PacketViewer stays declarative.
   const handleDiagramKeyDown = useRovingTabindex(diagramRef);
 
+  const pageTitle = packet.name
+    ? `${packet.name} | Packet Visualizer`
+    : "Packet Visualizer";
+
   return (
     <>
+      <title>{pageTitle}</title>
       <main className="max-w-[1200px] mx-auto px-6 py-3 pb-10 w-full flex-1">
         <PacketToolbar
           packetKey={packetKey}
