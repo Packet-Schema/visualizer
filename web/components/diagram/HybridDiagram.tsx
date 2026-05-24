@@ -143,13 +143,12 @@ export default function HybridDiagram({
             // instance cells) so the lookup against `overridableIds` lands
             // on the original TLV field's id.
             // `cell.field.id` may be a TLV-rewrite synthetic
-            // (`<X>__inst_N` / `<X>__remaining`) or a flat repeat leaf
-            // (`<X>#N`). `tlvBaseId` peels those back to the original
-            // TLV's field id so the overridable marker lookup hits.
-            const idForLookup = cell.field.id;
-            const baseId = idForLookup.includes("#")
-              ? idForLookup.split("#")[0]
-              : tlvBaseId(idForLookup);
+            // (`<X>__inst_N` / `<X>__remaining`), a flat Repeat leaf
+            // (`<X>#N`), or a Group-inside-Repeat collapsed parent
+            // (`<X>#N` / `<X>#N_M`). `tlvBaseId` now strips all three
+            // shapes uniformly, so the marker lookup always lands on
+            // the underlying renderer-mirror field id.
+            const baseId = tlvBaseId(cell.field.id);
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}

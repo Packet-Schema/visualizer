@@ -49,17 +49,53 @@ export function getSwitchFromRepeat(r: Repeat): Switch | null {
 
 /**
  * Flatten a Switch case body to a `TlvCatalogField[]`. Compound nested
- * children are skipped — PSML preset authors keep TLV cases flat by
- * convention.
+ * children are spliced — common case: CoAP `Delta=13` wraps a nested
+ * `Switch` for the Length nibble, and dropping it (as the legacy
+ * leaf-only implementation did) left the catalog with a single 4-bit
+ * field even though the on-wire record is several bytes. The recursion
+ * uses each nested Switch's `default` (else first numeric case) as the
+ * canonical shape — Switches in TLV bodies are dispatched by the wire
+ * record's own bytes, so the renderer just needs one representative
+ * layout for the catalog editor.
  */
 export function structFieldsToTlvFields(struct: Struct): TlvCatalogField[] {
+  return flattenContainersToTlvFields(struct.fields);
+}
+
+function flattenContainersToTlvFields(
+  containers: Struct["fields"],
+): TlvCatalogField[] {
   const out: TlvCatalogField[] = [];
-  for (const child of struct.fields) {
+  for (const child of containers) {
     if (isField(child)) {
       const bits = typeBits(child.type);
       const entry: TlvCatalogField = { id: child.id, name: child.name, bits };
       if (child.doc) entry.description = child.doc;
       out.push(entry);
+      continue;
+    }
+    switch (child.kind) {
+      case "group":
+        out.push(...flattenContainersToTlvFields(child.children));
+        break;
+      case "switch": {
+        // Representative shape: prefer the explicit `default` branch;
+        // otherwise take the first numerically-keyed case. Anything else
+        // would need user-driven dispatch which TLV editing doesn't
+        // currently expose.
+        const repr = child.default ?? Object.values(child.cases)[0] ?? null;
+        if (repr) out.push(...flattenContainersToTlvFields(repr.fields));
+        break;
+      }
+      case "optional":
+        // Treat the inner field as always-present for catalog purposes.
+        out.push(...flattenContainersToTlvFields([child.field]));
+        break;
+      // `repeat` / `encrypted` inside a TLV case body would need real
+      // dispatch metadata; skip silently for now (no shipping preset
+      // exercises them).
+      default:
+        break;
     }
   }
   return out;

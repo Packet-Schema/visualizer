@@ -83,7 +83,13 @@ export function parseTlvCellId(id: string): TlvCellRole {
 }
 
 /** Strip any TLV-rewrite suffix to recover the underlying TLV field id.
- *  Returns the input unchanged when the id is already plain. */
+ *  Returns the input unchanged when the id is already plain.
+ *
+ *  Also strips a trailing `#<N>` repeat-index tag from plain ids so
+ *  callers get the same canonical lookup key for `flagsBits` (top-level)
+ *  and `flagsBits#0` (Group inside a Repeat). The previous asymmetry —
+ *  HybridDiagram special-cased `#` while everyone else trusted
+ *  `tlvBaseId` — was a foot-gun (Codex deep review). */
 export function tlvBaseId(id: string): string {
   const role = parseTlvCellId(id);
   switch (role.kind) {
@@ -92,7 +98,7 @@ export function tlvBaseId(id: string): string {
     case "remaining":
       return role.baseId;
     case "plain":
-      return id;
+      return id.replace(/#\d+(?:_\d+)*$/, "");
   }
 }
 

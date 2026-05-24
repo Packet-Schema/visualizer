@@ -27,18 +27,24 @@ export function resolveSelection(
   selectedFieldId: string | null,
 ): Resolution {
   if (!selectedFieldId) return { kind: "empty" };
-  const baseId = selectedFieldId.includes("#")
-    ? selectedFieldId.split("#")[0]
-    : selectedFieldId;
-
-  if (baseId.includes(":")) {
-    const [parentId, subId] = baseId.split(":");
+  // Subfield ids are `<parent>:<sub>`. The parent half may itself carry
+  // a `#<repeatIndex>` decoration when emitted from inside a Repeat
+  // (e.g. `flagsBits#0:flags_df`), so strip the repeat tag only from
+  // the parent half. Splitting on `#` first would have swallowed the
+  // `:flags_df` portion entirely.
+  if (selectedFieldId.includes(":")) {
+    const [parentRaw, subId] = selectedFieldId.split(":");
+    const parentId = parentRaw.replace(/#\d+$/, "");
     const parent = packet.fields.find((f) => f.id === parentId);
     const sub = parent?.subfields?.find((s) => s.id === subId);
     return parent && sub
       ? { kind: "subfield", parent, sub }
       : { kind: "subfield-not-found" };
   }
+  // Non-subfield ids strip `#<N>` and the various TLV synthetic
+  // suffixes alike — the recovery target is always the underlying
+  // renderer-mirror field.
+  const baseId = selectedFieldId.replace(/#\d+$/, "");
   // Bare subfield id (groups whose children render as their own top-level
   // cells lose the `parent:` prefix in the id stream).
   for (const parent of packet.fields) {

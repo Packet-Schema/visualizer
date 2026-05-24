@@ -183,15 +183,30 @@ export default function OverridePanel({
   if (selectedFieldId) {
     const role = parseTlvCellId(selectedFieldId);
     if (role.kind === "instance" || role.kind === "leaf") {
-      const parent = packet.fields.find(
-        (f) => f.id === role.baseId && f.tlv?.instances[role.instanceIndex],
-      );
+      // Resolve the parent TLV first WITHOUT requiring the specific
+      // instance to still exist. If the user removed the record between
+      // the cell render and the click, falling back to the full
+      // TlvEditor (instead of "Field not found") keeps the editing
+      // surface reachable.
+      const parent = packet.fields.find((f) => f.id === role.baseId && f.tlv);
       if (parent?.tlv && onTlvChange) {
+        const instance = parent.tlv.instances[role.instanceIndex];
+        if (instance) {
+          return (
+            <TlvInnerVariantDropdown
+              tlvField={parent}
+              instanceIndex={role.instanceIndex}
+              onChange={(next) => onTlvChange(parent, next)}
+            />
+          );
+        }
+        // Instance vanished — fall back to the full editor.
         return (
-          <TlvInnerVariantDropdown
-            tlvField={parent}
-            instanceIndex={role.instanceIndex}
+          <TlvEditor
+            field={parent}
+            controllers={controllers}
             onChange={(next) => onTlvChange(parent, next)}
+            slotBytes={tlvSlotBytes?.[parent.id]}
           />
         );
       }

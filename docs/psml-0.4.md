@@ -959,11 +959,21 @@ cell with sub-cells** rather than N flat sibling cells:
 | `Group { children: [R, DF, MF] }` (IPv4 flags) | One `flagsBits` cell with three 1-bit sub-cells `R / DF / MF` |
 | `Group { children: [Type, Length, Pointer, Addr 1, Addr 2, Addr 3] }` (Record Route option) | One `Record Route` cell with the variant's six sub-cells |
 
-Groups containing compound children (nested `Repeat`/`Switch`/`Group`)
-fall back to the splice behaviour PSML documents — those structurally
-have to flatten. Other consumers (RFC ASCII / JSON / Kaitai) keep the
-flat read of `NormalizedField[]`; only the layout pass interprets
-adjacency.
+Two policy details worth being explicit about:
+
+- **Single-child Groups** stay flat by default — a hand-authored
+  `Group { children: [F] }` keeps `F` as the visible cell with its own
+  label. The exception is Groups minted by `applyTlvInstances` (their
+  id ends in `__inst_<N>`); those always collapse so NOP / EOL etc.
+  read as the variant name rather than the leaf field's name.
+- **Groups containing compound children** (nested `Repeat` / `Switch` /
+  `Group`) fall back to splice — those structurally have to flatten.
+- **Groups inside a Repeat** get the iteration index baked into the
+  collapsed cell's id (`flagsBits#0`, `flagsBits#1`, …) so each
+  iteration is selectable / addressable independently.
+
+Other consumers (RFC ASCII / JSON / Kaitai) keep the flat read of
+`NormalizedField[]`; only the layout pass interprets adjacency.
 
 ### Slot-based TLV workflow
 
