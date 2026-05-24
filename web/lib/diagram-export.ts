@@ -14,7 +14,7 @@
 //   href>`, or `<foreignObject>` to the SVG, audit cross-origin handling
 //   here before extending the contract.
 
-import { CATEGORY_TO_TOKEN } from "./constants";
+import { CATEGORY_TO_TOKEN, FIELD_PALETTE_TOKENS } from "./constants";
 import type {
   Cell,
   Field,
@@ -115,7 +115,7 @@ const LAYOUT_DERIVED = {
   rowBandHeight: LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2,
 } as const;
 
-export { DEFAULT_THEME, LAYOUT };
+export { LAYOUT };
 
 function xmlEscape(value: string): string {
   return value
@@ -142,10 +142,8 @@ export function fieldFill(field: Field, theme: DiagramExportTheme): string {
   if (theme.fieldPalette[token]) return theme.fieldPalette[token];
   const cssVariable = token.match(/^var\((--[^)]+)\)$/);
   return cssVariable
-    ? (theme.resolveCssColor?.(
-        cssVariable[1],
-        DEFAULT_THEME.fieldPalette.slate,
-      ) ?? cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate))
+    ? (theme.resolveCssColor?.(cssVariable[1], "") ??
+        cssColor(cssVariable[1], ""))
     : token;
 }
 
@@ -329,7 +327,7 @@ export function buildDiagramSvg(
   layout: ResolvedLayout,
   options: DiagramSvgOptions = {},
 ): string {
-  const theme = options.theme ?? DEFAULT_THEME;
+  const theme = options.theme ?? readDiagramThemeFromDocument();
   const bitWidth = options.bitWidth ?? 24;
   const transparentBackground = options.transparentBackground === true;
   const rows = rowsFor(layout);
@@ -417,6 +415,14 @@ export function buildDiagramSvg(
 
 function cssColor(name: string, fallback: string): string {
   if (typeof document === "undefined" || !document.body) return fallback;
+  try {
+    const rawValue = getComputedStyle(
+      document.documentElement,
+    ).getPropertyValue(name);
+    if (rawValue.trim()) return `var(${name})`;
+  } catch {
+    // Fall back to computed color if CSS variable read fails
+  }
   const probe = document.createElement("span");
   probe.style.color = `var(${name})`;
   probe.style.display = "none";
@@ -500,6 +506,14 @@ function readCssColorFromRoot(
   fallback: string,
 ): string {
   if (typeof document === "undefined") return fallback;
+  try {
+    const rawValue = getComputedStyle(
+      document.documentElement,
+    ).getPropertyValue(name);
+    if (rawValue.trim()) return `var(${name})`;
+  } catch {
+    // Fall back to computed color if CSS variable read fails
+  }
   const probe = document.createElement("span");
   probe.style.color = `var(${name})`;
   probe.style.display = "none";
@@ -513,26 +527,20 @@ function buildTheme(
   resolveCssColor: (name: string, fallback: string) => string,
 ): DiagramExportTheme {
   return {
-    background: resolveCssColor("--bg-elevated", DEFAULT_THEME.background),
-    rowEven: resolveCssColor("--row-band-even", DEFAULT_THEME.rowEven),
-    rowOdd: resolveCssColor("--row-band-odd", DEFAULT_THEME.rowOdd),
-    rulerTick: resolveCssColor("--ruler-tick", DEFAULT_THEME.rulerTick),
-    rulerLabel: resolveCssColor("--ruler-label", DEFAULT_THEME.rulerLabel),
-    accent: resolveCssColor("--accent", DEFAULT_THEME.accent),
-    fieldStroke: resolveCssColor("--field-stroke", DEFAULT_THEME.fieldStroke),
-    fieldLabel: resolveCssColor("--field-label", DEFAULT_THEME.fieldLabel),
-    fieldSublabel: resolveCssColor(
-      "--field-sublabel",
-      DEFAULT_THEME.fieldSublabel,
-    ),
-    fieldContinuation: resolveCssColor(
-      "--field-continuation",
-      DEFAULT_THEME.fieldContinuation,
-    ),
+    background: resolveCssColor("--bg-elevated", ""),
+    rowEven: resolveCssColor("--row-band-even", ""),
+    rowOdd: resolveCssColor("--row-band-odd", ""),
+    rulerTick: resolveCssColor("--ruler-tick", ""),
+    rulerLabel: resolveCssColor("--ruler-label", ""),
+    accent: resolveCssColor("--accent", ""),
+    fieldStroke: resolveCssColor("--field-stroke", ""),
+    fieldLabel: resolveCssColor("--field-label", ""),
+    fieldSublabel: resolveCssColor("--field-sublabel", ""),
+    fieldContinuation: resolveCssColor("--field-continuation", ""),
     fieldPalette: Object.fromEntries(
-      Object.keys(DEFAULT_THEME.fieldPalette).map((token) => [
+      FIELD_PALETTE_TOKENS.map((token) => [
         token,
-        resolveCssColor(`--field-${token}`, DEFAULT_THEME.fieldPalette[token]),
+        resolveCssColor(`--field-${token}`, ""),
       ]),
     ),
     resolveCssColor,
@@ -575,10 +583,7 @@ export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
 
 export function readDiagramThemeFromDocument(): DiagramExportTheme {
   if (typeof document === "undefined" || !document.body) {
-    return {
-      ...DEFAULT_THEME,
-      fieldPalette: { ...DEFAULT_THEME.fieldPalette },
-    };
+    return buildTheme(() => "");
   }
   return readDiagramThemeFromRoot(document.body);
 }

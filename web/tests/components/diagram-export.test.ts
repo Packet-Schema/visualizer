@@ -10,6 +10,7 @@ import {
   readDiagramThemeFromDocument,
   svgToPngBlob,
 } from "../../lib/diagram-export";
+import type { DiagramExportTheme } from "../../lib/diagram-export";
 import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
 
 const packet: Packet = {
@@ -109,6 +110,30 @@ function layoutForMode(mode: "wire" | "semantic"): ResolvedLayout {
   };
 }
 
+const LIGHT_TEST_THEME: DiagramExportTheme = {
+  background: "#ffffff",
+  rowEven: "#f5f7fb",
+  rowOdd: "#fbfcfe",
+  rulerTick: "#667085",
+  rulerLabel: "#475467",
+  accent: "#2563eb",
+  fieldStroke: "#344054",
+  fieldLabel: "#101828",
+  fieldSublabel: "#344054",
+  fieldContinuation: "#667085",
+  fieldPalette: {
+    blue: "#7fb7ff",
+    indigo: "#a8a6ff",
+    violet: "#d1a5ff",
+    teal: "#8ed7d1",
+    green: "#a8df9f",
+    amber: "#f3d77e",
+    orange: "#f7b27a",
+    rose: "#f4a1ae",
+    slate: "#c3c8d3",
+  },
+};
+
 describe("buildDiagramSvg", () => {
   it("renders a standalone SVG with escaped metadata", () => {
     const svg = buildDiagramSvg(packet, layoutForMode("wire"));
@@ -155,8 +180,11 @@ describe("buildDiagramSvg", () => {
   });
 
   it("can emit transparent background when requested", () => {
-    const normal = buildDiagramSvg(packet, layoutForMode("wire"));
+    const normal = buildDiagramSvg(packet, layoutForMode("wire"), {
+      theme: LIGHT_TEST_THEME,
+    });
     const transparent = buildDiagramSvg(packet, layoutForMode("wire"), {
+      theme: LIGHT_TEST_THEME,
       transparentBackground: true,
     });
     expect(normal).toContain("<rect width=");
