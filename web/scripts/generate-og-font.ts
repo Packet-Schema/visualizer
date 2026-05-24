@@ -30,6 +30,14 @@ export const OG_FONT_BUFFER: ArrayBuffer = fontBuffer.buffer.slice(fontBuffer.by
   console.error(`Failed to generate og-font.ts:`);
   console.error(`  Path attempted: ${fontPath}`);
   console.error(`  Error: ${message}`);
-  console.error(`  Ensure @fontsource/geist is installed: npm ci`);
+
+  if (message.includes("ENOENT")) {
+    console.error(`  → Missing dependency. Run: npm ci`);
+  } else if (message.includes("EACCES")) {
+    console.error(`  → Permission denied. Check file permissions.`);
+  } else {
+    console.error(`  Ensure @fontsource/geist is installed: npm ci`);
+  }
+
   process.exit(1);
 }

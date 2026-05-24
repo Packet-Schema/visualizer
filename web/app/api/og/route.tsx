@@ -56,7 +56,7 @@ const FALLBACK_TITLE_FONT_SIZE = 120;
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
 
-const MAX_CONTROLLER_VALUE = 100; // Slider max value from UI controls
+const MAX_CONTROLLER_VALUE = 100; // Slider max value from UI controls; protects against URL-injected oversized values
 const MAX_ROW_BITS = 256; // Safety limit to prevent memory/rendering issues with oversized packets
 const OG_MAX_ROWS = 6; // Maximum rows to display in OG image; excess rows shown as ellipsis
 
@@ -102,6 +102,9 @@ function sanitizeControllers(
   for (const [key, value] of Object.entries(controllers)) {
     const num = Number(value);
     if (Number.isInteger(num)) {
+      // Clamp to [0, MAX_CONTROLLER_VALUE] to prevent bugs from URL-injected oversized values.
+      // This mirrors the UI slider constraint and ensures consistent behavior between
+      // direct URL edits and UI-generated shares.
       sanitized[key] = Math.max(0, Math.min(num, MAX_CONTROLLER_VALUE));
     }
   }
@@ -118,8 +121,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const shareQuery = buildShareQueryFromParams(request.nextUrl.searchParams);
-    const isValidLength = isShareQueryLengthValid(shareQuery);
-    const parsed = isValidLength
+    const parsed = isShareQueryLengthValid(shareQuery)
       ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
       : (() => {
           console.warn(

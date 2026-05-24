@@ -95,12 +95,12 @@ export default async function Page({ searchParams }: Props) {
 
 function mergeInitialControllers(
   packetKey: string,
-  controllers: ControllerState,
+  controllers: ControllerState | undefined,
 ): ControllerState {
   const packet = PRESETS[packetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
   return {
     ...initialState(psmlToRenderer(packet)),
-    ...controllers,
+    ...(controllers ?? {}),
   };
 }
 
