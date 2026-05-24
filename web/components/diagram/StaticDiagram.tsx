@@ -1,5 +1,13 @@
 import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
-import { fieldFill, rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
+import {
+  fieldFill,
+  rowsFor,
+  textForCell,
+  cellVisual,
+  naturalDiagramHeight,
+  rowBandColor,
+  LAYOUT,
+} from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
 type Props = {
@@ -33,11 +41,7 @@ export function StaticDiagram({
   let scale = 1;
   if (targetHeight != null && rowCount > 0) {
     const totalRows = isTruncated ? rowCount + 1 : rowCount;
-    const naturalH =
-      LAYOUT.rulerHeight +
-      LAYOUT.rulerGap +
-      totalRows * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2) +
-      Math.max(totalRows - 1, 0) * LAYOUT.rowGap;
+    const naturalH = naturalDiagramHeight(totalRows);
     scale = Math.min(targetHeight / naturalH, 2.0);
   }
 
@@ -119,78 +123,76 @@ export function StaticDiagram({
           gap: rowGap,
         }}
       >
-        {rows.map((cells: Cell[], rowIdx: number) => (
-          <div
-            key={rowIdx}
-            style={{
-              display: "flex",
-              gap: 3,
-              padding: `${rowPaddingVertical}px 0`,
-              borderRadius: 8,
-              background: rowIdx % 2 === 0 ? theme.rowEven : theme.rowOdd,
-              minHeight: rowHeight,
-            }}
-          >
-            {cells.map((cell: Cell) => {
-              const span = cell.endBit - cell.startBit + 1;
-              const { title, subtitle } = textForCell(cell);
-              const exportField =
-                packetFieldsById.get(cell.field.id) ?? cell.field;
-              const fill = fieldFill(exportField, theme);
-              const stroke = cell.encryptedParentId
-                ? theme.accent
-                : theme.fieldStroke;
+        {rows.map((cells: Cell[], rowIdx: number) => {
+          const bandColor = rowBandColor(rowIdx, theme);
+          return (
+            <div
+              key={rowIdx}
+              style={{
+                display: "flex",
+                gap: 3,
+                padding: `${rowPaddingVertical}px 0`,
+                borderRadius: 8,
+                background: bandColor,
+                minHeight: rowHeight,
+              }}
+            >
+              {cells.map((cell: Cell) => {
+                const span = cell.endBit - cell.startBit + 1;
+                const exportField =
+                  packetFieldsById.get(cell.field.id) ?? cell.field;
+                const { fill, stroke, isDashed, titleColor, title, subtitle } =
+                  cellVisual(cell, exportField, theme);
 
-              return (
-                <div
-                  key={`${cell.field.id}-${cell.segmentIndex}`}
-                  style={{
-                    flex: span,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: fill,
-                    border: `1px ${cell.encrypted ? "dashed" : "solid"} ${stroke}`,
-                    borderRadius: 10,
-                    padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
-                    overflow: "hidden",
-                    minWidth: 0,
-                  }}
-                >
-                  <span
+                return (
+                  <div
+                    key={`${cell.field.id}-${cell.segmentIndex}`}
                     style={{
-                      fontSize: titleFontSize,
-                      fontWeight: 600,
-                      color: cell.isFirst
-                        ? theme.fieldLabel
-                        : theme.fieldContinuation,
-                      whiteSpace: "nowrap",
+                      flex: span,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: fill,
+                      border: `1px ${isDashed ? "dashed" : "solid"} ${stroke}`,
+                      borderRadius: 10,
+                      padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                       overflow: "hidden",
-                      maxWidth: "100%",
-                      display: "block",
+                      minWidth: 0,
                     }}
                   >
-                    {title}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: smallFontSize,
-                      color: theme.fieldSublabel,
-                      marginTop: 2,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      maxWidth: "100%",
-                      display: "block",
-                    }}
-                  >
-                    {subtitle}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                    <span
+                      style={{
+                        fontSize: titleFontSize,
+                        fontWeight: 600,
+                        color: titleColor,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        maxWidth: "100%",
+                        display: "block",
+                      }}
+                    >
+                      {title}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: smallFontSize,
+                        color: theme.fieldSublabel,
+                        marginTop: 2,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        maxWidth: "100%",
+                        display: "block",
+                      }}
+                    >
+                      {subtitle}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
         {isTruncated ? (
           <div
             style={{
