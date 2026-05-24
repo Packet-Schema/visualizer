@@ -100,6 +100,11 @@ export function parseShareParams(
     };
   }
 
+  // 後方互換: preset/psml がない場合、controllers が存在すればデフォルトプリセットとして解釈
+  if (Object.keys(controllers).length > 0) {
+    return { kind: "preset", presetKey: "ipv4", controllers };
+  }
+
   return { kind: "none", controllers };
 }
 

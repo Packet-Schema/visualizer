@@ -6,6 +6,7 @@ const BASE_RULER_HEIGHT = 22;
 const BASE_RULER_GAP = 6;
 const BASE_ROW_HEIGHT = 56;
 const BASE_ROW_GAP = 4;
+const BASE_ROW_PADDING = 8; // 4px top + 4px bottom
 
 type Props = {
   packet: Packet;
@@ -35,7 +36,7 @@ export function StaticDiagram({
     const naturalH =
       BASE_RULER_HEIGHT +
       BASE_RULER_GAP +
-      rowCount * BASE_ROW_HEIGHT +
+      rowCount * (BASE_ROW_HEIGHT + BASE_ROW_PADDING) +
       Math.max(rowCount - 1, 0) * BASE_ROW_GAP;
     scale = targetHeight / naturalH;
   }

@@ -15,8 +15,8 @@ import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 const FALLBACK_PRESET_KEY = "ipv4";
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;
+export const OG_MAX_QUERY_LENGTH = 2048;
 const OG_MARGIN = 60;
-const OG_MAX_QUERY_LENGTH = 2048;
 const FONT_NAME = "Geist";
 
 const OG_HEADERS = {

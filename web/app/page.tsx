@@ -7,7 +7,7 @@ import { initialState } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 import { parseShareParams, CONTROLLER_PARAM_PREFIX } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psml/renderer";
-import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
+import { OG_WIDTH, OG_HEIGHT, OG_MAX_QUERY_LENGTH } from "@/app/api/og/route";
 
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -37,10 +37,11 @@ export async function generateMetadata({
 }: Props): Promise<Metadata> {
   const params = await searchParams;
   const shareQuery = buildShareQuery(params);
-  const parsed = parseShareParams(
-    new URLSearchParams(shareQuery),
-    Object.keys(PRESETS),
-  );
+  // URL が長すぎる場合は共有パラメータのデコードをスキップしてフォールバック
+  const parsed =
+    new URLSearchParams(shareQuery).toString().length <= OG_MAX_QUERY_LENGTH
+      ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
+      : { kind: "none" as const, controllers: {} };
 
   const imageUrl = new URL(
     shareQuery ? `/api/og?${shareQuery}` : "/api/og",
@@ -79,10 +80,13 @@ export async function generateMetadata({
 
 export default async function Page({ searchParams }: Props) {
   const params = await searchParams;
-  const parsed = parseShareParams(
-    new URLSearchParams(buildShareQuery(params)),
-    Object.keys(PRESETS),
-  );
+  const shareQuery = buildShareQuery(params);
+  // URL が長すぎる場合は共有パラメータのデコードをスキップしてフォールバック
+  const parsed =
+    new URLSearchParams(shareQuery).toString().length <= OG_MAX_QUERY_LENGTH
+      ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
+      : { kind: "none" as const, controllers: {} };
+
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
   const initialControllers = mergeInitialControllers(

@@ -820,7 +820,6 @@ export default function PacketViewer({
 
   return (
     <>
-      <title>Packet Visualizer</title>
       <main className="max-w-[1200px] mx-auto px-6 py-3 pb-10 w-full flex-1">
         <PacketToolbar
           packetKey={packetKey}
