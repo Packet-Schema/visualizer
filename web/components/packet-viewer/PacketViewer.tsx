@@ -610,6 +610,12 @@ export default function PacketViewer({
     }
   }, [buildCurrentShareUrl, urlHydrated]);
 
+  useEffect(() => {
+    document.title = packet.name
+      ? `${packet.name} | Packet Visualizer`
+      : "Packet Visualizer";
+  }, [packet.name]);
+
   useAutoClearStatus(shareStatus, 2400, () =>
     uiDispatch({ type: "clear-share-status" }),
   );
