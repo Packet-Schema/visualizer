@@ -22,26 +22,77 @@ const FONT_NAME = "Geist";
 export async function GET(request: NextRequest) {
   try {
     const builtInKeys = Object.keys(PRESETS);
-    const fallbackPsml =
-      PRESETS[FALLBACK_PRESET_KEY] ?? PRESETS[builtInKeys[0]];
 
     // URL が長すぎる場合は共有 PSML のデコードをスキップしてフォールバック
     const parsed =
       request.nextUrl.search.length <= OG_MAX_QUERY_LENGTH
         ? parseShareParams(request.nextUrl.searchParams, builtInKeys)
         : null;
+
+    // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
+    if (!parsed || parsed.kind === "none") {
+      return new ImageResponse(
+        <div
+          style={{
+            width: OG_WIDTH,
+            height: OG_HEIGHT,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "linear-gradient(135deg, #3B2F6F 0%, #2D1E52 100%)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 20,
+              fontSize: 120,
+              fontWeight: 600,
+              color: "#FAFAF8",
+              fontFamily: FONT_NAME,
+              letterSpacing: "0.025em",
+              lineHeight: 1,
+            }}
+          >
+            <div>Packet</div>
+            <div>Visualizer</div>
+          </div>
+        </div>,
+        {
+          width: OG_WIDTH,
+          height: OG_HEIGHT,
+          fonts: [
+            {
+              name: FONT_NAME,
+              data: OG_FONT_BUFFER,
+              weight: 400,
+              style: "normal",
+            },
+          ],
+          headers: {
+            "content-type": "image/png",
+            "cache-control": "public, no-transform, max-age=86400",
+            "x-robots-tag": "noindex",
+          },
+        },
+      );
+    }
+
+    const fallbackPsml =
+      PRESETS[FALLBACK_PRESET_KEY] ?? PRESETS[builtInKeys[0]];
     const psml =
-      parsed?.kind === "psml"
+      parsed.kind === "psml"
         ? parsed.packet
-        : parsed?.kind === "preset"
-          ? (PRESETS[parsed.presetKey] ?? fallbackPsml)
-          : fallbackPsml;
+        : (PRESETS[parsed.presetKey] ?? fallbackPsml);
 
     const packet = psmlToRenderer(psml);
     const env = initialEnv(psml);
     const mergedControllers = {
       ...initialState(packet),
-      ...(parsed?.controllers ?? {}),
+      ...(parsed.controllers ?? {}),
     };
     for (const [key, value] of Object.entries(mergedControllers)) {
       env.set(key, value);
