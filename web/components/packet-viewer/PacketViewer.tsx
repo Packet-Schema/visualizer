@@ -801,19 +801,13 @@ export default function PacketViewer({
   // PacketViewer stays declarative.
   const handleDiagramKeyDown = useRovingTabindex(diagramRef);
 
-  useEffect(() => {
-    if (!urlHydrated) return;
-    const title = packet.name
-      ? `${packet.name} | Packet Visualizer`
-      : "Packet Visualizer";
-    const id = setTimeout(() => {
-      document.title = title;
-    }, 0);
-    return () => clearTimeout(id);
-  }, [urlHydrated, packet.name]);
+  const pageTitle = packet.name
+    ? `${packet.name} | Packet Visualizer`
+    : "Packet Visualizer";
 
   return (
     <>
+      <title>{pageTitle}</title>
       <main className="max-w-[1200px] mx-auto px-6 py-3 pb-10 w-full flex-1">
         <PacketToolbar
           packetKey={packetKey}
