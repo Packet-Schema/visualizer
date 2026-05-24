@@ -598,19 +598,16 @@ export default function PacketViewer({
 
   useEffect(() => {
     if (!urlHydrated || typeof window === "undefined") return;
-    const id = requestAnimationFrame(() => {
-      try {
-        const nextUrl = buildCurrentShareUrl();
-        if (nextUrl && nextUrl !== window.location.href) {
-          window.history.replaceState(null, "", nextUrl);
-        }
-      } catch (err) {
-        console.warn(
-          `Packet View could not update the share URL: ${(err as Error).message}`,
-        );
+    try {
+      const nextUrl = buildCurrentShareUrl();
+      if (nextUrl && nextUrl !== window.location.href) {
+        window.history.replaceState(null, "", nextUrl);
       }
-    });
-    return () => cancelAnimationFrame(id);
+    } catch (err) {
+      console.warn(
+        `Packet View could not update the share URL: ${(err as Error).message}`,
+      );
+    }
   }, [buildCurrentShareUrl, urlHydrated]);
 
   useAutoClearStatus(shareStatus, 2400, () =>
