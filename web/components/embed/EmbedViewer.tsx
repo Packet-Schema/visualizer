@@ -161,7 +161,12 @@ function makePresetState(
 
 function useEmbedTheme(theme: EmbedTheme | null): void {
   useEffect(() => {
-    if (theme === null || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
+
+    if (theme === null) {
+      document.documentElement.removeAttribute("data-theme");
+      return;
+    }
 
     if (theme !== "system") {
       document.documentElement.setAttribute("data-theme", theme);
