@@ -59,14 +59,15 @@ function EmptyState({
   const free = packet.freeRepeats ?? [];
   const peeks = packet.peekSwitches ?? [];
   // TLVs without an explicit slot (= preset not in TLV_LENGTH_SYNC) won't
-  // emit a placeholder cell in the diagram, so the user has no click target
-  // to start adding records. Surface them here so TLS / CoAP / etc. still
-  // have a first-edit entry point. (Codex P1)
+  // emit a placeholder cell in the diagram. Surface them here so TLS /
+  // CoAP / etc. have a persistent first-edit entry point — and KEEP them
+  // listed even after a record is added, because the only diagram click
+  // targets at that point are instance/leaf cells which route to the
+  // inline variant dropdown, not the full add/remove/reorder TlvEditor.
+  // Without the persistent listing the user loses access to those bulk
+  // operations once they pick the first record (Codex P1).
   const unanchoredTlvs = packet.fields.filter(
-    (f) =>
-      f.tlv &&
-      f.tlv.instances.length === 0 &&
-      (tlvSlotBytes?.[f.id] ?? 0) === 0,
+    (f) => f.tlv && (tlvSlotBytes?.[f.id] ?? 0) === 0,
   );
   return (
     <div className="space-y-3">

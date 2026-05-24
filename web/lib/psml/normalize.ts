@@ -169,10 +169,18 @@ function emit(
   }
   if (field.byteOrder) nf.byteOrder = field.byteOrder;
   // Tag emitted field with its innermost Group parent so the layout
-  // adapter can collapse consecutive Group children into one cell.
+  // adapter can collapse consecutive Group children into one cell. When
+  // the Group is being walked inside a Repeat (= `state.repeatIndex` is
+  // set), decorate the groupId with the iteration index so each
+  // repetition's collapsed cell has a unique id — without it, two
+  // iterations would emit `cell.field.id === groupId`, colliding on
+  // React keys and `selectedFieldId` lookups (Codex P1).
   if (state.groupStack && state.groupStack.length > 0) {
     const top = state.groupStack[state.groupStack.length - 1];
-    nf.groupId = top.id;
+    nf.groupId =
+      state.repeatIndex !== undefined
+        ? `${top.id}#${state.repeatIndex}`
+        : top.id;
     nf.groupName = top.name;
   }
   state.out.push(nf);
