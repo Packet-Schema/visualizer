@@ -267,17 +267,11 @@ describe("ImportExportDrawer", () => {
     let previewDiv = container.querySelector(".diagram-export-preview");
     expect(previewDiv?.innerHTML).toContain('data-bg="light-bg"');
 
-    // Simulate document theme change
+    // readDiagramTheme("follow-ui") reads directly from document,
+    // so changing the attribute is reflected immediately.
     act(() => {
       document.documentElement.setAttribute("data-theme", "dark");
-      // Trigger MutationObserver callback
-      const event = new MutationEvent("DOMAttrModified", {
-        attrName: "data-theme",
-      });
-      document.documentElement.dispatchEvent(event);
     });
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     previewDiv = container.querySelector(".diagram-export-preview");
     expect(previewDiv?.innerHTML).toContain('data-bg="dark-bg"');
