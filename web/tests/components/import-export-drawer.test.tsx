@@ -194,18 +194,18 @@ describe("ImportExportDrawer", () => {
       />,
     );
 
-    const themeSelect =
-      container.querySelectorAll<HTMLSelectElement>("select")[0];
-    act(() => {
-      themeSelect.value = "follow-ui";
-      themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
     const formatSelect =
       container.querySelectorAll<HTMLSelectElement>("select")[1];
     act(() => {
       formatSelect.value = "svg";
       formatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const themeSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[2];
+    act(() => {
+      themeSelect.value = "follow-ui";
+      themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
     const previewDiv = container.querySelector(".diagram-export-preview");
