@@ -52,13 +52,13 @@ export async function generateMetadata({
     ? parsed.kind === "preset"
       ? (PRESETS[parsed.presetKey] ?? PRESETS[DEFAULT_PACKET_KEY])
       : parsed.packet
-    : PRESETS[DEFAULT_PACKET_KEY];
+    : null;
 
-  const title = `${packet.name} | Packet Visualizer`;
+  const title = packet
+    ? `${packet.name} | Packet Visualizer`
+    : "Packet Visualizer";
   const description =
-    hasExplicitParams && packet?.description
-      ? packet.description
-      : "Visual viewer for common network packet headers.";
+    packet?.description ?? "Visual viewer for common network packet headers.";
 
   return {
     title,

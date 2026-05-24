@@ -801,9 +801,10 @@ export default function PacketViewer({
   // PacketViewer stays declarative.
   const handleDiagramKeyDown = useRovingTabindex(diagramRef);
 
-  const pageTitle = packet.name
-    ? `${packet.name} | Packet Visualizer`
-    : "Packet Visualizer";
+  const pageTitle =
+    urlHydrated && packet.name
+      ? `${packet.name} | Packet Visualizer`
+      : "Packet Visualizer";
 
   return (
     <>
