@@ -18,11 +18,7 @@ vi.mock("@/lib/diagram-export", async () => {
       ) => `<svg data-bg="${options?.theme?.background ?? "none"}"></svg>`,
     ),
     readDiagramTheme: vi.fn((mode: string) => ({
-      background:
-        mode === "follow-ui" &&
-        document.documentElement.getAttribute("data-theme") === "dark"
-          ? "dark-bg"
-          : "light-bg",
+      background: mode === "dark" ? "dark-bg" : "light-bg",
       rowEven: "",
       rowOdd: "",
       rulerTick: "",

@@ -1,14 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "packet-view",
-  "compatibility_date": "2026-05-16",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-21",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
   },
   "assets": {
-    // Next.js static export (`next build` with output: 'export' writes here).
-    "directory": "./out",
-    "not_found_handling": "404-page",
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+    "run_worker_first": true,
   },
 }
