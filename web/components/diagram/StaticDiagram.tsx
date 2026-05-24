@@ -17,14 +17,7 @@ type Props = {
   targetHeight?: number;
 };
 
-/**
- * Satori-compatible static diagram renderer. Uses flexbox + inline styles
- * (no CSS Grid, no CSS classes) so it can be used inside next/og ImageResponse
- * as well as rendered in the browser as a static thumbnail.
- *
- * Visually mirrors HybridDiagram: alternating row bands, colored cells with
- * field name + bit label, and a bit-position ruler.
- */
+/** Satori-compatible renderer; uses flexbox + inline styles only (no CSS classes) for next/og compatibility. */
 export function StaticDiagram({
   packet,
   layout,
@@ -52,8 +45,7 @@ export function StaticDiagram({
   const rowHeight = BASE_ROW_HEIGHT * scale;
   const rowGap = BASE_ROW_GAP * scale;
   const titleFontSize = Math.round(12 * scale);
-  const subtitleFontSize = Math.round(10 * scale);
-  const rulerFontSize = Math.round(10 * scale);
+  const smallFontSize = Math.round(10 * scale);
   const majorTickH = Math.round(10 * scale);
   const minorTickH = Math.round(6 * scale);
 
@@ -66,7 +58,6 @@ export function StaticDiagram({
         fontFamily,
       }}
     >
-      {/* Ruler — one flex cell per bit, tick + label aligned to left edge */}
       <div
         style={{
           display: "flex",
@@ -93,7 +84,7 @@ export function StaticDiagram({
                     position: "absolute",
                     top: 0,
                     left: 0,
-                    fontSize: rulerFontSize,
+                    fontSize: smallFontSize,
                     lineHeight: "1",
                     color: theme.rulerLabel,
                   }}
@@ -114,7 +105,6 @@ export function StaticDiagram({
         })}
       </div>
 
-      {/* Rows */}
       <div
         style={{
           display: "flex",
@@ -179,7 +169,7 @@ export function StaticDiagram({
                   </span>
                   <span
                     style={{
-                      fontSize: subtitleFontSize,
+                      fontSize: smallFontSize,
                       color: theme.fieldSublabel,
                       marginTop: 2,
                       whiteSpace: "nowrap",

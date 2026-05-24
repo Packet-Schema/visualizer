@@ -5,15 +5,15 @@ import PacketViewer from "@/components/packet-viewer/PacketViewer";
 import { PRESETS } from "@/lib/psml/presets";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams } from "@/lib/share-url";
+import { parseShareParams, CONTROLLER_PARAM_PREFIX } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psml/renderer";
+import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
 
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 const SHARE_PARAM_KEYS = ["preset", "psml"] as const;
-const CONTROLLER_PREFIX = "controllers.";
 const DEFAULT_PACKET_KEY = "ipv4";
 
 function appendQueryParam(
@@ -36,23 +36,14 @@ export async function generateMetadata({
   searchParams,
 }: Props): Promise<Metadata> {
   const params = await searchParams;
+  const shareQuery = buildShareQuery(params);
   const parsed = parseShareParams(
-    new URLSearchParams(buildShareQuery(params)),
+    new URLSearchParams(shareQuery),
     Object.keys(PRESETS),
   );
-  const ogParams = new URLSearchParams();
 
-  for (const key of SHARE_PARAM_KEYS) {
-    appendQueryParam(ogParams, key, params[key]);
-  }
-  for (const [key, value] of Object.entries(params)) {
-    if (!key.startsWith(CONTROLLER_PREFIX)) continue;
-    appendQueryParam(ogParams, key, value);
-  }
-
-  const query = ogParams.toString();
   const imageUrl = new URL(
-    query ? `/api/og?${query}` : "/api/og",
+    shareQuery ? `/api/og?${shareQuery}` : "/api/og",
     await getRequestOrigin(),
   ).toString();
   const packet =
@@ -72,7 +63,7 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      images: [{ url: imageUrl, width: 1200, height: 630 }],
+      images: [{ url: imageUrl, width: OG_WIDTH, height: OG_HEIGHT }],
     },
     twitter: {
       card: "summary_large_image",
@@ -115,7 +106,7 @@ function buildShareQuery(
     appendQueryParam(out, key, params[key]);
   }
   for (const [key, value] of Object.entries(params)) {
-    if (!key.startsWith(CONTROLLER_PREFIX)) continue;
+    if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
     appendQueryParam(out, key, value);
   }
   return out.toString();
