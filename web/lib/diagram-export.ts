@@ -252,9 +252,15 @@ function renderSubfields(
   const y = parent.y + parent.height - LAYOUT.subfieldHeight - 5;
   return subCells
     .map((sub) => {
-      const x = LAYOUT.padding + sub.startBit * bitWidth + LAYOUT.cellInset + LAYOUT.subfieldXPadding;
+      const x =
+        LAYOUT.padding +
+        sub.startBit * bitWidth +
+        LAYOUT.cellInset +
+        LAYOUT.subfieldXPadding;
       const width =
-        (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - LAYOUT.subfieldWidthPadding;
+        (sub.endBit - sub.startBit + 1) * bitWidth -
+        LAYOUT.cellInset * 2 -
+        LAYOUT.subfieldWidthPadding;
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
         `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
@@ -682,11 +688,17 @@ export function injectLayoutStyles(): void {
     "--cell-subtitle-margin-top",
     `${LAYOUT.cellSubtitleMarginTop}px`,
   );
-  root.style.setProperty("--subtitle-font-size", `${LAYOUT.subtitleFontSize}px`);
+  root.style.setProperty(
+    "--subtitle-font-size",
+    `${LAYOUT.subtitleFontSize}px`,
+  );
   root.style.setProperty("--major-tick-height", `${LAYOUT.majorTickHeight}px`);
   root.style.setProperty("--minor-tick-height", `${LAYOUT.minorTickHeight}px`);
   root.style.setProperty("--subfield-height", `${LAYOUT.subfieldHeight}px`);
-  root.style.setProperty("--subfield-font-size", `${LAYOUT.subfieldFontSize}px`);
+  root.style.setProperty(
+    "--subfield-font-size",
+    `${LAYOUT.subfieldFontSize}px`,
+  );
 }
 
 // Initialize layout styles on module load (client-side only)
