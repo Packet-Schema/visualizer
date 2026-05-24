@@ -52,7 +52,6 @@ import type {
 } from "@/lib/psml/renderer";
 import type { PsmlPacket } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
-import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
@@ -157,7 +156,6 @@ export default function PacketViewer({
     drawerMode,
     tourOpen,
     hexStripVisible,
-    dependenciesVisible,
     viewMode,
     shareStatus,
   } = ui;
@@ -826,7 +824,6 @@ export default function PacketViewer({
           importedPackets={importedPackets}
           customPresets={customPresets}
           hexStripVisible={hexStripVisible}
-          dependenciesVisible={dependenciesVisible}
           editMode={editMode}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
@@ -841,8 +838,6 @@ export default function PacketViewer({
               uiDispatch({ type: "open-drawer", mode: "export" }),
             onShare: handleShare,
             onToggleHexStrip: () => uiDispatch({ type: "toggle-hex-strip" }),
-            onToggleDependencies: () =>
-              uiDispatch({ type: "toggle-dependencies" }),
             onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
             onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
@@ -899,11 +894,6 @@ export default function PacketViewer({
                 onByteHover={handleFieldHover}
               />
             ) : null}
-            <DependencyOverlay
-              packet={packet}
-              containerRef={diagramRef}
-              visible={dependenciesVisible}
-            />
           </div>
           <Legend categories={categories} />
         </div>
