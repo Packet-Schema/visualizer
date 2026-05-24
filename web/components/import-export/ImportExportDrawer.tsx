@@ -262,7 +262,7 @@ export default function ImportExportDrawer({
     layout,
     packet,
     transparentBackground,
-    ...(exportThemeMode === "follow-ui" ? [uiThemeAttr] : []),
+    uiThemeAttr,
   ]);
 
   const handleImageDownload = useCallback(async () => {
