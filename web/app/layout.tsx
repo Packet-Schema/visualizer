@@ -39,17 +39,8 @@ const geistMono = Geist_Mono({
 const themeBootstrap = `
 (function () {
   try {
-    var requested = null;
-    if (window.location.pathname === '/embed' || window.location.pathname === '/embed/') {
-      var rawTheme = new URLSearchParams(window.location.search).get('theme');
-      if (rawTheme === 'light' || rawTheme === 'dark') {
-        requested = rawTheme;
-      } else if (rawTheme === 'system' || rawTheme !== null) {
-        requested = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      }
-    }
     var stored = localStorage.getItem('packet-view-theme');
-    var theme = requested || stored || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var theme = stored || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
   } catch (e) {
     document.documentElement.setAttribute('data-theme', 'light');

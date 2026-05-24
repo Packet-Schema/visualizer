@@ -10,7 +10,10 @@ import {
 } from "react";
 
 import { PRESETS } from "@/lib/psml/presets";
-import { collectPsmlRefs, resolvePsmlLayout } from "@/lib/psml/layout-env";
+import { resolveLayout } from "@/lib/psml/layout";
+import { initialEnv } from "@/lib/psml/normalize";
+import { collectPsmlRefs } from "@/lib/psml/collect-refs";
+import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
 import {
   initialState,
   packetCategories,
@@ -50,7 +53,6 @@ import type {
 } from "@/lib/psml/renderer";
 import type { PsmlPacket } from "@/lib/psml/types";
 import ControlsPanel from "@/components/controls/ControlsPanel";
-import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
@@ -84,8 +86,16 @@ const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
 
-export default function PacketViewer() {
-  const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
+type PacketViewerProps = {
+  initialPacketKey?: string;
+  initialControllers?: ControllerState;
+};
+
+export default function PacketViewer({
+  initialPacketKey = DEFAULT_PACKET_KEY,
+  initialControllers,
+}: PacketViewerProps) {
+  const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
   // Imported packets are kept in the renderer shape so the editors can mutate
   // their TLV/Chain/subfield state directly. Built-in presets live in PSML
   // and are lowered to the renderer shape on demand.
@@ -120,16 +130,17 @@ export default function PacketViewer() {
     customRenderer ??
     renderedPresets[DEFAULT_PACKET_KEY];
 
-  const [controllers, setControllers] = useState<ControllerState>(() =>
-    initialState(psmlToRenderer(PRESETS[DEFAULT_PACKET_KEY])),
-  );
+  const [controllers, setControllers] = useState<ControllerState>(() => {
+    const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+    return initialControllers ?? initialState(psmlToRenderer(packet));
+  });
 
   // Custom Packet Studio reducer. Seeded from the default preset; we
   // reseed via 'replace-packet' on preset switch so history doesn't span
   // unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    PRESETS[DEFAULT_PACKET_KEY],
+    PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
@@ -146,7 +157,6 @@ export default function PacketViewer() {
     drawerMode,
     tourOpen,
     hexStripVisible,
-    dependenciesVisible,
     viewMode,
     shareStatus,
   } = ui;
@@ -571,7 +581,6 @@ export default function PacketViewer() {
       packet: sharePacket,
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
-      defaultPacketKey: DEFAULT_PACKET_KEY,
       defaultControllers,
       forcePsml: editMode || !builtInPsml,
     });
@@ -736,10 +745,36 @@ export default function PacketViewer() {
   const psmlRefs = useMemo(() => collectPsmlRefs(targetPsml), [targetPsml]);
 
   const layout = useMemo(() => {
-    // Every preset is PSML now — route the diagram through the shared layout
-    // resolver so Encrypted-container decoration, defaultValue seeding, and
-    // fallback refs stay uniform with the embed view.
-    return resolvePsmlLayout(targetPsml, controllers, viewMode, psmlRefs);
+    // Every preset is PSML now — route the diagram through resolveLayout so
+    // Encrypted-container decoration and viewMode toggling are uniform.
+    // For imported packets the renderer mirror is the source of truth and we
+    // lift it back to PSML on demand (lossy for variable-length payloads
+    // without TLV metadata, which is acceptable for layout purposes).
+    const env = new Map(
+      Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
+    );
+    setupDerivedCounts(env);
+    // Default value seed: packet が宣言する Field.defaultValue を env に
+    // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
+    // 入力を上書きしない)。 これを fallback seed より先にやらないと、
+    // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
+    // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
+    // 既存 preset の variable-length field が zero-length に描かれる
+    // regression を起こす (Codex P1 指摘)。
+    const packetDefaults = initialEnv(targetPsml);
+    for (const [k, v] of packetDefaults) {
+      if (!env.has(k)) env.set(k, v);
+    }
+    // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
+    // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
+    // PacketViewer 側が手動で seed しない限り `resolveLayout` が
+    // MissingRefError で throw → React render が落ちて "Application error"
+    // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
+    // と命名が一致しない ref をまとめて吸収する。
+    for (const r of psmlRefs) {
+      if (!env.has(r)) env.set(r, 0);
+    }
+    return resolveLayout(targetPsml, { env, viewMode });
   }, [targetPsml, psmlRefs, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
@@ -754,6 +789,23 @@ export default function PacketViewer() {
   // PacketViewer stays declarative.
   const handleDiagramKeyDown = useRovingTabindex(diagramRef);
 
+  useEffect(() => {
+    if (!urlHydrated) return;
+    const title = packet.name
+      ? `${packet.name} | Packet Visualizer`
+      : "Packet Visualizer";
+    let id2: number | null = null;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        document.title = title;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      if (id2 !== null) cancelAnimationFrame(id2);
+    };
+  }, [urlHydrated, packet.name]);
+
   return (
     <>
       <main className="max-w-[1200px] mx-auto px-6 py-3 pb-10 w-full flex-1">
@@ -762,7 +814,6 @@ export default function PacketViewer() {
           importedPackets={importedPackets}
           customPresets={customPresets}
           hexStripVisible={hexStripVisible}
-          dependenciesVisible={dependenciesVisible}
           editMode={editMode}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
@@ -777,8 +828,6 @@ export default function PacketViewer() {
               uiDispatch({ type: "open-drawer", mode: "export" }),
             onShare: handleShare,
             onToggleHexStrip: () => uiDispatch({ type: "toggle-hex-strip" }),
-            onToggleDependencies: () =>
-              uiDispatch({ type: "toggle-dependencies" }),
             onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
             onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
@@ -835,11 +884,6 @@ export default function PacketViewer() {
                 onByteHover={handleFieldHover}
               />
             ) : null}
-            <DependencyOverlay
-              packet={packet}
-              containerRef={diagramRef}
-              visible={dependenciesVisible}
-            />
           </div>
           <Legend categories={categories} />
         </div>

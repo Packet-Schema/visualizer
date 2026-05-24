@@ -19,10 +19,13 @@ import {
   type EmbedTheme,
 } from "@/lib/embed-url";
 import { THEME_STORAGE_KEY } from "@/lib/constants";
-import { collectPsmlRefs, resolvePsmlLayout } from "@/lib/psml/layout-env";
+import { resolveLayout } from "@/lib/psml/layout";
+import { initialEnv } from "@/lib/psml/normalize";
+import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { PRESETS } from "@/lib/psml/presets";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 import { initialState } from "@/lib/psml/renderer-helpers";
+import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
 import { parseShareParams } from "@/lib/share-url";
 import type {
   ControllerState,
@@ -65,11 +68,25 @@ export default function EmbedViewer() {
     () => collectPsmlRefs(embedState.psml),
     [embedState.psml],
   );
-  const layout = useMemo(
-    () =>
-      resolvePsmlLayout(embedState.psml, embedState.controllers, "wire", refs),
-    [embedState.psml, embedState.controllers, refs],
-  );
+  const layout = useMemo(() => {
+    const env = new Map(
+      Object.entries(embedState.controllers).map(
+        ([k, v]) => [k, Number(v)] as const,
+      ),
+    );
+    setupDerivedCounts(env);
+
+    const packetDefaults = initialEnv(embedState.psml);
+    for (const [k, v] of packetDefaults) {
+      if (!env.has(k)) env.set(k, v);
+    }
+
+    for (const ref of refs) {
+      if (!env.has(ref)) env.set(ref, 0);
+    }
+
+    return resolveLayout(embedState.psml, { env, viewMode: "wire" });
+  }, [embedState.psml, embedState.controllers, refs]);
 
   const handleFieldClick = useCallback((field: Field) => {
     setSelectedFieldId(field.id);
