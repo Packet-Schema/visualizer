@@ -27,13 +27,9 @@ export const OG_FONT_BUFFER: ArrayBuffer = fontBuffer.buffer.slice(fontBuffer.by
   );
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(
-    `Failed to generate og-font.ts:`,
-  );
+  console.error(`Failed to generate og-font.ts:`);
   console.error(`  Path attempted: ${fontPath}`);
   console.error(`  Error: ${message}`);
-  console.error(
-    `  Ensure @fontsource/geist is installed: npm ci`,
-  );
+  console.error(`  Ensure @fontsource/geist is installed: npm ci`);
   process.exit(1);
 }
