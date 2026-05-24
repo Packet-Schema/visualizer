@@ -214,7 +214,7 @@ export function StaticDiagram({
               padding: `${rowPaddingVertical}px 0`,
               gap: Math.round(4 * scale),
               borderRadius: 8,
-              background: rowCount % 2 === 0 ? theme.rowEven : theme.rowOdd,
+              background: "transparent",
               minHeight: rowHeight,
             }}
           >
