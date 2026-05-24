@@ -46,17 +46,20 @@ export async function generateMetadata({
     shareQuery ? `/api/og?${shareQuery}` : "/api/og",
     await getRequestOrigin(),
   ).toString();
-  const packet =
-    parsed.kind === "preset"
+
+  const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psml";
+  const packet = hasExplicitParams
+    ? parsed.kind === "preset"
       ? (PRESETS[parsed.presetKey] ?? PRESETS[DEFAULT_PACKET_KEY])
-      : parsed.kind === "psml"
-        ? parsed.packet
-        : PRESETS[DEFAULT_PACKET_KEY];
+      : parsed.packet
+    : null;
+
   const title = packet
     ? `${packet.name} | Packet Visualizer`
     : "Packet Visualizer";
   const description =
     packet?.description ?? "Visual viewer for common network packet headers.";
+
   return {
     title,
     description,

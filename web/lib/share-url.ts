@@ -119,9 +119,7 @@ export function buildShareUrl({
   const usePreset = !forcePsml && known.has(packetKey);
 
   if (usePreset) {
-    if (packetKey !== defaultPacketKey) {
-      params.set("preset", packetKey);
-    }
+    params.set("preset", packetKey);
     for (const [key, value] of sortedControllerEntries(controllers)) {
       if (defaultControllers && value === defaultControllers[key]) continue;
       params.set(`${CONTROLLER_PARAM_PREFIX}${key}`, String(value));
