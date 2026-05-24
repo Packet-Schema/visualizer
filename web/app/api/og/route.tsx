@@ -19,14 +19,37 @@ const OG_MARGIN = 60;
 const OG_MAX_QUERY_LENGTH = 2048;
 const FONT_NAME = "Geist";
 
+const OG_HEADERS = {
+  "content-type": "image/png",
+  "cache-control": "public, no-transform, max-age=86400",
+  "x-robots-tag": "noindex",
+} as const;
+
+const createOGImageResponseOptions = () => ({
+  width: OG_WIDTH,
+  height: OG_HEIGHT,
+  fonts: [
+    {
+      name: FONT_NAME,
+      data: OG_FONT_BUFFER,
+      weight: 400 as const,
+      style: "normal" as const,
+    },
+  ],
+  headers: OG_HEADERS,
+});
+
+const FALLBACK_GRADIENT = "linear-gradient(135deg, #3B2F6F 0%, #2D1E52 100%)";
+const FALLBACK_TITLE_FONT_SIZE = 120;
+const FALLBACK_TITLE_COLOR = "#FAFAF8";
+const FALLBACK_LETTER_SPACING = "0.025em";
+
 export async function GET(request: NextRequest) {
   try {
-    const builtInKeys = Object.keys(PRESETS);
-
     // URL が長すぎる場合は共有 PSML のデコードをスキップしてフォールバック
     const parsed =
       request.nextUrl.search.length <= OG_MAX_QUERY_LENGTH
-        ? parseShareParams(request.nextUrl.searchParams, builtInKeys)
+        ? parseShareParams(request.nextUrl.searchParams, Object.keys(PRESETS))
         : null;
 
     // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
@@ -39,7 +62,7 @@ export async function GET(request: NextRequest) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "linear-gradient(135deg, #3B2F6F 0%, #2D1E52 100%)",
+            background: FALLBACK_GRADIENT,
           }}
         >
           <div
@@ -49,11 +72,11 @@ export async function GET(request: NextRequest) {
               alignItems: "center",
               justifyContent: "center",
               gap: 20,
-              fontSize: 120,
+              fontSize: FALLBACK_TITLE_FONT_SIZE,
               fontWeight: 600,
-              color: "#FAFAF8",
+              color: FALLBACK_TITLE_COLOR,
               fontFamily: FONT_NAME,
-              letterSpacing: "0.025em",
+              letterSpacing: FALLBACK_LETTER_SPACING,
               lineHeight: 1,
             }}
           >
@@ -61,32 +84,19 @@ export async function GET(request: NextRequest) {
             <div>Visualizer</div>
           </div>
         </div>,
-        {
-          width: OG_WIDTH,
-          height: OG_HEIGHT,
-          fonts: [
-            {
-              name: FONT_NAME,
-              data: OG_FONT_BUFFER,
-              weight: 400,
-              style: "normal",
-            },
-          ],
-          headers: {
-            "content-type": "image/png",
-            "cache-control": "public, no-transform, max-age=86400",
-            "x-robots-tag": "noindex",
-          },
-        },
+        createOGImageResponseOptions(),
       );
     }
 
+    const builtInKeys = Object.keys(PRESETS);
     const fallbackPsml =
       PRESETS[FALLBACK_PRESET_KEY] ?? PRESETS[builtInKeys[0]];
     const psml =
       parsed.kind === "psml"
         ? parsed.packet
-        : (PRESETS[parsed.presetKey] ?? fallbackPsml);
+        : parsed.kind === "preset"
+          ? (PRESETS[parsed.presetKey] ?? fallbackPsml)
+          : fallbackPsml;
 
     const packet = psmlToRenderer(psml);
     const env = initialEnv(psml);
@@ -144,23 +154,7 @@ export async function GET(request: NextRequest) {
           />
         </div>
       </div>,
-      {
-        width: OG_WIDTH,
-        height: OG_HEIGHT,
-        fonts: [
-          {
-            name: FONT_NAME,
-            data: OG_FONT_BUFFER,
-            weight: 400,
-            style: "normal",
-          },
-        ],
-        headers: {
-          "content-type": "image/png",
-          "cache-control": "public, no-transform, max-age=86400",
-          "x-robots-tag": "noindex",
-        },
-      },
+      createOGImageResponseOptions(),
     );
   } catch (error) {
     console.error("OGP generation failed:", error);
