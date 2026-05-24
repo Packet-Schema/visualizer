@@ -90,6 +90,13 @@ const LAYOUT = {
   cellPaddingHorizontal: 8,
   cellInset: 2,
   subfieldHeight: 18,
+  subfieldTextXOffset: 6,
+  subfieldTextYOffset: 12,
+  subfieldXPadding: 4,
+  subfieldWidthPadding: 8,
+  cellTitleTextYOffset: 23,
+  cellSubtitleTextYOffset: 36,
+  cellSubtitleMarginTop: 2,
   diagramGap: 4,
   rowGap2: 3,
   cellGap: 2,
@@ -244,14 +251,14 @@ function renderSubfields(
   const y = parent.y + parent.height - LAYOUT.subfieldHeight - 5;
   return subCells
     .map((sub) => {
-      const x = LAYOUT.padding + sub.startBit * bitWidth + LAYOUT.cellInset + 4;
+      const x = LAYOUT.padding + sub.startBit * bitWidth + LAYOUT.cellInset + LAYOUT.subfieldXPadding;
       const width =
-        (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - 8;
+        (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - LAYOUT.subfieldWidthPadding;
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
-        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
+        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
         label
-          ? `<text x="${x + 6}" y="${y + 12}" font-size="${subfieldFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
+          ? `<text x="${x + LAYOUT.subfieldTextXOffset}" y="${y + LAYOUT.subfieldTextYOffset}" font-size="${subfieldFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
           : "",
       ].join("");
     })
@@ -365,8 +372,8 @@ export function buildDiagramSvg(
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text x="${x + cw / 2}" y="${cy + 23}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + cw / 2}" y="${cy + 36}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(
               cell.subCells,
@@ -669,6 +676,10 @@ export function injectLayoutStyles(): void {
   root.style.setProperty(
     "--subfield-border-radius",
     `${LAYOUT.subfieldBorderRadius}px`,
+  );
+  root.style.setProperty(
+    "--cell-subtitle-margin-top",
+    `${LAYOUT.cellSubtitleMarginTop}px`,
   );
 }
 

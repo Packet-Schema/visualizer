@@ -222,7 +222,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
-    margin-top: 2px;
+    margin-top: var(--cell-subtitle-margin-top);
   }
 
   /* Legend hover dimming. When the user hovers a legend item we set a
