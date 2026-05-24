@@ -803,9 +803,13 @@ export default function PacketViewer({
 
   useEffect(() => {
     if (!urlHydrated) return;
-    document.title = packet.name
+    const title = packet.name
       ? `${packet.name} | Packet Visualizer`
       : "Packet Visualizer";
+    const id = setTimeout(() => {
+      document.title = title;
+    }, 0);
+    return () => clearTimeout(id);
   }, [urlHydrated, packet.name]);
 
   return (
