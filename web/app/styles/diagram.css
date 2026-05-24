@@ -26,7 +26,7 @@
     position: absolute;
     left: 0;
     top: 0;
-    font-size: 10px;
+    font-size: var(--subtitle-font-size);
     line-height: 1;
     transform: translateX(-2px);
   }
@@ -41,11 +41,11 @@
   }
 
   .diagram-ruler .ruler-tick-major {
-    height: 10px;
+    height: var(--major-tick-height);
   }
 
   .diagram-ruler .ruler-tick-minor {
-    height: 6px;
+    height: var(--minor-tick-height);
     opacity: 0.55;
   }
 
@@ -206,7 +206,7 @@
   }
 
   .cell.field-cell .cell-continuation {
-    font-size: 10px;
+    font-size: var(--subtitle-font-size);
     font-style: italic;
     color: var(--field-continuation);
     font-weight: 500;
@@ -215,7 +215,7 @@
   .cell.field-cell .cell-sublabel {
     font-family: var(--font-mono, ui-monospace), monospace;
     font-variant-numeric: tabular-nums;
-    font-size: 10px;
+    font-size: var(--subtitle-font-size);
     font-weight: 500;
     color: var(--field-sublabel);
     white-space: nowrap;
@@ -269,13 +269,13 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 18px;
+    min-height: var(--subfield-height);
     min-width: 0;
     background: var(--bg-elevated);
     border: 1px solid var(--field-stroke);
     border-radius: var(--subfield-border-radius);
     font-family: var(--font-sans, system-ui), sans-serif;
-    font-size: 9px;
+    font-size: var(--subfield-font-size);
     font-weight: 600;
     color: var(--field-label);
     cursor: pointer;
