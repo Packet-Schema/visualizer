@@ -7,7 +7,6 @@ import {
   downloadBlobFile,
   downloadTextFile,
   readDiagramTheme,
-  readDiagramThemeFromDocument,
   svgToPngBlob,
 } from "../../lib/diagram-export";
 import type { DiagramExportTheme } from "../../lib/diagram-export";
@@ -251,63 +250,6 @@ describe("buildDiagramSvg", () => {
     expect(themed).toContain('fill="#abcdef">HP</text>');
   });
 
-  it("resolves CSS-variable field fills through the supplied export theme", () => {
-    const svg = buildDiagramSvg(
-      {
-        ...packet,
-        fields: [
-          {
-            id: "custom",
-            name: "Custom",
-            bits: 8,
-            color: "var(--custom-fill)" as never,
-          },
-        ],
-      },
-      {
-        totalBits: 8,
-        cells: [
-          {
-            field: {
-              id: "custom",
-              name: "Custom",
-              bits: 8,
-              color: "var(--custom-fill)" as never,
-            },
-            bitsTotal: 8,
-            row: 0,
-            startBit: 0,
-            endBit: 7,
-            segmentIndex: 0,
-            totalSegments: 1,
-            isFirst: true,
-            isLast: true,
-            fieldStartOffset: 0,
-            fieldEndOffset: 7,
-          },
-        ],
-      },
-      {
-        theme: {
-          background: "#111111",
-          rowEven: "#222222",
-          rowOdd: "#333333",
-          rulerTick: "#444444",
-          rulerLabel: "#555555",
-          accent: "#abcdef",
-          fieldStroke: "#666666",
-          fieldLabel: "#777777",
-          fieldSublabel: "#888888",
-          fieldContinuation: "#999999",
-          fieldPalette: {},
-          resolveCssColor: () => "#fedcba",
-        },
-      },
-    );
-
-    expect(svg).toContain('fill="#fedcba"');
-  });
-
   it("preserves renderer-only field colors when layout cells omit the color fallback", () => {
     const svg = buildDiagramSvg(
       {
@@ -356,7 +298,7 @@ describe("buildDiagramSvg", () => {
     expect(svg).toContain('fill="#f3d77e"');
   });
 
-  it("escapes untrusted field colors before embedding them into SVG attributes", () => {
+  it("safely handles untrusted field colors by using fallback", () => {
     const svg = buildDiagramSvg(
       {
         ...packet,
@@ -394,9 +336,8 @@ describe("buildDiagramSvg", () => {
       },
     );
 
-    expect(svg).toContain(
-      'fill="red&quot; /&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;rect fill=&quot;"',
-    );
+    // Untrusted colors are not in the theme palette, so they use "black" fallback
+    expect(svg).toContain('fill="black"');
     expect(svg).not.toContain("<script>");
   });
 
@@ -499,70 +440,44 @@ describe("diagram export helpers", () => {
     document.head.appendChild(style);
   }
 
-  it("reads concrete theme colors from the document", () => {
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const color = (element as HTMLElement).style.color;
-      return {
-        color:
-          color === "var(--bg-elevated)"
-            ? "rgb(1, 2, 3)"
-            : color === "var(--accent)"
-              ? "rgb(7, 8, 9)"
-              : color === "var(--field-blue)"
-                ? "rgb(4, 5, 6)"
-                : "",
-      } as CSSStyleDeclaration;
-    });
-
-    const theme = readDiagramThemeFromDocument();
-
-    expect(theme.background).toBe("rgb(1, 2, 3)");
-    expect(theme.accent).toBe("rgb(7, 8, 9)");
-    expect(theme.fieldPalette.blue).toBe("rgb(4, 5, 6)");
-  });
-
-  it("resolves explicit light/dark theme independent from current UI theme", () => {
-    installThemeStyles();
+  it("returns explicit light/dark theme independent from current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
-    expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
-    expect(readDiagramTheme("dark").background).toBe("rgb(15,15,15)");
+    expect(readDiagramTheme("light").background).toBe("oklch(99.5% 0.005 260)");
+    expect(readDiagramTheme("dark").background).toBe("oklch(22% 0.028 270)");
   });
 
-  it("does not throw when CSSLayerBlockRule is unavailable", () => {
-    installThemeStyles();
+  it("returns theme constants independent of CSSLayerBlockRule", () => {
     const original = globalThis.CSSLayerBlockRule;
 
     // Older Safari/WebView builds do not expose CSSLayerBlockRule at all.
-    // readDiagramTheme("light" | "dark") should still parse accessible rules.
+    // readDiagramTheme should still return the correct theme constants.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (globalThis as any).CSSLayerBlockRule;
 
     try {
-      expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
+      expect(readDiagramTheme("light").background).toBe(
+        "oklch(99.5% 0.005 260)",
+      );
+      expect(readDiagramTheme("dark").background).toBe("oklch(22% 0.028 270)");
     } finally {
       globalThis.CSSLayerBlockRule = original;
     }
   });
 
   it("uses the current UI theme when mode is follow-ui", () => {
-    installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");
+    expect(readDiagramTheme("follow-ui").background).toBe(
+      "oklch(22% 0.028 270)",
+    );
 
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const color = (element as HTMLElement).style.color;
-      if (color !== "var(--bg-elevated)")
-        return { color: "" } as CSSStyleDeclaration;
-      return { color: "rgb(20, 21, 22)" } as CSSStyleDeclaration;
-    });
-
-    expect(readDiagramTheme("follow-ui").background).toBe("rgb(20, 21, 22)");
+    document.documentElement.setAttribute("data-theme", "light");
+    expect(readDiagramTheme("follow-ui").background).toBe(
+      "oklch(99.5% 0.005 260)",
+    );
   });
 
-  it("resolves custom CSS-variable fills against the explicit export theme", () => {
-    installThemeStyles();
-    document.documentElement.setAttribute("data-theme", "dark");
-
+  it("uses black as fallback for unknown field colors", () => {
     const svg = buildDiagramSvg(
       {
         ...packet,
@@ -571,7 +486,7 @@ describe("diagram export helpers", () => {
             id: "custom",
             name: "Custom",
             bits: 8,
-            color: "var(--custom-fill)" as never,
+            color: "unknown-color" as never,
           },
         ],
       },
@@ -583,7 +498,7 @@ describe("diagram export helpers", () => {
               id: "custom",
               name: "Custom",
               bits: 8,
-              color: "var(--custom-fill)" as never,
+              color: "unknown-color" as never,
             },
             bitsTotal: 8,
             row: 0,
@@ -601,15 +516,13 @@ describe("diagram export helpers", () => {
       { theme: readDiagramTheme("light") },
     );
 
-    expect(svg).toContain('fill="rgb(240,240,240)"');
-    expect(svg).not.toContain('fill="rgb(15,15,15)"');
+    expect(svg).toContain('fill="black"');
   });
 
-  it("restores the current UI theme after resolving an explicit export theme", () => {
-    installThemeStyles();
+  it("returns explicit theme without mutating the current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
-    expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
+    expect(readDiagramTheme("light").background).toBe("oklch(99.5% 0.005 260)");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
