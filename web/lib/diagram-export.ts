@@ -684,16 +684,12 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   minorTickHeight: "--minor-tick-height",
 };
 
-export function injectLayoutStyles(): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  for (const [key, cssVar] of Object.entries(CSS_PROPERTY_MAP)) {
-    const value = LAYOUT[key as keyof typeof LAYOUT];
-    root.style.setProperty(cssVar, `${value}px`);
-  }
-}
-
-// Initialize layout styles on module load (client-side only)
-if (typeof document !== "undefined") {
-  injectLayoutStyles();
+export function generateLayoutCssVariables(): string {
+  const rules = Array.from(Object.entries(CSS_PROPERTY_MAP))
+    .map(([key, cssVar]) => {
+      const value = LAYOUT[key as keyof typeof LAYOUT];
+      return `${cssVar}: ${value}px;`;
+    })
+    .join("");
+  return `:root { ${rules} }`;
 }
