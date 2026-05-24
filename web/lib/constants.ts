@@ -9,6 +9,7 @@ import type { CategoryToken } from "./psml/renderer";
 
 export {
   CATEGORY_TO_TOKEN,
+  FIELD_PALETTE_TOKENS,
   tokenToCssVar,
   type ColorToken,
 } from "./render-tokens";

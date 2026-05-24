@@ -31,6 +31,18 @@ const KNOWN_TOKENS = new Set<ColorToken>([
   "slate",
 ]);
 
+export const FIELD_PALETTE_TOKENS: ReadonlyArray<ColorToken> = [
+  "blue",
+  "indigo",
+  "violet",
+  "teal",
+  "green",
+  "amber",
+  "orange",
+  "rose",
+  "slate",
+] as const;
+
 /** Semantic category → CSS variable token. The CSS variables themselves
  *  (e.g. `--field-blue`) are declared in `web/app/globals.css`. */
 export const CATEGORY_TO_TOKEN: Record<CategoryToken, ColorToken> = {
