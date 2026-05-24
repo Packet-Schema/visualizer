@@ -43,20 +43,49 @@ function EmptyState({
   packet,
   controllers,
   onControllerChange,
+  onTlvChange,
+  tlvSlotBytes,
 }: {
   message: string;
   packet: Packet;
   controllers: ControllerState;
   onControllerChange?: (key: string, value: number) => void;
+  onTlvChange?: (field: Field, next: TlvInstance[]) => void;
+  tlvSlotBytes?: Record<string, number>;
 }) {
   // Packet-level extras (free Repeats, peek Switches) surface here so the
   // panel never reads as truly empty when the packet has stoppable knobs
   // that aren't anchored to a single cell.
   const free = packet.freeRepeats ?? [];
   const peeks = packet.peekSwitches ?? [];
+  // TLVs without an explicit slot (= preset not in TLV_LENGTH_SYNC) won't
+  // emit a placeholder cell in the diagram, so the user has no click target
+  // to start adding records. Surface them here so TLS / CoAP / etc. still
+  // have a first-edit entry point. (Codex P1)
+  const unanchoredTlvs = packet.fields.filter(
+    (f) =>
+      f.tlv &&
+      f.tlv.instances.length === 0 &&
+      (tlvSlotBytes?.[f.id] ?? 0) === 0,
+  );
   return (
     <div className="space-y-3">
       <p className="m-0 text-sm-tight text-fg-faint">{message}</p>
+      {unanchoredTlvs.length > 0 && onTlvChange ? (
+        <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+          <WidgetLabel>TLV editors in this packet</WidgetLabel>
+          <div className="space-y-2">
+            {unanchoredTlvs.map((f) => (
+              <UnanchoredTlvCard
+                key={f.id}
+                field={f}
+                controllers={controllers}
+                onChange={(next) => onTlvChange(f, next)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
       {free.length > 0 && onControllerChange ? (
         <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
           <WidgetLabel>Repeats in this packet</WidgetLabel>
@@ -88,6 +117,46 @@ function EmptyState({
               />
             ))}
           </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function UnanchoredTlvCard({
+  field,
+  controllers,
+  onChange,
+}: {
+  field: Field;
+  controllers: ControllerState;
+  onChange: (next: TlvInstance[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-2 py-1.5 rounded border text-left text-sm-tight cursor-pointer"
+        style={{
+          borderColor: "var(--border-strong)",
+          background: "var(--bg-elevated)",
+          color: "var(--fg)",
+        }}
+      >
+        {open ? "▾" : "▸"} {field.name}{" "}
+        <span className="text-3xs text-fg-muted">
+          ({field.tlv?.catalog.length ?? 0} variants)
+        </span>
+      </button>
+      {open ? (
+        <div className="mt-2">
+          <TlvEditor
+            field={field}
+            controllers={controllers}
+            onChange={onChange}
+          />
         </div>
       ) : null}
     </div>
@@ -143,7 +212,13 @@ export default function OverridePanel({
 
   const r = resolveSelection(packet, selectedFieldId);
 
-  const emptyProps = { packet, controllers, onControllerChange };
+  const emptyProps = {
+    packet,
+    controllers,
+    onControllerChange,
+    onTlvChange,
+    tlvSlotBytes,
+  };
 
   if (r.kind === "empty") {
     return (
@@ -728,9 +803,19 @@ function RepeatCountStepper({
 }: RepeatCountStepperProps) {
   const value = controllers[countKey] ?? 0;
   const min = 0;
-  const max = 64;
+  // The earlier `max = 64` was an arbitrary cap that contradicted PSML's
+  // env-driven Repeat semantics (any count is legal). We use a soft ceiling
+  // on the number input's spinner just to keep the buttons sane; the +/−
+  // buttons themselves don't clamp upwards. Codex P2.
+  const SOFT_MAX = 4096;
   const numId = `detail-repeat-${countKey}-number`;
-  const clamp = (n: number) => Math.max(min, Math.min(max, n));
+  // NaN guard: the native number input briefly emits an empty string /
+  // intermediate "-" for which `Number(...)` returns NaN. Without the
+  // guard the NaN flows into `controllers`, contaminates `layout`'s env,
+  // and the displayed value goes to `value={NaN}` (= empty input
+  // controlled by an invalid value). Codex P2.
+  const safe = (n: number) =>
+    Number.isFinite(n) ? Math.max(min, Math.floor(n)) : value;
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm-tight text-fg truncate" title={name}>
@@ -740,7 +825,7 @@ function RepeatCountStepper({
         <button
           type="button"
           aria-label={`Decrement ${name}`}
-          onClick={() => onChange(countKey, clamp(value - 1))}
+          onClick={() => onChange(countKey, safe(value - 1))}
           className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
           style={{
             borderColor: "var(--border-strong)",
@@ -754,9 +839,13 @@ function RepeatCountStepper({
           id={numId}
           type="number"
           min={min}
-          max={max}
+          max={SOFT_MAX}
           value={value}
-          onChange={(e) => onChange(countKey, clamp(Number(e.target.value)))}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            const next = safe(n);
+            if (next !== value) onChange(countKey, next);
+          }}
           className="w-14 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight text-center"
           style={{
             borderColor: "var(--border-strong)",
@@ -767,7 +856,7 @@ function RepeatCountStepper({
         <button
           type="button"
           aria-label={`Increment ${name}`}
-          onClick={() => onChange(countKey, clamp(value + 1))}
+          onClick={() => onChange(countKey, safe(value + 1))}
           className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
           style={{
             borderColor: "var(--border-strong)",

@@ -168,9 +168,20 @@ function groupConsecutiveByContainer(fields: NormalizedField[]): GroupedRun[] {
       continue;
     }
     const groupId = f.groupId;
+    // Boundary key: groupId alone collides across Repeat iterations
+    // (`Repeat(Group([F1, F2]))` emits the SAME `groupId` per iteration,
+    // so consecutive iterations would erroneously fuse). The container
+    // path always carries `[i]` for the surrounding Repeat, so it
+    // distinguishes iterations while still matching siblings within one
+    // iteration. (Codex P1)
+    const groupPath = f.originalContainerPath;
     const run: NormalizedField[] = [f];
     let j = i + 1;
-    while (j < fields.length && fields[j].groupId === groupId) {
+    while (
+      j < fields.length &&
+      fields[j].groupId === groupId &&
+      fields[j].originalContainerPath === groupPath
+    ) {
       run.push(fields[j]);
       j++;
     }

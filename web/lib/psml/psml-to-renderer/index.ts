@@ -260,14 +260,24 @@ function collectPeekSwitches(
           }
           if (cases.length > 0) {
             const peek = c.on;
-            const offsetLabel =
-              peek.offset?.kind === "lit" ? peek.offset.value : 0;
-            out.push({
-              id: c.id,
-              name: c.name ?? c.id,
-              cases,
-              peekKey: `__peek__${offsetLabel}__${peek.bits}`,
-            });
+            // Only surface peek switches whose offset is a compile-time
+            // literal (or implicitly 0). Non-literal offsets evaluate at
+            // layout time to a value we don't know here, so the
+            // `__peek__<offset>__<bits>` key we'd publish wouldn't match
+            // what normalize actually reads — the picker would write to
+            // a dead env key and the diagram wouldn't update. Codex P2.
+            const offset = peek.offset;
+            if (offset && offset.kind !== "lit") {
+              // Skip: surfacing this peek would be misleading.
+            } else {
+              const offsetValue = offset?.kind === "lit" ? offset.value : 0;
+              out.push({
+                id: c.id,
+                name: c.name ?? c.id,
+                cases,
+                peekKey: `__peek__${offsetValue}__${peek.bits}`,
+              });
+            }
           }
         }
         for (const struct of Object.values(c.cases)) visit(struct.fields);

@@ -25,6 +25,37 @@ export type TlvCellRole =
 
 export function parseTlvCellId(id: string): TlvCellRole {
   if (!id) return { kind: "plain" };
+  // `parent:sub` subfield ids reach this parser too (HybridDiagram
+  // dispatches sub-cell clicks with that shape). Without explicit
+  // handling the greedy `INSTANCE_LEAF_RE` would treat
+  // `options__inst_0:options__inst_0__type` as a TLV leaf and produce
+  // a corrupt `baseId` that contains the colon (Codex P1). When the
+  // parent half *is* an instance shape, decode to the leaf role with
+  // a clean baseId / instanceIndex / leafId so callers can still route
+  // the click. Otherwise fall through to "plain" — real packet-level
+  // subfield clicks are handled by `selection-resolver` downstream.
+  if (id.includes(":")) {
+    const colonIdx = id.indexOf(":");
+    const parentPart = id.slice(0, colonIdx);
+    const subPart = id.slice(colonIdx + 1);
+    const instMatch = parentPart.match(INSTANCE_RE);
+    if (instMatch) {
+      // Layout writes SubField ids as `<parentInstanceId>__<leafId>`;
+      // strip the parent prefix when present so `leafId` matches the
+      // TLV catalog entry's field id.
+      const prefix = `${parentPart}__`;
+      const leafId = subPart.startsWith(prefix)
+        ? subPart.slice(prefix.length)
+        : subPart;
+      return {
+        kind: "leaf",
+        baseId: instMatch[1],
+        instanceIndex: Number(instMatch[2]),
+        leafId,
+      };
+    }
+    return { kind: "plain" };
+  }
   const leaf = id.match(INSTANCE_LEAF_RE);
   if (leaf) {
     return {

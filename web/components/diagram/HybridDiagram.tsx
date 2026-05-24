@@ -96,11 +96,13 @@ export default function HybridDiagram({
           s.add(sf.id);
         }
       }
-      if (f.tlv) {
-        for (const entry of f.tlv.catalog) {
-          for (const lf of entry.fields ?? []) s.add(lf.id);
-        }
-      }
+      // NOTE: do NOT splat TLV catalog leaf ids into `overridableIds`.
+      // Earlier revisions did so to mark TLV-expanded cells overridable,
+      // but the marker lookup now strips the `__inst_N` suffix via
+      // `tlvBaseId`, so the parent TLV's own id is what gets matched.
+      // Adding the leaf names back globally re-introduces collisions
+      // with same-named top-level fields (e.g. `length` in TLS records
+      // would falsely mark IPv4's `Total Length`). Codex P2.
     }
     return s;
   }, [packet]);
