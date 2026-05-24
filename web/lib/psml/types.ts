@@ -147,6 +147,17 @@ export type Struct = {
   fields: Container[];
 };
 
+/** A single TLV record currently attached to a `Repeat<Switch>` body.
+ *  Mirrors `TlvInstance` from the renderer model so PSML can persist the
+ *  user's chosen records (kind + per-instance extras) across export /
+ *  share / save boundaries. Stripping this on round-trip is a known
+ *  cause of "instances vanish on JSON re-import" — see the
+ *  `instances` field on `Repeat`. */
+export type TlvInstancePsml = {
+  kind: number;
+  extras?: Record<string, number>;
+};
+
 /** Repeat: N copies of a struct, where N is computed each layout pass. */
 export type Repeat = {
   kind: "repeat";
@@ -158,6 +169,15 @@ export type Repeat = {
   count: Expr | "eos" | { until: Expr };
   category?: CategoryToken;
   doc?: string;
+  /** Persisted TLV instance list. When the Repeat is a TLV catalog
+   *  (`Repeat<Switch on ref(...)>` whose cases are integer-keyed), the
+   *  renderer materialises one record per entry here and the diagram
+   *  layout pre-resolves each variant's leaf fields. Carrying the list
+   *  inside PSML itself (rather than only in the runtime renderer
+   *  mirror) lets JSON / share URL / "Save as preset" round-trip the
+   *  user's selections faithfully. Non-TLV Repeats may leave this
+   *  undefined. */
+  instances?: TlvInstancePsml[];
 };
 
 /** Switch: choose a variant struct by evaluating a discriminator. */

@@ -66,13 +66,22 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
 export function repeatToTlvField(r: Repeat): RendererField {
   const sw = getSwitchFromRepeat(r);
   const catalog = sw ? switchToTlvCatalog(sw) : [];
+  // Persisted instances on the PSML side travel back into the renderer
+  // mirror so a user's record selections survive JSON / share-URL /
+  // "Save as preset" round-trips.
+  const instances = r.instances
+    ? r.instances.map((inst) => ({
+        kind: inst.kind,
+        ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+      }))
+    : [];
   const field: RendererField = {
     id: r.id,
     name: r.name ?? r.id,
     variable: true,
     tlv: {
       catalog,
-      instances: [],
+      instances,
       drivesController: `${r.id}_count`,
       bytesPerUnit: 1,
       baseControllerValue: 0,
@@ -117,6 +126,14 @@ export function tlvFieldToRepeat(field: RendererField): Repeat {
   for (const entry of field.tlv?.catalog ?? []) {
     cases[String(entry.kind)] = tlvCatalogEntryToStruct(field.id, entry);
   }
+  // Persist the user-chosen records so the JSON / share-URL / saved-
+  // preset all round-trip with full state. Without this the catalog
+  // round-trips but `tlv.instances` is silently dropped at every
+  // export boundary.
+  const instances = (field.tlv?.instances ?? []).map((inst) => ({
+    kind: inst.kind,
+    ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+  }));
   return {
     kind: "repeat",
     id: field.id,
@@ -135,5 +152,6 @@ export function tlvFieldToRepeat(field: RendererField): Repeat {
       ],
     },
     count: { kind: "ref", field: `${field.id}_count` },
+    ...(instances.length > 0 ? { instances } : {}),
   };
 }

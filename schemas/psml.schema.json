@@ -215,6 +215,22 @@
               }
             }
           ]
+        },
+        "instances": {
+          "type": "array",
+          "description": "Persisted TLV record list. The renderer materialises each entry into the diagram and the layout pass pre-resolves each variant's leaf fields. Optional; non-TLV Repeats may omit it.",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "integer" },
+              "extras": {
+                "type": "object",
+                "additionalProperties": { "type": "number" }
+              }
+            }
+          }
         }
       }
     },
