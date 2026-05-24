@@ -9,6 +9,7 @@ import type {
   SubField,
 } from "@/lib/psml/renderer";
 import { categoryColor } from "@/lib/render-tokens";
+import { rowsFor, textForCell } from "@/lib/diagram-export";
 
 type Props = {
   packet: Packet;
@@ -23,12 +24,6 @@ type Props = {
   /** Optional hover sink (used by HexStrip for bidirectional highlight). */
   onFieldHover?: (fieldId: string | null) => void;
 };
-
-function formatBitsLabel(bits: number, field: Field): string {
-  if (field.variable) return `${bits} bits (var)`;
-  const bytes = bits / 8;
-  return Number.isInteger(bytes) ? `${bits} bits / ${bytes}B` : `${bits} bits`;
-}
 
 /**
  * HybridDiagram replaces the SVG renderer with an HTML CSS Grid that produces
@@ -49,13 +44,8 @@ export default function HybridDiagram({
   onFieldHover,
 }: Props) {
   const rowBits = packet.rowBits;
-  const rowsTotal = layout.cells.length
-    ? Math.max(...layout.cells.map((c) => c.row)) + 1
-    : 0;
-
-  // Group cells by row for clean grid wrapping.
-  const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
-  for (const cell of layout.cells) rows[cell.row].push(cell);
+  const rows = rowsFor(layout);
+  const rowsTotal = rows.length;
 
   const rowStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${rowBits}, minmax(0, 1fr))`,
@@ -204,9 +194,7 @@ function FieldCellImpl({
     .filter(Boolean)
     .join(" ");
 
-  const displayName = cell.field.variable
-    ? `~${cell.field.name}`
-    : cell.field.name;
+  const { title, subtitle } = textForCell(cell);
 
   // We use a `<div role="button">` rather than a native `<button>` because
   // interactive nested content (subfield clickable spans) is invalid inside
@@ -244,16 +232,16 @@ function FieldCellImpl({
       <span className="cell-body">
         {cell.isFirst ? (
           <>
-            <span className="cell-name" title={displayName}>
-              {displayName}
+            <span className="cell-name" title={title}>
+              {title}
             </span>
             <span className="cell-sublabel">
-              {formatBitsLabel(cell.bitsTotal, cell.field)}
+              {subtitle}
             </span>
           </>
         ) : (
           <span className="cell-continuation" title={cell.field.name}>
-            {`… ${displayName} (cont.)`}
+            {title}
           </span>
         )}
       </span>

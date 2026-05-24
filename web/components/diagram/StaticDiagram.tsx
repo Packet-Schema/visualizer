@@ -1,18 +1,6 @@
 import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
-import { fieldFill, rowsFor, textForCell } from "@/lib/diagram-export";
+import { fieldFill, rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
-
-// Note: This component renders the same diagram as buildDiagramSvg (used for live exports),
-// but as JSX instead of SVG strings for Satori/next/og compatibility. When modifying
-// diagram layout, dimensions, or rendering logic, update both implementations to stay in sync.
-
-const BASE_RULER_HEIGHT = 22;
-const BASE_RULER_GAP = 6;
-const BASE_ROW_HEIGHT = 56;
-const BASE_ROW_GAP = 4;
-const BASE_ROW_PADDING_VERTICAL = 4; // 4px top + 4px bottom
-const BASE_CELL_PADDING_VERTICAL = 6;
-const BASE_CELL_PADDING_HORIZONTAL = 4;
 
 type Props = {
   packet: Packet;
@@ -46,22 +34,22 @@ export function StaticDiagram({
   if (targetHeight != null && rowCount > 0) {
     const totalRows = isTruncated ? rowCount + 1 : rowCount;
     const naturalH =
-      BASE_RULER_HEIGHT +
-      BASE_RULER_GAP +
-      totalRows * (BASE_ROW_HEIGHT + BASE_ROW_PADDING_VERTICAL * 2) +
-      Math.max(totalRows - 1, 0) * BASE_ROW_GAP;
+      LAYOUT.rulerHeight +
+      LAYOUT.rulerGap +
+      totalRows * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2) +
+      Math.max(totalRows - 1, 0) * LAYOUT.rowGap;
     scale = Math.min(targetHeight / naturalH, 2.0);
   }
 
-  const rulerHeight = BASE_RULER_HEIGHT * scale;
-  const rulerGap = BASE_RULER_GAP * scale;
-  const rowHeight = BASE_ROW_HEIGHT * scale;
-  const rowGap = BASE_ROW_GAP * scale;
+  const rulerHeight = LAYOUT.rulerHeight * scale;
+  const rulerGap = LAYOUT.rulerGap * scale;
+  const rowHeight = LAYOUT.rowHeight * scale;
+  const rowGap = LAYOUT.rowGap * scale;
   // Round discrete dimensions to prevent rendering artifacts and maintain clarity across scale factors
-  const rowPaddingVertical = Math.round(BASE_ROW_PADDING_VERTICAL * scale);
-  const cellPaddingVertical = Math.round(BASE_CELL_PADDING_VERTICAL * scale);
+  const rowPaddingVertical = Math.round(LAYOUT.rowPaddingVertical * scale);
+  const cellPaddingVertical = Math.round(LAYOUT.cellPaddingVertical * scale);
   const cellPaddingHorizontal = Math.round(
-    BASE_CELL_PADDING_HORIZONTAL * scale,
+    LAYOUT.cellPaddingHorizontal * scale,
   );
   const titleFontSize = Math.round(12 * scale);
   const smallFontSize = Math.round(10 * scale);
