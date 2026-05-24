@@ -123,8 +123,16 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
   // Symmetric to TLV `instances`: persist chain selections back onto
   // the PSML Repeat so JSON / share URL / "Save as preset" all carry
   // the user's chosen extension headers (sub-agent HIGH).
+  // Carry per-instance `extras` through the renderer→PSML lift as well
+  // so PSML packets that hand-author chain extras (e.g.
+  // `chainInstances:[{proto:0,extras:{hdrExtLen:1}}]`) round-trip
+  // through ImportExportDrawer / share / save without loss. The
+  // PSML→renderer side of this carry already lives in
+  // `repeatToChainField`; without this mirror, the lift was
+  // asymmetric and silently dropped extras (Round 8 HIGH).
   const chainInstances = (field.chainInstances ?? []).map((inst) => ({
     proto: inst.proto,
+    ...(inst.extras ? { extras: { ...inst.extras } } : {}),
   }));
   return {
     kind: "repeat",

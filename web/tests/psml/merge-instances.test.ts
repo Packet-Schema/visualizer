@@ -126,6 +126,30 @@ describe("mergeInstancesIntoPsml", () => {
     expect(versionPsml?.byteOrder).toBe("LE");
   });
 
+  it("preserves chain instance extras through renderer → PSML lift (Round 8 HIGH)", async () => {
+    // PSML packet with hand-authored chain `extras` — Round 8 HIGH
+    // confirmed that `chainFieldToRepeat` silently dropped them on
+    // every `rendererToPsml` lift (ImportExportDrawer, non-editMode
+    // share/save). This pins the symmetric round-trip.
+    const { rendererToPsml } = await import("@/lib/psml/psml-to-renderer");
+    const mirror = psmlToRenderer(PRESETS.ipv6!);
+    const nextHeader = mirror.fields.find((f) => f.id === "nextHeader");
+    if (!nextHeader) throw new Error("ipv6 mirror missing nextHeader");
+    nextHeader.chainInstances = [
+      { proto: 0, extras: { hdrExtLen: 1 } },
+      { proto: 60 },
+    ];
+    const psml = rendererToPsml(mirror);
+    const chainRepeat = psml.body.find(
+      (c): c is Repeat =>
+        c.kind === "repeat" && /(^|_)chain($|[A-Z_])/.test(c.id),
+    );
+    expect(chainRepeat?.chainInstances).toEqual([
+      { proto: 0, extras: { hdrExtLen: 1 } },
+      { proto: 60 },
+    ]);
+  });
+
   it("persists chainFinalProto onto the chain Repeat (H1)", () => {
     const studio = structuredClone(PRESETS.ipv6!);
     const mirror = psmlToRenderer(PRESETS.ipv6!);
