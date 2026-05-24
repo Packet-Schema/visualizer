@@ -90,8 +90,7 @@
   }
 
   @media print {
-    .hex-strip,
-    .dependency-overlay {
+    .hex-strip {
       display: none !important;
     }
   }
