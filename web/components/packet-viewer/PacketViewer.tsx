@@ -806,16 +806,15 @@ export default function PacketViewer({
     const title = packet.name
       ? `${packet.name} | Packet Visualizer`
       : "Packet Visualizer";
-    let id1: number;
-    let id2: number;
-    id1 = requestAnimationFrame(() => {
+    let id2: number | null = null;
+    const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
         document.title = title;
       });
     });
     return () => {
       cancelAnimationFrame(id1);
-      if (id2) cancelAnimationFrame(id2);
+      if (id2 !== null) cancelAnimationFrame(id2);
     };
   }, [urlHydrated, packet.name]);
 
