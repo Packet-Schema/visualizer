@@ -50,7 +50,7 @@ export function StaticDiagram({
       BASE_RULER_GAP +
       totalRows * (BASE_ROW_HEIGHT + BASE_ROW_PADDING_VERTICAL * 2) +
       Math.max(totalRows - 1, 0) * BASE_ROW_GAP;
-    scale = targetHeight / naturalH;
+    scale = Math.min(targetHeight / naturalH, 2.0);
   }
 
   const rulerHeight = BASE_RULER_HEIGHT * scale;
