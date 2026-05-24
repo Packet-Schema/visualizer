@@ -4,12 +4,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildDiagramSvg,
+  cellVisual,
   downloadBlobFile,
   downloadTextFile,
+  generateLayoutCssVariables,
+  LAYOUT,
+  naturalDiagramHeight,
   readDiagramTheme,
+  rowBandColor,
   svgToPngBlob,
 } from "../../lib/diagram-export";
 import type { DiagramExportTheme } from "../../lib/diagram-export";
+import { FIELD_FILL_OPACITY } from "../../lib/constants";
 import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
 
 const packet: Packet = {
@@ -121,15 +127,15 @@ const LIGHT_TEST_THEME: DiagramExportTheme = {
   fieldSublabel: "#344054",
   fieldContinuation: "#667085",
   fieldPalette: {
-    blue: "#7fb7ff",
-    indigo: "#a8a6ff",
-    violet: "#d1a5ff",
-    teal: "#8ed7d1",
-    green: "#a8df9f",
-    amber: "#f3d77e",
-    orange: "#f7b27a",
-    rose: "#f4a1ae",
-    slate: "#c3c8d3",
+    blue: `rgba(127, 183, 255, ${FIELD_FILL_OPACITY})`,
+    indigo: `rgba(168, 166, 255, ${FIELD_FILL_OPACITY})`,
+    violet: `rgba(209, 165, 255, ${FIELD_FILL_OPACITY})`,
+    teal: `rgba(142, 215, 209, ${FIELD_FILL_OPACITY})`,
+    green: `rgba(168, 223, 159, ${FIELD_FILL_OPACITY})`,
+    amber: `rgba(243, 215, 126, ${FIELD_FILL_OPACITY})`,
+    orange: `rgba(247, 178, 122, ${FIELD_FILL_OPACITY})`,
+    rose: `rgba(244, 161, 174, ${FIELD_FILL_OPACITY})`,
+    slate: `rgba(195, 200, 211, ${FIELD_FILL_OPACITY})`,
   },
 };
 
@@ -657,5 +663,69 @@ describe("diagram export helpers", () => {
     vi.stubGlobal("Image", OkImage);
 
     await expect(svgToPngBlob("<svg />", 2)).rejects.toBeDefined();
+  });
+
+  it("generates CSS variables for all layout constants", () => {
+    const css = generateLayoutCssVariables();
+    expect(css).toContain(":root {");
+    expect(css).toContain("--diagram-ruler-height: 22px");
+    expect(css).toContain("--diagram-ruler-gap: 6px");
+    expect(css).toContain("--diagram-row-height: 56px");
+    expect(css).toContain("--diagram-row-padding-vertical: 4px");
+    expect(css).toContain("--diagram-cell-padding-vertical: 6px");
+    expect(css).toContain("--diagram-cell-padding-horizontal: 8px");
+    expect(css).toContain("--subfield-height: 18px");
+    expect(css).toContain("--row-border-radius: 8px");
+    expect(css).toContain("--cell-border-radius: 10px");
+    expect(css).toContain("--title-font-size: 12px");
+    expect(css).toContain("--subtitle-font-size: 10px");
+  });
+
+  it("calculates natural diagram height correctly", () => {
+    const height0 = naturalDiagramHeight(0);
+    const height1 = naturalDiagramHeight(1);
+    const height2 = naturalDiagramHeight(2);
+    // rulerHeight (22) + rulerGap (6) = 28 for 0 rows
+    expect(height0).toBe(28);
+    // + 1 row: (rowHeight 56 + rowPaddingVertical*2=8) = 64 per row
+    expect(height1).toBe(28 + 64);
+    // + 1 gap between rows (4)
+    expect(height2).toBe(28 + 64 + 64 + 4);
+  });
+
+  it("returns correct band color based on row index and theme", () => {
+    expect(rowBandColor(0, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowEven);
+    expect(rowBandColor(1, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowOdd);
+    expect(rowBandColor(2, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowEven);
+    expect(rowBandColor(3, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowOdd);
+  });
+
+  it("cellVisual applies field fill with opacity", () => {
+    const cell = layoutForMode("wire").cells[0];
+    const field = packet.fields[0];
+    const visual = cellVisual(cell, field, LIGHT_TEST_THEME);
+    expect(visual.fill).toContain("rgba");
+    expect(visual.fill).toContain(String(FIELD_FILL_OPACITY));
+    expect(visual.isDashed).toBe(false);
+    expect(visual.titleColor).toBe(LIGHT_TEST_THEME.fieldLabel);
+    expect(visual.title).toBe("Type");
+    expect(visual.subtitle).toBe("4 bits");
+  });
+
+  it("cellVisual marks encrypted cells as dashed with accent stroke", () => {
+    const encryptedCell = layoutForMode("wire").cells[1];
+    const field = packet.fields[1];
+    const visual = cellVisual(encryptedCell, field, LIGHT_TEST_THEME);
+    expect(visual.isDashed).toBe(true);
+    expect(visual.stroke).toBe(LIGHT_TEST_THEME.fieldStroke);
+  });
+
+  it("cellVisual applies continuation color to non-first segments", () => {
+    const layout = layoutForMode("semantic");
+    const continuationCell = layout.cells[2];
+    const field = layout.cells[2].field;
+    const visual = cellVisual(continuationCell, field, LIGHT_TEST_THEME);
+    expect(visual.titleColor).toBe(LIGHT_TEST_THEME.fieldContinuation);
+    expect(visual.title).toContain("…");
   });
 });
