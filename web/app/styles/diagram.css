@@ -212,6 +212,10 @@
     font-weight: 500;
   }
 
+  .cell.field-cell .cell-name--continuation {
+    color: var(--field-continuation);
+  }
+
   .cell.field-cell .cell-sublabel {
     font-family: var(--font-mono, ui-monospace), monospace;
     font-variant-numeric: tabular-nums;
