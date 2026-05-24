@@ -1,5 +1,6 @@
 @layer components {
   .embed-root {
+    box-sizing: border-box;
     width: 100%;
     padding: 8px;
     color: var(--fg);
