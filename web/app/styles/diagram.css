@@ -10,8 +10,8 @@
 
   .diagram-ruler {
     display: grid;
-    height: var(--diagram-ruler-height, 22px);
-    margin-bottom: var(--diagram-ruler-gap, 6px);
+    height: var(--diagram-ruler-height);
+    margin-bottom: var(--diagram-ruler-gap);
     /* gridTemplateColumns supplied inline by DiagramRuler */
   }
 
@@ -52,7 +52,7 @@
   .hybrid-diagram {
     display: flex;
     flex-direction: column;
-    gap: var(--diagram-gap, 4px);
+    gap: var(--diagram-gap);
     /* Sub-pixel cell widths animate awkwardly without containment. */
     contain: layout style;
   }
@@ -60,10 +60,10 @@
   .hybrid-row {
     display: grid;
     /* gridTemplateColumns set inline */
-    gap: var(--row-gap-2, 3px);
-    padding: var(--diagram-row-padding-vertical, 4px) 0;
-    border-radius: var(--row-border-radius, 8px);
-    min-height: var(--diagram-row-height, 56px);
+    gap: var(--row-gap-2);
+    padding: var(--diagram-row-padding-vertical) 0;
+    border-radius: var(--row-border-radius);
+    min-height: var(--diagram-row-height);
   }
 
   .hybrid-row-even {
@@ -92,15 +92,15 @@
     justify-content: center;
     min-width: 0;
     border: 1px solid var(--field-stroke);
-    border-radius: var(--cell-border-radius, 10px);
+    border-radius: var(--cell-border-radius);
     background: var(--cell-fill, var(--field-slate));
     color: var(--field-label);
     font:
       600 12px/1.2 var(--font-sans, system-ui),
       sans-serif;
     cursor: pointer;
-    padding: var(--diagram-cell-padding-vertical, 6px)
-      var(--diagram-cell-padding-horizontal, 8px);
+    padding: var(--diagram-cell-padding-vertical)
+      var(--diagram-cell-padding-horizontal);
     /* Inset highlight that keeps the cell from looking flat. */
     box-shadow: inset 0 1px 0 oklch(99% 0 0 / 0.12);
     /* The whole game: grid-column animates smoothly. */
@@ -259,7 +259,7 @@
   .cell-subgrid {
     display: grid;
     /* gridTemplateColumns set inline */
-    gap: var(--cell-gap, 2px);
+    gap: var(--cell-gap);
     width: 100%;
     margin-top: auto;
     pointer-events: auto;
@@ -273,7 +273,7 @@
     min-width: 0;
     background: var(--bg-elevated);
     border: 1px solid var(--field-stroke);
-    border-radius: var(--subfield-border-radius, 6px);
+    border-radius: var(--subfield-border-radius);
     font-family: var(--font-sans, system-ui), sans-serif;
     font-size: 9px;
     font-weight: 600;

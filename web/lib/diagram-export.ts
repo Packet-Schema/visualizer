@@ -635,6 +635,7 @@ export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
 }
 
 export function injectLayoutStyles(): void {
+  if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.style.setProperty("--diagram-ruler-height", `${LAYOUT.rulerHeight}px`);
   root.style.setProperty("--diagram-ruler-gap", `${LAYOUT.rulerGap}px`);
@@ -664,4 +665,9 @@ export function injectLayoutStyles(): void {
     "--subfield-border-radius",
     `${LAYOUT.subfieldBorderRadius}px`,
   );
+}
+
+// Initialize layout styles on module load (client-side only)
+if (typeof document !== "undefined") {
+  injectLayoutStyles();
 }
