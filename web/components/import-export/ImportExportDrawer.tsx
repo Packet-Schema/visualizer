@@ -16,6 +16,10 @@ import {
   type FormatKey,
 } from "@/lib/formats/registry";
 import {
+  buildIframeEmbedHtml,
+  estimateEmbedIframeHeight,
+} from "@/lib/embed-url";
+import {
   downloadBlob,
   extToFormat,
   readFileAsText,
@@ -188,6 +192,21 @@ export default function ImportExportDrawer({
       // Lower the runtime packet to PSML for the format hub. controllers is a
       // plain object keyed by controller id; PSML's PacketEnv is a Map.
       const psml = rendererToPsml(packet);
+      if (format === "iframe") {
+        setText(
+          buildIframeEmbedHtml({
+            baseUrl:
+              typeof window === "undefined"
+                ? "http://localhost"
+                : window.location.href,
+            packet: psml,
+            controllers,
+            height: estimateEmbedIframeHeight(layout),
+          }),
+        );
+        setStatus(null);
+        return;
+      }
       const env = new Map<string, number>(Object.entries(controllers));
       const adapter = getFormat(format);
       if (!adapter.render) {
@@ -203,7 +222,7 @@ export default function ImportExportDrawer({
         kind: "error",
       });
     }
-  }, [open, currentMode, format, packet, controllers]);
+  }, [open, currentMode, format, packet, controllers, layout]);
 
   const handleModeChange = useCallback(
     (next: DrawerMode) => {
