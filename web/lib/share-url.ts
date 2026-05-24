@@ -10,6 +10,10 @@ import type { Packet as PsmlPacket, PacketEnv } from "./psml/types";
 
 export const CONTROLLER_PARAM_PREFIX = "controllers.";
 export const SHARE_URL_WARN_BYTES = 2048;
+// Maximum URL length to ensure compatibility across browsers and social media platforms.
+// Exceeding this limit may cause truncation or rendering issues when sharing links.
+export const SHARE_URL_MAX_LENGTH = 2048;
+export const SHARE_PARAM_KEYS = ["preset", "psml"] as const;
 
 export type ParsedShareParams =
   | { kind: "none"; controllers: ControllerState; error?: string }
@@ -22,7 +26,6 @@ export type BuildShareUrlOptions = {
   packet: PsmlPacket;
   controllers: ControllerState;
   builtInKeys: Iterable<string>;
-  defaultPacketKey: string;
   defaultControllers?: ControllerState;
   forcePsml?: boolean;
 };
@@ -100,6 +103,13 @@ export function parseShareParams(
     };
   }
 
+  // Backwards compatibility: URLs with only controller params (no preset/psml)
+  // are interpreted as ipv4 preset. This handles URLs generated before explicit
+  // preset parameters were always included.
+  if (Object.keys(controllers).length > 0) {
+    return { kind: "preset", presetKey: "ipv4", controllers };
+  }
+
   return { kind: "none", controllers };
 }
 
@@ -109,7 +119,6 @@ export function buildShareUrl({
   packet,
   controllers,
   builtInKeys,
-  defaultPacketKey,
   defaultControllers,
   forcePsml = false,
 }: BuildShareUrlOptions): string {
@@ -119,9 +128,9 @@ export function buildShareUrl({
   const usePreset = !forcePsml && known.has(packetKey);
 
   if (usePreset) {
-    if (packetKey !== defaultPacketKey) {
-      params.set("preset", packetKey);
-    }
+    // Always include preset parameter for explicit clarity, even for ipv4.
+    // This ensures URLs are self-documenting about which preset is being used.
+    params.set("preset", packetKey);
     for (const [key, value] of sortedControllerEntries(controllers)) {
       if (defaultControllers && value === defaultControllers[key]) continue;
       params.set(`${CONTROLLER_PARAM_PREFIX}${key}`, String(value));
@@ -136,6 +145,54 @@ export function buildShareUrl({
 
 export function shareUrlByteLength(url: string): number {
   return new TextEncoder().encode(url).length;
+}
+
+export function buildShareQueryFromParams(
+  params: Record<string, string | string[] | undefined> | URLSearchParams,
+): string {
+  const out = new URLSearchParams();
+
+  if (params instanceof URLSearchParams) {
+    for (const key of SHARE_PARAM_KEYS) {
+      const values = params.getAll(key);
+      for (const value of values) {
+        out.append(key, value);
+      }
+    }
+    for (const [key, value] of params.entries()) {
+      if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
+      out.append(key, value);
+    }
+  } else {
+    for (const key of SHARE_PARAM_KEYS) {
+      const value = params[key];
+      if (typeof value === "string") {
+        out.set(key, value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          out.append(key, item);
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(params)) {
+      if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
+      if (typeof value === "string") {
+        out.append(key, value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          out.append(key, item);
+        }
+      }
+    }
+  }
+
+  return out.toString();
+}
+
+export function isShareQueryLengthValid(shareQuery: string): boolean {
+  return (
+    new URLSearchParams(shareQuery).toString().length <= SHARE_URL_MAX_LENGTH
+  );
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {
