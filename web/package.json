@@ -3,15 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "npm run build:presets && next dev",
+    "dev": "npm run build:presets && npm run generate:og-font && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
-    "prebuild": "npm run build:presets",
+    "generate:og-font": "tsx scripts/generate-og-font.ts",
+    "prebuild": "npm run build:presets && npm run generate:og-font",
     "build": "opennextjs-cloudflare build",
-    "build:next": "next build",
+    "build:next": "npm run generate:og-font && next build",
     "start": "next start",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run build:presets && eslint . --max-warnings 0",
+    "pretypecheck": "npm run build:presets && npm run generate:og-font",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:presets",
     "test": "vitest run",
@@ -31,6 +33,8 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@fontsource/geist": "^5.2.9",
+    "@opennextjs/cloudflare": "^1.8.6",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",
@@ -48,7 +52,6 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.6",
-    "@opennextjs/cloudflare": "^1.8.6",
     "wrangler": "^4.16.1"
   },
   "browserslist": [

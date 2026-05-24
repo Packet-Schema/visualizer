@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildShareUrl,
+  buildShareQueryFromParams,
   decodePsmlParam,
   encodePsmlParam,
+  isShareQueryLengthValid,
   parseShareParams,
 } from "@/lib/share-url";
 import { PRESETS } from "@/lib/psml/presets";
@@ -39,7 +41,6 @@ describe("share URL params", () => {
       packet: PRESETS.tcp,
       controllers: { dataOffset: 5 },
       defaultControllers: { dataOffset: 5 },
-      defaultPacketKey: "ipv4",
       builtInKeys: BUILT_INS,
     });
     expect(url).toBe("https://example.test/view?preset=tcp");
@@ -66,5 +67,52 @@ describe("share URL params", () => {
     const unknownPreset = parseShareParams("?preset=nope", BUILT_INS);
     if (unknownPreset.kind !== "none") throw new Error("expected kind=none");
     expect(unknownPreset.error).toMatch(/Unknown preset/);
+  });
+
+  it("builds share query from URLSearchParams", () => {
+    const params = new URLSearchParams();
+    params.set("preset", "ipv4");
+    params.set("controllers.ihl", "5");
+    params.set("controllers.dscp", "10");
+    params.set("other", "ignored");
+
+    const query = buildShareQueryFromParams(params);
+    expect(query).toContain("preset=ipv4");
+    expect(query).toContain("controllers.ihl=5");
+    expect(query).toContain("controllers.dscp=10");
+    expect(query).not.toContain("other");
+  });
+
+  it("builds share query from plain object params", () => {
+    const params = {
+      preset: "tcp",
+      "controllers.dataOffset": "5",
+      psml: undefined,
+      other: "ignored",
+    };
+
+    const query = buildShareQueryFromParams(params);
+    expect(query).toContain("preset=tcp");
+    expect(query).toContain("controllers.dataOffset=5");
+    expect(query).not.toContain("other");
+    expect(query).not.toContain("psml");
+  });
+
+  it("handles array values in share query params", () => {
+    const params = {
+      "controllers.flag": ["true", "false"],
+    };
+
+    const query = buildShareQueryFromParams(params);
+    expect(query).toContain("controllers.flag=true");
+    expect(query).toContain("controllers.flag=false");
+  });
+
+  it("validates share query length", () => {
+    const shortQuery = "preset=ipv4";
+    expect(isShareQueryLengthValid(shortQuery)).toBe(true);
+
+    const longQuery = "preset=" + "x".repeat(3000);
+    expect(isShareQueryLengthValid(longQuery)).toBe(false);
   });
 });
