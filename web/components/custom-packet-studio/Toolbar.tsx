@@ -1,4 +1,5 @@
 import type { EditAction } from "@/lib/psml/edit-reducer";
+import type { StudioView } from "@/components/packet-viewer/ui-state-reducer";
 import type { Container, Field } from "@/lib/psml/types";
 
 type Props = {
@@ -7,6 +8,9 @@ type Props = {
   insertPath: (string | number)[];
   historyLength: number;
   futureLength: number;
+  /** "form" or "source" — Studio の表示ビュー (排他)。 */
+  view: StudioView;
+  onViewChange: (next: StudioView) => void;
   onSaveAs: () => void;
   onDiscard: () => void;
 };
@@ -80,6 +84,8 @@ export default function Toolbar({
   insertPath,
   historyLength,
   futureLength,
+  view,
+  onViewChange,
   onSaveAs,
   onDiscard,
 }: Props) {
@@ -201,6 +207,42 @@ export default function Toolbar({
       >
         Discard
       </button>
+
+      <span aria-hidden className="mx-1 h-5 w-px bg-border-strong ml-auto" />
+
+      <div
+        role="radiogroup"
+        aria-label="Studio view"
+        className="inline-flex rounded-md border overflow-hidden text-sm font-medium"
+        style={{ borderColor: "var(--border-strong)" }}
+      >
+        {(
+          [
+            { id: "form", label: "GUI", aria: "Form editor view" },
+            { id: "source", label: "Source", aria: "PSML source view" },
+          ] as const
+        ).map((opt) => {
+          const active = view === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={opt.aria}
+              tabIndex={active ? 0 : -1}
+              onClick={() => onViewChange(opt.id)}
+              className="px-2.5 py-1.5"
+              style={{
+                background: active ? "var(--accent)" : "var(--bg-elevated)",
+                color: active ? "var(--accent-fg)" : "var(--fg)",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

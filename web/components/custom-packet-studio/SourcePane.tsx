@@ -1,27 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import PreviewPanel from "@/components/source-editor/PreviewPanel";
 import SourceTextarea from "@/components/source-editor/SourceTextarea";
 import type { EditAction } from "@/lib/psml/edit-reducer";
-import { resolveLayout } from "@/lib/psml/layout";
-import { initialEnv } from "@/lib/psml/normalize";
-import { collectPsmlRefs } from "@/lib/psml/source-refs";
 import {
   decodeSource,
   encodeSource,
   SourceParseError,
   type SourceFormat,
 } from "@/lib/psml/source-format";
-import type { ResolvedLayout } from "@/lib/psml/renderer";
 import type { PsmlPacket } from "@/lib/psml/types";
 
 type Props = {
   packet: PsmlPacket;
   dispatch: (a: EditAction) => void;
-  /** Close ボタンで source pane 自体を畳む経路。 親で showSourcePane=false。 */
-  onClose: () => void;
 };
 
 type ParseError = { message: string; line: number | null };
@@ -29,27 +22,22 @@ type ParseError = { message: string; line: number | null };
 const DEBOUNCE_MS = 200;
 
 /**
- * PSML 直編集 pane — issue #87 の「Markdown エディタ風」 二分割 UI を
- * Custom Packet Studio の dispatch 経路に乗せた実装。
+ * Custom Packet Studio の "source" ビュー — PSML を YAML / JSON で直編集する
+ * 単純な textarea。 issue #87 の「Markdown エディタみたいに PSML を書ける」
+ * 動線を「上部の diagram を live preview として共有」 の形で実装する。
  *
- * 主要設計
- * --------
- * - YAML / JSON 切替。 YAML を default にして `data/presets/*.psml.yaml`
- *   と同じ書き味で authoring できるようにする。 JSON は import/export
- *   drawer と同じ on-wire shape (`format`/`version`) を吐く。
- * - 左 textarea (行番号付き) + 右 mini diagram preview の二分割。
- * - 入力に対して 200ms debounce で `replace-packet` を dispatch。 失敗中は
- *   最後に成功した packet/layout を preview に残し、 typo の度に diagram
- *   が消える regression を防ぐ。
- *
- * dispatch ループ防止のメカニズム
- * ----------------------------------
- * - `dirty` フラグで「ユーザーの編集による text change」 と 「upstream
- *   packet 変化 → text 再 encode」 を区別する。
- * - upstream sync は `if (!dirty)` ガードを置くので、 dispatch → reducer
- *   → packet 変化 → setText → dispatch のループが切れる。
- * - format toggle は明示的に dirty=false にして、 toggle 由来の text
- *   変更が dispatch を発火させないようにする (Round 1 P0 #1 対策)。
+ * 注意点
+ * ------
+ * - **このコンポーネント内に diagram preview は持たない**。 上部の本物
+ *   diagram (HybridDiagram) が studio reducer の最新 packet を映すので、
+ *   ここで mini preview を出すと「同じ diagram が 2 個並ぶ」 視覚的混乱が
+ *   起きる。 ユーザーは textarea を見ながら同時に上の diagram を見れば
+ *   十分。
+ * - studio reducer 経由で `replace-packet` を dispatch する。 dirty=true
+ *   の間は upstream sync をスキップして、 ユーザーの type 中に textarea が
+ *   勝手に上書きされる事故を防ぐ (旧 JsonPane と同じポリシー)。
+ * - format toggle は dirty=true なら pending edit を即座に確定 dispatch
+ *   してから new format で再 encode する (Round 1 P0 #1 対策)。
  *
  * a11y
  * ----
@@ -57,30 +45,24 @@ const DEBOUNCE_MS = 200;
  *   keyboard navigation を備える (WAI-ARIA APG 準拠)。
  * - mount 時に textarea へ自動 focus。
  */
-export default function SourcePane({ packet, dispatch, onClose }: Props) {
+export default function SourcePane({ packet, dispatch }: Props) {
   const [format, setFormat] = useState<SourceFormat>("yaml");
-  const upstreamText = useMemo(
-    () => encodeSource(packet, format),
-    [packet, format],
-  );
+  const upstreamText = encodeSource(packet, format);
   const [text, setText] = useState<string>(upstreamText);
   const [dirty, setDirty] = useState(false);
   const [parseError, setParseError] = useState<ParseError | null>(null);
 
   // dispatch ref — 親が memoize していない実装でも debounce が再 attach
   // されないように、 useEffect の依存性から外す (Round 1 P0 #3 対策)。
-  // `dispatch` は React の useReducer / useCallback で安定参照になる前提
-  // だが、 useRef で間接化することで「親が誤って再生成しても本コンポー
-  // ネントの debounce が壊れない」 という不変条件を担保する。
   const dispatchRef = useRef(dispatch);
   useEffect(() => {
     dispatchRef.current = dispatch;
   }, [dispatch]);
 
-  // upstream (= reducer 側の packet) が変わった時、こちらが dirty で
-  // なければ textarea を同期する。 dirty 中に上書きすると編集中の text
-  // が飛ぶので避ける。 undo / redo / form 編集 / preset 切替で upstream
-  // が変わった時、 dirty=false ならクリーンに sync される。
+  // upstream (= reducer 側の packet) が変わった時、 こちらが dirty で
+  // なければ textarea を同期する。 dirty 中の上書きは編集中の text を
+  // 飛ばすので避ける。 form view から戻ってきた時、 undo / redo / preset
+  // 切替で upstream が変わった時、 dirty=false ならクリーンに sync される。
   useEffect(() => {
     if (!dirty) setText(upstreamText);
   }, [upstreamText, dirty]);
@@ -109,77 +91,27 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
     return () => window.clearTimeout(handle);
   }, [text, dirty, format]);
 
-  // live preview 用の layout 計算。 dirty 中で parse 成功している場合は
-  // text 由来の最新 packet を preview に渡す (= dispatch 完了を待たずに
-  // diagram が更新)。 dirty=false なら upstream packet を使う。
-  //
-  // 副作用 (`previewRef.current = next`) は useEffect ではなく useMemo
-  // の戻り値経由で React の通常 reconciliation に乗せる: 旧実装は useMemo
-  // 内で ref を mutate していて StrictMode 二重 invocation で挙動が
-  // 怪しかった (Round 1 P0 #2)。 ここでは ref を「直近成功 preview の
-  // fallback cache」 として扱い、 計算自体は純粋に保つ。
-  const previewRef = useRef<{
-    packet: PsmlPacket;
-    layout: ResolvedLayout;
-  } | null>(null);
-  const preview = useMemo(() => {
-    const source = dirty ? safeDecode(text, format) : packet;
-    if (source) {
-      const layout = computeLayoutSafe(source);
-      if (layout) return { packet: source, layout };
-    }
-    return previewRef.current;
-  }, [text, format, dirty, packet]);
-  // useMemo の戻り値を ref に反映する副作用は useEffect で行う。 React
-  // 19 で useMemo の評価回数が変わってもこの synchronization は保たれる。
-  useEffect(() => {
-    if (preview) previewRef.current = preview;
-  }, [preview]);
-
-  // 初回マウント時の preview cache 充填。 upstream packet を layout に
-  // 通せる前提で計算 (`validatePsmlPacket` を通った packet が渡されている
-  // 前提)。
-  const initialPreview = useMemo(() => {
-    if (previewRef.current) return previewRef.current;
-    const layout = computeLayoutSafe(packet);
-    return layout ? { packet, layout } : null;
-    // 初回 only — packet 変化は上の useMemo が処理する
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const renderedPreview = preview ?? initialPreview;
-
   /**
-   * format toggle ハンドラ — Round 1 P0 #1 / P1 #6 の race を畳んで処理する。
-   *
-   * - dirty=true (ユーザー編集中): まず pending debounce を強制発火して
-   *   reducer に最新を確定させ、 dirty=false にしてから text を新 format
-   *   で再 encode する。 こうすると「古い text が古い format で stale
-   *   decode される」 race も「format toggle で未保存編集が消える」 race
-   *   も両方起きない。
-   * - dirty=false: そのまま upstream packet を新 format で encode して
-   *   setText。
-   * - parse error 中: text を据え置きにし、 format だけ切替。 ユーザーが
-   *   未確定の編集を持ち続けられるようにする。
+   * format toggle — dirty=true (ユーザー編集中) の場合は pending を即座に
+   * 確定 dispatch してから text を新 format で再 encode する。 こうすると
+   * 「古い text が古い format で stale decode される」 race も「format
+   * toggle で未保存編集が消える」 race も両方起きない。
    */
   const handleFormatChange = useCallback(
     (next: SourceFormat) => {
       if (next === format) return;
       if (parseError) {
+        // parse 失敗中は text 据え置きで format だけ切替。 未確定の編集を
+        // 残してユーザーが直せる状態を維持する。
         setFormat(next);
         return;
       }
       const source = dirty ? safeDecode(text, format) : packet;
       if (!source) {
-        // dirty だが decode 失敗 — まれ (parseError null かつ source null)。
-        // text/dirty 据え置きで format だけ切替。
         setFormat(next);
         return;
       }
       if (dirty) {
-        // 未保存編集を確定 — pending debounce timer は dispatch 後に
-        // dirty=false になる前提だが、 ここで先に dispatch しておくと
-        // 「toggle 直後に debounce が古い text を decode して再 dispatch
-        // する」 race を防げる。
         dispatchRef.current({ type: "replace-packet", packet: source });
       }
       setText(encodeSource(source, next));
@@ -196,9 +128,8 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
 
   /**
    * Discard — 未保存編集を捨てて upstream packet (= studio reducer の最新)
-   * を再 encode した text に巻き戻す。 SourcePane を閉じずに編集だけリセット。
-   * Round 2 (Agent 2) P0 で指摘された「SourcePane only な状態で破棄経路が
-   * 無い」 の対策。
+   * を再 encode した text に巻き戻す。 dirty / parseError 状態を解除する
+   * だけで pane 自体は閉じない。
    */
   const handleDiscardLocal = useCallback(() => {
     setText(encodeSource(packet, format));
@@ -222,8 +153,6 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
         const nextIdx = (idx + dir + total) % total;
         const target = radioRefs.current[nextIdx];
         target?.focus();
-        // APG の radio はフォーカス移動で値も切替えるパターンを採用する
-        // (= "tab into selects" 動作)。 ここでは value も同時に変える。
         const formats: SourceFormat[] = ["yaml", "json"];
         handleFormatChange(formats[nextIdx]);
         return;
@@ -236,28 +165,22 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
     [handleFormatChange],
   );
 
-  // mount 時に textarea にカーソルを置く。 ユーザーが Edit source を
-  // 押した直後にキー入力できる状態にする。
+  // mount 時に textarea にカーソルを置く。 GUI ↔ Source 切替直後に
+  // すぐ書き始められる。
   const textareaWrapperRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const ta = textareaWrapperRef.current?.querySelector("textarea");
     ta?.focus();
   }, []);
 
+  const canDiscard = dirty || parseError !== null;
+
   return (
-    <section
-      aria-label="PSML source pane"
-      className="rounded-[10px] border px-4 py-3.5 mt-4"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border)",
-        boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
-      }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-xs m-0 uppercase tracking-wider font-bold text-fg-muted">
+    <section aria-label="PSML source editor" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-fg-muted uppercase tracking-wider font-bold">
           PSML source
-        </h2>
+        </span>
         <div className="flex items-center gap-2">
           <div
             role="radiogroup"
@@ -291,70 +214,34 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
           <button
             type="button"
             onClick={handleDiscardLocal}
-            disabled={!dirty && parseError === null}
-            aria-label="Revert unsaved source changes"
+            disabled={!canDiscard}
+            aria-label="Discard unsaved source changes"
             className="text-xs px-2 py-1 rounded border"
             style={{
               borderColor: "var(--border)",
               background: "var(--bg-subtle)",
-              opacity: !dirty && parseError === null ? 0.5 : 1,
-              cursor: !dirty && parseError === null ? "not-allowed" : "pointer",
+              opacity: canDiscard ? 1 : 0.5,
+              cursor: canDiscard ? "pointer" : "not-allowed",
             }}
           >
-            Revert
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close source editor"
-            className="text-xs px-2 py-1 rounded border"
-            style={{
-              borderColor: "var(--border)",
-              background: "var(--bg-subtle)",
-            }}
-          >
-            Close
+            Discard
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 min-h-[260px] lg:min-h-[360px]">
-        <div
-          className="min-h-[260px] lg:min-h-[360px]"
-          ref={textareaWrapperRef}
-        >
-          <SourceTextarea
-            id="psml-source-pane"
-            ariaLabel={`PSML ${format.toUpperCase()} source`}
-            value={text}
-            onChange={handleTextChange}
-            errorLine={parseError?.line ?? null}
-          />
-        </div>
-        <div
-          className="overflow-auto rounded border p-2"
-          style={{
-            borderColor: "var(--border)",
-            background: "var(--bg-subtle)",
-          }}
-          aria-label="Live PSML preview"
-        >
-          {renderedPreview ? (
-            <PreviewPanel
-              packet={renderedPreview.packet}
-              layout={renderedPreview.layout}
-            />
-          ) : (
-            <p className="text-xs text-fg-faint italic m-2">
-              Preview will appear once the source parses successfully.
-            </p>
-          )}
-        </div>
+      <div className="min-h-[360px]" ref={textareaWrapperRef}>
+        <SourceTextarea
+          id="psml-source-pane"
+          ariaLabel={`PSML ${format.toUpperCase()} source`}
+          value={text}
+          onChange={handleTextChange}
+          errorLine={parseError?.line ?? null}
+        />
       </div>
       {parseError ? (
         <p
           role="alert"
           aria-live="polite"
-          className="text-xs mt-2 px-2 py-1 rounded border whitespace-pre-wrap"
+          className="text-xs px-2 py-1 rounded border whitespace-pre-wrap"
           style={{
             borderColor: "var(--field-rose, #b00020)",
             color: "var(--field-rose, #b00020)",
@@ -367,8 +254,8 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
           {parseError.message}
         </p>
       ) : (
-        <p className="text-xs text-fg-faint mt-2 m-0">
-          編集を {DEBOUNCE_MS}ms 静止すると上の diagram にも反映されます。
+        <p className="text-xs text-fg-faint m-0">
+          編集を {DEBOUNCE_MS}ms 静止すると上の diagram に反映されます。
         </p>
       )}
     </section>
@@ -378,18 +265,6 @@ export default function SourcePane({ packet, dispatch, onClose }: Props) {
 function safeDecode(text: string, format: SourceFormat): PsmlPacket | null {
   try {
     return decodeSource(text, format);
-  } catch {
-    return null;
-  }
-}
-
-function computeLayoutSafe(packet: PsmlPacket): ResolvedLayout | null {
-  try {
-    const env = initialEnv(packet);
-    for (const r of collectPsmlRefs(packet)) {
-      if (!env.has(r)) env.set(r, 0);
-    }
-    return resolveLayout(packet, { env });
   } catch {
     return null;
   }

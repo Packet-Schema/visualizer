@@ -70,7 +70,6 @@ import OnboardingTour, {
 } from "@/components/onboarding/OnboardingTour";
 import PacketToolbar from "./PacketToolbar";
 import SavePresetDialog from "./SavePresetDialog";
-import SourcePane from "@/components/custom-packet-studio/SourcePane";
 import StudioPanel from "./StudioPanel";
 import {
   useAutoClearStatus,
@@ -260,7 +259,7 @@ export default function PacketViewer() {
   const [ui, uiDispatch] = useReducer(uiReducer, initialUiState);
   const {
     editMode,
-    showSourcePane,
+    studioView,
     showSaveDialog,
     selectedFieldId,
     popoverAnchor,
@@ -357,9 +356,8 @@ export default function PacketViewer() {
   }
 
   useUndoRedoShortcuts({
-    // editMode (form 編集) と showSourcePane (PSML 直編集) のどちらかで
-    // 編集 UI が見えている時に undo/redo を有効化する。
-    enabled: editMode || showSourcePane,
+    // editMode の中で GUI / source どちらのビューでも有効。
+    enabled: editMode,
     onUndo: () => dispatch({ type: "undo" }),
     onRedo: () => dispatch({ type: "redo" }),
   });
@@ -437,13 +435,10 @@ export default function PacketViewer() {
       setControllers({ ...initialState(imported), ...importedControllers });
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-drawer" });
-      // editMode / source pane を抜けて新しい packet に視点を合わせる。
-      // ここを残すと、SourcePane が editMode の頃の packet の YAML を
-      // 表示し続けて、import 後の packet と齟齬が出る (Round 1 指摘 #6)。
-      // showSourcePane も OFF にして、未保存テキストが新 packet に対して
-      // dispatch される事故を防ぐ。
+      // editMode を抜けて新しい packet に視点を合わせる。 set-edit-mode
+      // false で studioView も "form" に戻るので、 import 後すぐ Edit
+      // packet を ON にし直しても古い source 編集状態は引き継がない。
       uiDispatch({ type: "set-edit-mode", editing: false });
-      uiDispatch({ type: "close-source-pane" });
     },
     [],
   );
@@ -567,10 +562,9 @@ export default function PacketViewer() {
       setControllers(initialState(psmlToRenderer(packetToSave)));
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-save-dialog" });
+      // set-edit-mode false で studioView が "form" にリセットされる
+      // (ui-state-reducer 側で同時にハンドリング)。
       uiDispatch({ type: "set-edit-mode", editing: false });
-      // 編集セッションを閉じるので source pane も連動して閉じる。
-      // 残すと別 preset を編集した時に古い text が dispatch される事故の元。
-      uiDispatch({ type: "close-source-pane" });
     },
     [studioState.packet],
   );
@@ -579,8 +573,6 @@ export default function PacketViewer() {
   const handleDiscardEdits = useCallback(() => {
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
     uiDispatch({ type: "set-edit-mode", editing: false });
-    // 編集セッション終了 — source pane も明示的に閉じる。
-    uiDispatch({ type: "close-source-pane" });
   }, [activePsmlPacket]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
@@ -665,7 +657,6 @@ export default function PacketViewer() {
     });
     setPacketKey(DEFAULT_PACKET_KEY);
     uiDispatch({ type: "set-edit-mode", editing: false });
-    uiDispatch({ type: "close-source-pane" });
   }, [packetKey, customPresets]);
 
   const buildCurrentShareUrl = useCallback(() => {
@@ -692,17 +683,13 @@ export default function PacketViewer() {
     //  - imported → no source PSML available, lift from renderer.
     const hasCustomRendererOverride =
       !builtInPsml && renderedPresets[packetKey] !== undefined;
-    // editMode と showSourcePane を OR で受ける。 source pane だけ開いて
-    // 編集中の packet を share した時も、 studio reducer の状態を共有
-    // できるようにする。
-    const sharePacket =
-      editMode || showSourcePane
-        ? studioState.packet
-        : builtInPsml
-          ? builtInPsml
-          : hasCustomRendererOverride
-            ? rendererToPsml(packet)
-            : (customSource ?? rendererToPsml(packet));
+    const sharePacket = editMode
+      ? studioState.packet
+      : builtInPsml
+        ? builtInPsml
+        : hasCustomRendererOverride
+          ? rendererToPsml(packet)
+          : (customSource ?? rendererToPsml(packet));
     const defaultControllers = builtInPsml
       ? initialState(psmlToRenderer(builtInPsml))
       : undefined;
@@ -715,13 +702,12 @@ export default function PacketViewer() {
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultPacketKey: DEFAULT_PACKET_KEY,
       defaultControllers,
-      forcePsml: editMode || showSourcePane || !builtInPsml,
+      forcePsml: editMode || !builtInPsml,
     });
   }, [
     controllers,
     customPresets,
     editMode,
-    showSourcePane,
     packet,
     packetKey,
     renderedPresets,
@@ -883,17 +869,14 @@ export default function PacketViewer() {
   }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
 
   const targetPsml: PsmlPacket = useMemo(() => {
-    // editMode (form 編集) または showSourcePane (PSML 直編集) のどちらかが
-    // 開いている時は studio reducer の packet が真値。 これらが両方 OFF の
-    // 時だけ preset/imported/custom の base に戻る。 編集動線が editMode
-    // から独立した結果、 source pane だけ開いていても diagram は studio
-    // の最新を映す必要がある。
-    const base =
-      editMode || showSourcePane
-        ? studioState.packet
-        : (PRESETS[packetKey] ??
-          customPresets[packetKey] ??
-          rendererToPsml(packet));
+    // editMode (Custom Packet Studio が開いている) なら studio reducer
+    // の packet が真値。 GUI / source どちらのビューで編集していても
+    // 同じ reducer を経由するので、 上の diagram は常にここを映す。
+    const base = editMode
+      ? studioState.packet
+      : (PRESETS[packetKey] ??
+        customPresets[packetKey] ??
+        rendererToPsml(packet));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
@@ -902,7 +885,6 @@ export default function PacketViewer() {
     return applyTlvInstances(base, packet, tlvSlotBytes);
   }, [
     editMode,
-    showSourcePane,
     studioState.packet,
     packetKey,
     customPresets,
@@ -980,7 +962,6 @@ export default function PacketViewer() {
           hexStripVisible={hexStripVisible}
           dependenciesVisible={dependenciesVisible}
           editMode={editMode}
-          sourcePaneOpen={showSourcePane}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
           shareStatus={shareStatus}
@@ -998,8 +979,6 @@ export default function PacketViewer() {
               uiDispatch({ type: "toggle-dependencies" }),
             onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
             onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
-            onToggleSourcePane: () =>
-              uiDispatch({ type: "toggle-source-pane" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
           }}
         />
@@ -1063,18 +1042,14 @@ export default function PacketViewer() {
           <Legend categories={categories} />
         </div>
 
-        {showSourcePane ? (
-          <SourcePane
-            packet={studioState.packet}
-            dispatch={dispatch}
-            onClose={() => uiDispatch({ type: "close-source-pane" })}
-          />
-        ) : null}
-
         {editMode ? (
           <StudioPanel
             state={studioState}
             dispatch={dispatch}
+            view={studioView}
+            onViewChange={(view) =>
+              uiDispatch({ type: "set-studio-view", view })
+            }
             onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
           />

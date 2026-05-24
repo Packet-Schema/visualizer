@@ -50,19 +50,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function mount(
-  packet: PsmlPacket,
-  dispatch: (a: EditAction) => void,
-  onClose: () => void = () => {},
-) {
+async function mount(packet: PsmlPacket, dispatch: (a: EditAction) => void) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   let root: Root | null = null;
   await act(async () => {
     root = createRoot(container);
-    root.render(
-      <SourcePane packet={packet} dispatch={dispatch} onClose={onClose} />,
-    );
+    root.render(<SourcePane packet={packet} dispatch={dispatch} />);
   });
   await act(async () => {
     await Promise.resolve();
@@ -99,8 +93,10 @@ describe("SourcePane", () => {
       expect(textarea).not.toBeNull();
       expect(textarea?.value.startsWith("name:")).toBe(true);
       expect(document.activeElement).toBe(textarea);
+      // SourcePane 内には preview diagram は描かない (上部の本物 diagram
+      // が live preview を兼ねる設計)。 textarea だけ並んでいることを確認。
       const cells = container.querySelectorAll(".field-cell");
-      expect(cells.length).toBeGreaterThan(0);
+      expect(cells.length).toBe(0);
     } finally {
       await cleanup();
     }
@@ -193,7 +189,6 @@ describe("SourcePane", () => {
                 void render();
               }
             }}
-            onClose={() => {}}
           />,
         );
       });
@@ -249,9 +244,7 @@ describe("SourcePane", () => {
         if (!root) {
           root = createRoot(container);
         }
-        root!.render(
-          <SourcePane packet={sample} dispatch={handler} onClose={() => {}} />,
-        );
+        root!.render(<SourcePane packet={sample} dispatch={handler} />);
       });
       await act(async () => {
         await Promise.resolve();
@@ -322,7 +315,7 @@ describe("SourcePane", () => {
     }
   });
 
-  it("Revert button restores the textarea to upstream and skips dispatch", async () => {
+  it("Discard button restores the textarea to upstream and skips dispatch", async () => {
     const dispatch = vi.fn();
     const { container, cleanup } = await mount(sample, dispatch);
     try {
@@ -333,13 +326,13 @@ describe("SourcePane", () => {
         nativeSetTextareaValue(textarea, "name: dirty\nrowBits: 8\nbody: []\n");
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      const revertBtn = Array.from(
+      const discardBtn = Array.from(
         container.querySelectorAll<HTMLButtonElement>("button"),
-      ).find((b) => b.textContent === "Revert");
-      expect(revertBtn).toBeDefined();
-      expect(revertBtn?.disabled).toBe(false);
+      ).find((b) => b.textContent === "Discard");
+      expect(discardBtn).toBeDefined();
+      expect(discardBtn?.disabled).toBe(false);
       await act(async () => {
-        revertBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        discardBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
       // textarea が upstream の YAML に戻り、 dispatch は呼ばれない
       const ta2 =
@@ -349,29 +342,11 @@ describe("SourcePane", () => {
       // debounce の余地を残しても dispatch されないこと
       await settleDebounce();
       expect(dispatch).not.toHaveBeenCalled();
-      // 戻った直後の Revert ボタンは disabled (dirty=false)
-      const revertAfter = Array.from(
+      // 戻った直後の Discard ボタンは disabled (dirty=false)
+      const discardAfter = Array.from(
         container.querySelectorAll<HTMLButtonElement>("button"),
-      ).find((b) => b.textContent === "Revert");
-      expect(revertAfter?.disabled).toBe(true);
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("Close button invokes onClose", async () => {
-    const dispatch = vi.fn();
-    const onClose = vi.fn();
-    const { container, cleanup } = await mount(sample, dispatch, onClose);
-    try {
-      const closeBtn = Array.from(
-        container.querySelectorAll<HTMLButtonElement>("button"),
-      ).find((b) => b.textContent === "Close");
-      expect(closeBtn).toBeDefined();
-      await act(async () => {
-        closeBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      });
-      expect(onClose).toHaveBeenCalledTimes(1);
+      ).find((b) => b.textContent === "Discard");
+      expect(discardAfter?.disabled).toBe(true);
     } finally {
       await cleanup();
     }
@@ -410,9 +385,7 @@ describe("SourcePane", () => {
     let root: Root | null = null;
     await act(async () => {
       root = createRoot(container);
-      root.render(
-        <SourcePane packet={sample} dispatch={dispatch} onClose={() => {}} />,
-      );
+      root.render(<SourcePane packet={sample} dispatch={dispatch} />);
     });
     await act(async () => {
       await Promise.resolve();
@@ -423,9 +396,7 @@ describe("SourcePane", () => {
       body: [{ id: "y", name: "Y", type: { kind: "bits", n: 16 } }],
     };
     await act(async () => {
-      root!.render(
-        <SourcePane packet={swapped} dispatch={dispatch} onClose={() => {}} />,
-      );
+      root!.render(<SourcePane packet={swapped} dispatch={dispatch} />);
     });
     await act(async () => {
       await Promise.resolve();

@@ -72,7 +72,7 @@ describe("uiReducer", () => {
       selectedFieldId: "x",
       popoverAnchor: { left: 1 } as unknown as DOMRect,
       editMode: true,
-      showSourcePane: true,
+      studioView: "source",
       hexStripUserSet: true,
       hexStripVisible: true,
     };
@@ -80,59 +80,48 @@ describe("uiReducer", () => {
     expect(next.selectedFieldId).toBeNull();
     expect(next.popoverAnchor).toBeNull();
     expect(next.editMode).toBe(false);
-    expect(next.showSourcePane).toBe(false);
+    expect(next.studioView).toBe("form");
     expect(next.hexStripUserSet).toBe(true);
     expect(next.hexStripVisible).toBe(true);
   });
 
-  it("toggle-source-pane mutually excludes editMode (closes form when source opens)", () => {
-    const inEdit: UiState = { ...seed, editMode: true, showSourcePane: false };
-    const opened = uiReducer(inEdit, { type: "toggle-source-pane" });
-    expect(opened.showSourcePane).toBe(true);
-    expect(opened.editMode).toBe(false);
-    const closed = uiReducer(opened, { type: "toggle-source-pane" });
-    expect(closed.showSourcePane).toBe(false);
-    // 閉じる時は editMode は触らない
-    expect(closed.editMode).toBe(false);
-  });
-
-  it("toggle-edit-mode mutually excludes showSourcePane (closes source when form opens)", () => {
-    const inSource: UiState = {
-      ...seed,
-      editMode: false,
-      showSourcePane: true,
-    };
-    const opened = uiReducer(inSource, { type: "toggle-edit-mode" });
-    expect(opened.editMode).toBe(true);
-    expect(opened.showSourcePane).toBe(false);
-  });
-
-  it("set-edit-mode true closes the source pane; set-edit-mode false leaves it alone", () => {
-    const inSource: UiState = {
-      ...seed,
-      editMode: false,
-      showSourcePane: true,
-    };
-    const turnedOn = uiReducer(inSource, {
-      type: "set-edit-mode",
-      editing: true,
+  it("set-studio-view switches between form and source", () => {
+    const toSource = uiReducer(seed, {
+      type: "set-studio-view",
+      view: "source",
     });
-    expect(turnedOn.editMode).toBe(true);
-    expect(turnedOn.showSourcePane).toBe(false);
+    expect(toSource.studioView).toBe("source");
+    const back = uiReducer(toSource, {
+      type: "set-studio-view",
+      view: "form",
+    });
+    expect(back.studioView).toBe("form");
+  });
 
-    const inEdit: UiState = { ...seed, editMode: true, showSourcePane: false };
-    const turnedOff = uiReducer(inEdit, {
+  it("set-edit-mode false resets studioView back to form", () => {
+    const inSource: UiState = { ...seed, editMode: true, studioView: "source" };
+    const exited = uiReducer(inSource, {
       type: "set-edit-mode",
       editing: false,
     });
-    expect(turnedOff.editMode).toBe(false);
-    expect(turnedOff.showSourcePane).toBe(false);
+    expect(exited.editMode).toBe(false);
+    expect(exited.studioView).toBe("form");
   });
 
-  it("close-source-pane forces showSourcePane false regardless of prior state", () => {
-    const inSource: UiState = { ...seed, showSourcePane: true };
-    const closed = uiReducer(inSource, { type: "close-source-pane" });
-    expect(closed.showSourcePane).toBe(false);
+  it("toggle-edit-mode preserves studioView while editing, resets on exit", () => {
+    const inSourceEditing: UiState = {
+      ...seed,
+      editMode: true,
+      studioView: "source",
+    };
+    const exited = uiReducer(inSourceEditing, { type: "toggle-edit-mode" });
+    expect(exited.editMode).toBe(false);
+    expect(exited.studioView).toBe("form");
+
+    const reEntered = uiReducer(exited, { type: "toggle-edit-mode" });
+    expect(reEntered.editMode).toBe(true);
+    // 再 entry 時は form から始まる
+    expect(reEntered.studioView).toBe("form");
   });
 
   it("set-share-status / clear-share-status drive the share toast", () => {
