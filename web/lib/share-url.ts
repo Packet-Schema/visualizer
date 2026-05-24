@@ -154,8 +154,10 @@ export function buildShareQueryFromParams(
 
   if (params instanceof URLSearchParams) {
     for (const key of SHARE_PARAM_KEYS) {
-      const value = params.get(key);
-      if (value) out.set(key, value);
+      const values = params.getAll(key);
+      for (const value of values) {
+        out.append(key, value);
+      }
     }
     for (const [key, value] of params.entries()) {
       if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;

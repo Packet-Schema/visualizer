@@ -34,8 +34,9 @@ export async function generateMetadata({
   const shareQuery = buildShareQueryFromParams(params);
   const parsed = parseShareParamsOrFallback(shareQuery);
 
+  const isValidLength = isShareQueryLengthValid(shareQuery);
   const imageUrl = new URL(
-    shareQuery ? `/api/og?${shareQuery}` : "/api/og",
+    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og",
     await getRequestOrigin(),
   ).toString();
 
