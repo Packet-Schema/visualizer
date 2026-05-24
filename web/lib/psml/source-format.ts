@@ -10,6 +10,7 @@
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
+import { validatePsmlWireShape } from "./schema-validator";
 import { validatePsmlPacket } from "./validate";
 import type { PsmlPacket } from "./types";
 
@@ -84,8 +85,78 @@ export function decodeSource(text: string): PsmlPacket {
       null,
     );
   }
+  // Ajv で JSON Schema 検証 (= wire shape の正しさ)。 path 付きエラーを
+  // 集めて 1 つの SourceParseError にまとめる。 lint 経路で個別 diagnostic
+  // としても使えるよう、 issues は別 helper (`lintSource`) で取得できる。
+  const issues = validatePsmlWireShape(obj);
+  if (issues.length > 0) {
+    const detail = issues
+      .map((i) => `  ${i.path || "(root)"}: ${i.message}`)
+      .join("\n");
+    throw new SourceParseError(
+      `PSML schema validation failed:\n${detail}`,
+      null,
+      null,
+    );
+  }
+  // 構造チェック (PSML invariants — Repeat 内の field id 衝突など、 schema
+  // で表現しきれない不変条件)。
   validatePsmlPacket(obj as PsmlPacket);
   return obj as PsmlPacket;
+}
+
+/**
+ * リアルタイム lint 用の入口 — text → `Diagnostic[]` 風の構造化エラー列。
+ * `decodeSource` と違って 1 つ目で投げずに、 schema / structural エラーを
+ * すべて返す。 CodeMirror lint extension などの consumer 向け。
+ */
+export type SourceLintIssue = {
+  /** 1-based line, parse 失敗時のみ非 null。 schema エラーは現状 null。 */
+  line: number | null;
+  message: string;
+  /** Ajv が出した JSON Pointer 風 path (`/body/0/type/n`)。 空 = root。 */
+  path?: string;
+};
+
+export function lintSource(text: string): SourceLintIssue[] {
+  // 空 text は SourcePane 側で「empty hint」 を出すので lint は no-op。
+  if (text.trim().length === 0) return [];
+  let raw: unknown;
+  try {
+    raw = parseYaml(text, { prettyErrors: true });
+  } catch (e) {
+    const err = toParseError(e);
+    return [{ line: err.line, message: err.message }];
+  }
+  if (raw === null || raw === undefined) {
+    return [];
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return [
+      {
+        line: null,
+        message: "PSML source must be a top-level object/mapping.",
+      },
+    ];
+  }
+  const obj = stripWireMarkers(raw as Record<string, unknown>);
+  if (Object.keys(obj).length === 0) return [];
+  const schemaIssues = validatePsmlWireShape(obj);
+  if (schemaIssues.length > 0) {
+    return schemaIssues.map((i) => ({
+      line: null,
+      path: i.path,
+      message: `${i.path || "(root)"}: ${i.message}`,
+    }));
+  }
+  try {
+    validatePsmlPacket(obj as PsmlPacket);
+    return [];
+  } catch (e) {
+    return [
+      { line: null, message: e instanceof Error ? e.message : String(e) },
+    ];
+  }
 }
 
 /**

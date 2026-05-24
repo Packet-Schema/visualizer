@@ -17,6 +17,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+// jsdom は CodeMirror の DOM API (selection range など) を一部欠くので、
+// SourcePane の動作テストでは内部の SourceCodeMirror を「素の textarea」
+// に差し替える。 lint / 構文ハイライトの挙動自体は library 側に任せて、
+// ここでは SourcePane の dispatch / dirty 管理 / Discard / sync を verify。
+vi.mock("@/components/source-editor/SourceCodeMirror", () => ({
+  default: ({
+    id,
+    value,
+    onChange,
+    ariaLabel,
+  }: {
+    id: string;
+    value: string;
+    onChange: (v: string) => void;
+    ariaLabel: string;
+  }) => (
+    <textarea
+      id={id}
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      autoFocus
+    />
+  ),
+}));
+
 import SourcePane from "@/components/custom-packet-studio/SourcePane";
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import type { PsmlPacket } from "@/lib/psml/types";

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import SourceTextarea from "@/components/source-editor/SourceTextarea";
+import SourceCodeMirror from "@/components/source-editor/SourceCodeMirror";
 import type { EditAction } from "@/lib/psml/edit-reducer";
 import {
   decodeSource,
@@ -103,14 +103,8 @@ export default function SourcePane({ packet, dispatch }: Props) {
     setParseError(null);
   }, [packet]);
 
-  // mount 時に textarea にカーソルを置く。 GUI ↔ Source 切替直後に
-  // すぐ書き始められる。
-  const textareaWrapperRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const ta = textareaWrapperRef.current?.querySelector("textarea");
-    ta?.focus();
-  }, []);
-
+  // CodeMirror が autoFocus で内部 contentEditable に focus を当てるので
+  // SourcePane 側からは何もしない。
   const canDiscard = dirty || parseError !== null;
 
   return (
@@ -135,13 +129,12 @@ export default function SourcePane({ packet, dispatch }: Props) {
           Discard
         </button>
       </div>
-      <div className="min-h-[360px]" ref={textareaWrapperRef}>
-        <SourceTextarea
+      <div className="min-h-[360px]">
+        <SourceCodeMirror
           id="psml-source-pane"
           ariaLabel="PSML YAML source"
           value={text}
           onChange={handleTextChange}
-          errorLine={parseError?.line ?? null}
         />
       </div>
       {parseError ? (
