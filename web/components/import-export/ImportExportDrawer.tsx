@@ -90,6 +90,11 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
+  const [uiThemeAttr, setUiThemeAttr] = useState(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.getAttribute("data-theme")
+      : null,
+  );
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -134,6 +139,24 @@ export default function ImportExportDrawer({
       return mode;
     });
   }, [open, mode, snapFormatForMode]);
+
+  // Monitor theme changes when follow-ui is selected so the preview
+  // updates when the user toggles light/dark mode.
+  useEffect(() => {
+    if (exportThemeMode !== "follow-ui") return;
+    if (typeof document === "undefined") return;
+
+    const observer = new MutationObserver(() => {
+      setUiThemeAttr(document.documentElement.getAttribute("data-theme"));
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => observer.disconnect();
+  }, [exportThemeMode]);
 
   // Auto-fill on Export when format / packet / controllers change.
   useEffect(() => {
@@ -239,6 +262,7 @@ export default function ImportExportDrawer({
     layout,
     packet,
     transparentBackground,
+    ...(exportThemeMode === "follow-ui" ? [uiThemeAttr] : []),
   ]);
 
   const handleImageDownload = useCallback(async () => {
