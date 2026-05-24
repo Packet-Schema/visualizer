@@ -16,7 +16,6 @@ export type PacketToolbarActions = {
   onOpenExport: () => void;
   onShare: () => void;
   onToggleHexStrip: () => void;
-  onToggleDependencies: () => void;
   onToggleViewMode: () => void;
   onToggleEditMode: () => void;
   onDeleteCustomPreset: () => void;
@@ -27,7 +26,6 @@ type Props = {
   importedPackets: PacketRegistry;
   customPresets: Record<string, PsmlPacket>;
   hexStripVisible: boolean;
-  dependenciesVisible: boolean;
   editMode: boolean;
   viewMode: ViewMode;
   headerSizeLabel: string;
@@ -35,12 +33,43 @@ type Props = {
   actions: PacketToolbarActions;
 };
 
+type ToolbarSwitchProps = {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+};
+
+function ToolbarSwitch({
+  label,
+  checked,
+  onChange,
+  ariaLabel,
+}: ToolbarSwitchProps) {
+  return (
+    <label
+      className="pv-toolbar-switch"
+      data-checked={checked ? "true" : "false"}
+    >
+      <input
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={onChange}
+        aria-label={ariaLabel}
+        className="pv-switch-input"
+      />
+      <span className="pv-switch-track" aria-hidden="true" />
+      <span className="whitespace-nowrap">{label}</span>
+    </label>
+  );
+}
+
 export default function PacketToolbar({
   packetKey,
   importedPackets,
   customPresets,
   hexStripVisible,
-  dependenciesVisible,
   editMode,
   viewMode,
   headerSizeLabel,
@@ -55,20 +84,12 @@ export default function PacketToolbar({
     onOpenExport,
     onShare,
     onToggleHexStrip,
-    onToggleDependencies,
     onToggleViewMode,
     onToggleEditMode,
     onDeleteCustomPreset,
   } = actions;
   return (
-    <div
-      className="flex flex-wrap items-center gap-3 mb-2 rounded-[10px] border px-3.5 py-2.5"
-      style={{
-        background: "var(--bg-elevated)",
-        borderColor: "var(--border)",
-        boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
-      }}
-    >
+    <div className="mb-2 flex flex-wrap items-center gap-3 rounded-[10px] border border-border bg-bg-elevated px-3.5 py-2.5 shadow-[0_1px_2px_rgba(15,22,50,0.05)]">
       <PresetPicker
         value={packetKey}
         onChange={onPacketChange}
@@ -77,48 +98,40 @@ export default function PacketToolbar({
         onExportCustomPresets={onExportCustomPresets}
         onImportCustomPresets={onImportCustomPresets}
       />
-      <div className="flex items-center gap-1.5 ml-2">
+      <div className="flex flex-wrap items-center gap-1.5 ml-2">
         <ToolbarButton onClick={onOpenImport}>Import</ToolbarButton>
         <ToolbarButton onClick={onOpenExport}>Export</ToolbarButton>
         <ToolbarButton onClick={onShare} ariaLabel="Copy share URL">
           Share
         </ToolbarButton>
-        <ToolbarButton
-          onClick={onToggleHexStrip}
-          pressed={hexStripVisible}
-          ariaLabel={`${hexStripVisible ? "Hide" : "Show"} hex byte strip`}
+        <div
+          role="group"
+          aria-label="Diagram display options"
+          className="ml-1 flex flex-wrap items-center gap-1.5 border-l border-border pl-2"
         >
-          Hex view
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={onToggleDependencies}
-          pressed={dependenciesVisible}
-          ariaLabel={
-            dependenciesVisible
-              ? "Hide dependency arrows"
-              : "Show dependency arrows"
-          }
-        >
-          Dependencies
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={onToggleViewMode}
-          pressed={viewMode === "semantic"}
-          ariaLabel={
-            viewMode === "semantic"
-              ? "Switch to wire view (collapse encrypted payloads)"
-              : "Switch to decrypted view (expand encrypted payloads)"
-          }
-        >
-          Decrypted view
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={onToggleEditMode}
-          pressed={editMode}
+          <ToolbarSwitch
+            label="Hex view"
+            checked={hexStripVisible}
+            onChange={onToggleHexStrip}
+            ariaLabel={`${hexStripVisible ? "Hide" : "Show"} hex byte strip`}
+          />
+          <ToolbarSwitch
+            label="Decrypted view"
+            checked={viewMode === "semantic"}
+            onChange={onToggleViewMode}
+            ariaLabel={
+              viewMode === "semantic"
+                ? "Switch to wire view (collapse encrypted payloads)"
+                : "Switch to decrypted view (expand encrypted payloads)"
+            }
+          />
+        </div>
+        <ToolbarSwitch
+          label="Edit packet"
+          checked={editMode}
+          onChange={onToggleEditMode}
           ariaLabel={editMode ? "Exit edit mode" : "Enter edit mode"}
-        >
-          Edit packet
-        </ToolbarButton>
+        />
         {packetKey.startsWith("custom:") ? (
           <ToolbarButton
             onClick={onDeleteCustomPreset}

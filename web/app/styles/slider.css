@@ -5,6 +5,30 @@
 
   /* ---- Toggle switch ---- */
 
+  .pv-toolbar-switch {
+    display: inline-flex;
+    height: 32px;
+    cursor: pointer;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--fg);
+    padding: 0 10px;
+    font-size: 14px;
+    font-weight: 500;
+    transition:
+      background var(--pv-fast) var(--pv-ease),
+      border-color var(--pv-fast) var(--pv-ease),
+      color var(--pv-fast) var(--pv-ease);
+  }
+
+  .pv-toolbar-switch[data-checked="true"] {
+    border-color: var(--accent);
+    background: color-mix(in oklch, var(--accent) 12%, var(--bg-elevated));
+  }
+
   .pv-switch-input {
     position: absolute;
     width: 1px;

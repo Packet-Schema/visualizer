@@ -35,7 +35,6 @@ export type UiState = {
   /** True once the user has explicitly toggled hex visibility — used to
    *  stop the wide-viewport auto-default from clobbering their pick. */
   hexStripUserSet: boolean;
-  dependenciesVisible: boolean;
   viewMode: ViewMode;
   editMode: boolean;
   showJsonPane: boolean;
@@ -50,7 +49,6 @@ export const initialUiState: UiState = {
   tourOpen: false,
   hexStripVisible: false,
   hexStripUserSet: false,
-  dependenciesVisible: false,
   viewMode: "wire",
   editMode: false,
   showJsonPane: false,
@@ -67,7 +65,6 @@ export type UiAction =
   | { type: "set-tour-open"; open: boolean }
   | { type: "set-hex-strip-visible"; visible: boolean; userInitiated: boolean }
   | { type: "toggle-hex-strip" }
-  | { type: "toggle-dependencies" }
   | { type: "toggle-view-mode" }
   | { type: "set-edit-mode"; editing: boolean }
   | { type: "toggle-edit-mode" }
@@ -114,8 +111,6 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         hexStripVisible: !state.hexStripVisible,
         hexStripUserSet: true,
       };
-    case "toggle-dependencies":
-      return { ...state, dependenciesVisible: !state.dependenciesVisible };
     case "toggle-view-mode":
       return {
         ...state,
