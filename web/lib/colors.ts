@@ -1,14 +1,24 @@
 /**
- * Consolidated color definitions for Packet View.
+ * Color definitions for Packet View.
  *
  * This is the single source of truth for all application colors, including:
  * - UI colors (backgrounds, text, borders, accents)
  * - Diagram-specific colors (fields, rulers, row bands)
+ * - Theme timing and easing constants
  *
- * CSS variables are generated via generateThemeCssVariables() and injected
- * into the DOM at build time, so both DOM-based code and export pipelines
- * can reference the same color palette.
+ * See lib/diagram-themes.ts for generateThemeCssVariables() which converts
+ * these definitions to CSS variables for SSR injection.
  */
+
+/**
+ * Motion and easing constants used throughout the app.
+ * These are non-color theme values but are still essential to the design system.
+ */
+export const THEME_MOTION = {
+  ease: "cubic-bezier(0.32, 0.72, 0, 1)",
+  fast: "180ms",
+  med: "220ms",
+} as const;
 
 /**
  * UI theme colors: used by buttons, text, backgrounds, borders, etc.
@@ -169,106 +179,3 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   },
 };
 
-/**
- * Generate CSS variable declarations for both UI and diagram themes.
- *
- * Returns a string like:
- * `:root { --bg: oklch(...); ... } [data-theme="dark"] { --bg: oklch(...); ... }`
- *
- * This is injected into a <style> tag at SSR time, so CSS and JavaScript
- * can both reference the same colors via CSS variables.
- */
-export function generateThemeCssVariables(): string {
-  const lightUIVars = [
-    `--bg: ${LIGHT_UI_THEME.bg}`,
-    `--bg-elevated: ${LIGHT_UI_THEME.bgElevated}`,
-    `--bg-subtle: ${LIGHT_UI_THEME.bgSubtle}`,
-    `--bg-header: ${LIGHT_UI_THEME.bgHeader}`,
-    `--header-fg: ${LIGHT_UI_THEME.headerFg}`,
-    `--header-fg-muted: ${LIGHT_UI_THEME.headerFgMuted}`,
-    `--fg: ${LIGHT_UI_THEME.fg}`,
-    `--fg-muted: ${LIGHT_UI_THEME.fgMuted}`,
-    `--fg-faint: ${LIGHT_UI_THEME.fgFaint}`,
-    `--border: ${LIGHT_UI_THEME.border}`,
-    `--border-strong: ${LIGHT_UI_THEME.borderStrong}`,
-    `--focus-ring: ${LIGHT_UI_THEME.focusRing}`,
-    `--accent: ${LIGHT_UI_THEME.accent}`,
-    `--accent-fg: ${LIGHT_UI_THEME.accentFg}`,
-    `--accent-glow: ${LIGHT_UI_THEME.accentGlow}`,
-    `--grid-major: ${LIGHT_UI_THEME.gridMajor}`,
-    `--grid-minor: ${LIGHT_UI_THEME.gridMinor}`,
-    `--field-stroke-selected: ${LIGHT_UI_THEME.fieldStrokeSelected}`,
-    `--field-fill-opacity: ${LIGHT_UI_THEME.fieldFillOpacity}`,
-    `--field-fill-opacity-hover: ${LIGHT_UI_THEME.fieldFillOpacityHover}`,
-    `--variable-stripe: ${LIGHT_UI_THEME.variableStripe}`,
-    `--field-rose-strong: ${LIGHT_UI_THEME.fieldRoseStrong}`,
-    `--legend-dim-chroma: ${LIGHT_UI_THEME.legendDimChroma}`,
-    `--pv-ease: cubic-bezier(0.32, 0.72, 0, 1)`,
-    `--pv-fast: 180ms`,
-    `--pv-med: 220ms`,
-  ];
-
-  const lightDiagramVars = [
-    `--bg-elevated: ${LIGHT_DIAGRAM_THEME.background}`,
-    `--row-band-even: ${LIGHT_DIAGRAM_THEME.rowEven}`,
-    `--row-band-odd: ${LIGHT_DIAGRAM_THEME.rowOdd}`,
-    `--ruler-tick: ${LIGHT_DIAGRAM_THEME.rulerTick}`,
-    `--ruler-label: ${LIGHT_DIAGRAM_THEME.rulerLabel}`,
-    `--field-stroke: ${LIGHT_DIAGRAM_THEME.fieldStroke}`,
-    `--field-label: ${LIGHT_DIAGRAM_THEME.fieldLabel}`,
-    `--field-sublabel: ${LIGHT_DIAGRAM_THEME.fieldSublabel}`,
-    `--field-continuation: ${LIGHT_DIAGRAM_THEME.fieldContinuation}`,
-    ...Object.entries(LIGHT_DIAGRAM_THEME.fieldPalette).map(
-      ([token, color]) => `--field-${token}: ${color}`,
-    ),
-  ];
-
-  const darkUIVars = [
-    `--bg: ${DARK_UI_THEME.bg}`,
-    `--bg-elevated: ${DARK_UI_THEME.bgElevated}`,
-    `--bg-subtle: ${DARK_UI_THEME.bgSubtle}`,
-    `--bg-header: ${DARK_UI_THEME.bgHeader}`,
-    `--header-fg: ${DARK_UI_THEME.headerFg}`,
-    `--header-fg-muted: ${DARK_UI_THEME.headerFgMuted}`,
-    `--fg: ${DARK_UI_THEME.fg}`,
-    `--fg-muted: ${DARK_UI_THEME.fgMuted}`,
-    `--fg-faint: ${DARK_UI_THEME.fgFaint}`,
-    `--border: ${DARK_UI_THEME.border}`,
-    `--border-strong: ${DARK_UI_THEME.borderStrong}`,
-    `--focus-ring: ${DARK_UI_THEME.focusRing}`,
-    `--accent: ${DARK_UI_THEME.accent}`,
-    `--accent-fg: ${DARK_UI_THEME.accentFg}`,
-    `--accent-glow: ${DARK_UI_THEME.accentGlow}`,
-    `--grid-major: ${DARK_UI_THEME.gridMajor}`,
-    `--grid-minor: ${DARK_UI_THEME.gridMinor}`,
-    `--field-stroke-selected: ${DARK_UI_THEME.fieldStrokeSelected}`,
-    `--field-fill-opacity: ${DARK_UI_THEME.fieldFillOpacity}`,
-    `--field-fill-opacity-hover: ${DARK_UI_THEME.fieldFillOpacityHover}`,
-    `--variable-stripe: ${DARK_UI_THEME.variableStripe}`,
-    `--field-rose-strong: ${DARK_UI_THEME.fieldRoseStrong}`,
-    `--legend-dim-chroma: ${DARK_UI_THEME.legendDimChroma}`,
-    `--pv-ease: cubic-bezier(0.32, 0.72, 0, 1)`,
-    `--pv-fast: 180ms`,
-    `--pv-med: 220ms`,
-  ];
-
-  const darkDiagramVars = [
-    `--bg-elevated: ${DARK_DIAGRAM_THEME.background}`,
-    `--row-band-even: ${DARK_DIAGRAM_THEME.rowEven}`,
-    `--row-band-odd: ${DARK_DIAGRAM_THEME.rowOdd}`,
-    `--ruler-tick: ${DARK_DIAGRAM_THEME.rulerTick}`,
-    `--ruler-label: ${DARK_DIAGRAM_THEME.rulerLabel}`,
-    `--field-stroke: ${DARK_DIAGRAM_THEME.fieldStroke}`,
-    `--field-label: ${DARK_DIAGRAM_THEME.fieldLabel}`,
-    `--field-sublabel: ${DARK_DIAGRAM_THEME.fieldSublabel}`,
-    `--field-continuation: ${DARK_DIAGRAM_THEME.fieldContinuation}`,
-    ...Object.entries(DARK_DIAGRAM_THEME.fieldPalette).map(
-      ([token, color]) => `--field-${token}: ${color}`,
-    ),
-  ];
-
-  const lightVars = [...lightUIVars, ...lightDiagramVars].join(";");
-  const darkVars = [...darkUIVars, ...darkDiagramVars].join(";");
-
-  return `:root { ${lightVars}; } [data-theme="dark"] { ${darkVars}; }`;
-}
