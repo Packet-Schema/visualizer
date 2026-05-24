@@ -51,6 +51,7 @@ export function StaticDiagram({
   const rulerGap = BASE_RULER_GAP * scale;
   const rowHeight = BASE_ROW_HEIGHT * scale;
   const rowGap = BASE_ROW_GAP * scale;
+  // Round discrete dimensions to prevent rendering artifacts and maintain clarity across scale factors
   const rowPaddingVertical = Math.round(BASE_ROW_PADDING_VERTICAL * scale);
   const cellPaddingVertical = Math.round(BASE_CELL_PADDING_VERTICAL * scale);
   const cellPaddingHorizontal = Math.round(

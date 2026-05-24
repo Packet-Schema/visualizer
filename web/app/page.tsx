@@ -100,6 +100,8 @@ function mergeInitialControllers(
 }
 
 async function getRequestOrigin(): Promise<string> {
+  // APP_URL: explicit origin override for OG image generation (e.g., when behind a proxy)
+  // NEXTAUTH_URL: Next.js auth library convention; used as fallback if APP_URL is not set
   const envOrigin = process.env.APP_URL ?? process.env.NEXTAUTH_URL;
   if (envOrigin) return envOrigin;
 
