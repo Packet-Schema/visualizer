@@ -74,7 +74,8 @@ export const LIGHT_UI_THEME: UITheme = {
   bg: "oklch(97% 0.012 260)",
   bgElevated: "oklch(99.5% 0.005 260)",
   bgSubtle: "oklch(95% 0.014 260)",
-  bgHeader: "linear-gradient(135deg, oklch(32% 0.07 270) 0%, oklch(24% 0.08 268) 100%)",
+  bgHeader:
+    "linear-gradient(135deg, oklch(32% 0.07 270) 0%, oklch(24% 0.08 268) 100%)",
   headerFg: "oklch(99% 0 0)",
   headerFgMuted: "oklch(99% 0 0 / 0.78)",
   fg: "oklch(22% 0.02 270)",
@@ -103,7 +104,8 @@ export const DARK_UI_THEME: UITheme = {
   bg: "oklch(18% 0.025 270)",
   bgElevated: "oklch(22% 0.028 270)",
   bgSubtle: "oklch(26% 0.03 270)",
-  bgHeader: "linear-gradient(135deg, oklch(22% 0.06 270) 0%, oklch(14% 0.06 270) 100%)",
+  bgHeader:
+    "linear-gradient(135deg, oklch(22% 0.06 270) 0%, oklch(14% 0.06 270) 100%)",
   headerFg: "oklch(96% 0.012 270)",
   headerFgMuted: "oklch(96% 0.012 270 / 0.7)",
   fg: "oklch(94% 0.015 270)",
@@ -178,4 +180,3 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
     slate: "oklch(78% 0.02 270)",
   },
 };
-

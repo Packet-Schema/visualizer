@@ -9,7 +9,11 @@ import {
 } from "./colors";
 
 // Re-export color constants for backward compatibility
-export { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME, type DiagramTheme } from "./colors";
+export {
+  LIGHT_DIAGRAM_THEME,
+  DARK_DIAGRAM_THEME,
+  type DiagramTheme,
+} from "./colors";
 
 /**
  * Generate CSS variable declarations for both UI and diagram themes.
