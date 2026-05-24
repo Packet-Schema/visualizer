@@ -18,6 +18,7 @@ import {
   type EmbedSizeMessage,
   type EmbedTheme,
 } from "@/lib/embed-url";
+import { THEME_STORAGE_KEY } from "@/lib/constants";
 import { collectPsmlRefs, resolvePsmlLayout } from "@/lib/psml/layout-env";
 import { PRESETS } from "@/lib/psml/presets";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
@@ -163,36 +164,41 @@ function useEmbedTheme(theme: EmbedTheme | null): void {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (theme === null) {
-      document.documentElement.removeAttribute("data-theme");
-      return;
-    }
-
-    if (theme !== "system") {
+    if (theme === "light" || theme === "dark") {
       document.documentElement.setAttribute("data-theme", theme);
       return;
     }
 
     const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const applySystemTheme = () => {
-      document.documentElement.setAttribute(
-        "data-theme",
-        media?.matches ? "dark" : "light",
-      );
+    const readSystemTheme = () => (media?.matches ? "dark" : "light");
+    const readStoredTheme = (): "light" | "dark" | null => {
+      try {
+        const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+        return stored === "light" || stored === "dark" ? stored : null;
+      } catch {
+        return null;
+      }
+    };
+    const applyResolvedTheme = () => {
+      const resolved =
+        theme === "system"
+          ? readSystemTheme()
+          : (readStoredTheme() ?? readSystemTheme());
+      document.documentElement.setAttribute("data-theme", resolved);
     };
 
-    applySystemTheme();
+    applyResolvedTheme();
     if (media?.addEventListener) {
-      media.addEventListener("change", applySystemTheme);
+      media.addEventListener("change", applyResolvedTheme);
       return () => {
-        media.removeEventListener("change", applySystemTheme);
+        media.removeEventListener("change", applyResolvedTheme);
       };
     }
 
-    media?.addListener?.(applySystemTheme);
+    media?.addListener?.(applyResolvedTheme);
 
     return () => {
-      media?.removeListener?.(applySystemTheme);
+      media?.removeListener?.(applyResolvedTheme);
     };
   }, [theme]);
 }

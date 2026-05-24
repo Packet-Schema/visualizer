@@ -100,6 +100,7 @@ describe("ImportExportDrawer follow-ui theme", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
         onClose={() => {}}
@@ -156,11 +157,15 @@ describe("ImportExportDrawer iframe export", () => {
         },
       ],
     };
+    const buildShareUrl = vi.fn(
+      () => "https://packet-view.example/view?psml=encoded&controllers.x=1",
+    );
     const { container } = mount(
       <ImportExportDrawer
         open={true}
         mode="export"
         packet={packet as never}
+        buildShareUrl={buildShareUrl}
         controllers={{}}
         layout={layout as never}
         onClose={() => {}}
@@ -177,11 +182,14 @@ describe("ImportExportDrawer iframe export", () => {
     });
 
     const textarea = container.querySelector("textarea");
+    expect(buildShareUrl).toHaveBeenCalled();
     expect(textarea?.value).toContain("<iframe");
     expect(textarea?.value).toContain(
       'title="Demo &quot;Packet&quot; &amp; &lt;One&gt; packet diagram"',
     );
-    expect(textarea?.value).toContain("/embed?preset=ipv4");
+    expect(textarea?.value).toContain(
+      "https://packet-view.example/embed?psml=encoded&amp;controllers.x=1",
+    );
     expect(textarea?.value).toContain('height="280"');
     expect(container.querySelector(".diagram-export-preview")).toBeNull();
   });

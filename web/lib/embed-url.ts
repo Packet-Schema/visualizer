@@ -1,5 +1,4 @@
-import type { ControllerState, ResolvedLayout } from "./psml/renderer";
-import type { Packet as PsmlPacket } from "./psml/types";
+import type { ResolvedLayout } from "./psml/renderer";
 
 export const EMBED_SIZE_MESSAGE_TYPE = "packet-view:embed-size";
 
@@ -26,25 +25,31 @@ export function parseEmbedThemeParam(
 
 export type BuildEmbedUrlOptions = {
   baseUrl: string | URL;
-  packet: PsmlPacket;
-  controllers: ControllerState;
   theme?: EmbedTheme;
 };
 
 export type BuildIframeEmbedHtmlOptions = BuildEmbedUrlOptions & {
+  packetName: string;
   title?: string;
   height?: number;
 };
 
-export function buildEmbedUrl({ baseUrl }: BuildEmbedUrlOptions): string {
+export function buildEmbedUrl({
+  baseUrl,
+  theme,
+}: BuildEmbedUrlOptions): string {
   const url = new URL(baseUrl.toString());
   url.pathname = "/embed";
+  if (theme) {
+    url.searchParams.set("theme", theme);
+  }
   return url.toString();
 }
 
 export function buildIframeEmbedHtml({
   title,
   height = EMBED_MIN_HEIGHT,
+  packetName,
   ...urlOptions
 }: BuildIframeEmbedHtmlOptions): string {
   const src = buildEmbedUrl(urlOptions);
@@ -52,7 +57,7 @@ export function buildIframeEmbedHtml({
     ? Math.ceil(height)
     : EMBED_MIN_HEIGHT;
   const safeHeight = Math.max(EMBED_MIN_HEIGHT, roundedHeight);
-  const safeTitle = title ?? `${urlOptions.packet.name} packet diagram`;
+  const safeTitle = title ?? `${packetName} packet diagram`;
 
   return [
     `<iframe`,

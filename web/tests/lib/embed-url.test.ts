@@ -7,8 +7,6 @@ import {
   estimateEmbedIframeHeight,
   parseEmbedThemeParam,
 } from "@/lib/embed-url";
-
-import { PRESETS } from "@/lib/psml/presets";
 import type { ResolvedLayout } from "@/lib/psml/renderer";
 
 describe("embed URL params", () => {
@@ -26,25 +24,23 @@ describe("embed URL params", () => {
   it("builds an embed URL that uses the existing URL search params and sets the pathname to /embed", () => {
     const url = new URL(
       buildEmbedUrl({
-        baseUrl: "https://packet-view.example/app?preset=tcp",
-        packet: PRESETS.ipv4,
-        controllers: { "header.ihl": 6 },
+        baseUrl:
+          "https://packet-view.example/app?preset=tcp&controllers.header.ihl=6",
+        theme: "dark",
       }),
     );
 
     expect(url.origin).toBe("https://packet-view.example");
     expect(url.pathname).toBe("/embed");
     expect(url.searchParams.get("preset")).toBe("tcp");
+    expect(url.searchParams.get("controllers.header.ihl")).toBe("6");
+    expect(url.searchParams.get("theme")).toBe("dark");
   });
 
   it("builds escaped iframe HTML with the packet title", () => {
     const html = buildIframeEmbedHtml({
       baseUrl: "https://packet-view.example/?preset=ipv4",
-      packet: {
-        ...PRESETS.ipv4,
-        name: 'IPv4 "Header" & <Options>',
-      },
-      controllers: {},
+      packetName: 'IPv4 "Header" & <Options>',
       theme: "dark",
       height: 320.2,
     });
@@ -53,7 +49,9 @@ describe("embed URL params", () => {
     expect(html).toContain(
       'title="IPv4 &quot;Header&quot; &amp; &lt;Options&gt; packet diagram"',
     );
-    expect(html).toContain("https://packet-view.example/embed?preset=ipv4");
+    expect(html).toContain(
+      "https://packet-view.example/embed?preset=ipv4&amp;theme=dark",
+    );
     expect(html).toContain('height="321"');
     expect(html).toContain('style="width:100%;border:0;"');
   });

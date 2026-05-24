@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import EmbedViewer from "@/components/embed/EmbedViewer";
+import { THEME_STORAGE_KEY } from "@/lib/constants";
 import { EMBED_SIZE_MESSAGE_TYPE } from "@/lib/embed-url";
 import { encodePsmlParam } from "@/lib/share-url";
 import type { Packet as PsmlPacket } from "@/lib/psml/types";
@@ -37,6 +38,7 @@ const originalCancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
 beforeEach(() => {
   window.history.replaceState(null, "", "/embed");
   document.documentElement.removeAttribute("data-theme");
+  localStorage.removeItem(THEME_STORAGE_KEY);
   mockMatchMedia(false);
   mockResizeObserver();
   Object.defineProperty(window, "requestAnimationFrame", {
@@ -136,6 +138,37 @@ describe("EmbedViewer", () => {
   it("treats an invalid embed theme as system", async () => {
     mockMatchMedia(true);
     const { cleanup } = await mountEmbedViewer("/embed?theme=nope");
+    try {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("uses the stored default theme when theme is missing", async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "dark");
+    const { cleanup } = await mountEmbedViewer("/embed?preset=ipv4");
+    try {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("falls back to the system theme when theme and storage are missing", async () => {
+    mockMatchMedia(true);
+    const { cleanup } = await mountEmbedViewer("/embed?preset=ipv4");
+    try {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("ignores the stored theme when system is explicitly requested", async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "light");
+    mockMatchMedia(true);
+    const { cleanup } = await mountEmbedViewer("/embed?theme=system");
     try {
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     } finally {
