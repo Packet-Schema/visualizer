@@ -208,17 +208,38 @@ export function StaticDiagram({
           <div
             style={{
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
               padding: `${rowPaddingVertical}px 0`,
-              fontSize: titleFontSize,
-              color: theme.fieldLabel,
-              fontWeight: 600,
+              gap: Math.round(4 * scale),
               minHeight: rowHeight,
-              letterSpacing: "0.15em",
             }}
           >
-            ...
+            <div
+              style={{
+                width: Math.round(6 * scale),
+                height: Math.round(6 * scale),
+                borderRadius: "50%",
+                background: theme.fieldLabel,
+              }}
+            />
+            <div
+              style={{
+                width: Math.round(6 * scale),
+                height: Math.round(6 * scale),
+                borderRadius: "50%",
+                background: theme.fieldLabel,
+              }}
+            />
+            <div
+              style={{
+                width: Math.round(6 * scale),
+                height: Math.round(6 * scale),
+                borderRadius: "50%",
+                background: theme.fieldLabel,
+              }}
+            />
           </div>
         ) : null}
       </div>
