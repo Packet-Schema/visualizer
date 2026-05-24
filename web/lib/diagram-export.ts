@@ -84,8 +84,8 @@ const LAYOUT = {
   rulerHeight: 22,
   rulerGap: 6,
   rowHeight: 56,
-  rowGap: 4,
   rowPaddingVertical: 4,
+  rowGap: 4,
   cellPaddingVertical: 6,
   cellPaddingHorizontal: 8,
   cellInset: 2,
@@ -100,6 +100,11 @@ const LAYOUT = {
   subtitleFontSize: 10,
   majorTickHeight: 10,
   minorTickHeight: 6,
+} as const;
+
+// Derived dimensions (calculated from base LAYOUT values)
+const LAYOUT_DERIVED = {
+  rowBandHeight: LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2,
 } as const;
 
 export { DEFAULT_THEME, LAYOUT };
@@ -156,7 +161,7 @@ export function rowY(row: number): number {
     LAYOUT.padding +
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
-    row * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2 + LAYOUT.rowGap)
+    row * (LAYOUT_DERIVED.rowBandHeight + LAYOUT.rowGap)
   );
 }
 
@@ -215,7 +220,7 @@ export function naturalDiagramHeight(rowCount: number): number {
   return (
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
-    rowCount * (LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2) +
+    rowCount * LAYOUT_DERIVED.rowBandHeight +
     Math.max(rowCount - 1, 0) * LAYOUT.rowGap
   );
 }
@@ -341,7 +346,7 @@ export function buildDiagramSvg(
       const bandColor = rowBandColor(rowIndex, theme);
       const band = transparentBackground
         ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2}" rx="${LAYOUT.rowBorderRadius}" fill="${xmlAttribute(bandColor)}" />`;
+        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT_DERIVED.rowBandHeight}" rx="${LAYOUT.rowBorderRadius}" fill="${xmlAttribute(bandColor)}" />`;
       const renderedCells = cells
         .map((cell) => {
           const {
