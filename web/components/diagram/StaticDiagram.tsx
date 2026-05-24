@@ -6,7 +6,9 @@ const BASE_RULER_HEIGHT = 22;
 const BASE_RULER_GAP = 6;
 const BASE_ROW_HEIGHT = 56;
 const BASE_ROW_GAP = 4;
-const BASE_ROW_PADDING = 8; // 4px top + 4px bottom
+const BASE_ROW_PADDING_VERTICAL = 4; // 4px top + 4px bottom
+const BASE_CELL_PADDING_VERTICAL = 6;
+const BASE_CELL_PADDING_HORIZONTAL = 4;
 
 type Props = {
   packet: Packet;
@@ -36,7 +38,7 @@ export function StaticDiagram({
     const naturalH =
       BASE_RULER_HEIGHT +
       BASE_RULER_GAP +
-      rowCount * (BASE_ROW_HEIGHT + BASE_ROW_PADDING) +
+      rowCount * (BASE_ROW_HEIGHT + BASE_ROW_PADDING_VERTICAL * 2) +
       Math.max(rowCount - 1, 0) * BASE_ROW_GAP;
     scale = targetHeight / naturalH;
   }
@@ -45,6 +47,11 @@ export function StaticDiagram({
   const rulerGap = BASE_RULER_GAP * scale;
   const rowHeight = BASE_ROW_HEIGHT * scale;
   const rowGap = BASE_ROW_GAP * scale;
+  const rowPaddingVertical = Math.round(BASE_ROW_PADDING_VERTICAL * scale);
+  const cellPaddingVertical = Math.round(BASE_CELL_PADDING_VERTICAL * scale);
+  const cellPaddingHorizontal = Math.round(
+    BASE_CELL_PADDING_HORIZONTAL * scale,
+  );
   const titleFontSize = Math.round(12 * scale);
   const smallFontSize = Math.round(10 * scale);
   const majorTickH = Math.round(10 * scale);
@@ -119,7 +126,7 @@ export function StaticDiagram({
             style={{
               display: "flex",
               gap: 3,
-              padding: "4px 0",
+              padding: `${rowPaddingVertical}px 0`,
               borderRadius: 8,
               background: rowIdx % 2 === 0 ? theme.rowEven : theme.rowOdd,
               minHeight: rowHeight,
@@ -147,7 +154,7 @@ export function StaticDiagram({
                     background: fill,
                     border: `1px ${cell.encrypted ? "dashed" : "solid"} ${stroke}`,
                     borderRadius: 10,
-                    padding: "6px 4px",
+                    padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                     overflow: "hidden",
                     minWidth: 0,
                   }}
