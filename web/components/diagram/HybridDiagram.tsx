@@ -239,7 +239,7 @@ function FieldCellImpl({
           </>
         ) : (
           <>
-            <span className="cell-name" title={title}>
+            <span className="cell-name cell-name--continuation" title={title}>
               {title}
             </span>
             <span className="cell-sublabel">{subtitle}</span>
