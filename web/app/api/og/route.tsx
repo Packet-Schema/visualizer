@@ -8,7 +8,7 @@ import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams } from "@/lib/share-url";
+import { parseShareParams, CONTROLLER_PARAM_PREFIX } from "@/lib/share-url";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
@@ -44,12 +44,26 @@ const FALLBACK_TITLE_FONT_SIZE = 120;
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
 
+function buildShareQuery(params: URLSearchParams): string {
+  const out = new URLSearchParams();
+  for (const key of ["preset", "psml"]) {
+    const value = params.get(key);
+    if (value) out.set(key, value);
+  }
+  for (const [key, value] of params.entries()) {
+    if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
+    out.append(key, value);
+  }
+  return out.toString();
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // URL が長すぎる場合は共有 PSML のデコードをスキップしてフォールバック
+    const shareQuery = buildShareQuery(request.nextUrl.searchParams);
+    // 共有パラメータの長さが上限を超えた場合はデコードをスキップしてフォールバック
     const parsed =
-      request.nextUrl.search.length <= OG_MAX_QUERY_LENGTH
-        ? parseShareParams(request.nextUrl.searchParams, Object.keys(PRESETS))
+      shareQuery.length <= OG_MAX_QUERY_LENGTH
+        ? parseShareParams(new URLSearchParams(shareQuery), Object.keys(PRESETS))
         : null;
 
     // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
