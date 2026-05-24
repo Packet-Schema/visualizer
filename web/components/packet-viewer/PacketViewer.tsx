@@ -36,6 +36,7 @@ import {
   readFileAsText,
   uniqueKey,
 } from "@/lib/preset-file-io";
+import { injectLayoutStyles } from "@/lib/diagram-export";
 import {
   buildShareUrl,
   parseShareParams,
@@ -173,6 +174,11 @@ export default function PacketViewer({
 
   const diagramRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
+
+  // Inject diagram layout CSS variables on mount
+  useEffect(() => {
+    injectLayoutStyles();
+  }, []);
 
   // Pull user-saved presets from localStorage, then apply shared URL state.
   // URL hydration must run exactly once at mount: subsequent edits flow

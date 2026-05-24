@@ -90,6 +90,12 @@ const LAYOUT = {
   cellPaddingHorizontal: 8,
   cellInset: 2,
   subfieldHeight: 18,
+  diagramGap: 4,
+  rowGap2: 3,
+  cellGap: 2,
+  rowBorderRadius: 8,
+  cellBorderRadius: 10,
+  subfieldBorderRadius: 6,
 } as const;
 
 export { DEFAULT_THEME, LAYOUT };
@@ -611,4 +617,36 @@ export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+export function injectLayoutStyles(): void {
+  const root = document.documentElement;
+  root.style.setProperty("--diagram-ruler-height", `${LAYOUT.rulerHeight}px`);
+  root.style.setProperty("--diagram-ruler-gap", `${LAYOUT.rulerGap}px`);
+  root.style.setProperty("--diagram-row-height", `${LAYOUT.rowHeight}px`);
+  root.style.setProperty("--diagram-row-gap", `${LAYOUT.rowGap}px`);
+  root.style.setProperty(
+    "--diagram-row-padding-vertical",
+    `${LAYOUT.rowPaddingVertical}px`,
+  );
+  root.style.setProperty(
+    "--diagram-cell-padding-vertical",
+    `${LAYOUT.cellPaddingVertical}px`,
+  );
+  root.style.setProperty(
+    "--diagram-cell-padding-horizontal",
+    `${LAYOUT.cellPaddingHorizontal}px`,
+  );
+  root.style.setProperty("--diagram-gap", `${LAYOUT.diagramGap}px`);
+  root.style.setProperty("--row-gap-2", `${LAYOUT.rowGap2}px`);
+  root.style.setProperty("--cell-gap", `${LAYOUT.cellGap}px`);
+  root.style.setProperty("--row-border-radius", `${LAYOUT.rowBorderRadius}px`);
+  root.style.setProperty(
+    "--cell-border-radius",
+    `${LAYOUT.cellBorderRadius}px`,
+  );
+  root.style.setProperty(
+    "--subfield-border-radius",
+    `${LAYOUT.subfieldBorderRadius}px`,
+  );
 }
