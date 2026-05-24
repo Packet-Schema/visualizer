@@ -1,6 +1,5 @@
 @layer components {
   .embed-root {
-    min-height: 100dvh;
     width: 100%;
     padding: 8px;
     color: var(--fg);

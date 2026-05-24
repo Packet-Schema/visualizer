@@ -8,6 +8,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { useSearchParams } from "next/navigation";
 
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
@@ -45,13 +46,16 @@ const DEFAULT_EMBED_STATE = makePresetState(DEFAULT_PACKET_KEY, {}, null, null);
 
 export default function EmbedViewer() {
   const rootRef = useRef<HTMLElement | null>(null);
+  const searchParams = useSearchParams();
+  const searchString = searchParams ? `?${searchParams.toString()}` : "";
+
   const [embedState, setEmbedState] = useState<EmbedState>(DEFAULT_EMBED_STATE);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setEmbedState(readEmbedState(window.location.search));
-  }, []);
+  }, [searchString]);
 
   useEmbedTheme(embedState.theme);
   useEmbedSizeReporter(rootRef);

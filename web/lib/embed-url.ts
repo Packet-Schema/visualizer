@@ -1,4 +1,3 @@
-import { encodePsmlParam } from "./share-url";
 import type { ControllerState, ResolvedLayout } from "./psml/renderer";
 import type { Packet as PsmlPacket } from "./psml/types";
 
@@ -37,15 +36,9 @@ export type BuildIframeEmbedHtmlOptions = BuildEmbedUrlOptions & {
   height?: number;
 };
 
-export function buildEmbedUrl({
-  baseUrl,
-  packet,
-  controllers,
-  theme = EMBED_DEFAULT_THEME,
-}: BuildEmbedUrlOptions): string {
-  const url = new URL("/embed", baseUrl.toString());
-  url.searchParams.set("psml", encodePsmlParam(packet, controllers));
-  url.searchParams.set("theme", theme);
+export function buildEmbedUrl({ baseUrl }: BuildEmbedUrlOptions): string {
+  const url = new URL(baseUrl.toString());
+  url.pathname = "/embed";
   return url.toString();
 }
 

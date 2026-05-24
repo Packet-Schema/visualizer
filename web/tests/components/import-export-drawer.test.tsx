@@ -181,8 +181,7 @@ describe("ImportExportDrawer iframe export", () => {
     expect(textarea?.value).toContain(
       'title="Demo &quot;Packet&quot; &amp; &lt;One&gt; packet diagram"',
     );
-    expect(textarea?.value).toContain("/embed?psml=");
-    expect(textarea?.value).toContain("&amp;theme=system");
+    expect(textarea?.value).toContain("/embed?preset=ipv4");
     expect(textarea?.value).toContain('height="280"');
     expect(container.querySelector(".diagram-export-preview")).toBeNull();
   });
