@@ -653,52 +653,44 @@ export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
   }
 }
 
+const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
+  padding: "--diagram-padding",
+  rulerHeight: "--diagram-ruler-height",
+  rulerGap: "--diagram-ruler-gap",
+  rowHeight: "--diagram-row-height",
+  rowPaddingVertical: "--diagram-row-padding-vertical",
+  rowGap: "--diagram-row-gap",
+  cellPaddingVertical: "--diagram-cell-padding-vertical",
+  cellPaddingHorizontal: "--diagram-cell-padding-horizontal",
+  cellInset: "--diagram-cell-inset",
+  subfieldHeight: "--subfield-height",
+  subfieldTextXOffset: "--subfield-text-x-offset",
+  subfieldTextYOffset: "--subfield-text-y-offset",
+  subfieldXPadding: "--subfield-x-padding",
+  subfieldWidthPadding: "--subfield-width-padding",
+  cellTitleTextYOffset: "--cell-title-text-y-offset",
+  cellSubtitleTextYOffset: "--cell-subtitle-text-y-offset",
+  cellSubtitleMarginTop: "--cell-subtitle-margin-top",
+  diagramGap: "--diagram-gap",
+  rowGap2: "--row-gap-2",
+  cellGap: "--cell-gap",
+  rowBorderRadius: "--row-border-radius",
+  cellBorderRadius: "--cell-border-radius",
+  subfieldBorderRadius: "--subfield-border-radius",
+  titleFontSize: "--title-font-size",
+  subtitleFontSize: "--subtitle-font-size",
+  subfieldFontSize: "--subfield-font-size",
+  majorTickHeight: "--major-tick-height",
+  minorTickHeight: "--minor-tick-height",
+};
+
 export function injectLayoutStyles(): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  root.style.setProperty("--diagram-ruler-height", `${LAYOUT.rulerHeight}px`);
-  root.style.setProperty("--diagram-ruler-gap", `${LAYOUT.rulerGap}px`);
-  root.style.setProperty("--diagram-row-height", `${LAYOUT.rowHeight}px`);
-  root.style.setProperty("--diagram-row-gap", `${LAYOUT.rowGap}px`);
-  root.style.setProperty(
-    "--diagram-row-padding-vertical",
-    `${LAYOUT.rowPaddingVertical}px`,
-  );
-  root.style.setProperty(
-    "--diagram-cell-padding-vertical",
-    `${LAYOUT.cellPaddingVertical}px`,
-  );
-  root.style.setProperty(
-    "--diagram-cell-padding-horizontal",
-    `${LAYOUT.cellPaddingHorizontal}px`,
-  );
-  root.style.setProperty("--diagram-gap", `${LAYOUT.diagramGap}px`);
-  root.style.setProperty("--row-gap-2", `${LAYOUT.rowGap2}px`);
-  root.style.setProperty("--cell-gap", `${LAYOUT.cellGap}px`);
-  root.style.setProperty("--row-border-radius", `${LAYOUT.rowBorderRadius}px`);
-  root.style.setProperty(
-    "--cell-border-radius",
-    `${LAYOUT.cellBorderRadius}px`,
-  );
-  root.style.setProperty(
-    "--subfield-border-radius",
-    `${LAYOUT.subfieldBorderRadius}px`,
-  );
-  root.style.setProperty(
-    "--cell-subtitle-margin-top",
-    `${LAYOUT.cellSubtitleMarginTop}px`,
-  );
-  root.style.setProperty(
-    "--subtitle-font-size",
-    `${LAYOUT.subtitleFontSize}px`,
-  );
-  root.style.setProperty("--major-tick-height", `${LAYOUT.majorTickHeight}px`);
-  root.style.setProperty("--minor-tick-height", `${LAYOUT.minorTickHeight}px`);
-  root.style.setProperty("--subfield-height", `${LAYOUT.subfieldHeight}px`);
-  root.style.setProperty(
-    "--subfield-font-size",
-    `${LAYOUT.subfieldFontSize}px`,
-  );
+  for (const [key, cssVar] of Object.entries(CSS_PROPERTY_MAP)) {
+    const value = LAYOUT[key as keyof typeof LAYOUT];
+    root.style.setProperty(cssVar, `${value}px`);
+  }
 }
 
 // Initialize layout styles on module load (client-side only)
