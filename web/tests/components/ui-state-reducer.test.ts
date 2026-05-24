@@ -72,7 +72,7 @@ describe("uiReducer", () => {
       selectedFieldId: "x",
       popoverAnchor: { left: 1 } as unknown as DOMRect,
       editMode: true,
-      showJsonPane: true,
+      showSourcePane: true,
       hexStripUserSet: true,
       hexStripVisible: true,
     };
@@ -80,7 +80,7 @@ describe("uiReducer", () => {
     expect(next.selectedFieldId).toBeNull();
     expect(next.popoverAnchor).toBeNull();
     expect(next.editMode).toBe(false);
-    expect(next.showJsonPane).toBe(false);
+    expect(next.showSourcePane).toBe(false);
     expect(next.hexStripUserSet).toBe(true);
     expect(next.hexStripVisible).toBe(true);
   });

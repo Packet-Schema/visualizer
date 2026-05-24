@@ -7,8 +7,8 @@ type Props = {
   insertPath: (string | number)[];
   historyLength: number;
   futureLength: number;
-  jsonOpen: boolean;
-  onToggleJson: () => void;
+  sourceOpen: boolean;
+  onToggleSource: () => void;
   onSaveAs: () => void;
   onDiscard: () => void;
 };
@@ -82,8 +82,8 @@ export default function Toolbar({
   insertPath,
   historyLength,
   futureLength,
-  jsonOpen,
-  onToggleJson,
+  sourceOpen,
+  onToggleSource,
   onSaveAs,
   onDiscard,
 }: Props) {
@@ -210,13 +210,13 @@ export default function Toolbar({
 
       <button
         type="button"
-        onClick={onToggleJson}
-        aria-label="Edit JSON"
-        aria-pressed={jsonOpen}
+        onClick={onToggleSource}
+        aria-label="Edit source (YAML / JSON)"
+        aria-pressed={sourceOpen}
         className="tb-btn text-sm font-medium px-2.5 py-1.5 rounded-md border"
-        style={btnStyle(jsonOpen)}
+        style={btnStyle(sourceOpen)}
       >
-        Edit JSON
+        Edit source
       </button>
     </div>
   );

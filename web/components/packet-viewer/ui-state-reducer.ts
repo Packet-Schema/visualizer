@@ -14,7 +14,7 @@
 //   - Multi-field actions are allowed *only* when the touched fields must
 //     change atomically to avoid intermediate render states. The current
 //     example is `preset-switched`, which clears selection / popover /
-//     edit mode / JSON pane together so the next frame can't paint with
+//     edit mode / source pane together so the next frame can't paint with
 //     "old preset's selection on the new preset's body".
 
 import type { DrawerMode } from "@/components/import-export/ImportExportDrawer";
@@ -38,7 +38,7 @@ export type UiState = {
   dependenciesVisible: boolean;
   viewMode: ViewMode;
   editMode: boolean;
-  showJsonPane: boolean;
+  showSourcePane: boolean;
   showSaveDialog: boolean;
   shareStatus: ShareStatus | null;
 };
@@ -53,7 +53,7 @@ export const initialUiState: UiState = {
   dependenciesVisible: false,
   viewMode: "wire",
   editMode: false,
-  showJsonPane: false,
+  showSourcePane: false,
   showSaveDialog: false,
   shareStatus: null,
 };
@@ -71,7 +71,7 @@ export type UiAction =
   | { type: "toggle-view-mode" }
   | { type: "set-edit-mode"; editing: boolean }
   | { type: "toggle-edit-mode" }
-  | { type: "toggle-json-pane" }
+  | { type: "toggle-source-pane" }
   | { type: "open-save-dialog" }
   | { type: "close-save-dialog" }
   | { type: "set-share-status"; status: ShareStatus }
@@ -122,8 +122,8 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, editMode: action.editing };
     case "toggle-edit-mode":
       return { ...state, editMode: !state.editMode };
-    case "toggle-json-pane":
-      return { ...state, showJsonPane: !state.showJsonPane };
+    case "toggle-source-pane":
+      return { ...state, showSourcePane: !state.showSourcePane };
     case "open-save-dialog":
       return { ...state, showSaveDialog: true };
     case "close-save-dialog":
@@ -138,7 +138,7 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         selectedFieldId: null,
         popoverAnchor: null,
         editMode: false,
-        showJsonPane: false,
+        showSourcePane: false,
         // hexStripUserSet intentionally preserved so the user's hex
         // visibility choice survives a preset change.
       };

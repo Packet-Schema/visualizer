@@ -259,7 +259,7 @@ export default function PacketViewer() {
   const [ui, uiDispatch] = useReducer(uiReducer, initialUiState);
   const {
     editMode,
-    showJsonPane,
+    showSourcePane,
     showSaveDialog,
     selectedFieldId,
     popoverAnchor,
@@ -566,10 +566,10 @@ export default function PacketViewer() {
   const handleDiscardEdits = useCallback(() => {
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
     uiDispatch({ type: "set-edit-mode", editing: false });
-    // showJsonPane is part of the same UI shell — keep them in sync by
+    // showSourcePane is part of the same UI shell — keep them in sync by
     // toggling off if it was open.
-    if (showJsonPane) uiDispatch({ type: "toggle-json-pane" });
-  }, [activePsmlPacket, showJsonPane]);
+    if (showSourcePane) uiDispatch({ type: "toggle-source-pane" });
+  }, [activePsmlPacket, showSourcePane]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.
@@ -1039,8 +1039,10 @@ export default function PacketViewer() {
           <StudioPanel
             state={studioState}
             dispatch={dispatch}
-            showJsonPane={showJsonPane}
-            onToggleJsonPane={() => uiDispatch({ type: "toggle-json-pane" })}
+            showSourcePane={showSourcePane}
+            onToggleSourcePane={() =>
+              uiDispatch({ type: "toggle-source-pane" })
+            }
             onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
           />

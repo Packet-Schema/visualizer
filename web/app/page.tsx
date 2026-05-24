@@ -4,7 +4,7 @@ import PacketViewer from "@/components/packet-viewer/PacketViewer";
 export default function Page() {
   return (
     <div className="min-h-screen flex flex-col">
-      <SiteHeader activeNav="viewer" />
+      <SiteHeader />
       <PacketViewer />
     </div>
   );
