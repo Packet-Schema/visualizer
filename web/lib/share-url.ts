@@ -23,7 +23,6 @@ export type BuildShareUrlOptions = {
   packet: PsmlPacket;
   controllers: ControllerState;
   builtInKeys: Iterable<string>;
-  defaultPacketKey: string;
   defaultControllers?: ControllerState;
   forcePsml?: boolean;
 };
@@ -117,8 +116,6 @@ export function buildShareUrl({
   packet,
   controllers,
   builtInKeys,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  defaultPacketKey,
   defaultControllers,
   forcePsml = false,
 }: BuildShareUrlOptions): string {

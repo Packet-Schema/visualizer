@@ -580,7 +580,6 @@ export default function PacketViewer({
       packet: sharePacket,
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
-      defaultPacketKey: DEFAULT_PACKET_KEY,
       defaultControllers,
       forcePsml: editMode || !builtInPsml,
     });

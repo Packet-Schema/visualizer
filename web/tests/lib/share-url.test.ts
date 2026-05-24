@@ -39,7 +39,6 @@ describe("share URL params", () => {
       packet: PRESETS.tcp,
       controllers: { dataOffset: 5 },
       defaultControllers: { dataOffset: 5 },
-      defaultPacketKey: "ipv4",
       builtInKeys: BUILT_INS,
     });
     expect(url).toBe("https://example.test/view?preset=tcp");
