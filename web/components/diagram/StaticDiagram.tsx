@@ -213,6 +213,9 @@ export function StaticDiagram({
               justifyContent: "center",
               padding: `${rowPaddingVertical}px 0`,
               gap: Math.round(4 * scale),
+              borderRadius: 8,
+              background:
+                rowCount % 2 === 0 ? theme.rowEven : theme.rowOdd,
               minHeight: rowHeight,
             }}
           >
@@ -222,6 +225,7 @@ export function StaticDiagram({
                 height: Math.round(6 * scale),
                 borderRadius: "50%",
                 background: theme.fieldLabel,
+                opacity: 0.5,
               }}
             />
             <div
@@ -230,6 +234,7 @@ export function StaticDiagram({
                 height: Math.round(6 * scale),
                 borderRadius: "50%",
                 background: theme.fieldLabel,
+                opacity: 0.5,
               }}
             />
             <div
@@ -238,6 +243,7 @@ export function StaticDiagram({
                 height: Math.round(6 * scale),
                 borderRadius: "50%",
                 background: theme.fieldLabel,
+                opacity: 0.5,
               }}
             />
           </div>
