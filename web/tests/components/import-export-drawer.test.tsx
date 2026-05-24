@@ -106,4 +106,53 @@ describe("ImportExportDrawer", () => {
 
     expect(container).toBeDefined();
   });
+
+  it("generates SVG preview for export", () => {
+    const packet = {
+      name: "IPv4",
+      rowBits: 32,
+      fields: [{ id: "version", name: "Version", bits: 4 }],
+    } as const;
+    const layout = {
+      totalBits: 32,
+      cells: [
+        {
+          field: packet.fields[0],
+          bitsTotal: 4,
+          row: 0,
+          startBit: 0,
+          endBit: 3,
+          segmentIndex: 0,
+          totalSegments: 1,
+          isFirst: true,
+          isLast: true,
+          fieldStartOffset: 0,
+          fieldEndOffset: 3,
+        },
+      ],
+    };
+
+    const { container } = mount(
+      <ImportExportDrawer
+        open={true}
+        mode="export"
+        packet={packet as never}
+        controllers={{}}
+        layout={layout as never}
+        onClose={() => {}}
+        onImport={() => {}}
+      />,
+    );
+
+    const formatSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[1];
+    act(() => {
+      formatSelect.value = "svg";
+      formatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const previewDiv = container.querySelector(".diagram-export-preview");
+    expect(previewDiv).toBeDefined();
+    expect(previewDiv?.innerHTML).toContain("<svg");
+  });
 });

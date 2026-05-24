@@ -8,7 +8,7 @@ import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
 import { collectPsmlRefs } from "@/lib/psml/collect-refs";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams, CONTROLLER_PARAM_PREFIX } from "@/lib/share-url";
+import { parseShareParams, buildShareQueryFromParams } from "@/lib/share-url";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
@@ -47,17 +47,39 @@ const FALLBACK_LETTER_SPACING = "0.025em";
 const MAX_CONTROLLER_VALUE = 100;
 const MAX_ROW_BITS = 256;
 
-function buildShareQuery(params: URLSearchParams): string {
-  const out = new URLSearchParams();
-  for (const key of ["preset", "psml"]) {
-    const value = params.get(key);
-    if (value) out.set(key, value);
-  }
-  for (const [key, value] of params.entries()) {
-    if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
-    out.append(key, value);
-  }
-  return out.toString();
+function renderFallbackImage() {
+  return new ImageResponse(
+    <div
+      style={{
+        width: OG_WIDTH,
+        height: OG_HEIGHT,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: FALLBACK_GRADIENT,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 20,
+          fontSize: FALLBACK_TITLE_FONT_SIZE,
+          fontWeight: 600,
+          color: FALLBACK_TITLE_COLOR,
+          fontFamily: FONT_NAME,
+          letterSpacing: FALLBACK_LETTER_SPACING,
+          lineHeight: 1,
+        }}
+      >
+        <div>Packet</div>
+        <div>Visualizer</div>
+      </div>
+    </div>,
+    createOGImageResponseOptions(),
+  );
 }
 
 function sanitizeControllers(
@@ -74,8 +96,15 @@ function sanitizeControllers(
 }
 
 export async function GET(request: NextRequest) {
+  if (!OG_FONT_BUFFER) {
+    console.error(
+      "OG_FONT_BUFFER not initialized. Ensure generate:og-font script has run.",
+    );
+    return new Response("OG font not available", { status: 503 });
+  }
+
   try {
-    const shareQuery = buildShareQuery(request.nextUrl.searchParams);
+    const shareQuery = buildShareQueryFromParams(request.nextUrl.searchParams);
     // 共有パラメータの長さが上限を超えた場合はデコードをスキップしてフォールバック
     const parsed =
       shareQuery.length <= OG_MAX_QUERY_LENGTH
@@ -87,38 +116,7 @@ export async function GET(request: NextRequest) {
 
     // プロトコルパラメータがない場合は、サービス名のみを表示する画像を生成
     if (!parsed || parsed.kind === "none") {
-      return new ImageResponse(
-        <div
-          style={{
-            width: OG_WIDTH,
-            height: OG_HEIGHT,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: FALLBACK_GRADIENT,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 20,
-              fontSize: FALLBACK_TITLE_FONT_SIZE,
-              fontWeight: 600,
-              color: FALLBACK_TITLE_COLOR,
-              fontFamily: FONT_NAME,
-              letterSpacing: FALLBACK_LETTER_SPACING,
-              lineHeight: 1,
-            }}
-          >
-            <div>Packet</div>
-            <div>Visualizer</div>
-          </div>
-        </div>,
-        createOGImageResponseOptions(),
-      );
+      return renderFallbackImage();
     }
 
     const builtInKeys = Object.keys(PRESETS);
@@ -132,38 +130,7 @@ export async function GET(request: NextRequest) {
           : fallbackPsml;
 
     if (psml.rowBits > MAX_ROW_BITS) {
-      return new ImageResponse(
-        <div
-          style={{
-            width: OG_WIDTH,
-            height: OG_HEIGHT,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: FALLBACK_GRADIENT,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 20,
-              fontSize: FALLBACK_TITLE_FONT_SIZE,
-              fontWeight: 600,
-              color: FALLBACK_TITLE_COLOR,
-              fontFamily: FONT_NAME,
-              letterSpacing: FALLBACK_LETTER_SPACING,
-              lineHeight: 1,
-            }}
-          >
-            <div>Packet</div>
-            <div>Visualizer</div>
-          </div>
-        </div>,
-        createOGImageResponseOptions(),
-      );
+      return renderFallbackImage();
     }
 
     const packet = psmlToRenderer(psml);
@@ -226,7 +193,8 @@ export async function GET(request: NextRequest) {
       createOGImageResponseOptions(),
     );
   } catch (error) {
-    console.error("OGP generation failed:", error);
-    return new Response("Internal Server Error", { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("OGP generation failed:", message);
+    return new Response(`OG generation failed: ${message}`, { status: 500 });
   }
 }

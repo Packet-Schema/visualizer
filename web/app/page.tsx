@@ -5,7 +5,7 @@ import PacketViewer from "@/components/packet-viewer/PacketViewer";
 import { PRESETS } from "@/lib/psml/presets";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { parseShareParams, CONTROLLER_PARAM_PREFIX } from "@/lib/share-url";
+import { parseShareParams, buildShareQueryFromParams } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psml/renderer";
 import { OG_WIDTH, OG_HEIGHT, OG_MAX_QUERY_LENGTH } from "@/app/api/og/route";
 
@@ -13,30 +13,13 @@ type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const SHARE_PARAM_KEYS = ["preset", "psml"] as const;
 const DEFAULT_PACKET_KEY = "ipv4";
-
-function appendQueryParam(
-  out: URLSearchParams,
-  key: string,
-  value: string | string[] | undefined,
-) {
-  if (typeof value === "string") {
-    out.set(key, value);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      out.append(key, item);
-    }
-  }
-}
 
 export async function generateMetadata({
   searchParams,
 }: Props): Promise<Metadata> {
   const params = await searchParams;
-  const shareQuery = buildShareQuery(params);
+  const shareQuery = buildShareQueryFromParams(params);
   // URL が長すぎる場合は共有パラメータのデコードをスキップしてフォールバック
   const parsed =
     new URLSearchParams(shareQuery).toString().length <= OG_MAX_QUERY_LENGTH
@@ -80,7 +63,7 @@ export async function generateMetadata({
 
 export default async function Page({ searchParams }: Props) {
   const params = await searchParams;
-  const shareQuery = buildShareQuery(params);
+  const shareQuery = buildShareQueryFromParams(params);
   // URL が長すぎる場合は共有パラメータのデコードをスキップしてフォールバック
   const parsed =
     new URLSearchParams(shareQuery).toString().length <= OG_MAX_QUERY_LENGTH
@@ -103,20 +86,6 @@ export default async function Page({ searchParams }: Props) {
       />
     </div>
   );
-}
-
-function buildShareQuery(
-  params: Record<string, string | string[] | undefined>,
-): string {
-  const out = new URLSearchParams();
-  for (const key of SHARE_PARAM_KEYS) {
-    appendQueryParam(out, key, params[key]);
-  }
-  for (const [key, value] of Object.entries(params)) {
-    if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
-    appendQueryParam(out, key, value);
-  }
-  return out.toString();
 }
 
 function mergeInitialControllers(
