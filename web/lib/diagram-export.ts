@@ -68,7 +68,13 @@ export function resolveToken(field: Field): string {
 
 export function fieldFill(field: Field, theme: DiagramExportTheme): string {
   const token = resolveToken(field);
-  return theme.fieldPalette[token] ?? "black";
+  const color = theme.fieldPalette[token];
+  if (color) return color;
+  // Fallback: use the field's own color if it exists, otherwise use slate palette default
+  if (field.color && field.color in theme.fieldPalette) {
+    return theme.fieldPalette[field.color];
+  }
+  return theme.fieldPalette.slate;
 }
 
 export function rowsFor(layout: ResolvedLayout): Cell[][] {
@@ -295,7 +301,6 @@ const CSS_PROPERTY_MAP: Partial<Record<keyof typeof LAYOUT, string>> = {
   gridLineWidth: "--grid-line-width",
   cellTitleFontWeight: "--cell-title-font-weight",
   textAnchor: "--text-anchor",
-  imageExportHeight: "--image-export-height",
 };
 
 export function generateLayoutCssVariables(): string {

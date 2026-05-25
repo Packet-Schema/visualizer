@@ -232,7 +232,7 @@ export default function ImportExportDrawer({
   useEffect(() => {
     const currentSession = exportSessionRef.current;
     const renderPreview = async () => {
-      if (!isImageExportMode) {
+      if (!open || !isImageExportMode) {
         setPreviewSvg(null);
         return;
       }
@@ -241,7 +241,7 @@ export default function ImportExportDrawer({
         const theme = readDiagramTheme(exportThemeMode);
 
         // Calculate preview dimensions based on bitWidth (match final export height for consistency)
-        const width = packet.rowBits * diagramWidth;
+        const width = packet.rowBits * diagramWidth + LAYOUT.padding * 2;
         const height = LAYOUT.imageExportHeight;
 
         const diagramComponent = (
@@ -286,6 +286,7 @@ export default function ImportExportDrawer({
     exportThemeMode,
     isImageExportMode,
     layout,
+    open,
     packet,
     transparentBackground,
   ]);
@@ -296,8 +297,8 @@ export default function ImportExportDrawer({
       setImageBusy(true);
 
       const theme = readDiagramTheme(exportThemeMode);
-      const width = packet.rowBits * diagramWidth;
-      const height = 400;
+      const width = packet.rowBits * diagramWidth + LAYOUT.padding * 2;
+      const height = LAYOUT.imageExportHeight;
 
       const diagramComponent = (
         <div

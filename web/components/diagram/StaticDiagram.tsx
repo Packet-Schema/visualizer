@@ -6,7 +6,7 @@ import {
   rowBandColor,
   isFieldOverridable,
 } from "@/lib/diagram-export";
-import { LAYOUT } from "@/lib/theme";
+import { LAYOUT, DIAGRAM_OPACITY } from "@/lib/theme";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 import { LockIcon } from "@/components/diagram/diagram-badges";
 
@@ -55,7 +55,12 @@ export function StaticDiagram({
   let scale = 1;
   if (targetHeight != null && rowCount > 0) {
     const totalRows = isTruncated ? rowCount + 1 : rowCount;
-    const naturalH = naturalDiagramHeight(totalRows);
+    let naturalH = naturalDiagramHeight(totalRows);
+    // Account for rows with subfields, which are taller than regular rows
+    const rowsWithSubfields = rows.filter((r) =>
+      r.some((c) => c.subCells && c.subCells.length > 0),
+    ).length;
+    naturalH += rowsWithSubfields * (LAYOUT.subfieldHeight + LAYOUT.cellGap);
     // Scale up to fit targetHeight, but cap at maxScaleFactor to avoid over-enlargement in SSR contexts
     // (OG images with small content should not be upscaled beyond readability limits)
     scale = Math.min(targetHeight / naturalH, LAYOUT.maxScaleFactor);
@@ -275,6 +280,7 @@ export function StaticDiagram({
                                 ),
                                 minWidth: 0,
                                 background: theme.subfieldBackground,
+                                opacity: DIAGRAM_OPACITY.subfieldBackground,
                                 border: `1px solid ${stroke}`,
                                 borderRadius: Math.round(
                                   LAYOUT.subfieldBorderRadius * scale,
