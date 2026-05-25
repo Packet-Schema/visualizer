@@ -108,6 +108,11 @@ export const LAYOUT = {
   loadingDotSize: 6,
   // Scaling limits
   maxScaleUI: 2.0,
+  // Ruler grid intervals (in bits)
+  rulerMajorInterval: 8,
+  rulerLabelInterval: 4,
+  // Grid line dimensions
+  gridLineWidth: 1,
 } as const;
 
 // Derived dimensions (calculated from base LAYOUT values)
@@ -348,10 +353,10 @@ export function buildDiagramSvg(
 
   const ruler = Array.from({ length: packet.rowBits }, (_, bit) => {
     const x = LAYOUT.padding + bit * bitWidth;
-    const major = bit % 8 === 0;
+    const major = bit % LAYOUT.rulerMajorInterval === 0;
     const tickHeight = major ? majorTickH : minorTickH;
     const label =
-      bit % 4 === 0
+      bit % LAYOUT.rulerLabelInterval === 0
         ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
         : "";
     return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="${LAYOUT.strokeWidthCell}" opacity="${major ? 1 : theme.rulerMinorOpacity}" />`;
@@ -556,6 +561,9 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   badgeSvgRectRadius: "--badge-svg-rect-radius",
   loadingDotSize: "--loading-dot-size",
   maxScaleUI: "--max-scale-ui",
+  rulerMajorInterval: "--ruler-major-interval",
+  rulerLabelInterval: "--ruler-label-interval",
+  gridLineWidth: "--grid-line-width",
 };
 
 export function generateLayoutCssVariables(): string {

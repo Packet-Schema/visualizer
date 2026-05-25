@@ -77,8 +77,8 @@ export function StaticDiagram({
         }}
       >
         {Array.from({ length: rowBits }, (_, bit) => {
-          const major = bit % 8 === 0;
-          const showLabel = bit % 4 === 0;
+          const major = bit % LAYOUT.rulerMajorInterval === 0;
+          const showLabel = bit % LAYOUT.rulerLabelInterval === 0;
           return (
             <div
               key={bit}
@@ -105,7 +105,7 @@ export function StaticDiagram({
               ) : null}
               <div
                 style={{
-                  width: 1,
+                  width: LAYOUT.gridLineWidth,
                   height: major ? majorTickH : minorTickH,
                   background: theme.rulerTick,
                   opacity: major ? 1 : theme.rulerMinorOpacity,
@@ -201,8 +201,8 @@ export function StaticDiagram({
               alignItems: "center",
               justifyContent: "center",
               padding: `${rowPaddingVertical}px 0`,
-              gap: Math.round(4 * scale),
-              borderRadius: 8,
+              gap: Math.round(LAYOUT.diagramGap * scale),
+              borderRadius: LAYOUT.rowBorderRadius,
               background: "transparent",
               minHeight: rowHeight,
             }}
