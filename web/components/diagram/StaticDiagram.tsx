@@ -142,8 +142,15 @@ export function StaticDiagram({
                 const span = cell.endBit - cell.startBit + 1;
                 const exportField =
                   packetFieldsById.get(cell.field.id) ?? cell.field;
-                const { fill, stroke, isDashed, titleColor, title, subtitle } =
-                  cellVisual(cell, exportField, theme);
+                const {
+                  fill,
+                  fillOpacity,
+                  stroke,
+                  isDashed,
+                  titleColor,
+                  title,
+                  subtitle,
+                } = cellVisual(cell, exportField, theme);
 
                 return (
                   <div
@@ -155,6 +162,7 @@ export function StaticDiagram({
                       alignItems: "center",
                       justifyContent: "center",
                       background: fill,
+                      opacity: fillOpacity,
                       border: `1px ${isDashed ? "dashed" : "solid"} ${stroke}`,
                       borderRadius: LAYOUT.cellBorderRadius,
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,

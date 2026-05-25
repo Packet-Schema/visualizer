@@ -22,7 +22,12 @@ import type {
   ResolvedLayout,
   SubCell,
 } from "./psml/renderer";
-import { LAYOUT, LAYOUT_DERIVED, LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "./theme";
+import {
+  LAYOUT,
+  LAYOUT_DERIVED,
+  LIGHT_DIAGRAM_THEME,
+  DARK_DIAGRAM_THEME,
+} from "./theme";
 
 // Re-export LAYOUT and LAYOUT_DERIVED for backward compatibility
 export { LAYOUT, LAYOUT_DERIVED } from "./theme";
@@ -54,13 +59,13 @@ export type DiagramSvgOptions = {
 
 export type CellVisual = {
   fill: string;
+  fillOpacity: number;
   stroke: string;
   isDashed: boolean;
   titleColor: string;
   title: string;
   subtitle: string;
 };
-
 
 function xmlEscape(value: string): string {
   return value
@@ -154,6 +159,7 @@ export function cellVisual(
   const { title, subtitle } = textForCell(cell);
   return {
     fill: fieldFill(field, theme),
+    fillOpacity: theme.fieldFillOpacity,
     stroke: cell.encryptedParentId ? theme.accent : theme.fieldStroke,
     isDashed: cell.encrypted === true,
     titleColor: cell.isFirst ? theme.fieldLabel : theme.fieldContinuation,

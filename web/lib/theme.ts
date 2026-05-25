@@ -121,6 +121,8 @@ export type UITheme = {
   variableStripe: string;
   fieldRoseStrong: string;
   legendDimChroma: number;
+  markerAccent: string;
+  markerAccentSoft: string;
 };
 
 /**
@@ -171,6 +173,8 @@ export const LIGHT_UI_THEME: UITheme = {
   variableStripe: "oklch(22% 0.02 270 / 0.18)",
   fieldRoseStrong: "oklch(50% 0.18 18)",
   legendDimChroma: 0.04,
+  markerAccent: "oklch(62% 0.18 265)",
+  markerAccentSoft: "oklch(65% 0.2 265 / 0.45)",
 };
 
 /**
@@ -201,6 +205,8 @@ export const DARK_UI_THEME: UITheme = {
   variableStripe: "oklch(99% 0 0 / 0.22)",
   fieldRoseStrong: "oklch(82% 0.17 18)",
   legendDimChroma: 0.04,
+  markerAccent: "oklch(72% 0.16 265)",
+  markerAccentSoft: "oklch(72% 0.16 265 / 0.55)",
 };
 
 /**
