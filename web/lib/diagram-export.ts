@@ -245,7 +245,7 @@ export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
   }
 }
 
-const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
+const CSS_PROPERTY_MAP: Partial<Record<keyof typeof LAYOUT, string>> = {
   padding: "--diagram-padding",
   rulerHeight: "--diagram-ruler-height",
   rulerGap: "--diagram-ruler-gap",
@@ -295,6 +295,7 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   gridLineWidth: "--grid-line-width",
   cellTitleFontWeight: "--cell-title-font-weight",
   textAnchor: "--text-anchor",
+  imageExportHeight: "--image-export-height",
 };
 
 export function generateLayoutCssVariables(): string {

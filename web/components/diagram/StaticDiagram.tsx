@@ -4,9 +4,9 @@ import {
   cellVisual,
   naturalDiagramHeight,
   rowBandColor,
-  LAYOUT,
   isFieldOverridable,
 } from "@/lib/diagram-export";
+import { LAYOUT } from "@/lib/theme";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 import { LockIcon } from "@/components/diagram/diagram-badges";
 
@@ -56,10 +56,9 @@ export function StaticDiagram({
   if (targetHeight != null && rowCount > 0) {
     const totalRows = isTruncated ? rowCount + 1 : rowCount;
     const naturalH = naturalDiagramHeight(totalRows);
-    // Scale up to fit targetHeight, but cap at 2x to avoid over-enlargement in SSR contexts
+    // Scale up to fit targetHeight, but cap at maxScaleFactor to avoid over-enlargement in SSR contexts
     // (OG images with small content should not be upscaled beyond readability limits)
-    // Cap scale at 2x for OG image generation to avoid over-enlargement
-    scale = Math.min(targetHeight / naturalH, 2.0);
+    scale = Math.min(targetHeight / naturalH, LAYOUT.maxScaleFactor);
   }
 
   const rulerHeight = LAYOUT.rulerHeight * scale;

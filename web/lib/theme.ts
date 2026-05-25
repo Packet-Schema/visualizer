@@ -83,6 +83,9 @@ export const LAYOUT = {
   // Text styling
   cellTitleFontWeight: 600,
   textAnchor: "middle",
+  // Export/render dimensions
+  imageExportHeight: 400,
+  maxScaleFactor: 2.0,
 } as const;
 
 // Derived dimensions (calculated from base LAYOUT values)

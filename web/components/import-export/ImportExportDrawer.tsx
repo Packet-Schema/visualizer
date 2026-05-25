@@ -8,6 +8,7 @@ import {
   type DiagramThemeMode,
 } from "@/lib/diagram-export";
 import { renderToSvgString } from "@/lib/diagram-satori";
+import { LAYOUT } from "@/lib/theme";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 import {
   EXPORTABLE_FORMATS,
@@ -241,7 +242,7 @@ export default function ImportExportDrawer({
 
         // Calculate preview dimensions based on bitWidth (match final export height for consistency)
         const width = packet.rowBits * diagramWidth;
-        const height = 400;
+        const height = LAYOUT.imageExportHeight;
 
         const diagramComponent = (
           <div
