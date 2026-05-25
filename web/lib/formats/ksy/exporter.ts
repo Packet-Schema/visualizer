@@ -1,8 +1,8 @@
-// PSML → .ksy exporter.
+// PSDL → .ksy exporter.
 //
-// Lossy by design: PSML constructs Kaitai cannot model (categories,
+// Lossy by design: PSDL constructs Kaitai cannot model (categories,
 // constraints, switches on non-integer discriminators, peek expressions,
-// encrypted blocks) are surfaced as `# psml-only:` comments at the top of
+// encrypted blocks) are surfaced as `# psdl-only:` comments at the top of
 // the emitted YAML so the reader knows what was elided.
 
 import { stringify as yamlStringify } from "yaml";
@@ -14,11 +14,11 @@ import type {
   Expr,
   Field,
   Packet,
-} from "../../psml/types";
+} from "../../psdl/types";
 
 import type { KsyRoot, KsySeqEntry, KsyType } from "./types";
 
-/** Serialise a PSML packet to Kaitai .ksy YAML (best-effort, lossy). */
+/** Serialise a PSDL packet to Kaitai .ksy YAML (best-effort, lossy). */
 export function toKsy(packet: Packet): string {
   const ksy: KsyRoot = {
     meta: {
@@ -32,19 +32,19 @@ export function toKsy(packet: Packet): string {
   };
   if (packet.description) ksy.doc = packet.description;
 
-  const psmlOnly: string[] = [];
+  const psdlOnly: string[] = [];
   const types: Record<string, KsyType> = {};
 
   const seq: KsySeqEntry[] = [];
   for (const c of packet.body) {
-    seq.push(...containerToKsy(c, { types, psmlOnly }));
+    seq.push(...containerToKsy(c, { types, psdlOnly }));
   }
   ksy.seq = seq;
   if (Object.keys(types).length > 0) ksy.types = types;
 
   if (packet.constraints && packet.constraints.length > 0) {
-    psmlOnly.push(
-      `${packet.constraints.length} PSML constraint(s) not representable in .ksy`,
+    psdlOnly.push(
+      `${packet.constraints.length} PSDL constraint(s) not representable in .ksy`,
     );
   }
 
@@ -53,8 +53,8 @@ export function toKsy(packet: Packet): string {
     aliasDuplicateObjects: false,
   });
 
-  if (psmlOnly.length > 0) {
-    const header = psmlOnly.map((m) => `# psml-only: ${m}`).join("\n") + "\n";
+  if (psdlOnly.length > 0) {
+    const header = psdlOnly.map((m) => `# psdl-only: ${m}`).join("\n") + "\n";
     yamlText = header + yamlText;
   }
   return yamlText;
@@ -62,7 +62,7 @@ export function toKsy(packet: Packet): string {
 
 type ToCtx = {
   types: Record<string, KsyType>;
-  psmlOnly: string[];
+  psdlOnly: string[];
 };
 
 function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
@@ -75,9 +75,9 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       // Splice inline (Kaitai has no group; the children are siblings).
       return c.children.flatMap((ch) => containerToKsy(ch, ctx));
     case "repeat": {
-      // Sanitize the PSML repeat id through the same `toKsyId` filter as
+      // Sanitize the PSDL repeat id through the same `toKsyId` filter as
       // every other seq entry. Without this an id containing `:` / `-`
-      // (legal in PSML, illegal in Kaitai identifiers) emitted invalid
+      // (legal in PSDL, illegal in Kaitai identifiers) emitted invalid
       // YAML that broke downstream `kaitai-struct-compiler` runs.
       const sanitizedRepeatId = toKsyId(c.id);
       const entry: KsySeqEntry = {
@@ -98,7 +98,7 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       } else {
         // Synthetic user-type names share Kaitai's identifier rules with
         // seq ids, so derive the type name from the sanitized repeat id
-        // (not the raw PSML id) and keep entry.type aligned.
+        // (not the raw PSDL id) and keep entry.type aligned.
         const typeName = `${sanitizedRepeatId}_elem`;
         ctx.types[typeName] = {
           seq: c.element.fields.flatMap((ch) => containerToKsy(ch, ctx)),
@@ -124,17 +124,17 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       return [entry];
     }
     case "switch": {
-      // PSML 0.4 — if the discriminator is a peek() expression, surface that
-      // as a psml-only comment alongside the (still-lowered) Switch so the
+      // PSDL 0.4 — if the discriminator is a peek() expression, surface that
+      // as a psdl-only comment alongside the (still-lowered) Switch so the
       // .ksy reader knows the dispatch happens on a lookahead rather than a
       // declared sibling field. Kaitai's switch-on requires a previously
       // declared field, so we keep the existing "first case only" lowering.
       if (c.on.kind === "peek") {
-        ctx.psmlOnly.push(
+        ctx.psdlOnly.push(
           `Switch "${c.id}" dispatches on peek(bits=${c.on.bits}) — lookahead not modelled in Kaitai`,
         );
       }
-      ctx.psmlOnly.push(
+      ctx.psdlOnly.push(
         `Switch "${c.id}" lowered to first case only (Kaitai switch-on type requires uniform field shapes).`,
       );
       const firstKey = Object.keys(c.cases)[0];
@@ -143,14 +143,14 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       return first.fields.flatMap((ch) => containerToKsy(ch, ctx));
     }
     case "optional": {
-      // PSML 0.4 Optional — emit `if:` if the predicate is a simple ref
-      // (Kaitai accepts a name), otherwise drop to a psml-only comment.
+      // PSDL 0.4 Optional — emit `if:` if the predicate is a simple ref
+      // (Kaitai accepts a name), otherwise drop to a psdl-only comment.
       const inner = fieldToKsy(c.field, ctx);
       const ifExpr = exprToKaitaiIf(c.when);
       if (ifExpr) {
         inner.if = ifExpr;
       } else {
-        ctx.psmlOnly.push(
+        ctx.psdlOnly.push(
           `optional "${c.id ?? c.field.id}" predicate ${exprToString(c.when)} not expressible in Kaitai — left unconditional`,
         );
       }
@@ -158,14 +158,14 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
     }
     case "encrypted": {
       // Kaitai has no encrypted concept. Emit a single byte placeholder so the
-      // .ksy still parses, and record a psml-only comment naming the context.
+      // .ksy still parses, and record a psdl-only comment naming the context.
       // The plaintext substructure is intentionally dropped — emitting it
       // would imply the decrypted shape is also on-wire, which is misleading.
       const e = c as Encrypted;
-      ctx.psmlOnly.push(
+      ctx.psdlOnly.push(
         `encrypted block "${e.id}" (${e.contextNote}) skipped — Kaitai has no encrypted primitive`,
       );
-      // Derive a byte size from `wireBits` when PSML pins it as a
+      // Derive a byte size from `wireBits` when PSDL pins it as a
       // literal; otherwise fall back to 1 so the seq entry actually
       // consumes a stream offset. The previous `size: 0` form was
       // documented as a "single byte placeholder" but read 0 bytes,
@@ -180,7 +180,7 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
         {
           id: toKsyId(e.id),
           size: sizeBytes,
-          doc: `psml-only: encrypted block (${e.contextNote})`,
+          doc: `psdl-only: encrypted block (${e.contextNote})`,
         },
       ];
     }
@@ -194,7 +194,7 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
 function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
   const entry: KsySeqEntry = { id: toKsyId(f.id) };
   if (f.category)
-    ctx.psmlOnly.push(`Field "${f.id}" category "${f.category}" dropped`);
+    ctx.psdlOnly.push(`Field "${f.id}" category "${f.category}" dropped`);
   switch (f.type.kind) {
     case "int": {
       const sig = f.type.signed ? "s" : "u";
@@ -205,7 +205,7 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
           : null;
       if (code) entry.type = code;
       else {
-        ctx.psmlOnly.push(
+        ctx.psdlOnly.push(
           `Field "${f.id}" odd int width ${f.type.bits} → b${f.type.bits}`,
         );
         entry.type = `b${f.type.bits}`;
@@ -224,41 +224,41 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
         bytes === 1 || bytes === 2 || bytes === 4 || bytes === 8
           ? `u${bytes}`
           : `b${f.type.bits}`;
-      ctx.psmlOnly.push(
+      ctx.psdlOnly.push(
         `Field "${f.id}" enum variants embedded as comment (not registered in enums:)`,
       );
       break;
     }
     case "varint": {
       // Kaitai has no varint primitive — fall back to a u1 placeholder and
-      // surface the encoding in the psml-only header so the reader knows
+      // surface the encoding in the psdl-only header so the reader knows
       // they need to hand-roll a custom type.
-      ctx.psmlOnly.push(
+      ctx.psdlOnly.push(
         `Field "${f.id}" varint (${f.type.encoding}) lowered to u1 placeholder`,
       );
       entry.type = "u1";
       break;
     }
     case "berLength": {
-      // PSML 0.4 — Kaitai has no BER-length primitive. Emit a u1 placeholder
-      // and surface a psml-only comment so the reader knows to hand-roll
+      // PSDL 0.4 — Kaitai has no BER-length primitive. Emit a u1 placeholder
+      // and surface a psdl-only comment so the reader knows to hand-roll
       // the proper BER definite-length decoder.
-      ctx.psmlOnly.push(`Field "${f.id}" berLength lowered to u1 placeholder`);
+      ctx.psdlOnly.push(`Field "${f.id}" berLength lowered to u1 placeholder`);
       entry.type = "u1";
       break;
     }
   }
   if (f.doc) entry.doc = f.doc;
-  // PSML 0.4 per-field byteOrder → Kaitai per-field `endian:`.
+  // PSDL 0.4 per-field byteOrder → Kaitai per-field `endian:`.
   if (f.byteOrder === "BE") entry.endian = "be";
   else if (f.byteOrder === "LE") entry.endian = "le";
   return entry;
 }
 
 /**
- * Translate a PSML Expr to a Kaitai `if:` clause string. Returns null when
+ * Translate a PSDL Expr to a Kaitai `if:` clause string. Returns null when
  * the expression contains a `peek` (Kaitai cannot model lookahead) so the
- * caller can fall back to a psml-only comment.
+ * caller can fall back to a psdl-only comment.
  */
 function exprToKaitaiIf(e: Expr): string | null {
   switch (e.kind) {

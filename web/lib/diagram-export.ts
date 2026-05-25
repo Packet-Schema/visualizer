@@ -21,7 +21,7 @@ import type {
   Packet,
   ResolvedLayout,
   SubCell,
-} from "./psml/renderer";
+} from "./psdl/renderer";
 
 export type DiagramExportTheme = {
   background: string;

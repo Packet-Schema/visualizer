@@ -14,8 +14,8 @@ import { fromAad } from "./aug-ascii";
 import { fromJson, toJson } from "./json";
 import { fromKsy, toKsy } from "./ksy";
 import { toAscii } from "./rfc-ascii";
-import type { PacketEnv, Packet as PsmlPacket } from "../psml/types";
-import { validatePsmlPacket } from "../psml/validate";
+import type { PacketEnv, Packet as PsdlPacket } from "../psdl/types";
+import { validatePsdlPacket } from "../psdl/validate";
 
 export type FormatKey =
   | "json"
@@ -26,7 +26,7 @@ export type FormatKey =
   | "png";
 
 export type ImportResult = {
-  packet: PsmlPacket;
+  packet: PsdlPacket;
   /** Controllers reconstructed from the source text, if any. */
   env?: PacketEnv;
   /** Non-fatal lossy notes. */
@@ -40,29 +40,29 @@ export type FormatAdapter = {
    *  does not use the text-rendering pipeline (e.g. diagram image export). */
   exportable?: boolean;
   /** Extension used by the download workflow. Includes any compound suffix
-   *  (e.g. `psml.json`) so the same string round-trips through `extToFormat`. */
+   *  (e.g. `psdl.json`) so the same string round-trips through `extToFormat`. */
   extension: string;
   /** MIME type for `Blob` downloads. */
   mime: string;
-  /** Parse text into a PSML packet. Absent → the format is export-only
+  /** Parse text into a PSDL packet. Absent → the format is export-only
    *  (the Import tab's selector hides it). */
   parse?: (text: string) => ImportResult;
-  /** Render a PSML packet to text. Absent → the format is import-only
+  /** Render a PSDL packet to text. Absent → the format is import-only
    *  (the Export tab's selector hides it). */
-  render?: (packet: PsmlPacket, env: PacketEnv) => string;
+  render?: (packet: PsdlPacket, env: PacketEnv) => string;
 };
 
 /**
- * Run the structural PSML validator on a parsed packet before handing it
+ * Run the structural PSDL validator on a parsed packet before handing it
  * downstream. Each adapter's underlying codec (fromJson / fromAad /
  * fromKsy) trusts the structural shape it returns, but the inputs that
  * reach `parse` are user files / drops / pastes that may be malformed;
- * letting them through to `psmlToRenderer` / `normalize` surfaces the
+ * letting them through to `psdlToRenderer` / `normalize` surfaces the
  * error several call sites away. Throwing here keeps the failure
  * adjacent to the user action that caused it.
  */
 function validated(result: ImportResult): ImportResult {
-  validatePsmlPacket(result.packet);
+  validatePsdlPacket(result.packet);
   return result;
 }
 
@@ -70,7 +70,7 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
   {
     id: "json",
     label: "JSON",
-    extension: "psml.json",
+    extension: "psdl.json",
     mime: "application/json",
     parse: (text) => {
       const { packet, env } = fromJson(text);
@@ -140,7 +140,7 @@ export const EXPORTABLE_FORMATS = FORMATS.filter(
 ).map((f) => f.id);
 
 // Precompute the (`.ext` → FormatKey) lookup once at module load — sorted by
-// extension length descending so compound suffixes like `.psml.json` match
+// extension length descending so compound suffixes like `.psdl.json` match
 // before the friendlier `.json` fallback below. The earlier in-function sort
 // allocated a fresh copy of `FORMATS` and re-sorted on every drop / file
 // selection; this list is FORMATS-stable so a single shared array is safe.
@@ -151,7 +151,7 @@ const EXT_LOOKUP: ReadonlyArray<readonly [string, FormatKey]> = [...FORMATS]
 /**
  * File extension → FormatKey for download/upload round-trip. Recognises both
  * the canonical extensions and a couple of friendly aliases ('.json' alone is
- * treated as PSML JSON because that's what users get when they export).
+ * treated as PSDL JSON because that's what users get when they export).
  */
 export function extToFormat(filename: string): FormatKey | null {
   if (typeof filename !== "string") return null;

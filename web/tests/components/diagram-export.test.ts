@@ -10,7 +10,7 @@ import {
   readDiagramThemeFromDocument,
   svgToPngBlob,
 } from "../../lib/diagram-export";
-import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
+import type { Packet, ResolvedLayout } from "../../lib/psdl/renderer";
 
 const packet: Packet = {
   name: "Demo & Packet",

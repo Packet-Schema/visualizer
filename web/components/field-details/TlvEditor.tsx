@@ -8,14 +8,14 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { tlvRecordBits, tlvTotalBits } from "@/lib/psml/renderer-helpers";
+import { tlvRecordBits, tlvTotalBits } from "@/lib/psdl/renderer-helpers";
 import { useListItemKeys } from "@/lib/use-list-item-keys";
 import type {
   ControllerState,
   Field,
   TlvCatalogEntry,
   TlvInstance,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 
 type Props = {
   field: Field;

@@ -4,7 +4,7 @@ import {
   isShareQueryLengthValid,
   parseShareParams,
 } from "@/lib/share-url";
-import { PRESETS } from "@/lib/psml/presets";
+import { PRESETS } from "@/lib/psdl/presets";
 
 describe("OG API integration - share URL utilities", () => {
   it("generates valid share query from URL params", () => {

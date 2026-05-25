@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-4 UPDATE Message (simple)
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). The 19-byte BGP Common Header (Marker + Length + Type) precedes every BGP message; the UPDATE-specific fields follow.
+description: BGP-4 UPDATE message (RFC 4271 §4.3) — simple 版。19-byte BGP Common Header (§4.1) と UPDATE 固有の 4 つの可変長領域 (Withdrawn Routes Length / Withdrawn Routes / Total Path Attribute Length / Path Attributes / NLRI) の枠だけを示し、 Path Attributes と NLRI は opaque bytes として表現する。 Path Attribute の TLV (Attribute Flags 1 B + Type Code 1 B + Length 1/2 B + Value) と、 Withdrawn Routes / NLRI の `<Length, Prefix>` エンコーディングの詳細は各 field の doc で説明。 フル仕様 (Path Attribute TLV を展開し、 NLRI prefix を 1 件ずつパースする版) は別 preset 化を想定。
+body:
+  - kind: group
+    id: bgpCommonHeader
+    name: BGP Common Header
+    children:
+      - id: bgpMarker
+        name: Marker
+        type: { kind: bits, n: 128 }
+        category: identifier
+        doc: 16 octets. Historically carried an authentication value; in BGP-4 it is retained only for backward compatibility and MUST be set to all ones (0xFFFF…FFFF) on transmission. Receivers use it to resynchronise after a malformed message — a 16-byte all-ones run is the unambiguous marker for the next message boundary in the TCP byte stream. [RFC 4271 §4.1]
+      - id: bgpLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: Total length of the BGP message in octets, including this 19-byte Common Header. MUST be at least 19 and no greater than 4096. Lets the receiver locate the start of the next message in the TCP stream. [RFC 4271 §4.1]
+      - id: bgpType
+        name: Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: BGP message type. 1 = OPEN, 2 = UPDATE (this preset), 3 = NOTIFICATION, 4 = KEEPALIVE. 5 = ROUTE-REFRESH was added later by RFC 2918. [RFC 4271 §4.1]
+  - id: bgpWithdrawnRoutesLength
+    name: Withdrawn Routes Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length in octets of the following Withdrawn Routes field. A value of 0 means no routes are being withdrawn from service in this UPDATE (and the Withdrawn Routes field itself is absent). [RFC 4271 §4.3]
+  - id: bgpWithdrawnRoutes
+    name: Withdrawn Routes
+    type: { kind: bytes, n: { kind: ref, field: bgpWithdrawnRoutesLength } }
+    category: variable
+    doc: Opaque bytes. Encodes a list of `<Length, Prefix>` 2-tuples — Length is a 1-octet field giving the prefix length in bits (0..32 for IPv4), Prefix is the most-significant Length bits of the IP address padded with trailing zero bits to the next octet boundary. A Length of 0 matches all addresses (i.e. the default route). 詳細な prefix 展開は別 preset 化を想定。 [RFC 4271 §4.3]
+  - id: bgpTotalPathAttributeLength
+    name: Total Path Attribute Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length in octets of the following Path Attributes field. A value of 0 means no Path Attributes are present — and per §4.3, if Total Path Attribute Length is 0 then NLRI MUST also be empty (the UPDATE only withdraws routes). [RFC 4271 §4.3]
+  - id: bgpPathAttributes
+    name: Path Attributes
+    type: { kind: bytes, n: { kind: ref, field: bgpTotalPathAttributeLength } }
+    category: variable
+    doc: Opaque bytes. Concatenation of Path Attribute TLVs, each `<Attribute Flags (1 B) + Attribute Type Code (1 B) + Attribute Length (1 or 2 B, controlled by the Extended Length bit in Flags) + Attribute Value>`. Flags bits (MSB-first) are Optional / Transitive / Partial / Extended-Length, followed by 4 reserved bits. Well-known mandatory attribute codes include 1 = ORIGIN, 2 = AS_PATH, 3 = NEXT_HOP; optional non-transitive includes 4 = MED; optional transitive includes 7 = AGGREGATOR, 8 = COMMUNITIES, 14 = MP_REACH_NLRI, 15 = MP_UNREACH_NLRI (RFC 4760). フル仕様 (TLV を 1 件ずつ展開した版) は別 preset 化を想定。 [RFC 4271 §4.3 / §5]
+  - id: bgpNlri
+    name: Network Layer Reachability Information
+    type: { kind: bytes, n: { kind: ref, field: bgpNlriBytes } }
+    category: variable
+    doc: Opaque bytes. List of `<Length, Prefix>` 2-tuples announcing routes that share the Path Attributes above — same encoding as Withdrawn Routes. The NLRI field has no explicit length; its size is `Length - 23 - Total Path Attribute Length - Withdrawn Routes Length` (i.e. it runs to the end of the message). For multiprotocol BGP (RFC 4760) the IPv4-unicast NLRI here is empty and reachability is carried inside the MP_REACH_NLRI / MP_UNREACH_NLRI path attributes instead. 詳細な prefix 展開は別 preset 化を想定。 [RFC 4271 §4.3]

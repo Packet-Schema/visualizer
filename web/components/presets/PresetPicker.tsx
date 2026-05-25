@@ -1,7 +1,7 @@
-import { PRESETS } from "@/lib/psml/presets";
+import { PRESETS } from "@/lib/psdl/presets";
 import { PRESET_GROUPS } from "@/lib/constants";
-import type { PacketRegistry } from "@/lib/psml/renderer";
-import type { PsmlPacket } from "@/lib/psml/types";
+import type { PacketRegistry } from "@/lib/psdl/renderer";
+import type { PsdlPacket } from "@/lib/psdl/types";
 
 type Props = {
   value: string;
@@ -9,7 +9,7 @@ type Props = {
   /** Runtime registry of imported packets, keyed e.g. as "imported:<name>". */
   imported?: PacketRegistry;
   /** User-saved presets from localStorage; keyed e.g. as "custom:<name>". */
-  customPresets?: Record<string, PsmlPacket>;
+  customPresets?: Record<string, PsdlPacket>;
   /** Bulk-export all custom presets to a single JSON file. */
   onExportCustomPresets?: () => void;
   /** Bulk-import custom presets from a JSON file. */

@@ -1,4 +1,4 @@
-import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Cell, Packet, ResolvedLayout } from "@/lib/psdl/renderer";
 import { fieldFill, rowsFor, textForCell } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 

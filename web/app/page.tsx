@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import SiteHeader from "@/components/app-shell/SiteHeader";
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
-import { PRESETS } from "@/lib/psml/presets";
-import { initialState } from "@/lib/psml/renderer-helpers";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { PRESETS } from "@/lib/psdl/presets";
+import { initialState } from "@/lib/psdl/renderer-helpers";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
   parseShareParams,
   buildShareQueryFromParams,
   isShareQueryLengthValid,
 } from "@/lib/share-url";
-import type { ControllerState } from "@/lib/psml/renderer";
+import type { ControllerState } from "@/lib/psdl/renderer";
 import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
 
 type Props = {
@@ -40,7 +40,7 @@ export async function generateMetadata({
     await getRequestOrigin(),
   ).toString();
 
-  const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psml";
+  const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psdl";
   const packet = hasExplicitParams
     ? parsed.kind === "preset"
       ? (PRESETS[parsed.presetKey] ?? PRESETS[DEFAULT_PACKET_KEY])
@@ -99,7 +99,7 @@ function mergeInitialControllers(
 ): ControllerState {
   const packet = PRESETS[packetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
   return {
-    ...initialState(psmlToRenderer(packet)),
+    ...initialState(psdlToRenderer(packet)),
     ...(controllers ?? {}),
   };
 }

@@ -1,4 +1,4 @@
-// PSML Kaitai Struct (.ksy) bridge tests — file-fixture round-trip plus
+// PSDL Kaitai Struct (.ksy) bridge tests — file-fixture round-trip plus
 // targeted tests for every type-mapping branch in the importer (u1..u8,
 // s1..s8, b1..bN, str/strz, contents, switch-on, repeat expr/until/eos,
 // if, enums, doc/doc-ref, nested types, instances, float fallback, error
@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { parse as yamlParse } from "yaml";
 
 import { fromKsy, toKsy } from "../../lib/formats/ksy";
-import { initialEnv, normalize } from "../../lib/psml/normalize";
+import { initialEnv, normalize } from "../../lib/psdl/normalize";
 
 const here = path.resolve(__dirname, "../..");
 const KSY_DIR = path.join(here, "data", "ksy-examples");
@@ -1103,7 +1103,7 @@ describe("toKsy — exporter", () => {
         },
       ],
     });
-    expect(yaml).toMatch(/# psml-only:.*Switch "by"/);
+    expect(yaml).toMatch(/# psdl-only:.*Switch "by"/);
   });
 
   it("switch with no cases is silently skipped", () => {
@@ -1123,7 +1123,7 @@ describe("toKsy — exporter", () => {
     expect(obj.seq).toEqual([]);
   });
 
-  it("category, constraints, and enum hints surface as psml-only comments", () => {
+  it("category, constraints, and enum hints surface as psdl-only comments", () => {
     const yaml = toKsy({
       name: "T",
       rowBits: 32,
@@ -1147,9 +1147,9 @@ describe("toKsy — exporter", () => {
         },
       ],
     });
-    expect(yaml).toMatch(/# psml-only:.*category "addressing" dropped/);
-    expect(yaml).toMatch(/# psml-only:.*PSML constraint/);
-    expect(yaml).toMatch(/# psml-only:.*enum variants/);
+    expect(yaml).toMatch(/# psdl-only:.*category "addressing" dropped/);
+    expect(yaml).toMatch(/# psdl-only:.*PSDL constraint/);
+    expect(yaml).toMatch(/# psdl-only:.*enum variants/);
   });
 
   it("bytes with literal size emits `size: N`", () => {
@@ -1274,8 +1274,8 @@ describe("toKsy — exporter", () => {
   });
 });
 
-describe("toKsy — PSML 0.3 Encrypted container", () => {
-  it("emits a 1-byte placeholder entry with a psml-only header note", () => {
+describe("toKsy — PSDL 0.3 Encrypted container", () => {
+  it("emits a 1-byte placeholder entry with a psdl-only header note", () => {
     const yaml = toKsy({
       name: "QuicShort",
       rowBits: 32,
@@ -1294,7 +1294,7 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
         },
       ],
     });
-    expect(yaml).toMatch(/# psml-only: encrypted block "payload"/);
+    expect(yaml).toMatch(/# psdl-only: encrypted block "payload"/);
     expect(yaml).toMatch(/TLS 1\.3 handshake keys/);
     const obj = yamlParse(yaml);
     // One placeholder entry, NOT the two plaintext fields. Size 1
@@ -1413,8 +1413,8 @@ describe("toKsy — PSML 0.3 Encrypted container", () => {
   });
 });
 
-describe("toKsy — PSML 0.3 Varint type", () => {
-  it("emits a u1 placeholder with a psml-only header note carrying the encoding", () => {
+describe("toKsy — PSDL 0.3 Varint type", () => {
+  it("emits a u1 placeholder with a psdl-only header note carrying the encoding", () => {
     for (const encoding of ["quic", "protobuf", "cbor"] as const) {
       const yaml = toKsy({
         name: "V",
@@ -1425,7 +1425,7 @@ describe("toKsy — PSML 0.3 Varint type", () => {
       });
       expect(yaml).toMatch(
         new RegExp(
-          `# psml-only:.*varint \\(${encoding}\\) lowered to u1 placeholder`,
+          `# psdl-only:.*varint \\(${encoding}\\) lowered to u1 placeholder`,
         ),
       );
       const obj = yamlParse(yaml);
@@ -1435,9 +1435,9 @@ describe("toKsy — PSML 0.3 Varint type", () => {
   });
 });
 
-// PSML 0.4 — exporter behaviour for the four new primitives. Asserts the
-// canonical psml-only comments and the `if:`/`endian:` projections.
-describe("toKsy — PSML 0.4 primitives", () => {
+// PSDL 0.4 — exporter behaviour for the four new primitives. Asserts the
+// canonical psdl-only comments and the `if:`/`endian:` projections.
+describe("toKsy — PSDL 0.4 primitives", () => {
   it("Optional with a simple ref predicate emits `if: <ref>`", () => {
     const out = toKsy({
       name: "OptSimple",
@@ -1452,10 +1452,10 @@ describe("toKsy — PSML 0.4 primitives", () => {
       ],
     });
     expect(out).toMatch(/if:\s*present/);
-    expect(out).not.toMatch(/# psml-only:.*optional/);
+    expect(out).not.toMatch(/# psdl-only:.*optional/);
   });
 
-  it("Optional with a peek-based predicate falls back to psml-only comment", () => {
+  it("Optional with a peek-based predicate falls back to psdl-only comment", () => {
     const out = toKsy({
       name: "OptPeek",
       rowBits: 8,
@@ -1468,20 +1468,20 @@ describe("toKsy — PSML 0.4 primitives", () => {
         },
       ],
     });
-    expect(out).toMatch(/# psml-only: optional/);
+    expect(out).toMatch(/# psdl-only: optional/);
   });
 
-  it("berLength Type emits u1 placeholder + psml-only comment", () => {
+  it("berLength Type emits u1 placeholder + psdl-only comment", () => {
     const out = toKsy({
       name: "Ber",
       rowBits: 8,
       body: [{ id: "len", name: "Length", type: { kind: "berLength" } }],
     });
-    expect(out).toMatch(/# psml-only: .*berLength/);
+    expect(out).toMatch(/# psdl-only: .*berLength/);
     expect(out).toMatch(/type:\s*u1/);
   });
 
-  it("peek-on Switch surfaces a psml-only comment", () => {
+  it("peek-on Switch surfaces a psdl-only comment", () => {
     const out = toKsy({
       name: "Pk",
       rowBits: 16,
@@ -1499,7 +1499,7 @@ describe("toKsy — PSML 0.4 primitives", () => {
         },
       ],
     });
-    expect(out).toMatch(/# psml-only: .*peek\(bits=16\)/);
+    expect(out).toMatch(/# psdl-only: .*peek\(bits=16\)/);
   });
 
   it("per-field byteOrder projects to per-field endian", () => {
@@ -1526,7 +1526,7 @@ describe("toKsy — PSML 0.4 primitives", () => {
   });
 });
 
-// Exercise every branch of the PSML 0.4 Optional `if:` lowering so the
+// Exercise every branch of the PSDL 0.4 Optional `if:` lowering so the
 // exprToKaitaiIf walker stays at 100% line coverage.
 describe("toKsy — Optional predicate translation branches", () => {
   it("literal predicate becomes its numeric form", () => {
@@ -1587,7 +1587,7 @@ describe("toKsy — Optional predicate translation branches", () => {
     expect(out).toMatch(/if:/);
   });
 
-  it("op predicate with inner peek falls back to psml-only", () => {
+  it("op predicate with inner peek falls back to psdl-only", () => {
     const out = toKsy({
       name: "OptOpPeek",
       rowBits: 8,
@@ -1604,10 +1604,10 @@ describe("toKsy — Optional predicate translation branches", () => {
         },
       ],
     });
-    expect(out).toMatch(/# psml-only: optional/);
+    expect(out).toMatch(/# psdl-only: optional/);
   });
 
-  it("cond predicate with inner peek falls back to psml-only", () => {
+  it("cond predicate with inner peek falls back to psdl-only", () => {
     const out = toKsy({
       name: "OptCondPeek",
       rowBits: 8,
@@ -1624,12 +1624,12 @@ describe("toKsy — Optional predicate translation branches", () => {
         },
       ],
     });
-    expect(out).toMatch(/# psml-only: optional/);
+    expect(out).toMatch(/# psdl-only: optional/);
   });
 });
 
 describe("toKsy — peek expression with explicit offset stringifies fully", () => {
-  it("renders `peek(bits, offset)` in the psml-only fallback message", () => {
+  it("renders `peek(bits, offset)` in the psdl-only fallback message", () => {
     const out = toKsy({
       name: "OptPeekOff",
       rowBits: 8,

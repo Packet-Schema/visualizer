@@ -1,11 +1,11 @@
-// PSML 0.2 — renderer tokens.
+// PSDL 0.2 — renderer tokens.
 //
-// PSML carries semantic intent only (`category`); the renderer decides how
+// PSDL carries semantic intent only (`category`); the renderer decides how
 // to paint each category. This module owns that mapping plus the legacy
-// `ColorToken` palette the v1 → PSML migrator preserves so older imports
+// `ColorToken` palette the v1 → PSDL migrator preserves so older imports
 // still hit a familiar swatch when no category is set.
 
-import type { CategoryToken } from "./psml/renderer";
+import type { CategoryToken } from "./psdl/renderer";
 
 /** Palette token kept around for legacy v1 imports without a category. */
 export type ColorToken =

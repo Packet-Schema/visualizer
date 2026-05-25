@@ -38,8 +38,8 @@ jobs:
 
       - run: npm ci
 
-      # build-presets.ts は data/presets/*.psml.yaml を 1 件ずつ Ajv で検証し、
+      # build-presets.ts は data/presets/*.psdl.yaml を 1 件ずつ Ajv で検証し、
       # 失敗ファイル名と instancePath を stderr に出します。GitHub Actions の
       # UI からどの YAML のどこが schema 違反かが直接読めます。
-      - name: Validate PSML presets
+      - name: Validate PSDL presets
         run: npx tsx scripts/build-presets.ts

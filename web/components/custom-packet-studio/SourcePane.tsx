@@ -3,16 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import SourceCodeMirror from "@/components/source-editor/SourceCodeMirror";
-import type { EditAction } from "@/lib/psml/edit-reducer";
+import type { EditAction } from "@/lib/psdl/edit-reducer";
 import {
   decodeSource,
   encodeSource,
   SourceParseError,
-} from "@/lib/psml/source-format";
-import type { PsmlPacket } from "@/lib/psml/types";
+} from "@/lib/psdl/source-format";
+import type { PsdlPacket } from "@/lib/psdl/types";
 
 type Props = {
-  packet: PsmlPacket;
+  packet: PsdlPacket;
   dispatch: (a: EditAction) => void;
   /**
    * 未反映の編集 (debounce 前の text / parse エラー中) があるかを親に伝える。
@@ -27,8 +27,8 @@ type ParseError = { message: string; line: number | null };
 const DEBOUNCE_MS = 200;
 
 /**
- * Custom Packet Studio の "source" ビュー — PSML を YAML で直編集する
- * 単純な textarea。 issue #87 の「Markdown エディタみたいに PSML を書ける」
+ * Custom Packet Studio の "source" ビュー — PSDL を YAML で直編集する
+ * 単純な textarea。 issue #87 の「Markdown エディタみたいに PSDL を書ける」
  * 動線を「上部の diagram を live preview として共有」 の形で実装する。
  *
  * 注意点
@@ -38,7 +38,7 @@ const DEBOUNCE_MS = 200;
  *   ここで mini preview を出すと「同じ diagram が 2 個並ぶ」 視覚的混乱が
  *   起きる。 ユーザーは textarea を見ながら同時に上の diagram を見れば
  *   十分。
- * - **format は YAML 一択**。 PSML preset と同じ書き味で書ける YAML を
+ * - **format は YAML 一択**。 PSDL preset と同じ書き味で書ける YAML を
  *   canonical な authoring 形式にする。 wire JSON は import/export drawer
  *   経由で扱うので、 ここでは混入させない。
  * - studio reducer 経由で `replace-packet` を dispatch する。 dirty=true
@@ -129,10 +129,10 @@ export default function SourcePane({ packet, dispatch, onDirtyChange }: Props) {
   const canDiscard = dirty || parseError !== null;
 
   return (
-    <section aria-label="PSML source editor" className="flex flex-col gap-2">
+    <section aria-label="PSDL source editor" className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-fg-muted uppercase tracking-wider font-bold">
-          PSML source (YAML)
+          PSDL source (YAML)
         </span>
         <button
           type="button"
@@ -152,8 +152,8 @@ export default function SourcePane({ packet, dispatch, onDirtyChange }: Props) {
       </div>
       <div className="min-h-[360px]">
         <SourceCodeMirror
-          id="psml-source-pane"
-          ariaLabel="PSML YAML source"
+          id="psdl-source-pane"
+          ariaLabel="PSDL YAML source"
           value={text}
           onChange={handleTextChange}
         />

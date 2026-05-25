@@ -12,8 +12,8 @@ vi.mock("@/lib/diagram-export", async () => {
     ...actual,
     buildDiagramSvg: vi.fn(
       (
-        _packet: import("@/lib/psml/renderer").Packet,
-        _layout: import("@/lib/psml/renderer").ResolvedLayout,
+        _packet: import("@/lib/psdl/renderer").Packet,
+        _layout: import("@/lib/psdl/renderer").ResolvedLayout,
         options?: { theme?: { background: string } },
       ) => `<svg data-bg="${options?.theme?.background ?? "none"}"></svg>`,
     ),
