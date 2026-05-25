@@ -45,13 +45,8 @@ export default function HybridDiagram({
   onFieldHover,
 }: Props) {
   const rowBits = packet.rowBits;
-<<<<<<< HEAD
   const rows = rowsFor(layout);
   const rowsTotal = rows.length;
-=======
-  const rowsTotal = layout.cells.length
-    ? Math.max(...layout.cells.map((c) => c.row)) + 1
-    : 0;
 
   // Override-capable field ids, sourced from the renderer mirror (`packet`).
   // Layout cells carry a synthetic `field` built from NormalizedField, which
@@ -105,11 +100,6 @@ export default function HybridDiagram({
     }
     return s;
   }, [packet]);
-
-  // Group cells by row for clean grid wrapping.
-  const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
-  for (const cell of layout.cells) rows[cell.row].push(cell);
->>>>>>> origin/main
 
   const rowStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${rowBits}, minmax(0, 1fr))`,
