@@ -233,8 +233,8 @@ export function StaticDiagram({
                         style={{
                           position: "relative",
                           zIndex: 1,
-                          display: "grid",
-                          gridTemplateColumns: `repeat(${span}, minmax(0, 1fr))`,
+                          display: "flex",
+                          flexWrap: "nowrap",
                           gap: LAYOUT.cellGap,
                           width: "100%",
                           marginTop: "auto",
@@ -251,8 +251,8 @@ export function StaticDiagram({
                             <div
                               key={`sub-${sub.id}`}
                               style={{
-                                gridColumn: `${sub.startBit - cell.startBit + 1} / span ${subSpan}`,
-                                display: "inline-flex",
+                                flex: subSpan,
+                                display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 minHeight: LAYOUT.subfieldHeight,
