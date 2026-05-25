@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { PRESETS } from "@/lib/psml/presets";
 import { LIGHT_DIAGRAM_THEME } from "@/lib/theme";
+import { createExportTheme } from "@/lib/colors";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
@@ -37,7 +38,7 @@ const OG_HEADERS = {
   "x-robots-tag": "noindex",
 } as const;
 
-const OG_THEME = LIGHT_DIAGRAM_THEME;
+const OG_THEME = createExportTheme(LIGHT_DIAGRAM_THEME);
 
 const createOGImageResponseOptions = () => ({
   width: OG_WIDTH,

@@ -9,6 +9,11 @@
  * - Diagram theme definitions (light and dark)
  */
 
+import { createExportTheme, type DiagramTheme } from "./colors";
+
+// Re-export DiagramTheme for convenience (single import point for theme types)
+export type { DiagramTheme };
+
 /**
  * Motion and easing constants used throughout the app.
  */
@@ -123,26 +128,6 @@ export type UITheme = {
   legendDimChroma: number;
   markerAccent: string;
   markerAccentSoft: string;
-};
-
-/**
- * Diagram-specific colors: used when exporting SVG/PNG or rendering the static diagram.
- */
-export type DiagramTheme = {
-  background: string;
-  rowEven: string;
-  rowOdd: string;
-  rulerTick: string;
-  rulerLabel: string;
-  accent: string;
-  fieldStroke: string;
-  fieldLabel: string;
-  fieldSublabel: string;
-  fieldContinuation: string;
-  fieldFillOpacity: number;
-  rulerMinorOpacity: number;
-  subfieldBackgroundOpacity: number;
-  fieldPalette: Record<string, string>;
 };
 
 /**
@@ -268,3 +253,4 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
     slate: "oklch(78% 0.02 270)",
   },
 };
+
