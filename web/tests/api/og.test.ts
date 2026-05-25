@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { NextRequest } from "next/server";
 import { GET } from "../../app/api/og/route";
 
 describe("OG API endpoint", () => {
   async function testOGImageGeneration(url: string) {
-    const request = new Request(`http://localhost${url}`);
+    const request = new NextRequest(`http://localhost${url}`);
     const response = await GET(request);
 
     // Must return 200 (not 500 from Satori errors)
@@ -34,7 +35,7 @@ describe("OG API endpoint", () => {
   });
 
   it("should have correct cache control headers", async () => {
-    const request = new Request("http://localhost/api/og");
+    const request = new NextRequest("http://localhost/api/og");
     const response = await GET(request);
 
     expect(response.headers.get("cache-control")).toBe(
@@ -51,7 +52,7 @@ describe("OG API endpoint", () => {
     const oversizedParams = new URLSearchParams({
       packet: "A".repeat(10000), // Oversized PSML
     });
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost/api/og?${oversizedParams.toString()}`,
     );
     const response = await GET(request);
@@ -65,7 +66,7 @@ describe("OG API endpoint", () => {
     const invalidParams = new URLSearchParams({
       preset: "nonexistent",
     });
-    const request = new Request(
+    const request = new NextRequest(
       `http://localhost/api/og?${invalidParams.toString()}`,
     );
     const response = await GET(request);

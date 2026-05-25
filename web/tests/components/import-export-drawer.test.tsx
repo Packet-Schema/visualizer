@@ -8,8 +8,11 @@ vi.mock("@/lib/diagram-satori", async () => {
   return {
     renderToSvgString: vi.fn(async (element: React.ReactElement) => {
       // Extract theme from the component's props to maintain test compatibility
-      const theme = (element?.props as Record<string, unknown>)?.theme;
-      const background = theme?.background ?? "none";
+      const theme = (element?.props as Record<string, unknown>)?.theme as
+        | Record<string, unknown>
+        | undefined;
+      const background =
+        (theme as Record<string, string> | undefined)?.background ?? "none";
       return `<svg data-bg="${background}"></svg>`;
     }),
   };

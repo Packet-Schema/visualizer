@@ -29,11 +29,8 @@ describe("Color conversion for Satori compatibility", () => {
     it("should convert fieldPalette colors to hex", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
-      Object.entries(exported.fieldPalette).forEach(([color, value]) => {
-        expect(value).toMatch(
-          /^#[0-9A-F]{6}$/,
-          `palette color ${color} should be hex format`,
-        );
+      Object.entries(exported.fieldPalette).forEach(([, value]) => {
+        expect(value).toMatch(/^#[0-9A-F]{6}$/);
       });
     });
 
@@ -81,16 +78,13 @@ describe("Color conversion for Satori compatibility", () => {
 
       const hexRegex = /^#[0-9A-F]{6}$/;
 
-      const testHex = (color: string, colorName: string) => {
-        expect(color).toMatch(
-          hexRegex,
-          `${colorName} should be valid hex format`,
-        );
+      const testHex = (color: string) => {
+        expect(color).toMatch(hexRegex);
       };
 
-      testHex(exported.background, "background");
-      testHex(exported.accent, "accent");
-      testHex(exported.fieldLabel, "fieldLabel");
+      testHex(exported.background);
+      testHex(exported.accent);
+      testHex(exported.fieldLabel);
     });
   });
 });
