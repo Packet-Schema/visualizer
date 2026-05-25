@@ -14,6 +14,12 @@ import type { PsmlPacket } from "@/lib/psml/types";
 type Props = {
   packet: PsmlPacket;
   dispatch: (a: EditAction) => void;
+  /**
+   * 未反映の編集 (debounce 前の text / parse エラー中) があるかを親に伝える。
+   * Discard 確認が studio reducer の history.length だけだと、 source ビュー
+   * の入力中テキストが無警告で破棄される (Codex P2) のを防ぐためのフック。
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type ParseError = { message: string; line: number | null };
@@ -43,7 +49,7 @@ const DEBOUNCE_MS = 200;
  * ----
  * - mount 時に textarea へ自動 focus、 すぐ書き始められる状態にする。
  */
-export default function SourcePane({ packet, dispatch }: Props) {
+export default function SourcePane({ packet, dispatch, onDirtyChange }: Props) {
   const upstreamText = encodeSource(packet);
   const [text, setText] = useState<string>(upstreamText);
   const [dirty, setDirty] = useState(false);
@@ -55,6 +61,21 @@ export default function SourcePane({ packet, dispatch }: Props) {
   useEffect(() => {
     dispatchRef.current = dispatch;
   }, [dispatch]);
+
+  // 未反映編集の有無を親へ通知。 dirty (debounce 待ち) か parseError (反映
+  // できない状態) のどちらかがあれば「捨てると失われる編集がある」。
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  useEffect(() => {
+    onDirtyChangeRef.current = onDirtyChange;
+  }, [onDirtyChange]);
+  const hasPending = dirty || parseError !== null;
+  useEffect(() => {
+    onDirtyChangeRef.current?.(hasPending);
+  }, [hasPending]);
+  // unmount (form 切替 / editMode OFF) で pending フラグを必ず下ろす。
+  useEffect(() => {
+    return () => onDirtyChangeRef.current?.(false);
+  }, []);
 
   // upstream (= reducer 側の packet) が変わった時、 こちらが dirty で
   // なければ textarea を同期する。 dirty 中の上書きは編集中の text を

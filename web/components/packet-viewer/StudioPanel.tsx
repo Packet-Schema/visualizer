@@ -21,6 +21,8 @@ type Props = {
   onViewChange: (next: StudioView) => void;
   onSaveAs: () => void;
   onDiscard: () => void;
+  /** source ビューの未反映編集 (debounce 前 / parse エラー) を親へ伝える。 */
+  onSourceDirtyChange?: (dirty: boolean) => void;
 };
 
 export default function StudioPanel({
@@ -30,6 +32,7 @@ export default function StudioPanel({
   onViewChange,
   onSaveAs,
   onDiscard,
+  onSourceDirtyChange,
 }: Props) {
   return (
     <section
@@ -93,7 +96,11 @@ export default function StudioPanel({
         </>
       ) : (
         <div className="mt-3">
-          <SourcePane packet={state.packet} dispatch={dispatch} />
+          <SourcePane
+            packet={state.packet}
+            dispatch={dispatch}
+            onDirtyChange={onSourceDirtyChange}
+          />
         </div>
       )}
     </section>

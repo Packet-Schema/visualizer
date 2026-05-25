@@ -290,4 +290,85 @@ describe("SourcePane", () => {
     });
     container.remove();
   });
+
+  it("reports pending edits via onDirtyChange (Codex P2: discard confirm)", async () => {
+    const dispatch = vi.fn();
+    const dirtyCalls: boolean[] = [];
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SourcePane
+          packet={sample}
+          dispatch={dispatch}
+          onDirtyChange={(d) => dirtyCalls.push(d)}
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // 初期は pending なし
+    expect(dirtyCalls.at(-1)).toBe(false);
+
+    const textarea =
+      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+    // 編集すると即 pending=true (debounce 前なので history には乗らない)
+    await act(async () => {
+      nativeSetTextareaValue(
+        textarea,
+        'name: "Edited"\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n',
+      );
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(dirtyCalls.at(-1)).toBe(true);
+
+    // debounce 後 dispatch されて dirty=false に戻る → pending=false
+    await settleDebounce();
+    expect(dirtyCalls.at(-1)).toBe(false);
+
+    // unmount でも false に落ちる
+    await act(async () => {
+      root?.unmount();
+    });
+    expect(dirtyCalls.at(-1)).toBe(false);
+    container.remove();
+  });
+
+  it("keeps pending=true while a parse error blocks dispatch", async () => {
+    const dispatch = vi.fn();
+    const dirtyCalls: boolean[] = [];
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <SourcePane
+          packet={sample}
+          dispatch={dispatch}
+          onDirtyChange={(d) => dirtyCalls.push(d)}
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const textarea =
+      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+    await act(async () => {
+      nativeSetTextareaValue(textarea, "{ broken yaml ]]");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settleDebounce();
+    // parse エラー中は dispatch されず、 pending は true のまま
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(dirtyCalls.at(-1)).toBe(true);
+    await act(async () => {
+      root?.unmount();
+    });
+    container.remove();
+  });
 });

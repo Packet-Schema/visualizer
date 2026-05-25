@@ -206,6 +206,10 @@ function collectPsmlRefs(packet: PsmlPacket): Set<string> {
 
 export default function PacketViewer() {
   const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
+  // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
+  // エラー中のテキストは studio reducer の history に乗らないので、 Discard
+  // 確認をこのフラグでも引っ掛ける (Codex P2)。
+  const [sourceDirty, setSourceDirty] = useState(false);
   // Imported packets are kept in the renderer shape so the editors can mutate
   // their TLV/Chain/subfield state directly. Built-in presets live in PSML
   // and are lowered to the renderer shape on demand.
@@ -604,16 +608,19 @@ export default function PacketViewer() {
 
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
-    // Confirm before nuking history if the user has actually done any
-    // schema editing (history-driven). Diagram-driven edits don't enter
-    // the reducer's history, so we use the history-length signal to
-    // skip the dialog when there's nothing in the schema to lose —
-    // matching the symmetric `handleDeleteCustomPreset` confirm pattern
-    // (sub-agent Round 9 HIGH).
+    // Confirm before nuking edits if the user has actually changed anything.
+    // 2 つの signal を OR で見る:
+    //  - studioState.history.length: form 編集 (history-driven)。 diagram-
+    //    driven edits は history に乗らないので、 schema を触っていなければ
+    //    confirm をスキップする (sub-agent Round 9 HIGH)。
+    //  - sourceDirty: source ビューの未反映テキスト (debounce 前 / parse
+    //    エラー中)。 history に乗らないので、 これも見ないと入力中の内容を
+    //    無警告で失う (Codex P2)。
+    const hasUnsavedEdits = studioState.history.length > 0 || sourceDirty;
     if (
-      studioState.history.length > 0 &&
+      hasUnsavedEdits &&
       typeof window !== "undefined" &&
-      !window.confirm("Discard all unsaved schema edits?")
+      !window.confirm("Discard all unsaved edits?")
     ) {
       return;
     }
@@ -642,7 +649,12 @@ export default function PacketViewer() {
         grid?.focus();
       });
     }
-  }, [activePsmlPacket, replaceActivePacket, studioState.history.length]);
+  }, [
+    activePsmlPacket,
+    replaceActivePacket,
+    studioState.history.length,
+    sourceDirty,
+  ]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.
@@ -1136,6 +1148,7 @@ export default function PacketViewer() {
             }
             onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
+            onSourceDirtyChange={setSourceDirty}
           />
         ) : null}
 
