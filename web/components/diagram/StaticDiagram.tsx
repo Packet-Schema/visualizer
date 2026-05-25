@@ -257,7 +257,7 @@ export function StaticDiagram({
                                 justifyContent: "center",
                                 minHeight: LAYOUT.subfieldHeight,
                                 minWidth: 0,
-                                background: "rgba(255, 255, 255, 0.1)",
+                                background: "rgba(200, 220, 255, 0.25)",
                                 border: `1px solid ${stroke}`,
                                 borderRadius: LAYOUT.subfieldBorderRadius,
                                 fontSize: Math.round(
