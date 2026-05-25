@@ -1,6 +1,8 @@
 // OKLch to sRGB conversion (CSS Color Module Level 4)
 function oklchToRgb(oklch: string): string {
-  const match = oklch.match(/oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)/);
+  const match = oklch.match(
+    /oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*[\d.]+)?\)/,
+  );
   if (!match) return oklch;
 
   const L = parseFloat(match[1]) / 100;
@@ -29,7 +31,8 @@ function oklchToRgb(oklch: string): string {
   const G = clamp(toLinear(g));
   const B = clamp(toLinear(b_));
 
-  return `rgb(${R}, ${G}, ${B})`;
+  const toHex = (v: number) => v.toString(16).padStart(2, "0").toUpperCase();
+  return `#${toHex(R)}${toHex(G)}${toHex(B)}`;
 }
 
 export type DiagramTheme = {

@@ -4,35 +4,35 @@ import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "../../lib/theme";
 
 describe("Color conversion for Satori compatibility", () => {
   describe("createExportTheme", () => {
-    it("should convert LIGHT_DIAGRAM_THEME to RGB format", () => {
+    it("should convert LIGHT_DIAGRAM_THEME to hex format", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
-      expect(exported.background).toMatch(/^rgb\(/);
-      expect(exported.rowEven).toMatch(/^rgb\(/);
-      expect(exported.rowOdd).toMatch(/^rgb\(/);
-      expect(exported.rulerTick).toMatch(/^rgb\(/);
-      expect(exported.rulerLabel).toMatch(/^rgb\(/);
-      expect(exported.accent).toMatch(/^rgb\(/);
-      expect(exported.fieldStroke).toMatch(/^rgb\(/);
-      expect(exported.fieldLabel).toMatch(/^rgb\(/);
-      expect(exported.fieldSublabel).toMatch(/^rgb\(/);
-      expect(exported.fieldContinuation).toMatch(/^rgb\(/);
+      expect(exported.background).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.rowEven).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.rowOdd).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.rulerTick).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.rulerLabel).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.accent).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.fieldStroke).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.fieldLabel).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.fieldSublabel).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.fieldContinuation).toMatch(/^#[0-9A-F]{6}$/);
     });
 
-    it("should convert DARK_DIAGRAM_THEME to RGB format", () => {
+    it("should convert DARK_DIAGRAM_THEME to hex format", () => {
       const exported = createExportTheme(DARK_DIAGRAM_THEME);
 
-      expect(exported.background).toMatch(/^rgb\(/);
-      expect(exported.accent).toMatch(/^rgb\(/);
+      expect(exported.background).toMatch(/^#[0-9A-F]{6}$/);
+      expect(exported.accent).toMatch(/^#[0-9A-F]{6}$/);
     });
 
-    it("should convert fieldPalette colors to RGB", () => {
+    it("should convert fieldPalette colors to hex", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
       Object.entries(exported.fieldPalette).forEach(([color, value]) => {
         expect(value).toMatch(
-          /^rgb\(/,
-          `palette color ${color} should be rgb format`,
+          /^#[0-9A-F]{6}$/,
+          `palette color ${color} should be hex format`,
         );
       });
     });
@@ -51,7 +51,7 @@ describe("Color conversion for Satori compatibility", () => {
       );
     });
 
-    it("should not contain any OKLch colors (not compatible with Satori)", () => {
+    it("should not contain any OKLch or rgb() colors (Satori only supports hex)", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
       const allValues = [
@@ -70,33 +70,27 @@ describe("Color conversion for Satori compatibility", () => {
 
       allValues.forEach((value) => {
         expect(value).not.toMatch(/oklch\(/);
+        expect(value).not.toMatch(/^rgb\(/);
       });
     });
   });
 
-  describe("RGB color validation", () => {
-    it("should produce valid RGB values (0-255)", () => {
+  describe("Hex color validation", () => {
+    it("should produce valid hex color values", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
-      const rgbRegex = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/;
+      const hexRegex = /^#[0-9A-F]{6}$/;
 
-      const testRgb = (color: string, colorName: string) => {
-        const match = color.match(rgbRegex);
-        expect(match).toBeTruthy();
-        if (match) {
-          const [, r, g, b] = match;
-          expect(Number(r)).toBeGreaterThanOrEqual(0);
-          expect(Number(r)).toBeLessThanOrEqual(255);
-          expect(Number(g)).toBeGreaterThanOrEqual(0);
-          expect(Number(g)).toBeLessThanOrEqual(255);
-          expect(Number(b)).toBeGreaterThanOrEqual(0);
-          expect(Number(b)).toBeLessThanOrEqual(255);
-        }
+      const testHex = (color: string, colorName: string) => {
+        expect(color).toMatch(
+          hexRegex,
+          `${colorName} should be valid hex format`,
+        );
       };
 
-      testRgb(exported.background, "background");
-      testRgb(exported.accent, "accent");
-      testRgb(exported.fieldLabel, "fieldLabel");
+      testHex(exported.background, "background");
+      testHex(exported.accent, "accent");
+      testHex(exported.fieldLabel, "fieldLabel");
     });
   });
 });

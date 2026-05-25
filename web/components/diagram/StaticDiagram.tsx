@@ -185,18 +185,9 @@ export function StaticDiagram({
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                       overflow: "hidden",
                       minWidth: 0,
+                      background: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
                     }}
                   >
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        background: fill,
-                        opacity: fillOpacity,
-                        borderRadius: LAYOUT.cellBorderRadius,
-                        pointerEvents: "none",
-                      }}
-                    />
                     <div
                       style={{
                         position: "relative",
