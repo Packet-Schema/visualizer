@@ -14,7 +14,7 @@
 //   href>`, or `<foreignObject>` to the SVG, audit cross-origin handling
 //   here before extending the contract.
 
-import { CATEGORY_TO_TOKEN, FIELD_FILL_OPACITY } from "./constants";
+import { CATEGORY_TO_TOKEN } from "./constants";
 import type {
   Cell,
   Field,
@@ -35,6 +35,9 @@ export type DiagramExportTheme = {
   fieldLabel: string;
   fieldSublabel: string;
   fieldContinuation: string;
+  fieldFillOpacity: number;
+  rulerMinorOpacity: number;
+  subfieldBackgroundOpacity: number;
   fieldPalette: Record<string, string>;
 };
 
@@ -232,7 +235,7 @@ function renderSubfields(
         LAYOUT.subfieldWidthPadding;
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
-        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
+        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="${theme.subfieldBackgroundOpacity}" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
         label
           ? `<text x="${x + LAYOUT.subfieldTextXOffset}" y="${y + LAYOUT.subfieldTextYOffset}" font-size="${subfieldFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
           : "",
@@ -320,7 +323,7 @@ export function buildDiagramSvg(
       bit % 4 === 0
         ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
         : "";
-    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
+    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : theme.rulerMinorOpacity}" />`;
   }).join("");
 
   const body = rows
@@ -347,7 +350,7 @@ export function buildDiagramSvg(
           // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${FIELD_FILL_OPACITY}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
+            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${theme.fieldFillOpacity}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),

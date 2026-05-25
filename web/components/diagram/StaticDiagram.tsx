@@ -108,7 +108,7 @@ export function StaticDiagram({
                   width: 1,
                   height: major ? majorTickH : minorTickH,
                   background: theme.rulerTick,
-                  opacity: major ? 1 : 0.6,
+                  opacity: major ? 1 : theme.rulerMinorOpacity,
                 }}
               />
             </div>

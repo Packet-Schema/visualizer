@@ -64,6 +64,9 @@ export type DiagramTheme = {
   fieldLabel: string;
   fieldSublabel: string;
   fieldContinuation: string;
+  fieldFillOpacity: number;
+  rulerMinorOpacity: number;
+  subfieldBackgroundOpacity: number;
   fieldPalette: Record<string, string>;
 };
 
@@ -141,6 +144,9 @@ export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
   fieldLabel: "oklch(22% 0.02 270)",
   fieldSublabel: "oklch(28% 0.03 270)",
   fieldContinuation: "oklch(48% 0.02 270)",
+  fieldFillOpacity: 0.78,
+  rulerMinorOpacity: 0.55,
+  subfieldBackgroundOpacity: 0.52,
   fieldPalette: {
     blue: "oklch(70% 0.14 255)",
     indigo: "oklch(68% 0.16 280)",
@@ -168,6 +174,9 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   fieldLabel: "oklch(18% 0.025 270)",
   fieldSublabel: "oklch(22% 0.03 270)",
   fieldContinuation: "oklch(85% 0.015 270)",
+  fieldFillOpacity: 0.85,
+  rulerMinorOpacity: 0.55,
+  subfieldBackgroundOpacity: 0.52,
   fieldPalette: {
     blue: "oklch(74% 0.14 255)",
     indigo: "oklch(72% 0.17 280)",
