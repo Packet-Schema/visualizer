@@ -20,8 +20,8 @@
   color-scheme: dark;
 }
 
-/* All color variables (UI and diagram themes) are now injected via SSR in
-   lib/colors.ts → generateThemeCssVariables() → app/layout.tsx <style> tag.
+/* All color and layout variables are now injected via SSR in
+   lib/theme.ts + lib/diagram-themes.ts → app/layout.tsx <style> tags.
    This keeps the single source of truth in TypeScript rather than split
    between CSS and code. The @theme inline section below still references
    these variables and exposes them to Tailwind utilities. */
