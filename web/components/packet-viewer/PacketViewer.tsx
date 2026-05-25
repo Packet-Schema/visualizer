@@ -126,6 +126,10 @@ export default function PacketViewer({
   initialControllers,
 }: PacketViewerProps) {
   const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
+  // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
+  // エラー中のテキストは studio reducer の history に乗らないので、 Discard
+  // 確認をこのフラグでも引っ掛ける (Codex P2)。
+  const [sourceDirty, setSourceDirty] = useState(false);
   // Imported packets are kept in the renderer shape so the editors can mutate
   // their TLV/Chain/subfield state directly. Built-in presets live in PSML
   // and are lowered to the renderer shape on demand.
@@ -180,7 +184,7 @@ export default function PacketViewer({
   const [ui, uiDispatch] = useReducer(uiReducer, initialUiState);
   const {
     editMode,
-    showJsonPane,
+    studioView,
     showSaveDialog,
     selectedFieldId,
     popoverAnchor,
@@ -284,6 +288,7 @@ export default function PacketViewer({
   }
 
   useUndoRedoShortcuts({
+    // editMode の中で GUI / source どちらのビューでも有効。
     enabled: editMode,
     onUndo: () => dispatch({ type: "undo" }),
     onRedo: () => dispatch({ type: "redo" }),
@@ -373,6 +378,10 @@ export default function PacketViewer({
       setControllers({ ...initialState(imported), ...importedControllers });
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-drawer" });
+      // editMode を抜けて新しい packet に視点を合わせる。 set-edit-mode
+      // false で studioView も "form" に戻るので、 import 後すぐ Edit
+      // packet を ON にし直しても古い source 編集状態は引き継がない。
+      uiDispatch({ type: "set-edit-mode", editing: false });
     },
     [],
   );
@@ -511,6 +520,8 @@ export default function PacketViewer({
       setControllers(initialState(psmlToRenderer(packetToSave)));
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-save-dialog" });
+      // set-edit-mode false で studioView が "form" にリセットされる
+      // (ui-state-reducer 側で同時にハンドリング)。
       uiDispatch({ type: "set-edit-mode", editing: false });
     },
     [mergedStudioPacket],
@@ -518,16 +529,19 @@ export default function PacketViewer({
 
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
-    // Confirm before nuking history if the user has actually done any
-    // schema editing (history-driven). Diagram-driven edits don't enter
-    // the reducer's history, so we use the history-length signal to
-    // skip the dialog when there's nothing in the schema to lose —
-    // matching the symmetric `handleDeleteCustomPreset` confirm pattern
-    // (sub-agent Round 9 HIGH).
+    // Confirm before nuking edits if the user has actually changed anything.
+    // 2 つの signal を OR で見る:
+    //  - studioState.history.length: form 編集 (history-driven)。 diagram-
+    //    driven edits は history に乗らないので、 schema を触っていなければ
+    //    confirm をスキップする (sub-agent Round 9 HIGH)。
+    //  - sourceDirty: source ビューの未反映テキスト (debounce 前 / parse
+    //    エラー中)。 history に乗らないので、 これも見ないと入力中の内容を
+    //    無警告で失う (Codex P2)。
+    const hasUnsavedEdits = studioState.history.length > 0 || sourceDirty;
     if (
-      studioState.history.length > 0 &&
+      hasUnsavedEdits &&
       typeof window !== "undefined" &&
-      !window.confirm("Discard all unsaved schema edits?")
+      !window.confirm("Discard all unsaved edits?")
     ) {
       return;
     }
@@ -542,10 +556,8 @@ export default function PacketViewer({
     replaceActivePacket(psmlToRenderer(activePsmlPacket));
     setControllers(initialState(psmlToRenderer(activePsmlPacket)));
     uiDispatch({ type: "clear-selection" });
+    // set-edit-mode false で studioView も "form" に戻る (ui-state-reducer)。
     uiDispatch({ type: "set-edit-mode", editing: false });
-    // showJsonPane is part of the same UI shell — keep them in sync by
-    // toggling off if it was open.
-    if (showJsonPane) uiDispatch({ type: "toggle-json-pane" });
     // Send focus somewhere reachable — the diagram root — so SR and
     // keyboard users aren't dropped on `<body>` when the editor unmounts
     // (sub-agent Round 9 HIGH). Defer one frame so React has finished
@@ -560,9 +572,9 @@ export default function PacketViewer({
     }
   }, [
     activePsmlPacket,
-    showJsonPane,
     replaceActivePacket,
     studioState.history.length,
+    sourceDirty,
   ]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
@@ -895,6 +907,9 @@ export default function PacketViewer({
   // structuring as a hoisted memo keeps the original semantics.
   const activeCustomPreset = customPresets[packetKey];
   const targetPsml: PsmlPacket = useMemo(() => {
+    // editMode (Custom Packet Studio が開いている) なら studio reducer
+    // の packet が真値。 GUI / source どちらのビューで編集していても
+    // 同じ reducer を経由するので、 上の diagram は常にここを映す。
     const base = editMode
       ? studioState.packet
       : (PRESETS[packetKey] ?? activeCustomPreset ?? rendererToPsml(packet));
@@ -1066,11 +1081,13 @@ export default function PacketViewer({
           <StudioPanel
             state={studioState}
             dispatch={dispatch}
-            showJsonPane={showJsonPane}
-            onToggleJsonPane={() => uiDispatch({ type: "toggle-json-pane" })}
+            view={studioView}
+            onViewChange={(view) =>
+              uiDispatch({ type: "set-studio-view", view })
+            }
             onSaveAs={() => uiDispatch({ type: "open-save-dialog" })}
             onDiscard={handleDiscardEdits}
-            jsonPacket={mergedStudioPacket}
+            onSourceDirtyChange={setSourceDirty}
           />
         ) : null}
 

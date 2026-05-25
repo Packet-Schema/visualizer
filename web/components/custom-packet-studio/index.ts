@@ -6,4 +6,4 @@ export { default as FieldRow } from "./FieldRow";
 export { default as ContainerRow } from "./ContainerRow";
 export { default as ExprBuilder } from "./ExprBuilder";
 export { default as ConstraintEditor } from "./ConstraintEditor";
-export { default as JsonPane } from "./JsonPane";
+export { default as SourcePane } from "./SourcePane";

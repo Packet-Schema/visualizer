@@ -4,41 +4,39 @@ import {
   ConstraintEditor,
   ContainerRow,
   FieldRow,
-  JsonPane,
+  SourcePane,
   Toolbar,
 } from "@/components/custom-packet-studio";
 import type { EditAction, EditState } from "@/lib/psml/edit-reducer";
 import type {
   Container as PsmlContainer,
   Field as PsmlField,
-  Packet as PsmlPacket,
 } from "@/lib/psml/types";
+import type { StudioView } from "./ui-state-reducer";
 
 type Props = {
   state: EditState;
   dispatch: Dispatch<EditAction>;
-  showJsonPane: boolean;
-  onToggleJsonPane: () => void;
+  view: StudioView;
+  onViewChange: (next: StudioView) => void;
   onSaveAs: () => void;
   onDiscard: () => void;
-  /** Packet to show in the JSON pane. Falls back to `state.packet` but
-   *  the parent should pass the instance-merged form so the pane mirrors
-   *  what's actually in the diagram and what every export path emits
-   *  (sub-agent CRITICAL #3). */
-  jsonPacket?: PsmlPacket;
+  /** source ビューの未反映編集 (debounce 前 / parse エラー) を親へ伝える。 */
+  onSourceDirtyChange?: (dirty: boolean) => void;
 };
 
 export default function StudioPanel({
   state,
   dispatch,
-  showJsonPane,
-  onToggleJsonPane,
+  view,
+  onViewChange,
   onSaveAs,
   onDiscard,
-  jsonPacket,
+  onSourceDirtyChange,
 }: Props) {
   return (
     <section
+      aria-label="Custom Packet Studio"
       className="rounded-[10px] border px-4 py-3.5 mt-4"
       style={{
         background: "var(--bg-elevated)",
@@ -54,50 +52,57 @@ export default function StudioPanel({
         insertPath={[state.packet.body.length]}
         historyLength={state.history.length}
         futureLength={state.future.length}
-        jsonOpen={showJsonPane}
-        onToggleJson={onToggleJsonPane}
+        view={view}
+        onViewChange={onViewChange}
         onSaveAs={onSaveAs}
         onDiscard={onDiscard}
       />
-      <ol className="mt-3 flex flex-col gap-2 list-none p-0">
-        {state.packet.body.map((node: PsmlContainer, i: number) => (
-          <li key={containerId(node, i)}>
-            {isLeafField(node) ? (
-              <FieldRow
-                field={node as PsmlField}
-                path={[i]}
-                dispatch={dispatch}
-                siblingFieldIds={state.packet.body
-                  .filter(isLeafField)
-                  .map((n) => (n as PsmlField).id)}
-              />
-            ) : (
-              <ContainerRow
-                container={node as PsmlContainer}
-                path={[i]}
-                dispatch={dispatch}
-                siblingFieldIds={state.packet.body
-                  .filter(isLeafField)
-                  .map((n) => (n as PsmlField).id)}
-              />
-            )}
-          </li>
-        ))}
-      </ol>
-      <div className="mt-4">
-        <ConstraintEditor
-          constraints={state.packet.constraints ?? []}
-          fieldIds={state.packet.body
-            .filter(isLeafField)
-            .map((n) => (n as PsmlField).id)}
-          dispatch={dispatch}
-        />
-      </div>
-      {showJsonPane ? (
-        <div className="mt-4">
-          <JsonPane packet={jsonPacket ?? state.packet} dispatch={dispatch} />
+      {view === "form" ? (
+        <>
+          <ol className="mt-3 flex flex-col gap-2 list-none p-0">
+            {state.packet.body.map((node: PsmlContainer, i: number) => (
+              <li key={containerId(node, i)}>
+                {isLeafField(node) ? (
+                  <FieldRow
+                    field={node as PsmlField}
+                    path={[i]}
+                    dispatch={dispatch}
+                    siblingFieldIds={state.packet.body
+                      .filter(isLeafField)
+                      .map((n) => (n as PsmlField).id)}
+                  />
+                ) : (
+                  <ContainerRow
+                    container={node as PsmlContainer}
+                    path={[i]}
+                    dispatch={dispatch}
+                    siblingFieldIds={state.packet.body
+                      .filter(isLeafField)
+                      .map((n) => (n as PsmlField).id)}
+                  />
+                )}
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4">
+            <ConstraintEditor
+              constraints={state.packet.constraints ?? []}
+              fieldIds={state.packet.body
+                .filter(isLeafField)
+                .map((n) => (n as PsmlField).id)}
+              dispatch={dispatch}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="mt-3">
+          <SourcePane
+            packet={state.packet}
+            dispatch={dispatch}
+            onDirtyChange={onSourceDirtyChange}
+          />
         </div>
-      ) : null}
+      )}
     </section>
   );
 }
