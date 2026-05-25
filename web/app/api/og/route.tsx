@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
 import { PRESETS } from "@/lib/psml/presets";
-import { LIGHT_DIAGRAM_THEME } from "@/lib/colors";
+import { LIGHT_DIAGRAM_THEME } from "@/lib/theme";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";

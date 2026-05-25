@@ -1,4 +1,4 @@
-// Color definitions live in lib/colors.ts. This module handles CSS generation.
+// Design system theme definitions live in lib/theme.ts. This module handles CSS generation.
 import {
   LIGHT_UI_THEME,
   DARK_UI_THEME,
@@ -6,14 +6,15 @@ import {
   DARK_DIAGRAM_THEME,
   THEME_MOTION,
   DIAGRAM_OPACITY,
-} from "./colors";
+  type DiagramTheme,
+} from "./theme";
 
-// Re-export color constants for backward compatibility
+// Re-export theme constants for backward compatibility
 export {
   LIGHT_DIAGRAM_THEME,
   DARK_DIAGRAM_THEME,
   type DiagramTheme,
-} from "./colors";
+} from "./theme";
 
 /**
  * Generate CSS variable declarations for both UI and diagram themes.
