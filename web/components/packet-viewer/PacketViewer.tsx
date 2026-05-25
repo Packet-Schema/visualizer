@@ -20,6 +20,7 @@ import {
 } from "@/lib/psml/renderer-helpers";
 import {
   applyTlvInstances,
+  mergeInstancesIntoPsml,
   psmlToRenderer,
   rendererToPsml,
 } from "@/lib/psml/psml-to-renderer";
@@ -55,7 +56,6 @@ import type {
   TlvInstance,
 } from "@/lib/psml/renderer";
 import type { Expr, PsmlPacket } from "@/lib/psml/types";
-import DependencyOverlay from "@/components/diagram/DependencyOverlay";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
@@ -266,10 +266,17 @@ export default function PacketViewer() {
     drawerMode,
     tourOpen,
     hexStripVisible,
-    dependenciesVisible,
     viewMode,
     shareStatus,
   } = ui;
+  // Export must follow the same source of truth as the live diagram. While the
+  // studio is open, layout is derived from in-progress PSML edits rather than
+  // the last selected preset/import, so lower that edited packet for consumers
+  // that still need renderer metadata such as `name` and `rowBits`.
+  const exportPacket = useMemo(
+    () => (editMode ? psmlToRenderer(studioState.packet) : packet),
+    [editMode, packet, studioState.packet],
+  );
   const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
   const [urlHydrated, setUrlHydrated] = useState(false);
 
@@ -398,6 +405,17 @@ export default function PacketViewer() {
       // fall back to `studioState.packet` (still pointing at the previous
       // preset) and the diagram would render mixed cells.
       uiDispatch({ type: "preset-switched" });
+      // Restore focus to the diagram so an editMode focus inside the
+      // editor (now unmounted) doesn't strand the user on `<body>`
+      // (sub-agent Round 9 HIGH). Defer one frame for the re-render.
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          const grid = diagramRef.current?.querySelector<HTMLElement>(
+            '[role="gridcell"][tabindex="0"]',
+          );
+          grid?.focus();
+        });
+      }
     },
     [customPresets, importedPackets, renderedPresets],
   );
@@ -531,6 +549,17 @@ export default function PacketViewer() {
     [packet, replaceActivePacket],
   );
 
+  // Memoise the studio-packet-with-mirror-state merge so it isn't
+  // recomputed on every render. Without the memo, every controller drag
+  // walks the whole PSML body and JsonPane re-stringifies its 200+ leaves
+  // (sub-agent Round 7 MEDIUM). Save-As and share both reuse this value.
+  // Declared above `handleSaveAsPreset` / `buildCurrentShareUrl` so those
+  // callbacks can reference it in their dep arrays without a TDZ.
+  const mergedStudioPacket: PsmlPacket = useMemo(
+    () => mergeInstancesIntoPsml(studioState.packet, packet),
+    [studioState.packet, packet],
+  );
+
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
   // key namespace keeps user-saved presets separate from built-ins and
   // imports so the picker can group them cleanly.
@@ -539,8 +568,12 @@ export default function PacketViewer() {
       if (!name.trim()) return;
       const normalizedName = normalizeCustomPresetName(name);
       const key = `custom:${normalizedName}`;
+      // Merge the renderer mirror's TLV / chain / byteOrder edits onto
+      // the studio packet before persistence — without this, diagram-
+      // driven edits (which only land on the mirror) silently drop on
+      // save (sub-agent CRITICAL).
       const packetToSave: PsmlPacket = {
-        ...studioState.packet,
+        ...mergedStudioPacket,
         name: normalizedName,
       };
       saveCustomPreset(key, packetToSave);
@@ -566,14 +599,50 @@ export default function PacketViewer() {
       // (ui-state-reducer 側で同時にハンドリング)。
       uiDispatch({ type: "set-edit-mode", editing: false });
     },
-    [studioState.packet],
+    [mergedStudioPacket],
   );
 
   // Drop in-progress edits and revert the reducer to the active preset.
   const handleDiscardEdits = useCallback(() => {
+    // Confirm before nuking history if the user has actually done any
+    // schema editing (history-driven). Diagram-driven edits don't enter
+    // the reducer's history, so we use the history-length signal to
+    // skip the dialog when there's nothing in the schema to lose —
+    // matching the symmetric `handleDeleteCustomPreset` confirm pattern
+    // (sub-agent Round 9 HIGH).
+    if (
+      studioState.history.length > 0 &&
+      typeof window !== "undefined" &&
+      !window.confirm("Discard all unsaved schema edits?")
+    ) {
+      return;
+    }
     dispatch({ type: "replace-packet", packet: activePsmlPacket });
+    // Also evict the renderer mirror back to its source-of-truth shape.
+    // Without this, diagram-driven edits (TLV / chain instances,
+    // byteOrder, controllers) survive on the mirror past the discard,
+    // so re-entering editMode still shows the records and a follow-up
+    // Save-As resurrects them via `mergeInstancesIntoPsml` (sub-agent
+    // CRITICAL C2). Rebuilding from `activePsmlPacket` is cheap and
+    // makes "discard" actually mean discard.
+    replaceActivePacket(psmlToRenderer(activePsmlPacket));
+    setControllers(initialState(psmlToRenderer(activePsmlPacket)));
+    uiDispatch({ type: "clear-selection" });
+    // set-edit-mode false で studioView も "form" に戻る (ui-state-reducer)。
     uiDispatch({ type: "set-edit-mode", editing: false });
-  }, [activePsmlPacket]);
+    // Send focus somewhere reachable — the diagram root — so SR and
+    // keyboard users aren't dropped on `<body>` when the editor unmounts
+    // (sub-agent Round 9 HIGH). Defer one frame so React has finished
+    // unmounting the now-orphaned focus target.
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        const grid = diagramRef.current?.querySelector<HTMLElement>(
+          '[role="gridcell"][tabindex="0"]',
+        );
+        grid?.focus();
+      });
+    }
+  }, [activePsmlPacket, replaceActivePacket, studioState.history.length]);
 
   // Bulk export every `custom:<name>` preset into a single JSON envelope so
   // users can move their library between browsers / devices.
@@ -684,7 +753,12 @@ export default function PacketViewer() {
     const hasCustomRendererOverride =
       !builtInPsml && renderedPresets[packetKey] !== undefined;
     const sharePacket = editMode
-      ? studioState.packet
+      ? // In editMode the diagram draws from studioState.packet but TLV /
+        // chain edits only land on the renderer mirror — without the
+        // merge, the shared URL silently drops every record the user
+        // added through the diagram (sub-agent CRITICAL #2). Re-uses the
+        // memo so we don't walk the body twice per share click.
+        mergedStudioPacket
       : builtInPsml
         ? builtInPsml
         : hasCustomRendererOverride
@@ -708,10 +782,10 @@ export default function PacketViewer() {
     controllers,
     customPresets,
     editMode,
+    mergedStudioPacket,
     packet,
     packetKey,
     renderedPresets,
-    studioState.packet,
   ]);
 
   useEffect(() => {
@@ -792,10 +866,24 @@ export default function PacketViewer() {
       if (typeof window !== "undefined" && window.location.href !== url) {
         window.history.replaceState(null, "", url);
       }
-      uiDispatch({
-        type: "set-share-status",
-        status: { msg: "Share URL copied.", kind: "ok" },
-      });
+      // Surface oversize URLs through the share-status toast — a console
+      // warn alone is invisible to users who don't open devtools, and a
+      // share URL pushed past common browser limits (e.g. ~2 KB) silently
+      // truncates on paste (sub-agent Round 7 HIGH).
+      if (bytes > SHARE_URL_WARN_BYTES) {
+        uiDispatch({
+          type: "set-share-status",
+          status: {
+            msg: `Share URL copied — ${bytes} B may exceed browser limits.`,
+            kind: "error",
+          },
+        });
+      } else {
+        uiDispatch({
+          type: "set-share-status",
+          status: { msg: "Share URL copied.", kind: "ok" },
+        });
+      }
     } catch (err) {
       uiDispatch({
         type: "set-share-status",
@@ -868,15 +956,19 @@ export default function PacketViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
 
+  // Narrow the `customPresets` dependency to only the active key —
+  // editing another preset in the same map shouldn't re-walk the active
+  // packet's PSML (sub-agent Round 7 MEDIUM). React's strict-equality
+  // useMemo dep check is satisfied by the same object reference, so
+  // structuring as a hoisted memo keeps the original semantics.
+  const activeCustomPreset = customPresets[packetKey];
   const targetPsml: PsmlPacket = useMemo(() => {
     // editMode (Custom Packet Studio が開いている) なら studio reducer
     // の packet が真値。 GUI / source どちらのビューで編集していても
     // 同じ reducer を経由するので、 上の diagram は常にここを映す。
     const base = editMode
       ? studioState.packet
-      : (PRESETS[packetKey] ??
-        customPresets[packetKey] ??
-        rendererToPsml(packet));
+      : (PRESETS[packetKey] ?? activeCustomPreset ?? rendererToPsml(packet));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
@@ -887,7 +979,7 @@ export default function PacketViewer() {
     editMode,
     studioState.packet,
     packetKey,
-    customPresets,
+    activeCustomPreset,
     packet,
     tlvSlotBytes,
   ]);
@@ -960,7 +1052,6 @@ export default function PacketViewer() {
           importedPackets={importedPackets}
           customPresets={customPresets}
           hexStripVisible={hexStripVisible}
-          dependenciesVisible={dependenciesVisible}
           editMode={editMode}
           viewMode={viewMode}
           headerSizeLabel={`${layout.totalBits} bits (${byteStr})`}
@@ -975,8 +1066,6 @@ export default function PacketViewer() {
               uiDispatch({ type: "open-drawer", mode: "export" }),
             onShare: handleShare,
             onToggleHexStrip: () => uiDispatch({ type: "toggle-hex-strip" }),
-            onToggleDependencies: () =>
-              uiDispatch({ type: "toggle-dependencies" }),
             onToggleViewMode: () => uiDispatch({ type: "toggle-view-mode" }),
             onToggleEditMode: () => uiDispatch({ type: "toggle-edit-mode" }),
             onDeleteCustomPreset: handleDeleteCustomPreset,
@@ -1033,11 +1122,6 @@ export default function PacketViewer() {
                 onByteHover={handleFieldHover}
               />
             ) : null}
-            <DependencyOverlay
-              packet={packet}
-              containerRef={diagramRef}
-              visible={dependenciesVisible}
-            />
           </div>
           <Legend categories={categories} />
         </div>
@@ -1114,8 +1198,9 @@ export default function PacketViewer() {
       <ImportExportDrawer
         open={drawerMode !== null}
         mode={drawerMode ?? "export"}
-        packet={packet}
+        packet={exportPacket}
         controllers={controllers}
+        layout={layout}
         onClose={() => uiDispatch({ type: "close-drawer" })}
         onImport={handleImport}
       />

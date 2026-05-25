@@ -3,11 +3,27 @@ name: validate-presets
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/validate-presets.yml"
+      - "data/presets/**"
+      - "schemas/**"
+      - "web/scripts/build-presets.ts"
   pull_request:
+    paths:
+      - ".github/workflows/validate-presets.yml"
+      - "data/presets/**"
+      - "schemas/**"
+      - "web/scripts/build-presets.ts"
+
+concurrency:
+  group: validate-presets-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: web
@@ -16,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
 

@@ -70,6 +70,13 @@
   --field-amber: oklch(82% 0.13 85);
   --field-orange: oklch(74% 0.14 50);
   --field-rose: oklch(72% 0.14 18);
+  /* Prose-only strong variant of `--field-rose`. Use through the
+     `text-field-rose-strong` Tailwind utility for `role="alert"` and
+     similar error text where the standard rose (~3:1) is fine for legend
+     chips but fails WCAG AA against `--bg-elevated`. Do NOT use as a
+     background (`bg-field-rose-strong`) — the chroma is calibrated for
+     foreground contrast, not as a fill surface. */
+  --field-rose-strong: oklch(50% 0.18 18);
   --field-slate: oklch(72% 0.02 270);
 
   /* Chroma applied to non-matching cells while a legend item is hovered. */
@@ -138,6 +145,7 @@
   --field-amber: oklch(85% 0.14 85);
   --field-orange: oklch(78% 0.15 50);
   --field-rose: oklch(76% 0.15 18);
+  --field-rose-strong: oklch(82% 0.17 18);
   --field-slate: oklch(78% 0.02 270);
 
   color-scheme: dark;
@@ -166,6 +174,7 @@
   --color-field-amber: var(--field-amber);
   --color-field-orange: var(--field-orange);
   --color-field-rose: var(--field-rose);
+  --color-field-rose-strong: var(--field-rose-strong);
   --color-field-slate: var(--field-slate);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -241,7 +250,6 @@ code {
 @import "./styles/glossary.css";
 @import "./styles/popover.css";
 @import "./styles/hex-strip.css";
-@import "./styles/dependency.css";
 @import "./styles/encryption.css";
 @import "./styles/drawer.css";
 @import "./styles/theme-toggle.css";

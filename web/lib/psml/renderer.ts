@@ -102,6 +102,12 @@ export type ChainCatalogEntry = {
 /** A single chain block (extension header). */
 export type ChainInstance = {
   proto: number;
+  /** Per-instance numeric extras parallel to `TlvInstance.extras`. The
+   *  PSML schema accepts them on `Repeat.chainInstances`; carrying the
+   *  field on the renderer mirror prevents `chain.ts` round-trip from
+   *  silently dropping data (Codex P2). Most renderer call sites only
+   *  read `proto`. */
+  extras?: Record<string, number>;
 };
 
 export type Field = {

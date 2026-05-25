@@ -40,13 +40,42 @@ export function switchToChainCatalog(sw: Switch): ChainCatalogEntry[] {
 export function repeatToChainField(r: Repeat): RendererField {
   const sw = getSwitchFromRepeat(r);
   const catalog = sw ? switchToChainCatalog(sw) : [];
+  // Persisted chain instances ride back into the renderer mirror so the
+  // IPv6 ext-header chain survives JSON / share-URL / preset round-trips
+  // (symmetric to TLV `instances` — sub-agent HIGH). Unknown-proto
+  // entries are filtered with a warn since the renderer can't materialise
+  // them without a catalog match.
+  const knownProtos = new Set(catalog.map((c) => c.proto));
+  const chainInstances = r.chainInstances
+    ? r.chainInstances.flatMap((inst) => {
+        if (!knownProtos.has(inst.proto)) {
+          console.warn(
+            `[repeatToChainField] dropping chain instance with unknown proto=${inst.proto} on Repeat "${r.id}" — not present in the catalog.`,
+          );
+          return [];
+        }
+        // Carry per-instance extras through round-trip (Codex P2). The
+        // PSML schema accepts them and the renderer-side ChainInstance
+        // is structurally compatible — keeping them avoids a lossy
+        // path through `repeatToChainField → chainFieldToRepeat`.
+        return [
+          {
+            proto: inst.proto,
+            ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+          },
+        ];
+      })
+    : [];
   const field: RendererField = {
     id: r.id,
     name: r.name ?? r.id,
     bits: 0,
     chainCatalog: catalog,
-    chainInstances: [],
+    chainInstances,
   };
+  if (typeof r.chainFinalProto === "number") {
+    field.chainFinalProto = r.chainFinalProto;
+  }
   if (r.category) field.category = r.category;
   if (r.doc) field.description = r.doc;
   return field;
@@ -91,6 +120,20 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
   const repeatName = field.name.endsWith(" (chain)")
     ? field.name
     : `${field.name} (chain)`;
+  // Symmetric to TLV `instances`: persist chain selections back onto
+  // the PSML Repeat so JSON / share URL / "Save as preset" all carry
+  // the user's chosen extension headers (sub-agent HIGH).
+  // Carry per-instance `extras` through the renderer→PSML lift as well
+  // so PSML packets that hand-author chain extras (e.g.
+  // `chainInstances:[{proto:0,extras:{hdrExtLen:1}}]`) round-trip
+  // through ImportExportDrawer / share / save without loss. The
+  // PSML→renderer side of this carry already lives in
+  // `repeatToChainField`; without this mirror, the lift was
+  // asymmetric and silently dropped extras (Round 8 HIGH).
+  const chainInstances = (field.chainInstances ?? []).map((inst) => ({
+    proto: inst.proto,
+    ...(inst.extras ? { extras: { ...inst.extras } } : {}),
+  }));
   return {
     kind: "repeat",
     id: `${baseId}_chain`,
@@ -109,5 +152,9 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
       ],
     },
     count: { kind: "ref", field: `${baseId}_chainCount` },
+    ...(chainInstances.length > 0 ? { chainInstances } : {}),
+    ...(typeof field.chainFinalProto === "number"
+      ? { chainFinalProto: field.chainFinalProto }
+      : {}),
   };
 }

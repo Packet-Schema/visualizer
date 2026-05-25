@@ -1,8 +1,8 @@
 // Shared DOM query helpers for the diagram surface.
 //
 // The hybrid renderer tags every cell, sub-cell and hex byte with
-// `data-field-id`. Multiple components (DependencyOverlay, FieldPopover,
-// useFieldHighlight, PacketViewer navigation) need to query that surface in
+// `data-field-id`. Multiple components (FieldPopover, useFieldHighlight,
+// PacketViewer navigation) need to query that surface in
 // closely related but slightly different shapes. Putting the selectors here
 // keeps the escaping rules and `#repeatIndex` handling in one place.
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import type {
   ChainInstance,
@@ -134,11 +134,14 @@ function UnanchoredTlvCard({
   onChange: (next: TlvInstance[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
   return (
     <div>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={panelId}
         className="w-full px-2 py-1.5 rounded border text-left text-sm-tight cursor-pointer"
         style={{
           borderColor: "var(--border-strong)",
@@ -152,7 +155,7 @@ function UnanchoredTlvCard({
         </span>
       </button>
       {open ? (
-        <div className="mt-2">
+        <div id={panelId} className="mt-2">
           <TlvEditor
             field={field}
             controllers={controllers}
@@ -183,15 +186,30 @@ export default function OverridePanel({
   if (selectedFieldId) {
     const role = parseTlvCellId(selectedFieldId);
     if (role.kind === "instance" || role.kind === "leaf") {
-      const parent = packet.fields.find(
-        (f) => f.id === role.baseId && f.tlv?.instances[role.instanceIndex],
-      );
+      // Resolve the parent TLV first WITHOUT requiring the specific
+      // instance to still exist. If the user removed the record between
+      // the cell render and the click, falling back to the full
+      // TlvEditor (instead of "Field not found") keeps the editing
+      // surface reachable.
+      const parent = packet.fields.find((f) => f.id === role.baseId && f.tlv);
       if (parent?.tlv && onTlvChange) {
+        const instance = parent.tlv.instances[role.instanceIndex];
+        if (instance) {
+          return (
+            <TlvInnerVariantDropdown
+              tlvField={parent}
+              instanceIndex={role.instanceIndex}
+              onChange={(next) => onTlvChange(parent, next)}
+            />
+          );
+        }
+        // Instance vanished — fall back to the full editor.
         return (
-          <TlvInnerVariantDropdown
-            tlvField={parent}
-            instanceIndex={role.instanceIndex}
+          <TlvEditor
+            field={parent}
+            controllers={controllers}
             onChange={(next) => onTlvChange(parent, next)}
+            slotBytes={tlvSlotBytes?.[parent.id]}
           />
         );
       }
@@ -567,8 +585,22 @@ type WidgetProps = {
 function SwitchDropdown({ target, controllers, onChange }: WidgetProps) {
   const cases = target.switchCases ?? [];
   const selectId = `detail-switch-${target.id}`;
+  // Defensive: a degenerate preset with no Switch cases would otherwise
+  // produce an empty `<select>` with `value={undefined}` — uncontrolled
+  // input, no options to pick. Bail out with a clear empty state instead
+  // (sub-agent Round 9 MEDIUM).
+  if (cases.length === 0) {
+    return (
+      <div>
+        <WidgetLabel>Switch case · sets {target.id}</WidgetLabel>
+        <p className="text-xs text-fg-muted m-0">
+          No cases declared for this switch.
+        </p>
+      </div>
+    );
+  }
   const current =
-    controllers[target.id] ?? target.defaultValue ?? cases[0]?.value;
+    controllers[target.id] ?? target.defaultValue ?? cases[0].value;
   return (
     <div>
       <label htmlFor={selectId}>
@@ -658,8 +690,24 @@ function EnumDropdown({ target, controllers, onChange }: WidgetProps) {
     .filter((e) => Number.isFinite(e.value))
     .sort((a, b) => a.value - b.value);
   const selectId = `detail-enum-${target.id}`;
+  // Symmetric to SwitchDropdown's empty guard — a degenerate enum with
+  // zero variants would otherwise render an unselectable `<select>`
+  // (sub-agent Round 9 MEDIUM).
+  if (entries.length === 0) {
+    return (
+      <div>
+        <WidgetLabel>
+          Enum value · sets{" "}
+          <code className="font-mono normal-case">{target.id}</code>
+        </WidgetLabel>
+        <p className="text-xs text-fg-muted m-0">
+          No variants declared for this enum.
+        </p>
+      </div>
+    );
+  }
   const current =
-    controllers[target.id] ?? target.defaultValue ?? entries[0]?.value ?? 0;
+    controllers[target.id] ?? target.defaultValue ?? entries[0].value;
   return (
     <div>
       <label htmlFor={selectId}>
@@ -815,8 +863,14 @@ function RepeatCountStepper({
   // guard the NaN flows into `controllers`, contaminates `layout`'s env,
   // and the displayed value goes to `value={NaN}` (= empty input
   // controlled by an invalid value). Codex P2.
+  // Cap upward growth at SOFT_MAX. Earlier the `+` button bypassed the
+  // cap so a held key with autorepeat could push the value past the
+  // input's `max` attribute and hang the diagram when a chained Repeat
+  // drove layout (sub-agent Round 7 MEDIUM).
   const safe = (n: number) =>
-    Number.isFinite(n) ? Math.max(min, Math.floor(n)) : value;
+    Number.isFinite(n)
+      ? Math.max(min, Math.min(SOFT_MAX, Math.floor(n)))
+      : value;
   return (
     <div className="flex items-center gap-2">
       <span className="flex-1 text-sm-tight text-fg truncate" title={name}>

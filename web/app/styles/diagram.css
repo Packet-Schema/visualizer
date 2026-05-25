@@ -74,6 +74,14 @@
     background: var(--row-band-odd);
   }
 
+  /* ---- export dialog preview ---- */
+
+  .diagram-export-preview svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   /* ---- cell ---- */
 
   .cell.field-cell {
@@ -200,8 +208,39 @@
     height: 3px;
   }
 
+  /* Sub-cell variant of the override marker. Subfield cells live inside
+     the parent .cell.field-cell, so the parent's ::after would extend
+     across all of them; this lighter, narrower stripe targets just the
+     specific sub-cell that owns the override so users can tell *which*
+     bit within a Group is the interactive one (Round 8 MEDIUM). */
+  .subfield-cell[data-overridable="true"] {
+    position: relative;
+  }
+  .subfield-cell[data-overridable="true"]::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    bottom: 1px;
+    height: 1.5px;
+    border-radius: 1.5px;
+    background: linear-gradient(
+      90deg,
+      var(--marker-accent-soft) 0%,
+      var(--marker-accent) 50%,
+      var(--marker-accent-soft) 100%
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+  .subfield-cell[data-overridable="true"]:hover::after,
+  .subfield-cell[data-overridable="true"].selected::after {
+    height: 2px;
+  }
+
   @media print {
-    .cell.field-cell[data-overridable="true"]::after {
+    .cell.field-cell[data-overridable="true"]::after,
+    .subfield-cell[data-overridable="true"]::after {
       display: none;
     }
   }

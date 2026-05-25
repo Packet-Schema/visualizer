@@ -35,7 +35,12 @@ export function parseTlvCellId(id: string): TlvCellRole {
   // the click. Otherwise fall through to "plain" — real packet-level
   // subfield clicks are handled by `selection-resolver` downstream.
   if (id.includes(":")) {
-    const colonIdx = id.indexOf(":");
+    // Split on the rightmost colon so a TLV synthetic id whose parent
+    // half happens to contain a colon (degenerate / hand-authored
+    // preset) still routes correctly. `validatePsmlPacket` also rejects
+    // `:` in user-authored field ids, so this only ever fires on
+    // renderer-minted shapes; defense in depth is cheap (Codex P2).
+    const colonIdx = id.lastIndexOf(":");
     const parentPart = id.slice(0, colonIdx);
     const subPart = id.slice(colonIdx + 1);
     const instMatch = parentPart.match(INSTANCE_RE);
@@ -83,7 +88,13 @@ export function parseTlvCellId(id: string): TlvCellRole {
 }
 
 /** Strip any TLV-rewrite suffix to recover the underlying TLV field id.
- *  Returns the input unchanged when the id is already plain. */
+ *  Returns the input unchanged when the id is already plain.
+ *
+ *  Also strips a trailing `#<N>` repeat-index tag from plain ids so
+ *  callers get the same canonical lookup key for `flagsBits` (top-level)
+ *  and `flagsBits#0` (Group inside a Repeat). The previous asymmetry —
+ *  HybridDiagram special-cased `#` while everyone else trusted
+ *  `tlvBaseId` — was a foot-gun (Codex deep review). */
 export function tlvBaseId(id: string): string {
   const role = parseTlvCellId(id);
   switch (role.kind) {
@@ -92,7 +103,7 @@ export function tlvBaseId(id: string): string {
     case "remaining":
       return role.baseId;
     case "plain":
-      return id;
+      return id.replace(/#\d+(?:_\d+)*$/, "");
   }
 }
 

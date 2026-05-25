@@ -1,8 +1,8 @@
 // PSML 0.3 — PSML → renderer adapter (top-level).
 //
 // Lowers a PSML Packet to the renderer Packet shape consumed by React
-// components (DetailPanel, ControlsPanel, TlvEditor, ChainEditor,
-// DependencyOverlay, …). The renderer model is intentionally lossier than
+// components (DetailPanel, ControlsPanel, TlvEditor, ChainEditor, …).
+// The renderer model is intentionally lossier than
 // PSML: Repeat<Switch> TLV catalogs are flattened to a `tlv` extension on a
 // single variable-length placeholder Field, subfield Groups collapse to a
 // `subfields[]` array, etc. The PSML Packet is still the canonical source —
@@ -29,6 +29,7 @@ import { isTlvRepeat, repeatToTlvField } from "./tlv";
 
 export { rendererToPsml } from "./to-psml";
 export { applyTlvInstances } from "./apply-tlv";
+export { mergeInstancesIntoPsml } from "./merge-instances";
 
 /**
  * Inspect a Constraint of the form `ref(fieldA) * lit(N) == ref(fieldB)`
@@ -113,6 +114,13 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
         if (baseField) {
           baseField.chainCatalog = chainField.chainCatalog;
           baseField.chainInstances = chainField.chainInstances;
+          // Forward the terminal Next-Header pick to the base field too —
+          // `syncChainControllers` later reads `field.chainFinalProto`
+          // and without this hand-off the value silently reverts to the
+          // catalog default on every reload / re-export (Codex P1).
+          if (typeof chainField.chainFinalProto === "number") {
+            baseField.chainFinalProto = chainField.chainFinalProto;
+          }
         } else {
           fields.push(chainField);
         }

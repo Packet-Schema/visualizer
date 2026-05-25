@@ -27,18 +27,36 @@ export function resolveSelection(
   selectedFieldId: string | null,
 ): Resolution {
   if (!selectedFieldId) return { kind: "empty" };
-  const baseId = selectedFieldId.includes("#")
-    ? selectedFieldId.split("#")[0]
-    : selectedFieldId;
-
-  if (baseId.includes(":")) {
-    const [parentId, subId] = baseId.split(":");
+  // Subfield ids are `<parent>:<sub>`. The parent half may itself carry
+  // a `#<repeatIndex>` decoration when emitted from inside a Repeat
+  // (e.g. `flagsBits#0:flags_df`), so strip the repeat tag only from
+  // the parent half. Splitting on `#` first would have swallowed the
+  // `:flags_df` portion entirely.
+  // Repeat decoration may be multi-segment when Groups nest inside
+  // multiple Repeats (`flagsBits#0_1` for `[0][1]`). Strip the whole
+  // `#a(_b)*` chain, not just the trailing `#N` (Codex P1).
+  const STRIP_REPEAT_TAG = /#\d+(?:_\d+)*$/;
+  // Use `lastIndexOf` rather than `split(":")` so that ids containing
+  // a literal colon (TLV synthetic ids like
+  // `options__inst_0:options__inst_0__type`) split on the rightmost
+  // separator only — splitting from the left misattributes the parent
+  // half and the editor stops opening (Codex P2). `validatePsmlPacket`
+  // also rejects `:` in user-authored field ids so this only ever runs
+  // on renderer-minted shapes, but defense in depth is cheap.
+  const colonIdx = selectedFieldId.lastIndexOf(":");
+  if (colonIdx >= 0) {
+    const parentRaw = selectedFieldId.slice(0, colonIdx);
+    const subId = selectedFieldId.slice(colonIdx + 1);
+    const parentId = parentRaw.replace(STRIP_REPEAT_TAG, "");
     const parent = packet.fields.find((f) => f.id === parentId);
     const sub = parent?.subfields?.find((s) => s.id === subId);
     return parent && sub
       ? { kind: "subfield", parent, sub }
       : { kind: "subfield-not-found" };
   }
+  // Non-subfield ids strip the same chain — the recovery target is
+  // always the underlying renderer-mirror field.
+  const baseId = selectedFieldId.replace(STRIP_REPEAT_TAG, "");
   // Bare subfield id (groups whose children render as their own top-level
   // cells lose the `parent:` prefix in the id stream).
   for (const parent of packet.fields) {

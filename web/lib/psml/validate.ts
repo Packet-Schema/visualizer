@@ -119,10 +119,43 @@ function validateType(type: Type, ctx: string): void {
   }
 }
 
+/**
+ * Reserved-id suffixes that `applyTlvInstances` mints. A user-authored
+ * Field with one of these in its id would collide with synthetic TLV
+ * instance / remaining cells and corrupt `parseTlvCellId` routing —
+ * clicks on the real field would dispatch to non-existent TLV state.
+ * Catch it at validation time so a malformed preset / share URL fails
+ * fast rather than crashing inside OverridePanel later (sub-agent
+ * Round 7 CRITICAL).
+ */
+const RESERVED_ID_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
+  {
+    re: /__inst_\d+(?:__|$)/,
+    reason: "reserved `__inst_<N>` TLV-instance suffix",
+  },
+  { re: /__remaining$/, reason: "reserved `__remaining` TLV-remaining suffix" },
+  // The renderer composes parent / sub-cell ids as `${parent}:${sub}` and
+  // the diagram dispatches clicks via that shape. A field id containing
+  // a literal `:` would collide with the separator and prevent
+  // selection-resolver / parseTlvCellId from disambiguating clicks
+  // (Codex P2 × 2). Reject the character up front so a hand-authored
+  // preset can't break the click-routing.
+  { re: /:/, reason: "reserved `:` separator (used in sub-cell ids)" },
+];
+
+function ensureUnreservedFieldId(id: string, ctx: string): void {
+  for (const { re, reason } of RESERVED_ID_PATTERNS) {
+    if (re.test(id)) {
+      throw new Error(`${ctx}: field id "${id}" uses ${reason}.`);
+    }
+  }
+}
+
 function validateField(field: Field, ctx: string): void {
   if (typeof field.id !== "string" || field.id.length === 0) {
     throw new Error(`${ctx}: field is missing an id.`);
   }
+  ensureUnreservedFieldId(field.id, ctx);
   if (typeof field.name !== "string") {
     throw new Error(`${ctx}: field "${field.id}" is missing a name.`);
   }
@@ -155,6 +188,89 @@ function validateRepeat(r: Repeat, ctx: string): void {
     throw new Error(`${sub}: repeat is missing element struct.`);
   }
   validateStruct(r.element, sub);
+  // PSML 0.4 — `instances` is the persisted TLV-record list. Without
+  // shape-checking it before `repeatToTlvField` reads `r.instances.map(...)`,
+  // a hostile or corrupted share URL with `instances: "oops"` or
+  // `instances: [null]` would crash the renderer instead of failing fast
+  // here (Codex P1 / sub-agent HIGH).
+  if (r.instances !== undefined) {
+    if (!Array.isArray(r.instances)) {
+      throw new Error(`${sub}: repeat 'instances' must be an array.`);
+    }
+    r.instances.forEach((inst, i) => {
+      if (!inst || typeof inst !== "object") {
+        throw new Error(`${sub}: instances[${i}] must be an object.`);
+      }
+      const kind = (inst as { kind?: unknown }).kind;
+      if (typeof kind !== "number" || !Number.isInteger(kind)) {
+        throw new Error(
+          `${sub}: instances[${i}].kind must be an integer, got ${String(kind)}.`,
+        );
+      }
+      const extras = (inst as { extras?: unknown }).extras;
+      if (extras !== undefined) {
+        if (typeof extras !== "object" || extras === null) {
+          throw new Error(`${sub}: instances[${i}].extras must be an object.`);
+        }
+        for (const [k, v] of Object.entries(
+          extras as Record<string, unknown>,
+        )) {
+          if (typeof v !== "number" || !Number.isFinite(v)) {
+            throw new Error(
+              `${sub}: instances[${i}].extras[${k}] must be a finite number.`,
+            );
+          }
+        }
+      }
+    });
+  }
+  // Mirror invariant for IPv6-style chain Repeats (proto + per-instance
+  // payload fields). The shape diverges from TLV instances (`proto` rather
+  // than `kind`, `extras` keys map to leaf field ids), so use a separate
+  // key on the PSML side and validate independently.
+  if (r.chainFinalProto !== undefined) {
+    if (
+      typeof r.chainFinalProto !== "number" ||
+      !Number.isInteger(r.chainFinalProto)
+    ) {
+      throw new Error(
+        `${sub}: repeat 'chainFinalProto' must be an integer, got ${String(r.chainFinalProto)}.`,
+      );
+    }
+  }
+  if (r.chainInstances !== undefined) {
+    if (!Array.isArray(r.chainInstances)) {
+      throw new Error(`${sub}: repeat 'chainInstances' must be an array.`);
+    }
+    r.chainInstances.forEach((inst, i) => {
+      if (!inst || typeof inst !== "object") {
+        throw new Error(`${sub}: chainInstances[${i}] must be an object.`);
+      }
+      const proto = (inst as { proto?: unknown }).proto;
+      if (typeof proto !== "number" || !Number.isInteger(proto)) {
+        throw new Error(
+          `${sub}: chainInstances[${i}].proto must be an integer, got ${String(proto)}.`,
+        );
+      }
+      const extras = (inst as { extras?: unknown }).extras;
+      if (extras !== undefined) {
+        if (typeof extras !== "object" || extras === null) {
+          throw new Error(
+            `${sub}: chainInstances[${i}].extras must be an object.`,
+          );
+        }
+        for (const [k, v] of Object.entries(
+          extras as Record<string, unknown>,
+        )) {
+          if (typeof v !== "number" || !Number.isFinite(v)) {
+            throw new Error(
+              `${sub}: chainInstances[${i}].extras[${k}] must be a finite number.`,
+            );
+          }
+        }
+      }
+    });
+  }
   if (r.count === "eos") return;
   if (typeof r.count === "object" && r.count !== null && "until" in r.count) {
     if (!isValidExpr(r.count.until)) {
