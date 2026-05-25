@@ -58,7 +58,7 @@ export type CellVisual = {
   subtitle: string;
 };
 
-const LAYOUT = {
+export const LAYOUT = {
   padding: 16,
   rulerHeight: 22,
   rulerGap: 6,
@@ -87,14 +87,15 @@ const LAYOUT = {
   subfieldFontSize: 9,
   majorTickHeight: 10,
   minorTickHeight: 6,
+  strokeWidthSubfield: 0.8,
+  strokeWidthCell: 1,
+  strokeWidthBadge: 1.6,
 } as const;
 
 // Derived dimensions (calculated from base LAYOUT values)
-const LAYOUT_DERIVED = {
+export const LAYOUT_DERIVED = {
   rowBandHeight: LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2,
 } as const;
-
-export { LAYOUT };
 
 function xmlEscape(value: string): string {
   return value
@@ -235,7 +236,7 @@ function renderSubfields(
         LAYOUT.subfieldWidthPadding;
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
-        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="${theme.subfieldBackgroundOpacity}" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
+        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="${theme.subfieldBackgroundOpacity}" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="${LAYOUT.strokeWidthSubfield}" />`,
         label
           ? `<text x="${x + LAYOUT.subfieldTextXOffset}" y="${y + LAYOUT.subfieldTextYOffset}" font-size="${subfieldFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
           : "",
@@ -252,7 +253,7 @@ function renderLockBadge(
 ): string {
   const scale = size / 16;
   return [
-    `<g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${xmlAttribute(color)}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`,
+    `<g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${xmlAttribute(color)}" stroke-width="${LAYOUT.strokeWidthBadge}" stroke-linecap="round" stroke-linejoin="round">`,
     '<rect x="3" y="7" width="10" height="7" rx="1.5" />',
     '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />',
     "</g>",
@@ -323,7 +324,7 @@ export function buildDiagramSvg(
       bit % 4 === 0
         ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
         : "";
-    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : theme.rulerMinorOpacity}" />`;
+    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="${LAYOUT.strokeWidthCell}" opacity="${major ? 1 : theme.rulerMinorOpacity}" />`;
   }).join("");
 
   const body = rows
@@ -350,7 +351,7 @@ export function buildDiagramSvg(
           // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${theme.fieldFillOpacity}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
+            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${theme.fieldFillOpacity}" stroke="${xmlAttribute(stroke)}" stroke-width="${LAYOUT.strokeWidthCell}"${dash} />`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
@@ -508,6 +509,9 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   subfieldFontSize: "--subfield-font-size",
   majorTickHeight: "--major-tick-height",
   minorTickHeight: "--minor-tick-height",
+  strokeWidthSubfield: "--stroke-width-subfield",
+  strokeWidthCell: "--stroke-width-cell",
+  strokeWidthBadge: "--stroke-width-badge",
 };
 
 export function generateLayoutCssVariables(): string {
