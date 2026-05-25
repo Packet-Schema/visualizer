@@ -14,6 +14,7 @@
 // the lookup lives here.
 
 import type { Field, Packet, SubField } from "@/lib/psml/renderer";
+import { parseTlvCellId } from "@/lib/psml/psml-to-renderer/tlv-cell-id";
 
 export type Resolution =
   | { kind: "empty" }
@@ -27,6 +28,18 @@ export function resolveSelection(
   selectedFieldId: string | null,
 ): Resolution {
   if (!selectedFieldId) return { kind: "empty" };
+  // TLV synthetic cells (`<X>__inst_N`, `<X>__inst_N__<leaf>`,
+  // `<X>__inst_N:<...>`, `<X>__remaining`) are minted by
+  // `applyTlvInstances` and don't exist on `packet.fields`. Resolve them
+  // back to the parent TLV field so the DetailPanel shows that field's
+  // info instead of "subfield not found" (Codex P2). OverridePanel does
+  // its own `parseTlvCellId` routing for the editing surface; here we
+  // only need the parent for the read-only detail view.
+  const tlvRole = parseTlvCellId(selectedFieldId);
+  if (tlvRole.kind !== "plain") {
+    const field = packet.fields.find((f) => f.id === tlvRole.baseId && f.tlv);
+    return field ? { kind: "field", field } : { kind: "field-not-found" };
+  }
   // Subfield ids are `<parent>:<sub>`. The parent half may itself carry
   // a `#<repeatIndex>` decoration when emitted from inside a Repeat
   // (e.g. `flagsBits#0:flags_df`), so strip the repeat tag only from

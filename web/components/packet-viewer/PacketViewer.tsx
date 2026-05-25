@@ -93,20 +93,19 @@ const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 // `applyTlvInstances` reads this to size the Stage 1 placeholder and the
 // Stage 2 trailing-remaining cell, so the diagram closes cleanly on the
 // controller boundary even when `tlv.instances` is empty or partial.
+// Matched by packet shape (TLV field id + controller presence), not by
+// preset key — so a `custom:<name>` copy of IPv4/TCP keeps the slot sync.
 const TLV_LENGTH_SYNC: Array<{
-  presetKey: string;
   controllerKey: string;
   tlvFieldId: string;
   offset: number;
 }> = [
   {
-    presetKey: "ipv4",
     controllerKey: "ihl",
     tlvFieldId: "options",
     offset: 5,
   },
   {
-    presetKey: "tcp",
     controllerKey: "dataOffset",
     tlvFieldId: "options",
     offset: 5,
@@ -866,16 +865,28 @@ export default function PacketViewer({
   const tlvSlotBytes: TlvSlotBytes = useMemo(() => {
     const slotBytes: TlvSlotBytes = {};
     for (const rule of TLV_LENGTH_SYNC) {
-      if (rule.presetKey !== packetKey) continue;
+      // Match on the active packet's *shape* rather than the exact preset
+      // key: a preset saved as `custom:<name>` keeps the same `options`
+      // TLV field + `ihl`/`dataOffset` controller, so a key-equality
+      // check (`rule.presetKey === packetKey`) would silently drop the
+      // slot sync and make the saved copy lay out differently from the
+      // built-in (Codex P2). Require both the TLV field and the
+      // controller to be present so the two rules (ipv4 `ihl` / tcp
+      // `dataOffset`) don't cross-fire on a packet that has only one.
+      const hasTlvField = packet.fields.some(
+        (f) => f.id === rule.tlvFieldId && f.tlv,
+      );
+      const hasController = rule.controllerKey in controllers;
+      if (!hasTlvField || !hasController) continue;
       const ctrl = Number(controllers[rule.controllerKey] ?? 0);
       slotBytes[rule.tlvFieldId] = Math.max(0, ctrl - rule.offset) * 4;
     }
     return slotBytes;
-    // The TLV_LENGTH_SYNC entries are static per preset, so reading every
-    // controller they reference is the right minimum dep set. Listing them
-    // by key keeps useMemo from re-running on irrelevant slider drags.
+    // The TLV_LENGTH_SYNC entries are static, so reading every controller
+    // they reference plus the active packet (for the field-presence
+    // check) is the right minimum dep set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
+  }, [packet, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
 
   // Narrow the `customPresets` dependency to only the active key —
   // editing another preset in the same map shouldn't re-walk the active
