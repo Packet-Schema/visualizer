@@ -21,6 +21,14 @@ export const THEME_MOTION = {
 } as const;
 
 /**
+ * Diagram opacity values that are consistent across all themes.
+ */
+export const DIAGRAM_OPACITY = {
+  rulerMinor: 0.55,
+  subfieldBackground: 0.52,
+} as const;
+
+/**
  * UI theme colors: used by buttons, text, backgrounds, borders, etc.
  * These colors are exposed to CSS and Tailwind via the @theme block.
  */
@@ -145,8 +153,8 @@ export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
   fieldSublabel: "oklch(28% 0.03 270)",
   fieldContinuation: "oklch(48% 0.02 270)",
   fieldFillOpacity: 0.78,
-  rulerMinorOpacity: 0.55,
-  subfieldBackgroundOpacity: 0.52,
+  rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
+  subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
   fieldPalette: {
     blue: "oklch(70% 0.14 255)",
     indigo: "oklch(68% 0.16 280)",
@@ -175,8 +183,8 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   fieldSublabel: "oklch(22% 0.03 270)",
   fieldContinuation: "oklch(85% 0.015 270)",
   fieldFillOpacity: 0.85,
-  rulerMinorOpacity: 0.55,
-  subfieldBackgroundOpacity: 0.52,
+  rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
+  subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
   fieldPalette: {
     blue: "oklch(74% 0.14 255)",
     indigo: "oklch(72% 0.17 280)",
