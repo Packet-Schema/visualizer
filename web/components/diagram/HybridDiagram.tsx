@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
 
 import type {
   Cell,
@@ -9,6 +9,7 @@ import type {
   SubField,
 } from "@/lib/psml/renderer";
 import { categoryColor } from "@/lib/render-tokens";
+import { tlvBaseId } from "@/components/field-details/tlv-cell-id";
 
 type Props = {
   packet: Packet;
@@ -53,6 +54,59 @@ export default function HybridDiagram({
     ? Math.max(...layout.cells.map((c) => c.row)) + 1
     : 0;
 
+  // Override-capable field ids, sourced from the renderer mirror (`packet`).
+  // Layout cells carry a synthetic `field` built from NormalizedField, which
+  // does NOT include `controlsLength` / `tlv` / `chainCatalog` — those flags
+  // live on the original renderer mirror only. We look them up by base id
+  // (stripping the `#repeatIndex` suffix Repeat expansion adds).
+  // Build the set of base field ids whose cells should carry the override
+  // marker. Two sources:
+  //   1. Top-level Field / SubField with one of the override-metadata flags.
+  //   2. Leaf ids that appear inside any TLV catalog entry — clicking those
+  //      virtual cells opens the TLV-inner variant dropdown in OverridePanel.
+  const overridableIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const f of packet.fields) {
+      // `byteOrder` is intentionally NOT included here. It marks a schema
+      // attribute every multi-byte int could surface a toggle for, so
+      // including it would paint a marker on essentially every address /
+      // length / checksum cell — drowning out the cells that actually
+      // expose a runtime knob (length controller, TLV, Switch, Optional).
+      // Users still reach the BE/LE toggle by clicking the cell.
+      if (
+        f.controlsLength ||
+        f.tlv ||
+        f.chainCatalog ||
+        f.switchCases ||
+        f.varintEncoding ||
+        f.isBerLength ||
+        f.optionalGateFor ||
+        f.enumVariants
+      ) {
+        s.add(f.id);
+      }
+      for (const sf of f.subfields ?? []) {
+        if (
+          sf.switchCases ||
+          sf.varintEncoding ||
+          sf.isBerLength ||
+          sf.optionalGateFor ||
+          sf.enumVariants
+        ) {
+          s.add(sf.id);
+        }
+      }
+      // NOTE: do NOT splat TLV catalog leaf ids into `overridableIds`.
+      // Earlier revisions did so to mark TLV-expanded cells overridable,
+      // but the marker lookup now strips the `__inst_N` suffix via
+      // `tlvBaseId`, so the parent TLV's own id is what gets matched.
+      // Adding the leaf names back globally re-introduces collisions
+      // with same-named top-level fields (e.g. `length` in TLS records
+      // would falsely mark IPv4's `Total Length`). Codex P2.
+    }
+    return s;
+  }, [packet]);
+
   // Group cells by row for clean grid wrapping.
   const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
   for (const cell of layout.cells) rows[cell.row].push(cell);
@@ -84,6 +138,28 @@ export default function HybridDiagram({
           {rowCells.map((cell) => {
             const tabIndex = cellGlobalIndex === 0 ? 0 : -1;
             cellGlobalIndex += 1;
+            // Strip both the `#repeatIndex` suffix (legacy flat-Repeat
+            // cells) and the `__inst_N` suffix (Group-collapsed TLV
+            // instance cells) so the lookup against `overridableIds` lands
+            // on the original TLV field's id.
+            // `cell.field.id` may be a TLV-rewrite synthetic
+            // (`<X>__inst_N` / `<X>__remaining`), a flat Repeat leaf
+            // (`<X>#N`), or a Group-inside-Repeat collapsed parent
+            // (`<X>#N` / `<X>#N_M`). `tlvBaseId` now strips all three
+            // shapes uniformly, so the marker lookup always lands on
+            // the underlying renderer-mirror field id.
+            const baseId = tlvBaseId(cell.field.id);
+            // Parent cells inherit the marker from any overridable
+            // subfield so a Group whose only override-bearing child is
+            // a SubField (e.g. `flagsBits` with `flags_df` having an
+            // `optionalGateFor`) still surfaces the dot at the parent
+            // level (sub-agent Round 7 HIGH).
+            // `overridableIds` keys on the bare subfield id (`sf.id`),
+            // but `SubCell.id` is the compound `parent:sub` form — compare
+            // on `sc.subfield.id` so the lookup actually hits (Codex P3).
+            const subOverridable =
+              cell.subCells?.some((sc) => overridableIds.has(sc.subfield.id)) ??
+              false;
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}
@@ -93,6 +169,8 @@ export default function HybridDiagram({
                 onSubfieldClick={onSubfieldClick}
                 onFieldHover={onFieldHover}
                 tabIndex={tabIndex}
+                isOverridable={overridableIds.has(baseId) || subOverridable}
+                overridableSubIds={overridableIds}
               />
             );
           })}
@@ -114,6 +192,13 @@ type FieldCellProps = {
   ) => void;
   onFieldHover?: (fieldId: string | null) => void;
   tabIndex: number;
+  /** True when the cell's logical parent exposes a runtime override
+   *  (length controller, TLV catalog, or chain catalog). Drives the
+   *  `data-overridable` marker dot. */
+  isOverridable: boolean;
+  /** Pass-through for the parent grid's overridable-id set so sub-cells
+   *  can each decide whether to paint their own marker dot. */
+  overridableSubIds: Set<string>;
 };
 
 // Treat a selectedFieldId as "owned by this cell" when it matches the cell's
@@ -140,6 +225,8 @@ const FieldCell = memo(FieldCellImpl, (prev, next) => {
   if (prev.onFieldClick !== next.onFieldClick) return false;
   if (prev.onSubfieldClick !== next.onSubfieldClick) return false;
   if (prev.onFieldHover !== next.onFieldHover) return false;
+  if (prev.isOverridable !== next.isOverridable) return false;
+  if (prev.overridableSubIds !== next.overridableSubIds) return false;
   // Re-render only the cell that *was* selected (directly or via one of its
   // subfields) and the cell that *is now* selected — everything else can
   // skip. The subfield prefix match below is what fixes the bug where
@@ -168,6 +255,8 @@ function FieldCellImpl({
   onSubfieldClick,
   onFieldHover,
   tabIndex,
+  isOverridable,
+  overridableSubIds,
 }: FieldCellProps) {
   const isSelected = cell.field.id === selectedFieldId;
   const span = cell.endBit - cell.startBit + 1;
@@ -227,6 +316,7 @@ function FieldCellImpl({
       {...(isEncryptedBlock ? { "data-encrypted": "true" } : {})}
       {...(isEncryptedChild ? { "data-encrypted-child": "true" } : {})}
       {...(isHeaderProtected ? { "data-header-protected": "true" } : {})}
+      {...(isOverridable ? { "data-overridable": "true" } : {})}
       title={encryptionTitle}
       style={style}
       onClick={(e) => onFieldClick(cell.field, e.currentTarget)}
@@ -287,10 +377,12 @@ function FieldCellImpl({
           parent={cell.field}
           parentStartBit={cell.startBit}
           parentSpan={span}
+          parentRow={cell.row}
           subCells={cell.subCells!}
           selectedFieldId={selectedFieldId}
           onSubfieldClick={onSubfieldClick}
           onFieldHover={onFieldHover}
+          overridableSubIds={overridableSubIds}
         />
       ) : null}
     </div>
@@ -336,6 +428,10 @@ type SubfieldRowProps = {
   parent: Field;
   parentStartBit: number;
   parentSpan: number;
+  /** Row index of the owning parent cell. Sub-cells inherit it via
+   *  `data-row` so downstream readers (HexStrip, the roving-tabindex
+   *  keyboard handler) see a real row coord rather than a bit column. */
+  parentRow: number;
   subCells: SubCell[];
   selectedFieldId: string | null;
   onSubfieldClick: (
@@ -344,16 +440,19 @@ type SubfieldRowProps = {
     element: HTMLElement,
   ) => void;
   onFieldHover?: (fieldId: string | null) => void;
+  overridableSubIds: Set<string>;
 };
 
 function SubfieldRow({
   parent,
   parentStartBit,
   parentSpan,
+  parentRow,
   subCells,
   selectedFieldId,
   onSubfieldClick,
   onFieldHover,
+  overridableSubIds,
 }: SubfieldRowProps) {
   // Nested grid: parentSpan columns wide so subfield positions track the
   // parent geometry exactly.
@@ -369,6 +468,10 @@ function SubfieldRow({
         const subStyle: CSSProperties = {
           gridColumn: `${startCol} / span ${subSpan}`,
         };
+        // `overridableSubIds` keys on the bare subfield id; `sub.id` is
+        // the compound `parent:sub` form, so match on `sub.subfield.id`
+        // (Codex P3).
+        const isSubOverridable = overridableSubIds.has(sub.subfield.id);
         return (
           <span
             key={`sub-${sub.id}`}
@@ -380,7 +483,12 @@ function SubfieldRow({
             aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
             data-field-id={`${parent.id}:${sub.subfield.id}`}
             data-parent-field-id={parent.id}
-            data-row={String(sub.startBit)}
+            {...(isSubOverridable ? { "data-overridable": "true" } : {})}
+            // Sub-cells live inside the parent cell's row, so they
+            // share the parent's `data-row`. (Previously this stored
+            // `sub.startBit` — the bit column — which clashed with
+            // every reader that treats `data-row` as a row index.)
+            data-row={String(parentRow)}
             data-start-bit={sub.startBit}
             data-end-bit={sub.endBit}
             style={subStyle}

@@ -14,8 +14,8 @@
 //   - Multi-field actions are allowed *only* when the touched fields must
 //     change atomically to avoid intermediate render states. The current
 //     example is `preset-switched`, which clears selection / popover /
-//     edit mode / JSON pane together so the next frame can't paint with
-//     "old preset's selection on the new preset's body".
+//     edit mode together so the next frame can't paint with "old preset's
+//     selection on the new preset's body".
 
 import type { DrawerMode } from "@/components/import-export/ImportExportDrawer";
 import type { ViewMode } from "@/lib/psml/types";
@@ -24,6 +24,18 @@ export type ShareStatus = {
   msg: string;
   kind: "ok" | "error";
 };
+
+/**
+ * Custom Packet Studio の表示モード。
+ *
+ * - "form":   既存のフォーム編集 (FieldRow / ContainerRow / ConstraintEditor)
+ * - "source": PSML テキスト直編集 (YAML / JSON)
+ *
+ * 上部のメイン diagram が両方の live preview を兼ねる。 form と source は
+ * 同じ studio reducer を経由するので、 切替時に packet の値は保持される
+ * (排他で同時に走らせない)。
+ */
+export type StudioView = "form" | "source";
 
 export type UiState = {
   selectedFieldId: string | null;
@@ -37,7 +49,8 @@ export type UiState = {
   hexStripUserSet: boolean;
   viewMode: ViewMode;
   editMode: boolean;
-  showJsonPane: boolean;
+  /** editMode 内のサブモード (form / source) — 排他で 1 つだけ表示。 */
+  studioView: StudioView;
   showSaveDialog: boolean;
   shareStatus: ShareStatus | null;
 };
@@ -51,7 +64,7 @@ export const initialUiState: UiState = {
   hexStripUserSet: false,
   viewMode: "wire",
   editMode: false,
-  showJsonPane: false,
+  studioView: "form",
   showSaveDialog: false,
   shareStatus: null,
 };
@@ -68,7 +81,7 @@ export type UiAction =
   | { type: "toggle-view-mode" }
   | { type: "set-edit-mode"; editing: boolean }
   | { type: "toggle-edit-mode" }
-  | { type: "toggle-json-pane" }
+  | { type: "set-studio-view"; view: StudioView }
   | { type: "open-save-dialog" }
   | { type: "close-save-dialog" }
   | { type: "set-share-status"; status: ShareStatus }
@@ -117,11 +130,24 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         viewMode: state.viewMode === "semantic" ? "wire" : "semantic",
       };
     case "set-edit-mode":
-      return { ...state, editMode: action.editing };
-    case "toggle-edit-mode":
-      return { ...state, editMode: !state.editMode };
-    case "toggle-json-pane":
-      return { ...state, showJsonPane: !state.showJsonPane };
+      // editMode を抜ける時は studioView を form に戻す。 次に再度
+      // editMode を ON にした時、 source からじゃなく form から始める
+      // (source mode で抜けた事故的中断状態を持ち越さない)。
+      return {
+        ...state,
+        editMode: action.editing,
+        studioView: action.editing ? state.studioView : "form",
+      };
+    case "toggle-edit-mode": {
+      const nextEditMode = !state.editMode;
+      return {
+        ...state,
+        editMode: nextEditMode,
+        studioView: nextEditMode ? state.studioView : "form",
+      };
+    }
+    case "set-studio-view":
+      return { ...state, studioView: action.view };
     case "open-save-dialog":
       return { ...state, showSaveDialog: true };
     case "close-save-dialog":
@@ -136,7 +162,7 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         selectedFieldId: null,
         popoverAnchor: null,
         editMode: false,
-        showJsonPane: false,
+        studioView: "form",
         // Close any modal-class surface so it doesn't keep pointing at
         // the previous preset's packet/layout after the swap.
         drawerMode: null,

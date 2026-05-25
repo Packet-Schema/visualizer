@@ -126,7 +126,10 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "op" },
-            "op": { "type": "string", "enum": ["+", "-", "*", "/", "%", "<<", ">>"] },
+            "op": {
+              "type": "string",
+              "enum": ["+", "-", "*", "/", "%", "<<", ">>"]
+            },
             "a": { "$ref": "#/$defs/Expr" },
             "b": { "$ref": "#/$defs/Expr" }
           }
@@ -215,6 +218,42 @@
               }
             }
           ]
+        },
+        "instances": {
+          "type": "array",
+          "description": "Persisted TLV record list. The renderer materialises each entry into the diagram and the layout pass pre-resolves each variant's leaf fields. Optional; non-TLV Repeats may omit it.",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "integer" },
+              "extras": {
+                "type": "object",
+                "additionalProperties": { "type": "number" }
+              }
+            }
+          }
+        },
+        "chainInstances": {
+          "type": "array",
+          "description": "Persisted chain entries (IPv6 extension-header style). Each entry pins the wire's Next-Header value to a catalog variant. Optional; non-chain Repeats omit it.",
+          "items": {
+            "type": "object",
+            "required": ["proto"],
+            "additionalProperties": false,
+            "properties": {
+              "proto": { "type": "integer" },
+              "extras": {
+                "type": "object",
+                "additionalProperties": { "type": "number" }
+              }
+            }
+          }
+        },
+        "chainFinalProto": {
+          "type": "integer",
+          "description": "Terminal Next-Header value after the last chain entry. Only meaningful on chain Repeats; non-chain Repeats omit it."
         }
       }
     },
