@@ -46,6 +46,7 @@ export type DiagramExportTheme = {
   fieldContinuation: string;
   markerAccent: string;
   markerAccentSoft: string;
+  subfieldBackground: string;
   fieldFillOpacity: number;
   rulerMinorOpacity: number;
   subfieldBackgroundOpacity: number;

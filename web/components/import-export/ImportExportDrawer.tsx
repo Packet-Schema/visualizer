@@ -243,12 +243,24 @@ export default function ImportExportDrawer({
         const height = 300;
 
         const diagramComponent = (
-          <StaticDiagram
-            packet={packet}
-            layout={layout}
-            theme={theme}
-            targetHeight={height}
-          />
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: transparentBackground ? "transparent" : theme.background,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <StaticDiagram
+              packet={packet}
+              layout={layout}
+              theme={theme}
+              targetHeight={height}
+              transparentBackground={transparentBackground}
+            />
+          </div>
         );
 
         const svg = await renderToSvgString(diagramComponent, width, height);
@@ -278,12 +290,24 @@ export default function ImportExportDrawer({
 
       const theme = readDiagramTheme(exportThemeMode);
       const diagramComponent = (
-        <StaticDiagram
-          packet={packet}
-          layout={layout}
-          theme={theme}
-          targetHeight={transparentBackground ? 400 : 300}
-        />
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: transparentBackground ? "transparent" : theme.background,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <StaticDiagram
+            packet={packet}
+            layout={layout}
+            theme={theme}
+            targetHeight={transparentBackground ? 400 : 300}
+            transparentBackground={transparentBackground}
+          />
+        </div>
       );
 
       // Calculate dimensions for full-size export (not preview)

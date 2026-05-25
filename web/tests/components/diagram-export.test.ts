@@ -126,6 +126,7 @@ const LIGHT_TEST_THEME: DiagramExportTheme = {
   fieldContinuation: "#667085",
   markerAccent: "#d4548f",
   markerAccentSoft: "#e8b4c8",
+  subfieldBackground: "#fafbfc",
   fieldFillOpacity: FIELD_FILL_OPACITY,
   rulerMinorOpacity: 0.55,
   subfieldBackgroundOpacity: 0.52,

@@ -31,6 +31,8 @@ type Props = {
   targetHeight?: number;
   /** Maximum number of rows to display. If rows exceed this, show ellipsis. */
   maxRows?: number;
+  /** When true, row backgrounds are transparent instead of banded. */
+  transparentBackground?: boolean;
 };
 
 /** Satori-compatible renderer; uses flexbox + inline styles only (no CSS classes) for next/og compatibility. */
@@ -41,6 +43,7 @@ export function StaticDiagram({
   fontFamily = "Noto Sans, system-ui, sans-serif",
   targetHeight,
   maxRows,
+  transparentBackground,
 }: Props) {
   const allRows = rowsFor(layout);
   const { rowBits } = packet;
@@ -81,6 +84,7 @@ export function StaticDiagram({
         flexDirection: "column",
         width: "100%",
         fontFamily,
+        padding: LAYOUT.padding,
       }}
     >
       <div
@@ -138,7 +142,7 @@ export function StaticDiagram({
         }}
       >
         {rows.map((cells: Cell[], rowIdx: number) => {
-          const bandColor = rowBandColor(rowIdx, theme);
+          const bandColor = transparentBackground ? "transparent" : rowBandColor(rowIdx, theme);
           const rowHasSubfields = cells.some(
             (c) => c.subCells && c.subCells.length > 0,
           );
@@ -269,7 +273,7 @@ export function StaticDiagram({
                                   LAYOUT.subfieldHeight * scale,
                                 ),
                                 minWidth: 0,
-                                background: `rgba(${hexToRgb(theme.background).join(", ")}, ${theme.subfieldBackgroundOpacity})`,
+                                background: theme.subfieldBackground,
                                 border: `1px solid ${stroke}`,
                                 borderRadius: Math.round(
                                   LAYOUT.subfieldBorderRadius * scale,

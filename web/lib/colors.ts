@@ -1,13 +1,14 @@
 // OKLch to sRGB conversion (CSS Color Module Level 4)
 function oklchToRgb(oklch: string): string {
   const match = oklch.match(
-    /oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*[\d.]+)?\)/,
+    /oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/,
   );
   if (!match) return oklch;
 
   const L = parseFloat(match[1]) / 100;
   const C = parseFloat(match[2]);
   const H = parseFloat(match[3]) * (Math.PI / 180);
+  const alpha = match[4] ? parseFloat(match[4]) : 1;
 
   const a = C * Math.cos(H);
   const b = C * Math.sin(H);
@@ -32,6 +33,10 @@ function oklchToRgb(oklch: string): string {
   const B = clamp(toLinear(b_));
 
   const toHex = (v: number) => v.toString(16).padStart(2, "0").toUpperCase();
+  if (alpha < 1) {
+    const alphaInt = Math.round(alpha * 255);
+    return `#${toHex(R)}${toHex(G)}${toHex(B)}${toHex(alphaInt)}`;
+  }
   return `#${toHex(R)}${toHex(G)}${toHex(B)}`;
 }
 
@@ -48,6 +53,7 @@ export type DiagramTheme = {
   fieldContinuation: string;
   markerAccent: string;
   markerAccentSoft: string;
+  subfieldBackground: string;
   fieldFillOpacity: number;
   rulerMinorOpacity: number;
   subfieldBackgroundOpacity: number;
@@ -68,6 +74,7 @@ export function createExportTheme(theme: DiagramTheme): DiagramTheme {
     fieldContinuation: oklchToRgb(theme.fieldContinuation),
     markerAccent: oklchToRgb(theme.markerAccent),
     markerAccentSoft: oklchToRgb(theme.markerAccentSoft),
+    subfieldBackground: oklchToRgb(theme.subfieldBackground),
     fieldFillOpacity: theme.fieldFillOpacity,
     rulerMinorOpacity: theme.rulerMinorOpacity,
     subfieldBackgroundOpacity: theme.subfieldBackgroundOpacity,
