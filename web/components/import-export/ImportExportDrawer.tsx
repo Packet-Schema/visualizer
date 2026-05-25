@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  buildDiagramSvg,
   downloadBlobFile,
   downloadTextFile,
   readDiagramTheme,
   svgToPngBlob,
   type DiagramThemeMode,
 } from "@/lib/diagram-export";
+import { renderToSvgString } from "@/lib/diagram-satori";
+import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 import {
   EXPORTABLE_FORMATS,
   FORMATS,
@@ -90,6 +91,7 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
+  const [previewSvg, setPreviewSvg] = useState<string | null>(null);
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -225,13 +227,41 @@ export default function ImportExportDrawer({
   const isImageExportMode =
     currentMode === "export" && (format === "svg" || format === "png");
 
-  const previewSvg = useMemo(() => {
-    if (!isImageExportMode) return null;
-    return buildDiagramSvg(packet, layout, {
-      theme: readDiagramTheme(exportThemeMode),
-      bitWidth: diagramWidth,
-      transparentBackground,
-    });
+  // Generate preview SVG asynchronously using browser-side Satori
+  useEffect(() => {
+    const renderPreview = async () => {
+      if (!isImageExportMode) {
+        setPreviewSvg(null);
+        return;
+      }
+
+      try {
+        const theme = readDiagramTheme(exportThemeMode);
+
+        // Calculate preview dimensions based on bitWidth
+        const width = packet.rowBits * diagramWidth;
+        const height = 300;
+
+        const diagramComponent = (
+          <StaticDiagram
+            packet={packet}
+            layout={layout}
+            theme={theme}
+            targetHeight={height}
+          />
+        );
+
+        const svg = await renderToSvgString(diagramComponent, width, height);
+        if (isImageExportMode) {
+          setPreviewSvg(svg);
+        }
+      } catch (e) {
+        console.error("Failed to render preview SVG:", e);
+        setPreviewSvg(null);
+      }
+    };
+
+    void renderPreview();
   }, [
     diagramWidth,
     exportThemeMode,
@@ -245,11 +275,23 @@ export default function ImportExportDrawer({
     const exportSession = exportSessionRef.current;
     try {
       setImageBusy(true);
-      const svg = buildDiagramSvg(packet, layout, {
-        theme: readDiagramTheme(exportThemeMode),
-        bitWidth: diagramWidth,
-        transparentBackground,
-      });
+
+      const theme = readDiagramTheme(exportThemeMode);
+      const diagramComponent = (
+        <StaticDiagram
+          packet={packet}
+          layout={layout}
+          theme={theme}
+          targetHeight={transparentBackground ? 400 : 300}
+        />
+      );
+
+      // Calculate dimensions for full-size export (not preview)
+      const width = packet.rowBits * diagramWidth;
+      const height = 400;
+
+      const svg = await renderToSvgString(diagramComponent, width, height);
+
       if (!openRef.current || exportSessionRef.current !== exportSession) {
         return;
       }

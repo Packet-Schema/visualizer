@@ -11,6 +11,7 @@ import type {
 import { categoryColor } from "@/lib/render-tokens";
 import { rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
 import { tlvBaseId } from "@/components/field-details/tlv-cell-id";
+import { LockIcon } from "@/components/diagram/diagram-badges";
 
 type Props = {
   packet: Packet;
@@ -375,47 +376,6 @@ function FieldCellImpl({
         />
       ) : null}
     </div>
-  );
-}
-
-/**
- * Inline lock SVG used to decorate encrypted cells. Two sizes:
- *   * 14px — wire-mode opaque block (visible against the stripe pattern)
- *   * 10px — semantic-mode child field (subtle corner badge)
- * Decorative-only; the parent cell already carries an accessible label.
- */
-function LockIcon({
-  size,
-  className,
-  ariaHidden,
-}: {
-  size: number;
-  className?: string;
-  ariaHidden?: boolean;
-}) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox={`0 0 ${LAYOUT.badgeSvgViewBox} ${LAYOUT.badgeSvgViewBox}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={LAYOUT.strokeWidthBadge}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden={ariaHidden ? "true" : undefined}
-      focusable="false"
-    >
-      <rect
-        x={LAYOUT.badgeSvgRectX}
-        y={LAYOUT.badgeSvgRectY}
-        width={LAYOUT.badgeSvgRectWidth}
-        height={LAYOUT.badgeSvgRectHeight}
-        rx={LAYOUT.badgeSvgRectRadius}
-      />
-      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-    </svg>
   );
 }
 

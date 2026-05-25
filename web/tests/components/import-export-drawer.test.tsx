@@ -1,8 +1,19 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, waitFor } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+
+vi.mock("@/lib/diagram-satori", async () => {
+  return {
+    renderToSvgString: vi.fn(async (element: any) => {
+      // Extract theme from the component's props to maintain test compatibility
+      const theme = element?.props?.theme;
+      const background = theme?.background ?? "none";
+      return `<svg data-bg="${background}"></svg>`;
+    }),
+  };
+});
 
 vi.mock("@/lib/diagram-export", async () => {
   const actual = await vi.importActual<typeof import("@/lib/diagram-export")>(
@@ -10,13 +21,6 @@ vi.mock("@/lib/diagram-export", async () => {
   );
   return {
     ...actual,
-    buildDiagramSvg: vi.fn(
-      (
-        _packet: import("@/lib/psml/renderer").Packet,
-        _layout: import("@/lib/psml/renderer").ResolvedLayout,
-        options?: { theme?: { background: string } },
-      ) => `<svg data-bg="${options?.theme?.background ?? "none"}"></svg>`,
-    ),
     readDiagramTheme: vi.fn((mode: string) => ({
       background:
         mode === "follow-ui" &&
@@ -107,7 +111,7 @@ describe("ImportExportDrawer", () => {
     expect(container).toBeDefined();
   });
 
-  it("generates SVG preview for export", () => {
+  it("generates SVG preview for export", async () => {
     const packet = {
       name: "IPv4",
       rowBits: 32,
@@ -208,8 +212,10 @@ describe("ImportExportDrawer", () => {
       themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    const previewDiv = container.querySelector(".diagram-export-preview");
-    expect(previewDiv?.innerHTML).toContain('data-bg="dark-bg"');
+    await waitFor(() => {
+      const previewDiv = container.querySelector(".diagram-export-preview");
+      expect(previewDiv?.innerHTML).toContain('data-bg="dark-bg"');
+    });
   });
 
   it("updates preview when document theme changes with follow-ui mode", async () => {
@@ -264,7 +270,9 @@ describe("ImportExportDrawer", () => {
       themeSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    const previewDiv = container.querySelector(".diagram-export-preview");
-    expect(previewDiv?.innerHTML).toContain('data-bg="light-bg"');
+    await waitFor(() => {
+      const previewDiv = container.querySelector(".diagram-export-preview");
+      expect(previewDiv?.innerHTML).toContain('data-bg="light-bg"');
+    });
   });
 });

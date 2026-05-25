@@ -8,6 +8,7 @@ import {
   isFieldOverridable,
 } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
+import { LockIcon } from "@/components/diagram/diagram-badges";
 
 function hexToRgb(hex: string): [number, number, number] {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -316,59 +317,35 @@ export function StaticDiagram({
                     ) : null}
 
                     {isEncryptedBlock && cell.isFirst ? (
-                      <svg
+                      <div
                         style={{
                           position: "absolute",
                           top: Math.round(LAYOUT.badgeOffsetY * scale),
                           right: Math.round(LAYOUT.badgeOffsetX * scale),
-                          width: Math.round(LAYOUT.badgeSizeLarge * scale),
-                          height: Math.round(LAYOUT.badgeSizeLarge * scale),
-                          fill: "none",
-                          stroke: theme.accent,
-                          strokeWidth: LAYOUT.strokeWidthBadge,
-                          strokeLinecap: "round",
-                          strokeLinejoin: "round",
                           zIndex: 2,
                         }}
-                        viewBox={`0 0 ${LAYOUT.badgeSvgViewBox} ${LAYOUT.badgeSvgViewBox}`}
                       >
-                        <rect
-                          x={LAYOUT.badgeSvgRectX}
-                          y={LAYOUT.badgeSvgRectY}
-                          width={LAYOUT.badgeSvgRectWidth}
-                          height={LAYOUT.badgeSvgRectHeight}
-                          rx={LAYOUT.badgeSvgRectRadius}
+                        <LockIcon
+                          size={Math.round(LAYOUT.badgeSizeLarge * scale)}
+                          color={theme.accent}
                         />
-                        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-                      </svg>
+                      </div>
                     ) : null}
 
                     {isEncryptedChild && cell.isFirst ? (
-                      <svg
+                      <div
                         style={{
                           position: "absolute",
                           bottom: Math.round(LAYOUT.badgeOffsetYSmall * scale),
                           right: Math.round(LAYOUT.badgeOffsetXSmall * scale),
-                          width: Math.round(LAYOUT.badgeSizeSmall * scale),
-                          height: Math.round(LAYOUT.badgeSizeSmall * scale),
-                          fill: "none",
-                          stroke: theme.accent,
-                          strokeWidth: LAYOUT.strokeWidthBadge,
-                          strokeLinecap: "round",
-                          strokeLinejoin: "round",
                           zIndex: 2,
                         }}
-                        viewBox={`0 0 ${LAYOUT.badgeSvgViewBox} ${LAYOUT.badgeSvgViewBox}`}
                       >
-                        <rect
-                          x={LAYOUT.badgeSvgRectX}
-                          y={LAYOUT.badgeSvgRectY}
-                          width={LAYOUT.badgeSvgRectWidth}
-                          height={LAYOUT.badgeSvgRectHeight}
-                          rx={LAYOUT.badgeSvgRectRadius}
+                        <LockIcon
+                          size={Math.round(LAYOUT.badgeSizeSmall * scale)}
+                          color={theme.accent}
                         />
-                        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-                      </svg>
+                      </div>
                     ) : null}
 
                     {isHeaderProtected && cell.isFirst ? (
