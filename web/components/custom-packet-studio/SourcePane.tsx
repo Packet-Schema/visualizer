@@ -176,7 +176,9 @@ export default function SourcePane({ packet, dispatch, onDirtyChange }: Props) {
         </p>
       ) : (
         <p className="text-xs text-fg-faint m-0">
-          編集を {DEBOUNCE_MS}ms 静止すると上の diagram に反映されます。
+          編集を {DEBOUNCE_MS}ms 静止すると上の diagram に反映されます。 TLV /
+          chain の records は diagram 側で編集してください (ここで書いた
+          instances は diagram には反映されません)。
         </p>
       )}
     </section>
