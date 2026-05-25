@@ -154,8 +154,12 @@ export default function HybridDiagram({
             // a SubField (e.g. `flagsBits` with `flags_df` having an
             // `optionalGateFor`) still surfaces the dot at the parent
             // level (sub-agent Round 7 HIGH).
+            // `overridableIds` keys on the bare subfield id (`sf.id`),
+            // but `SubCell.id` is the compound `parent:sub` form — compare
+            // on `sc.subfield.id` so the lookup actually hits (Codex P3).
             const subOverridable =
-              cell.subCells?.some((sc) => overridableIds.has(sc.id)) ?? false;
+              cell.subCells?.some((sc) => overridableIds.has(sc.subfield.id)) ??
+              false;
             return (
               <FieldCell
                 key={`cell-${cell.field.id}-${cell.segmentIndex}`}
@@ -464,7 +468,10 @@ function SubfieldRow({
         const subStyle: CSSProperties = {
           gridColumn: `${startCol} / span ${subSpan}`,
         };
-        const isSubOverridable = overridableSubIds.has(sub.id);
+        // `overridableSubIds` keys on the bare subfield id; `sub.id` is
+        // the compound `parent:sub` form, so match on `sub.subfield.id`
+        // (Codex P3).
+        const isSubOverridable = overridableSubIds.has(sub.subfield.id);
         return (
           <span
             key={`sub-${sub.id}`}

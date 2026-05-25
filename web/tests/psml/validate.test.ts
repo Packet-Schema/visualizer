@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { validatePacket } from "../../lib/psml/renderer-helpers";
+import { validatePsmlPacket } from "../../lib/psml/validate";
 import type { Packet } from "../../lib/psml/renderer";
 
 function pkt(fields: Packet["fields"]): Packet {
@@ -100,5 +101,80 @@ describe("validatePacket — structural rules", () => {
       },
     ]);
     expect(() => validatePacket(p)).toThrow();
+  });
+});
+
+describe("validatePsmlPacket — reserved cell-id tokens (Codex P2)", () => {
+  const base = (
+    body: import("../../lib/psml/types").Container[],
+  ): import("../../lib/psml/types").Packet => ({
+    name: "T",
+    rowBits: 32,
+    body,
+  });
+
+  it("rejects a Field id with the reserved __inst_<N> suffix", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([{ id: "opt__inst_0", name: "X", type: { kind: "bits", n: 8 } }]),
+      ),
+    ).toThrow(/__inst_/);
+  });
+
+  it("rejects a Field id containing the `:` separator", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([{ id: "a:b", name: "X", type: { kind: "bits", n: 8 } }]),
+      ),
+    ).toThrow(/separator/);
+  });
+
+  it("rejects a Group id with a reserved token (Codex P2)", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          {
+            kind: "group",
+            id: "grp__remaining",
+            children: [{ id: "c", name: "C", type: { kind: "bits", n: 8 } }],
+          },
+        ]),
+      ),
+    ).toThrow(/__remaining/);
+  });
+
+  it("rejects a Repeat id with a reserved token (Codex P2)", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          {
+            kind: "repeat",
+            id: "r__inst_3",
+            element: {
+              id: "rec",
+              fields: [{ id: "c", name: "C", type: { kind: "bits", n: 8 } }],
+            },
+            count: { kind: "lit", value: 1 },
+          },
+        ]),
+      ),
+    ).toThrow(/__inst_/);
+  });
+
+  it("accepts clean container ids", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          {
+            kind: "group",
+            id: "flags",
+            children: [
+              { id: "df", name: "DF", type: { kind: "bits", n: 1 } },
+              { id: "mf", name: "MF", type: { kind: "bits", n: 1 } },
+            ],
+          },
+        ]),
+      ),
+    ).not.toThrow();
   });
 });

@@ -12,6 +12,8 @@ import {
 import { PRESETS } from "@/lib/psml/presets";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialEnv } from "@/lib/psml/normalize";
+import { collectPsmlRefs } from "@/lib/psml/collect-refs";
+import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
 import {
   initialState,
   packetCategories,
@@ -55,7 +57,7 @@ import type {
   SubField,
   TlvInstance,
 } from "@/lib/psml/renderer";
-import type { Expr, PsmlPacket } from "@/lib/psml/types";
+import type { PsmlPacket } from "@/lib/psml/types";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
@@ -91,20 +93,19 @@ const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 // `applyTlvInstances` reads this to size the Stage 1 placeholder and the
 // Stage 2 trailing-remaining cell, so the diagram closes cleanly on the
 // controller boundary even when `tlv.instances` is empty or partial.
+// Matched by packet shape (TLV field id + controller presence), not by
+// preset key — so a `custom:<name>` copy of IPv4/TCP keeps the slot sync.
 const TLV_LENGTH_SYNC: Array<{
-  presetKey: string;
   controllerKey: string;
   tlvFieldId: string;
   offset: number;
 }> = [
   {
-    presetKey: "ipv4",
     controllerKey: "ihl",
     tlvFieldId: "options",
     offset: 5,
   },
   {
-    presetKey: "tcp",
     controllerKey: "dataOffset",
     tlvFieldId: "options",
     offset: 5,
@@ -115,97 +116,16 @@ const TLV_LENGTH_SYNC: Array<{
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
 
-// PSML packet 内で参照されている ref フィールド名を全て集める。
-// PacketViewer の env 構築で controllers に無い ref を 0 で fallback seed
-// するために使う。 PSML 0.4 の全 Container kind (group / switch / repeat /
-// encrypted / optional) を再帰的に walk する。
-//
-// 動機: 既存設計では preset ごとに PacketViewer.tsx の `if (packetKey ===
-// "ipv4")` のような手動 seed を必要としていた (ipv4OptionsCount /
-// tcpOptionsCount 等)。 issue #91 で 8 個の preset を追加した時にこの
-// wiring を全部 PacketViewer に書くと脆くなるので、 packet 側の式を walk
-// して env を自動で補う形に汎化する。
-function collectPsmlRefs(packet: PsmlPacket): Set<string> {
-  const out = new Set<string>();
-  const visit = (e: Expr): void => {
-    switch (e.kind) {
-      case "lit":
-        return;
-      case "ref":
-        out.add(e.field);
-        return;
-      case "op":
-        visit(e.a);
-        visit(e.b);
-        return;
-      case "cond":
-        visit(e.test);
-        visit(e.t);
-        visit(e.f);
-        return;
-      case "peek":
-        // peek.bits は定数 (number) で ref を含まない一方、 peek.offset は
-        // Expr なので ref を含み得る (lookahead パターンで、 offset を同
-        // packet の長さ field で動かすなど)。 ここを walk しないと該当
-        // パケットが MissingRefError で落ちる。
-        if (e.offset) visit(e.offset);
-        return;
-    }
-  };
-  type AnyNode = {
-    kind?: string;
-    type?: { kind: string; n?: Expr };
-    children?: AnyNode[];
-    element?: { fields: AnyNode[] };
-    cases?: Record<string, { fields: AnyNode[] }>;
-    default?: { fields: AnyNode[] };
-    on?: Expr;
-    count?: Expr | string | { until: Expr };
-    plaintext?: { fields: AnyNode[] };
-    wireBits?: Expr;
-    when?: Expr;
-    field?: AnyNode;
-  };
-  const walk = (containers: AnyNode[]): void => {
-    for (const c of containers) {
-      if (!c.kind || c.kind === "field") {
-        if (c.type?.kind === "bytes" && c.type.n) visit(c.type.n);
-        continue;
-      }
-      if (c.kind === "group" && c.children) walk(c.children);
-      if (c.kind === "switch") {
-        if (c.on) visit(c.on);
-        for (const v of Object.values(c.cases ?? {})) walk(v.fields);
-        if (c.default) walk(c.default.fields);
-      }
-      if (c.kind === "repeat") {
-        if (c.count && typeof c.count === "object" && "kind" in c.count) {
-          visit(c.count as Expr);
-        } else if (
-          c.count &&
-          typeof c.count === "object" &&
-          "until" in c.count
-        ) {
-          visit(c.count.until);
-        }
-        if (c.element) walk(c.element.fields);
-      }
-      if (c.kind === "encrypted") {
-        if (c.wireBits) visit(c.wireBits);
-        if (c.plaintext) walk(c.plaintext.fields);
-      }
-      if (c.kind === "optional") {
-        if (c.when) visit(c.when);
-        if (c.field) walk([c.field]);
-      }
-    }
-  };
-  walk(packet.body as AnyNode[]);
-  return out;
-}
+type PacketViewerProps = {
+  initialPacketKey?: string;
+  initialControllers?: ControllerState;
+};
 
-export default function PacketViewer() {
-  const [packetKey, setPacketKey] = useState<string>(DEFAULT_PACKET_KEY);
+export default function PacketViewer({
+  initialPacketKey = DEFAULT_PACKET_KEY,
+  initialControllers,
+}: PacketViewerProps) {
+  const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
   // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
   // エラー中のテキストは studio reducer の history に乗らないので、 Discard
   // 確認をこのフラグでも引っ掛ける (Codex P2)。
@@ -244,16 +164,17 @@ export default function PacketViewer() {
     customRenderer ??
     renderedPresets[DEFAULT_PACKET_KEY];
 
-  const [controllers, setControllers] = useState<ControllerState>(() =>
-    initialState(psmlToRenderer(PRESETS[DEFAULT_PACKET_KEY])),
-  );
+  const [controllers, setControllers] = useState<ControllerState>(() => {
+    const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+    return initialControllers ?? initialState(psmlToRenderer(packet));
+  });
 
   // Custom Packet Studio reducer. Seeded from the default preset; we
   // reseed via 'replace-packet' on preset switch so history doesn't span
   // unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    PRESETS[DEFAULT_PACKET_KEY],
+    PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
@@ -786,7 +707,6 @@ export default function PacketViewer() {
       packet: sharePacket,
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
-      defaultPacketKey: DEFAULT_PACKET_KEY,
       defaultControllers,
       forcePsml: editMode || !builtInPsml,
     });
@@ -957,16 +877,28 @@ export default function PacketViewer() {
   const tlvSlotBytes: TlvSlotBytes = useMemo(() => {
     const slotBytes: TlvSlotBytes = {};
     for (const rule of TLV_LENGTH_SYNC) {
-      if (rule.presetKey !== packetKey) continue;
+      // Match on the active packet's *shape* rather than the exact preset
+      // key: a preset saved as `custom:<name>` keeps the same `options`
+      // TLV field + `ihl`/`dataOffset` controller, so a key-equality
+      // check (`rule.presetKey === packetKey`) would silently drop the
+      // slot sync and make the saved copy lay out differently from the
+      // built-in (Codex P2). Require both the TLV field and the
+      // controller to be present so the two rules (ipv4 `ihl` / tcp
+      // `dataOffset`) don't cross-fire on a packet that has only one.
+      const hasTlvField = packet.fields.some(
+        (f) => f.id === rule.tlvFieldId && f.tlv,
+      );
+      const hasController = rule.controllerKey in controllers;
+      if (!hasTlvField || !hasController) continue;
       const ctrl = Number(controllers[rule.controllerKey] ?? 0);
       slotBytes[rule.tlvFieldId] = Math.max(0, ctrl - rule.offset) * 4;
     }
     return slotBytes;
-    // The TLV_LENGTH_SYNC entries are static per preset, so reading every
-    // controller they reference is the right minimum dep set. Listing them
-    // by key keeps useMemo from re-running on irrelevant slider drags.
+    // The TLV_LENGTH_SYNC entries are static, so reading every controller
+    // they reference plus the active packet (for the field-presence
+    // check) is the right minimum dep set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packetKey, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
+  }, [packet, ...TLV_LENGTH_SYNC.map((r) => controllers[r.controllerKey])]);
 
   // Narrow the `customPresets` dependency to only the active key —
   // editing another preset in the same map shouldn't re-walk the active
@@ -1010,17 +942,7 @@ export default function PacketViewer() {
     const env = new Map(
       Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
     );
-    // Derive secondary repeat-count keys for presets whose UI slider drives a
-    // bytes-counter rather than the PSML count ref. Each TLV editor sets
-    // {opts}_count directly via syncTlvControllers; this fallback covers the
-    // IHL / Data Offset slider path where the user grows the header without
-    // touching the TLV editor.
-    // We compute these generically based on the environment so that custom
-    // presets (with different packetKeys) can still resolve their layout refs.
-    const ihl = env.get("ihl") ?? 5;
-    env.set("ipv4OptionsCount", Math.max(0, ihl - 5));
-    const off = env.get("dataOffset") ?? 5;
-    env.set("tcpOptionsCount", Math.max(0, off - 5));
+    setupDerivedCounts(env);
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、
@@ -1055,6 +977,23 @@ export default function PacketViewer() {
   // imperative DOM operations (`setAttribute("tabindex", …)` + focus()) so
   // PacketViewer stays declarative.
   const handleDiagramKeyDown = useRovingTabindex(diagramRef);
+
+  useEffect(() => {
+    if (!urlHydrated) return;
+    const title = packet.name
+      ? `${packet.name} | Packet Visualizer`
+      : "Packet Visualizer";
+    let id2: number | null = null;
+    const id1 = requestAnimationFrame(() => {
+      id2 = requestAnimationFrame(() => {
+        document.title = title;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(id1);
+      if (id2 !== null) cancelAnimationFrame(id2);
+    };
+  }, [urlHydrated, packet.name]);
 
   return (
     <>

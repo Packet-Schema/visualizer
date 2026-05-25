@@ -143,10 +143,13 @@ const RESERVED_ID_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
   { re: /:/, reason: "reserved `:` separator (used in sub-cell ids)" },
 ];
 
-function ensureUnreservedFieldId(id: string, ctx: string): void {
+// Applies to every clickable id — Field, Group, and Repeat all surface
+// as diagram cells whose ids feed `parseTlvCellId` / `resolveSelection`,
+// so a reserved token in any of them mis-routes clicks (Codex P2).
+function ensureUnreservedId(id: string, ctx: string): void {
   for (const { re, reason } of RESERVED_ID_PATTERNS) {
     if (re.test(id)) {
-      throw new Error(`${ctx}: field id "${id}" uses ${reason}.`);
+      throw new Error(`${ctx}: id "${id}" uses ${reason}.`);
     }
   }
 }
@@ -155,7 +158,7 @@ function validateField(field: Field, ctx: string): void {
   if (typeof field.id !== "string" || field.id.length === 0) {
     throw new Error(`${ctx}: field is missing an id.`);
   }
-  ensureUnreservedFieldId(field.id, ctx);
+  ensureUnreservedId(field.id, ctx);
   if (typeof field.name !== "string") {
     throw new Error(`${ctx}: field "${field.id}" is missing a name.`);
   }
@@ -175,6 +178,7 @@ function validateField(field: Field, ctx: string): void {
 }
 
 function validateGroup(g: Group, ctx: string): void {
+  if (typeof g.id === "string") ensureUnreservedId(g.id, ctx);
   if (!Array.isArray(g.children)) {
     throw new Error(`${ctx}: group "${g.id}" must have a children array.`);
   }
@@ -183,6 +187,7 @@ function validateGroup(g: Group, ctx: string): void {
 }
 
 function validateRepeat(r: Repeat, ctx: string): void {
+  if (typeof r.id === "string") ensureUnreservedId(r.id, ctx);
   const sub = `${ctx}/${r.id}`;
   if (!r.element || typeof r.element !== "object") {
     throw new Error(`${sub}: repeat is missing element struct.`);
