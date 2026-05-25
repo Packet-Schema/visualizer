@@ -106,8 +106,6 @@ export const LAYOUT = {
   badgeSvgRectRadius: 1.5,
   // Loading dots
   loadingDotSize: 6,
-  // Scaling limits
-  maxScaleUI: 2.0,
   // Ruler grid intervals (in bits)
   rulerMajorInterval: 8,
   rulerLabelInterval: 4,
@@ -563,7 +561,6 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   badgeSvgRectHeight: "--badge-svg-rect-height",
   badgeSvgRectRadius: "--badge-svg-rect-radius",
   loadingDotSize: "--loading-dot-size",
-  maxScaleUI: "--max-scale-ui",
   rulerMajorInterval: "--ruler-major-interval",
   rulerLabelInterval: "--ruler-label-interval",
   gridLineWidth: "--grid-line-width",
