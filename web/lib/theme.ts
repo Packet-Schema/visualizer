@@ -86,6 +86,22 @@ export const LAYOUT = {
   // Export/render dimensions
   imageExportHeight: 400,
   maxScaleFactor: 2.0,
+  // Subfield marker (override indicator shown in subfield cells)
+  subfieldMarkerMarginX: 4,
+  subfieldMarkerHeight: 1.5,
+  subfieldMarkerRadius: 1.5,
+  subfieldMarkerMarginBottom: 1,
+  // Cell marker (override indicator shown in main field cells)
+  cellMarkerMarginX: 7,
+  cellMarkerHeight: 2.5,
+  cellMarkerRadius: 2,
+  cellMarkerMarginBottom: 3,
+  // Header protected badge dimensions
+  headerProtectedMarginBottom: 6,
+  headerProtectedMarginRight: 28,
+  headerProtectedFontSize: 9,
+  // Subfield padding
+  subfieldPaddingHorizontal: 2,
 } as const;
 
 // Derived dimensions (calculated from base LAYOUT values)

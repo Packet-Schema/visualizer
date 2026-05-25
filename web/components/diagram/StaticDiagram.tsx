@@ -292,7 +292,7 @@ export function StaticDiagram({
                                 ),
                                 fontWeight: 600,
                                 color: theme.fieldLabel,
-                                padding: "0 2px",
+                                padding: `0 ${LAYOUT.subfieldPaddingHorizontal}px`,
                                 position: "relative",
                               }}
                             >
@@ -313,11 +313,21 @@ export function StaticDiagram({
                                   style={{
                                     content: '""',
                                     position: "absolute",
-                                    left: Math.round(4 * scale),
-                                    right: Math.round(4 * scale),
-                                    bottom: Math.round(1 * scale),
-                                    height: Math.round(1.5 * scale),
-                                    borderRadius: Math.round(1.5 * scale),
+                                    left: Math.round(
+                                      LAYOUT.subfieldMarkerMarginX * scale,
+                                    ),
+                                    right: Math.round(
+                                      LAYOUT.subfieldMarkerMarginX * scale,
+                                    ),
+                                    bottom: Math.round(
+                                      LAYOUT.subfieldMarkerMarginBottom * scale,
+                                    ),
+                                    height: Math.round(
+                                      LAYOUT.subfieldMarkerHeight * scale,
+                                    ),
+                                    borderRadius: Math.round(
+                                      LAYOUT.subfieldMarkerRadius * scale,
+                                    ),
                                     background: `linear-gradient(90deg, ${theme.markerAccentSoft} 0%, ${theme.markerAccent} 50%, ${theme.markerAccentSoft} 100%)`,
                                     pointerEvents: "none",
                                   }}
@@ -365,9 +375,15 @@ export function StaticDiagram({
                       <span
                         style={{
                           position: "absolute",
-                          bottom: Math.round(6 * scale),
-                          right: Math.round(28 * scale),
-                          fontSize: Math.round(9 * scale),
+                          bottom: Math.round(
+                            LAYOUT.headerProtectedMarginBottom * scale,
+                          ),
+                          right: Math.round(
+                            LAYOUT.headerProtectedMarginRight * scale,
+                          ),
+                          fontSize: Math.round(
+                            LAYOUT.headerProtectedFontSize * scale,
+                          ),
                           fontWeight: 700,
                           color: theme.accent,
                           zIndex: 2,
@@ -382,11 +398,15 @@ export function StaticDiagram({
                         style={{
                           content: '""',
                           position: "absolute",
-                          left: Math.round(7 * scale),
-                          right: Math.round(7 * scale),
-                          bottom: Math.round(3 * scale),
-                          height: Math.round(2.5 * scale),
-                          borderRadius: Math.round(2 * scale),
+                          left: Math.round(LAYOUT.cellMarkerMarginX * scale),
+                          right: Math.round(LAYOUT.cellMarkerMarginX * scale),
+                          bottom: Math.round(
+                            LAYOUT.cellMarkerMarginBottom * scale,
+                          ),
+                          height: Math.round(LAYOUT.cellMarkerHeight * scale),
+                          borderRadius: Math.round(
+                            LAYOUT.cellMarkerRadius * scale,
+                          ),
                           background: `linear-gradient(90deg, ${theme.markerAccentSoft} 0%, ${theme.markerAccent} 50%, ${theme.markerAccentSoft} 100%)`,
                           pointerEvents: "none",
                           zIndex: 2,
