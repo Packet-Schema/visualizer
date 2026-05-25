@@ -9,6 +9,17 @@ import {
 } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
+function hexToRgb(hex: string): [number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16),
+      ]
+    : [255, 255, 255];
+}
+
 type Props = {
   packet: Packet;
   layout: ResolvedLayout;
@@ -257,7 +268,7 @@ export function StaticDiagram({
                                 justifyContent: "center",
                                 minHeight: LAYOUT.subfieldHeight,
                                 minWidth: 0,
-                                background: "rgba(200, 220, 255, 0.25)",
+                                background: `rgba(${hexToRgb(theme.background).join(", ")}, ${theme.subfieldBackgroundOpacity})`,
                                 border: `1px solid ${stroke}`,
                                 borderRadius: LAYOUT.subfieldBorderRadius,
                                 fontSize: Math.round(

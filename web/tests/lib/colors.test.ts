@@ -30,15 +30,22 @@ describe("Color conversion for Satori compatibility", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
       Object.entries(exported.fieldPalette).forEach(([color, value]) => {
-        expect(value).toMatch(/^rgb\(/, `palette color ${color} should be rgb format`);
+        expect(value).toMatch(
+          /^rgb\(/,
+          `palette color ${color} should be rgb format`,
+        );
       });
     });
 
     it("should preserve opacity values from original theme", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
-      expect(exported.fieldFillOpacity).toBe(LIGHT_DIAGRAM_THEME.fieldFillOpacity);
-      expect(exported.rulerMinorOpacity).toBe(LIGHT_DIAGRAM_THEME.rulerMinorOpacity);
+      expect(exported.fieldFillOpacity).toBe(
+        LIGHT_DIAGRAM_THEME.fieldFillOpacity,
+      );
+      expect(exported.rulerMinorOpacity).toBe(
+        LIGHT_DIAGRAM_THEME.rulerMinorOpacity,
+      );
       expect(exported.subfieldBackgroundOpacity).toBe(
         LIGHT_DIAGRAM_THEME.subfieldBackgroundOpacity,
       );
