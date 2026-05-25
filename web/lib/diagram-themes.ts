@@ -5,6 +5,7 @@ import {
   LIGHT_DIAGRAM_THEME,
   DARK_DIAGRAM_THEME,
   THEME_MOTION,
+  DIAGRAM_OPACITY,
 } from "./colors";
 
 // Re-export color constants for backward compatibility
@@ -48,6 +49,8 @@ export function generateThemeCssVariables(): string {
     `--variable-stripe: ${LIGHT_UI_THEME.variableStripe}`,
     `--field-rose-strong: ${LIGHT_UI_THEME.fieldRoseStrong}`,
     `--legend-dim-chroma: ${LIGHT_UI_THEME.legendDimChroma}`,
+    `--ruler-minor-opacity: ${DIAGRAM_OPACITY.rulerMinor}`,
+    `--subfield-background-opacity: ${DIAGRAM_OPACITY.subfieldBackground}`,
     `--pv-ease: ${THEME_MOTION.ease}`,
     `--pv-fast: ${THEME_MOTION.fast}`,
     `--pv-med: ${THEME_MOTION.med}`,
@@ -92,6 +95,8 @@ export function generateThemeCssVariables(): string {
     `--variable-stripe: ${DARK_UI_THEME.variableStripe}`,
     `--field-rose-strong: ${DARK_UI_THEME.fieldRoseStrong}`,
     `--legend-dim-chroma: ${DARK_UI_THEME.legendDimChroma}`,
+    `--ruler-minor-opacity: ${DIAGRAM_OPACITY.rulerMinor}`,
+    `--subfield-background-opacity: ${DIAGRAM_OPACITY.subfieldBackground}`,
     `--pv-ease: ${THEME_MOTION.ease}`,
     `--pv-fast: ${THEME_MOTION.fast}`,
     `--pv-med: ${THEME_MOTION.med}`,
