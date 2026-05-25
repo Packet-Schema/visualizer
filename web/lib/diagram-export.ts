@@ -201,28 +201,27 @@ export function rowBandColor(
 
 function renderSubfields(
   subCells: SubCell[] | undefined,
-  cell: Cell,
-  bitWidth: number,
+  cellX: number,
+  cellY: number,
+  cellWidth: number,
+  cellHeight: number,
+  parentStartBit: number,
+  parentSpan: number,
   theme: DiagramExportTheme,
   subfieldFontSize: number,
 ): string {
   if (!subCells?.length) return "";
-  const parent = cellGeometry(cell, bitWidth);
-  const y = parent.y + parent.height - LAYOUT.subfieldHeight - 5;
+  const y = cellY + cellHeight - LAYOUT.subfieldHeight - LAYOUT.cellGap;
+  const colWidth = cellWidth / parentSpan;
   return subCells
     .map((sub) => {
-      const x =
-        LAYOUT.padding +
-        sub.startBit * bitWidth +
-        LAYOUT.cellInset +
-        LAYOUT.subfieldXPadding;
-      const width =
-        (sub.endBit - sub.startBit + 1) * bitWidth -
-        LAYOUT.cellInset * 2 -
-        LAYOUT.subfieldWidthPadding;
+      const relStart = sub.startBit - parentStartBit;
+      const subSpan = sub.endBit - sub.startBit + 1;
+      const x = cellX + relStart * colWidth + LAYOUT.cellGap / 2;
+      const width = Math.max(subSpan * colWidth - LAYOUT.cellGap, 1);
       const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
       return [
-        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="${theme.subfieldBackgroundOpacity}" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="${LAYOUT.strokeWidthSubfield}" />`,
+        `<rect x="${x}" y="${y}" width="${width}" height="${LAYOUT.subfieldHeight}" rx="${LAYOUT.subfieldBorderRadius}" fill="${xmlAttribute(theme.background)}" fill-opacity="${theme.subfieldBackgroundOpacity}" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="${LAYOUT.strokeWidthSubfield}" />`,
         label
           ? `<text x="${x + LAYOUT.subfieldTextXOffset}" y="${y + LAYOUT.subfieldTextYOffset}" font-size="${subfieldFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
           : "",
@@ -328,8 +327,35 @@ export function buildDiagramSvg(
   const packetFieldsById = new Map(
     packet.fields.map((field) => [field.id, field]),
   );
+
+  // Pre-compute per-row band heights: rows with subfields are taller.
+  const rowBandHeights = rows.map((cells) => {
+    const hasSubfields = cells.some((c) => c.subCells && c.subCells.length > 0);
+    return hasSubfields
+      ? LAYOUT_DERIVED.rowBandHeight + LAYOUT.subfieldHeight + LAYOUT.cellGap
+      : LAYOUT_DERIVED.rowBandHeight;
+  });
+
+  // Pre-compute each row's absolute y start so later rows correctly account
+  // for any taller rows above them.
+  const rowYStarts: number[] = [];
+  {
+    let y = LAYOUT.padding + LAYOUT.rulerHeight + LAYOUT.rulerGap;
+    for (let i = 0; i < rows.length; i++) {
+      rowYStarts[i] = y;
+      y += rowBandHeights[i]! + LAYOUT.rowGap;
+    }
+  }
+  const totalContentHeight =
+    rowBandHeights.reduce((s, h) => s + h, 0) +
+    Math.max(rows.length - 1, 0) * LAYOUT.rowGap;
+
   const width = LAYOUT.padding * 2 + packet.rowBits * bitWidth;
-  const height = LAYOUT.padding * 2 + naturalDiagramHeight(rows.length);
+  const height =
+    LAYOUT.padding * 2 +
+    LAYOUT.rulerHeight +
+    LAYOUT.rulerGap +
+    totalContentHeight;
   const titleFontSize = LAYOUT.titleFontSize;
   const subtitleFontSize = LAYOUT.subtitleFontSize;
   const majorTickH = LAYOUT.majorTickHeight;
@@ -348,19 +374,26 @@ export function buildDiagramSvg(
 
   const body = rows
     .map((cells, rowIndex) => {
-      const y = rowY(rowIndex);
+      const rowBandY = rowYStarts[rowIndex]!;
+      const bandH = rowBandHeights[rowIndex]!;
       const bandColor = rowBandColor(rowIndex, theme);
       const band = transparentBackground
         ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT_DERIVED.rowBandHeight}" rx="${LAYOUT.rowBorderRadius}" fill="${xmlAttribute(bandColor)}" />`;
+        : `<rect x="${LAYOUT.padding}" y="${rowBandY}" width="${packet.rowBits * bitWidth}" height="${bandH}" rx="${LAYOUT.rowBorderRadius}" fill="${xmlAttribute(bandColor)}" />`;
       const renderedCells = cells
         .map((cell) => {
-          const {
-            x,
-            y: cy,
-            width: cw,
-            height: ch,
-          } = cellGeometry(cell, bitWidth);
+          const cx =
+            LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
+          const cy = rowBandY + LAYOUT.rowPaddingVertical + LAYOUT.cellInset;
+          const cw =
+            (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
+          const hasSubfields = !!(cell.subCells && cell.subCells.length > 0);
+          const ch = hasSubfields
+            ? LAYOUT.rowHeight -
+              LAYOUT.cellInset * 2 +
+              LAYOUT.subfieldHeight +
+              LAYOUT.cellGap
+            : LAYOUT.rowHeight - LAYOUT.cellInset * 2;
           const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
           const { fill, stroke, isDashed, titleColor, title, subtitle } =
             cellVisual(cell, exportField, theme);
@@ -368,18 +401,21 @@ export function buildDiagramSvg(
           const escapedSubtitle = xmlEscape(subtitle);
           const dash = isDashed ? ' stroke-dasharray="5 3"' : "";
           const isOverridable = isFieldOverridable(exportField);
-          // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
-          // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
+          const parentSpan = cell.endBit - cell.startBit + 1;
           return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${theme.fieldFillOpacity}" stroke="${xmlAttribute(stroke)}" stroke-width="${LAYOUT.strokeWidthCell}"${dash} />`,
-            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${titleFontSize}" font-weight="${LAYOUT.cellTitleFontWeight}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
-            renderCellBadges(cell, x, cy, cw, ch, theme),
-            isOverridable ? renderOverridableMarker(x, cy, cw, ch, theme) : "",
+            `<rect x="${cx}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${theme.fieldFillOpacity}" stroke="${xmlAttribute(stroke)}" stroke-width="${LAYOUT.strokeWidthCell}"${dash} />`,
+            `<text x="${cx + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${titleFontSize}" font-weight="${LAYOUT.cellTitleFontWeight}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
+            `<text x="${cx + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
+            renderCellBadges(cell, cx, cy, cw, ch, theme),
+            isOverridable ? renderOverridableMarker(cx, cy, cw, ch, theme) : "",
             renderSubfields(
               cell.subCells,
-              cell,
-              bitWidth,
+              cx,
+              cy,
+              cw,
+              ch,
+              cell.startBit,
+              parentSpan,
               theme,
               LAYOUT.subfieldFontSize,
             ),
@@ -390,10 +426,23 @@ export function buildDiagramSvg(
     })
     .join("");
 
+  // clipPaths use the same per-row y starts.
+  const rowYByRowIndex = new Map(rowYStarts.map((y, i) => [i, y]));
   const clipPaths = layout.cells
     .map((cell) => {
-      const { x, y, width, height } = cellGeometry(cell, bitWidth);
-      return `<clipPath id="${clipPathIdForCell(cell)}"><rect x="${x + 4}" y="${y}" width="${Math.max(width - 8, 1)}" height="${height}" /></clipPath>`;
+      const rowBandY = rowYByRowIndex.get(cell.row) ?? rowY(cell.row);
+      const cx = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
+      const cy = rowBandY + LAYOUT.rowPaddingVertical + LAYOUT.cellInset;
+      const cw =
+        (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
+      const hasSubs = !!(cell.subCells && cell.subCells.length > 0);
+      const ch = hasSubs
+        ? LAYOUT.rowHeight -
+          LAYOUT.cellInset * 2 +
+          LAYOUT.subfieldHeight +
+          LAYOUT.cellGap
+        : LAYOUT.rowHeight - LAYOUT.cellInset * 2;
+      return `<clipPath id="${clipPathIdForCell(cell)}"><rect x="${cx + 4}" y="${cy}" width="${Math.max(cw - 8, 1)}" height="${ch}" /></clipPath>`;
     })
     .join("");
 

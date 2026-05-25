@@ -138,6 +138,13 @@ export function StaticDiagram({
       >
         {rows.map((cells: Cell[], rowIdx: number) => {
           const bandColor = rowBandColor(rowIdx, theme);
+          const rowHasSubfields = cells.some(
+            (c) => c.subCells && c.subCells.length > 0,
+          );
+          const effectiveRowHeight = rowHasSubfields
+            ? (LAYOUT.rowHeight + LAYOUT.subfieldHeight + LAYOUT.cellGap) *
+              scale
+            : rowHeight;
           return (
             <div
               key={rowIdx}
@@ -147,7 +154,7 @@ export function StaticDiagram({
                 padding: `${rowPaddingVertical}px 0`,
                 borderRadius: LAYOUT.rowBorderRadius,
                 background: bandColor,
-                minHeight: rowHeight,
+                minHeight: effectiveRowHeight,
               }}
             >
               {cells.map((cell: Cell) => {
@@ -257,11 +264,15 @@ export function StaticDiagram({
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                minHeight: LAYOUT.subfieldHeight,
+                                minHeight: Math.round(
+                                  LAYOUT.subfieldHeight * scale,
+                                ),
                                 minWidth: 0,
                                 background: `rgba(${hexToRgb(theme.background).join(", ")}, ${theme.subfieldBackgroundOpacity})`,
                                 border: `1px solid ${stroke}`,
-                                borderRadius: LAYOUT.subfieldBorderRadius,
+                                borderRadius: Math.round(
+                                  LAYOUT.subfieldBorderRadius * scale,
+                                ),
                                 fontSize: Math.round(
                                   LAYOUT.subfieldFontSize * scale,
                                 ),
@@ -409,7 +420,7 @@ export function StaticDiagram({
               gap: Math.round(LAYOUT.diagramGap * scale),
               borderRadius: LAYOUT.rowBorderRadius,
               background: "transparent",
-              minHeight: rowHeight,
+              minHeight: Math.round(LAYOUT.rowHeight * scale),
             }}
           >
             <div
