@@ -50,6 +50,32 @@ function findRowNeighbor(
 }
 
 /**
+ * Resolve a sub-cell back to the parent field-cell *segment* it visually
+ * sits on. A parent that wraps across rows is rendered as multiple
+ * segments sharing one `data-field-id`; picking the segment whose
+ * `data-row` matches the sub-cell keeps ArrowUp/Down on the current row
+ * instead of jumping to the first segment (Codex P3). Falls back to the
+ * first matching segment when the row attribute is absent.
+ */
+function findParentSegment(
+  root: HTMLElement,
+  subCell: HTMLElement,
+): HTMLElement | null {
+  const parentId = subCell.dataset.parentFieldId;
+  if (!parentId) return null;
+  const segments = Array.from(
+    root.querySelectorAll<HTMLElement>(
+      `.field-cell[data-field-id="${CSS.escape(parentId)}"]`,
+    ),
+  );
+  if (segments.length <= 1) return segments[0] ?? null;
+  const subRow = subCell.dataset.row;
+  return (
+    segments.find((seg) => seg.dataset.row === subRow) ?? segments[0] ?? null
+  );
+}
+
+/**
  * Wrap `callback` in a ref-backed thunk whose identity is stable for the
  * lifetime of the host component but always reads the *latest* callback
  * passed in.
@@ -220,14 +246,43 @@ export function useRovingTabindex(
           next = group[Math.max(0, idx - 1)] ?? null;
           break;
         case "ArrowDown":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, +1);
+          if (isSubfieldCell) {
+            // Subfields live on a single row of the parent — descending
+            // out of a sub-cell exits back to the row of the OWNING
+            // field cell and steps to the row below it. Pick the parent
+            // *segment* that shares the sub-cell's row, not just the
+            // first segment, so a multi-segment parent navigates from
+            // the current row (Codex P3).
+            const el = target as HTMLElement;
+            const parentCell = findParentSegment(root, el);
+            const allFieldCells = Array.from(
+              root.querySelectorAll<HTMLElement>(".field-cell"),
+            );
+            next = parentCell
+              ? findRowNeighbor(allFieldCells, parentCell, +1)
+              : null;
+          } else if (
+            (target as HTMLElement).classList.contains("has-subfields")
+          ) {
+            // Descending into a cell that has sub-cells enters the
+            // first sub-cell — gives keyboard / screen-reader users
+            // access to the children of a collapsed Group.
+            next = (target as HTMLElement).querySelector<HTMLElement>(
+              ".subfield-cell",
+            );
+          } else {
+            next = findRowNeighbor(group, target as HTMLElement, +1);
+          }
           break;
         case "ArrowUp":
-          next = isSubfieldCell
-            ? null
-            : findRowNeighbor(group, target as HTMLElement, -1);
+          if (isSubfieldCell) {
+            // Ascending from a sub-cell exits back to its parent field
+            // cell — the segment on the sub-cell's own row, not always
+            // the first segment of a multi-segment parent (Codex P3).
+            next = findParentSegment(root, target as HTMLElement);
+          } else {
+            next = findRowNeighbor(group, target as HTMLElement, -1);
+          }
           break;
         case "Home":
           next = group[0] ?? null;
@@ -241,10 +296,19 @@ export function useRovingTabindex(
 
       if (next && next !== target) {
         e.preventDefault();
-        // Move the single tabindex=0 to the focused element.
-        for (const c of group) {
-          c.setAttribute("tabindex", c === next ? "0" : "-1");
+        // Move the single tabindex=0 to the focused element. When the
+        // jump crosses focus-group boundaries (subfield → field-cell or
+        // vice versa) we also reset the *other* group so we don't end
+        // up with two tab stops live at once.
+        const groups: HTMLElement[][] = next.classList.contains("subfield-cell")
+          ? [cells, group]
+          : isSubfieldCell
+            ? [group, cells]
+            : [group];
+        for (const g of groups) {
+          for (const c of g) c.setAttribute("tabindex", "-1");
         }
+        next.setAttribute("tabindex", "0");
         next.focus();
       }
     },

@@ -147,6 +147,27 @@ export type Struct = {
   fields: Container[];
 };
 
+/** A single TLV record currently attached to a `Repeat<Switch>` body.
+ *  Mirrors `TlvInstance` from the renderer model so PSML can persist the
+ *  user's chosen records (kind + per-instance extras) across export /
+ *  share / save boundaries. Stripping this on round-trip is a known
+ *  cause of "instances vanish on JSON re-import" — see the
+ *  `instances` field on `Repeat`. */
+export type TlvInstancePsml = {
+  kind: number;
+  extras?: Record<string, number>;
+};
+
+/** A single IPv6-extension-header entry currently attached to a chain
+ *  `Repeat<Switch on proto>`. The shape parallels `TlvInstancePsml` but
+ *  keys on `proto` (the wire's Next-Header value) rather than TLV `kind`
+ *  so the schema reads naturally. Lifted separately on the renderer side
+ *  via `chainInstances`. */
+export type ChainInstancePsml = {
+  proto: number;
+  extras?: Record<string, number>;
+};
+
 /** Repeat: N copies of a struct, where N is computed each layout pass. */
 export type Repeat = {
   kind: "repeat";
@@ -158,6 +179,26 @@ export type Repeat = {
   count: Expr | "eos" | { until: Expr };
   category?: CategoryToken;
   doc?: string;
+  /** Persisted TLV instance list. When the Repeat is a TLV catalog
+   *  (`Repeat<Switch on ref(...)>` whose cases are integer-keyed), the
+   *  renderer materialises one record per entry here and the diagram
+   *  layout pre-resolves each variant's leaf fields. Carrying the list
+   *  inside PSML itself (rather than only in the runtime renderer
+   *  mirror) lets JSON / share URL / "Save as preset" round-trip the
+   *  user's selections faithfully. Non-TLV Repeats may leave this
+   *  undefined. */
+  instances?: TlvInstancePsml[];
+  /** Persisted chain instance list (IPv6 extension-header style). Same
+   *  reason as `instances`: without persisting the user's choices on
+   *  the PSML body, every export path that goes through
+   *  `rendererToPsml` silently drops the chain. */
+  chainInstances?: ChainInstancePsml[];
+  /** Terminal Next-Header value after the last chain entry (IPv6's
+   *  "what comes after all the extension headers?"). Optional; only
+   *  meaningful on chain Repeats. Persisting it on the Repeat itself
+   *  keeps the user's choice from reverting to the catalog default on
+   *  Save-As / share-URL round-trips (sub-agent H1). */
+  chainFinalProto?: number;
 };
 
 /** Switch: choose a variant struct by evaluating a discriminator. */
@@ -295,6 +336,19 @@ export type NormalizedField = {
   headerProtected?: boolean;
   /** Per-field byte order override (PSML 0.4) — propagated from Field.byteOrder. */
   byteOrder?: "BE" | "LE";
+  /**
+   * When set, this field was emitted as the immediate child of a `Group`
+   * named `groupId`. The layout adapter collapses consecutive siblings
+   * with the same `groupId` into one cell with `subCells[]`. Other
+   * containers (Repeat / Switch / Encrypted / Optional) intentionally
+   * leave this undefined so their children stay separate cells — Group
+   * is the only PSML primitive whose semantic the renderer treats as
+   * "visual grouping of leaf fields".
+   */
+  groupId?: string;
+  /** Human-readable name carried alongside groupId (the Group's own
+   *  name, falling back to the id). */
+  groupName?: string;
 };
 
 export type Normalized = {

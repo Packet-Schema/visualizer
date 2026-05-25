@@ -28,6 +28,8 @@ import { groupToSubfieldField, plainFieldToRenderer } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
 
 export { rendererToPsml } from "./to-psml";
+export { applyTlvInstances } from "./apply-tlv";
+export { mergeInstancesIntoPsml } from "./merge-instances";
 
 /**
  * Inspect a Constraint of the form `ref(fieldA) * lit(N) == ref(fieldB)`
@@ -54,8 +56,16 @@ function constraintToController(constraint: Constraint): string | null {
   // compile-time literal scale factor.
   const tryMatch = (mul: Expr, target: Expr): string | null => {
     if (target.kind !== "ref") return null;
-    if (mul.kind !== "op" || mul.op !== "*") return null;
+    if (mul.kind !== "op") return null;
+    // `*` / `+` / `-` are the supported single-operator inversions. Anything
+    // richer (multi-operator, `/` / `%` / shifts, peek-based discriminators)
+    // is left alone — the slider semantics only make sense when one operand
+    // is a compile-time literal that the solver can peel off.
+    if (mul.op !== "*" && mul.op !== "+" && mul.op !== "-") return null;
     if (mul.a.kind === "ref" && mul.b.kind === "lit") return mul.a.field;
+    // `-` is non-commutative, but `lit - ref` still nominates the ref as
+    // the controller (the solver inverts both directions for additive
+    // forms).
     if (mul.b.kind === "ref" && mul.a.kind === "lit") return mul.b.field;
     return null;
   };
@@ -89,7 +99,31 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
     }
     if (c.kind === "repeat") {
       if (isLikelyChainRepeat(c)) {
-        fields.push(repeatToChainField(c));
+        // IPv6-style preset: a plain 8-bit `nextHeader` Field is followed by
+        // a `nextHeader_chain` Repeat. The renderer mirror is happier when
+        // those two surface as ONE field — the visible cell carries the
+        // chain editor as its override. If we can't find a matching base
+        // field, fall back to emitting the chain as its own (invisible)
+        // field so the catalog is still discoverable.
+        const chainField = repeatToChainField(c);
+        const baseId = chainField.id.replace(/_chain$/, "");
+        const baseField =
+          baseId !== chainField.id
+            ? fields.find((f) => f.id === baseId)
+            : undefined;
+        if (baseField) {
+          baseField.chainCatalog = chainField.chainCatalog;
+          baseField.chainInstances = chainField.chainInstances;
+          // Forward the terminal Next-Header pick to the base field too —
+          // `syncChainControllers` later reads `field.chainFinalProto`
+          // and without this hand-off the value silently reverts to the
+          // catalog default on every reload / re-export (Codex P1).
+          if (typeof chainField.chainFinalProto === "number") {
+            baseField.chainFinalProto = chainField.chainFinalProto;
+          }
+        } else {
+          fields.push(chainField);
+        }
       } else if (isTlvRepeat(c)) {
         fields.push(repeatToTlvField(c));
       }
@@ -133,11 +167,277 @@ export function psmlToRenderer(packet: PsmlPacket): RendererPacket {
       }
     }
   }
+  attachOverrideMetadata(packet.body, fields);
+  const freeRepeats = collectFreeRepeats(packet.body, fields);
+  const peekSwitches = collectPeekSwitches(packet.body);
   return {
     name: packet.name,
     rowBits: packet.rowBits,
     fields,
     ...(packet.description ? { description: packet.description } : {}),
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
+    ...(freeRepeats.length > 0 ? { freeRepeats } : {}),
+    ...(peekSwitches.length > 0 ? { peekSwitches } : {}),
   };
+}
+
+/**
+ * Find Repeats whose count isn't already covered by an existing override:
+ *   * Not a TLV / chain Repeat (those get list editors).
+ *   * Their `count: ref(X)` doesn't land on a field with `controlsLength`
+ *     (= a slider) or any other widget-bearing field.
+ * Surface them as packet-level "Repeats" steppers in OverridePanel.
+ * Also covers `eos` / `{ until: Expr }` shapes where the count env key is
+ * the Repeat's own id (per normalize.ts).
+ */
+function collectFreeRepeats(
+  body: PsmlPacket["body"],
+  fields: RendererField[],
+): NonNullable<RendererPacket["freeRepeats"]> {
+  const out: NonNullable<RendererPacket["freeRepeats"]> = [];
+  const visit = (containers: PsmlPacket["body"]): void => {
+    for (const c of containers) {
+      if (c.kind === "repeat") {
+        if (!isLikelyChainRepeat(c) && !isTlvRepeat(c)) {
+          let countKey: string | null = null;
+          let label = c.name ?? c.id;
+          if (
+            c.count === "eos" ||
+            (typeof c.count === "object" && "until" in c.count)
+          ) {
+            countKey = c.id;
+            label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
+          } else if (typeof c.count === "object" && c.count.kind === "ref") {
+            // Only surface when no existing field-bearing widget covers it.
+            const ref = c.count.field;
+            const covered = fields.find(
+              (f) =>
+                f.id === ref &&
+                (f.controlsLength || f.switchCases || f.enumVariants),
+            );
+            if (!covered) countKey = ref;
+          }
+          if (countKey) out.push({ name: label, countKey });
+        }
+        visit(c.element.fields);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases)) visit(struct.fields);
+        if (c.default) visit(c.default.fields);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.field]);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields);
+        continue;
+      }
+    }
+  };
+  visit(body);
+  return out;
+}
+
+/**
+ * Find Switches whose `on` is a `peek` expression (TLS extension type
+ * dispatch etc). The peek synthesizes an env key
+ * `__peek__<offset>__<bits>` per the PSML spec. We expose this so
+ * OverridePanel can render a synthetic case picker — there's no real cell
+ * to attach to since `peek` doesn't consume bytes.
+ */
+function collectPeekSwitches(
+  body: PsmlPacket["body"],
+): NonNullable<RendererPacket["peekSwitches"]> {
+  const out: NonNullable<RendererPacket["peekSwitches"]> = [];
+  const visit = (containers: PsmlPacket["body"]): void => {
+    for (const c of containers) {
+      if (c.kind === "switch") {
+        if (c.on.kind === "peek") {
+          const cases: { value: number; label: string }[] = [];
+          for (const [key, struct] of Object.entries(c.cases)) {
+            const v = Number(key);
+            if (!Number.isFinite(v)) continue;
+            cases.push({ value: v, label: struct.name ?? `case ${key}` });
+          }
+          if (cases.length > 0) {
+            const peek = c.on;
+            // Only surface peek switches whose offset is a compile-time
+            // literal (or implicitly 0). Non-literal offsets evaluate at
+            // layout time to a value we don't know here, so the
+            // `__peek__<offset>__<bits>` key we'd publish wouldn't match
+            // what normalize actually reads — the picker would write to
+            // a dead env key and the diagram wouldn't update. Codex P2.
+            const offset = peek.offset;
+            if (offset && offset.kind !== "lit") {
+              // Skip: surfacing this peek would be misleading.
+            } else {
+              const offsetValue = offset?.kind === "lit" ? offset.value : 0;
+              out.push({
+                id: c.id,
+                name: c.name ?? c.id,
+                cases,
+                peekKey: `__peek__${offsetValue}__${peek.bits}`,
+              });
+            }
+          }
+        }
+        for (const struct of Object.values(c.cases)) visit(struct.fields);
+        if (c.default) visit(c.default.fields);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        visit(c.element.fields);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.field]);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields);
+        continue;
+      }
+    }
+  };
+  visit(body);
+  return out;
+}
+
+/**
+ * Recursively walk PSML containers and attach override metadata to the
+ * renderer mirror fields (or to a Group's subfields when the target lives
+ * inside a Group). Handles:
+ *   * `Switch` whose `on` is `ref(X)` → `X.switchCases` carries the case
+ *     list. Also walks each case Struct (variant) to find nested overrides.
+ *     `peek`-based discriminators land on the parent Switch's id as a
+ *     synthetic peek widget target (no real cell — surfaced via
+ *     `peekSwitches`).
+ *   * `Optional` whose `when` is `ref(X)` → push the inner field's name
+ *     onto `X.optionalGateFor`. Also recurses into the inner field.
+ *   * Group / Repeat children — walked recursively so nested Switch /
+ *     Optional / data-dependent types are surfaced.
+ *   * Each `op` / `cond` Expr that contains a single `ref` extracts that
+ *     ref as a best-effort controller (complex expressions don't get a
+ *     widget but their primary ref still surfaces something).
+ */
+function attachOverrideMetadata(
+  body: PsmlPacket["body"],
+  fields: RendererField[],
+): void {
+  const findTarget = (
+    id: string,
+  ):
+    | { kind: "field"; field: RendererField }
+    | { kind: "subfield"; sub: NonNullable<RendererField["subfields"]>[number] }
+    | null => {
+    const f = fields.find((x) => x.id === id);
+    if (f) return { kind: "field", field: f };
+    for (const parent of fields) {
+      const sub = parent.subfields?.find((s) => s.id === id);
+      if (sub) return { kind: "subfield", sub };
+    }
+    return null;
+  };
+
+  // Try to pull a single ref id out of an Expr — `ref(X)` returns X,
+  // `op` / `cond` walks operands recursively and returns the first ref
+  // found. Complex expressions with multiple refs are accepted but the
+  // first ref wins ("primary" controller).
+  const primaryRef = (expr: import("../types").Expr): string | null => {
+    if (expr.kind === "ref") return expr.field;
+    if (expr.kind === "lit") return null;
+    if (expr.kind === "peek") return null;
+    if (expr.kind === "op") {
+      return primaryRef(expr.a) ?? primaryRef(expr.b);
+    }
+    if (expr.kind === "cond") {
+      return primaryRef(expr.test) ?? primaryRef(expr.t) ?? primaryRef(expr.f);
+    }
+    return null;
+  };
+
+  const visit = (containers: PsmlPacket["body"]): void => {
+    for (const c of containers) {
+      if (c.kind === "switch") {
+        const cases: { value: number; label: string }[] = [];
+        for (const [key, struct] of Object.entries(c.cases)) {
+          const v = Number(key);
+          if (Number.isFinite(v)) {
+            cases.push({ value: v, label: struct.name ?? `case ${key}` });
+          }
+          // Recurse into each variant's fields.
+          visit(struct.fields);
+        }
+        if (c.default) visit(c.default.fields);
+        if (cases.length === 0) continue;
+        if (c.on.kind === "ref") {
+          const t = findTarget(c.on.field);
+          if (t) {
+            if (t.kind === "field") t.field.switchCases = cases;
+            else t.sub.switchCases = cases;
+          }
+        } else if (c.on.kind === "op" || c.on.kind === "cond") {
+          // Complex expr — fall back to the primary ref so the user still
+          // has *something* to drive. The widget label notes the indirection.
+          const primary = primaryRef(c.on);
+          if (primary) {
+            const t = findTarget(primary);
+            if (t) {
+              if (t.kind === "field") t.field.switchCases = cases;
+              else t.sub.switchCases = cases;
+            }
+          }
+        }
+        // `peek`-based discriminator: surfaced via the Switch's own id on
+        // the packet (no real cell), see `peekSwitches` below.
+        continue;
+      }
+      if (c.kind === "optional") {
+        const gated = c.field.name || c.field.id;
+        const ref = c.when.kind === "ref" ? c.when.field : primaryRef(c.when);
+        if (ref) {
+          const t = findTarget(ref);
+          if (t) {
+            if (t.kind === "field") {
+              t.field.optionalGateFor = [
+                ...(t.field.optionalGateFor ?? []),
+                gated,
+              ];
+            } else {
+              t.sub.optionalGateFor = [...(t.sub.optionalGateFor ?? []), gated];
+            }
+          }
+        }
+        // Recurse into the inner field (treat it as a 1-element body).
+        visit([c.field]);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        // Repeat's element is a Struct (single variant body).
+        visit(c.element.fields);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields);
+        continue;
+      }
+    }
+  };
+
+  visit(body);
 }

@@ -126,6 +126,16 @@ type WalkState = {
    * deduplication would silently drop or duplicate cells.
    */
   repeatIndex?: number;
+  /** Stack of enclosing Groups (innermost last). Used to tag emitted
+   *  fields with their immediate Group parent so the layout adapter can
+   *  collapse Group children into one cell with sub-cells. */
+  groupStack?: Array<{ id: string; name: string }>;
+  /** Stack of Repeat iteration indices, innermost last. Used so that
+   *  `Repeat(Repeat(Group))` produces unique collapsed cell ids — e.g.
+   *  `flagsBits#0_0`, `flagsBits#0_1`, `flagsBits#1_0`, `flagsBits#1_1`.
+   *  Scalar `repeatIndex` alone collides for `[i][j]` pairs that happen
+   *  to share `j`. */
+  repeatIndexStack?: number[];
 };
 
 type EmitExtra = Pick<NormalizedField, "repeatIndex" | "switchCase">;
@@ -164,6 +174,26 @@ function emit(
     }
   }
   if (field.byteOrder) nf.byteOrder = field.byteOrder;
+  // Tag emitted field with its innermost Group parent so the layout
+  // adapter can collapse consecutive Group children into one cell. When
+  // the Group is being walked inside a Repeat (= `state.repeatIndex` is
+  // set), decorate the groupId with the iteration index so each
+  // repetition's collapsed cell has a unique id — without it, two
+  // iterations would emit `cell.field.id === groupId`, colliding on
+  // React keys and `selectedFieldId` lookups (Codex P1).
+  if (state.groupStack && state.groupStack.length > 0) {
+    const top = state.groupStack[state.groupStack.length - 1];
+    // Use the FULL stack of enclosing Repeat indices, not just the
+    // innermost scalar. `Repeat(Repeat(Group))` would otherwise collide
+    // on `${groupId}#0` for the two `[0][_]` pairs that share the inner
+    // index, breaking React keys and selectedFieldId lookups.
+    const indexTag =
+      state.repeatIndexStack && state.repeatIndexStack.length > 0
+        ? state.repeatIndexStack.join("_")
+        : null;
+    nf.groupId = indexTag !== null ? `${top.id}#${indexTag}` : top.id;
+    nf.groupName = top.name;
+  }
   state.out.push(nf);
   state.offset += bits;
 }
@@ -210,19 +240,26 @@ function walkContainer(c: Container, path: string, state: WalkState): void {
 
 function walkGroup(g: Group, path: string, state: WalkState): void {
   const sub = `${path}/${g.id}`;
+  const stack = state.groupStack ?? [];
+  state.groupStack = [...stack, { id: g.id, name: g.name ?? g.id }];
   for (const child of g.children) walkContainer(child, sub, state);
+  state.groupStack = stack;
 }
 
 function walkRepeat(r: Repeat, path: string, state: WalkState): void {
   const sub = `${path}/${r.id}`;
   const count = resolveRepeatCount(r, state);
   const prevRepeatIndex = state.repeatIndex;
+  const prevStack = state.repeatIndexStack ?? [];
   for (let i = 0; i < count; i++) {
     const innerPath = `${sub}[${i}]`;
     // Tag the active repeat index on the walk state so any nested Switch /
     // Group / Encrypted that emits fields inherits the suffix, not just the
-    // direct Field children handled in this loop.
+    // direct Field children handled in this loop. The scalar `repeatIndex`
+    // is kept for the per-leaf id (`${field.id}#${repeatIndex}`); the
+    // stack carries the full nesting for groupId decoration.
     state.repeatIndex = i;
+    state.repeatIndexStack = [...prevStack, i];
     for (const child of r.element.fields) {
       if (isField(child)) {
         emit(state, child, innerPath, { repeatIndex: i });
@@ -232,6 +269,7 @@ function walkRepeat(r: Repeat, path: string, state: WalkState): void {
     }
   }
   state.repeatIndex = prevRepeatIndex;
+  state.repeatIndexStack = prevStack.length > 0 ? prevStack : undefined;
 }
 
 function resolveRepeatCount(r: Repeat, state: WalkState): number {

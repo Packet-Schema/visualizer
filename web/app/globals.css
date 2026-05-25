@@ -37,6 +37,14 @@
   --accent-fg: oklch(99% 0 0);
   --accent-glow: oklch(65% 0.2 265 / 0.45);
 
+  /* Affordance accent — used for "this is interactive" markers in the
+     diagram. Picked to live outside every `--field-*` category hue so it
+     reads as a UI signal, not a field semantics token. Magenta-orchid at
+     hue 330 sits between rose (18) and violet (310) but with higher
+     chroma, so it pops on any cell color. */
+  --marker-accent: oklch(68% 0.24 330);
+  --marker-accent-soft: oklch(78% 0.18 330 / 0.55);
+
   /* Diagram surface */
   --row-band-even: oklch(98% 0.008 260);
   --row-band-odd: oklch(99.5% 0.005 260);
@@ -108,6 +116,11 @@
   --accent: oklch(72% 0.16 265);
   --accent-fg: oklch(18% 0.025 270);
   --accent-glow: oklch(72% 0.16 265 / 0.55);
+
+  /* Dark-mode affordance accent: brightened so it stays above WCAG
+     contrast against the elevated row background. */
+  --marker-accent: oklch(78% 0.24 330);
+  --marker-accent-soft: oklch(85% 0.18 330 / 0.55);
 
   --row-band-even: oklch(24% 0.03 270);
   --row-band-odd: oklch(22% 0.028 270);

@@ -80,17 +80,28 @@ export function fieldIdSelector(fieldId: string): string {
 }
 
 /**
- * Selector for synthesised Repeat copies (`type#0`, `type#1`, …) that the
- * normalize step emits when a Field is wrapped in a Repeat. Walks the
- * `${fieldId}#…` namespace.
+ * Selector for synthesised cells emitted by Repeat / TLV expansion when a
+ * Field is wrapped in a Repeat. Three id shapes:
+ *   * `${fieldId}#N` — legacy flat Repeat iteration (`type#0`).
+ *   * `${fieldId}__inst_N` — applyTlvInstances' per-instance Group cell
+ *     (`options__inst_0`).
+ *   * `${fieldId}__remaining` — trailing "Options remaining (N B)"
+ *     placeholder.
  */
 export function repeatedFieldIdSelector(fieldId: string): string {
-  return `[data-field-id^="${escapeSelectorValue(fieldId)}#"]`;
+  const escaped = escapeSelectorValue(fieldId);
+  return (
+    `[data-field-id^="${escaped}#"],` +
+    `[data-field-id^="${escaped}__inst_"],` +
+    `[data-field-id="${escaped}__remaining"]`
+  );
 }
 
 /**
- * Selector that matches both the field cell and any repeated copies.
- * Equivalent to `fieldIdSelector(fieldId), repeatedFieldIdSelector(fieldId)`.
+ * Selector that matches both the field cell and any TLV / repeated
+ * synthetic copies. Used by DependencyOverlay (arrow endpoints) and the
+ * hex-strip / field-highlight surfaces — anything that needs to light up
+ * "the cells that belong to this field, however the layout expanded it".
  */
 export function fieldIdAndRepeatsSelector(fieldId: string): string {
   return `${fieldIdSelector(fieldId)}, ${repeatedFieldIdSelector(fieldId)}`;

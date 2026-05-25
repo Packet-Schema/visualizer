@@ -22,6 +22,16 @@ export type SubField = {
   name: string;
   bits: number;
   description?: string;
+  /** Same override hooks as Field. Populated when a Group's child is the
+   *  discriminator / gate / data-dependent type — i.e. when the runtime
+   *  override surface lives inside a subfield rather than a top-level
+   *  Field (e.g. WebSocket's `payloadLength7` inside the byte-0 group). */
+  switchCases?: { value: number; label: string }[];
+  varintEncoding?: "quic" | "protobuf" | "cbor";
+  isBerLength?: boolean;
+  optionalGateFor?: string[];
+  enumVariants?: Record<number, string>;
+  defaultValue?: number;
 };
 
 /** A single field inside a TLV catalog entry's positional layout. */
@@ -92,6 +102,12 @@ export type ChainCatalogEntry = {
 /** A single chain block (extension header). */
 export type ChainInstance = {
   proto: number;
+  /** Per-instance numeric extras parallel to `TlvInstance.extras`. The
+   *  PSML schema accepts them on `Repeat.chainInstances`; carrying the
+   *  field on the renderer mirror prevents `chain.ts` round-trip from
+   *  silently dropping data (Codex P2). Most renderer call sites only
+   *  read `proto`. */
+  extras?: Record<string, number>;
 };
 
 export type Field = {
@@ -126,6 +142,39 @@ export type Field = {
   chainInstances?: ChainInstance[];
   /** Final next-header value when no extension headers are attached. */
   chainFinalProto?: number;
+  /**
+   * Case list when this field is the discriminator of a top-level PSML
+   * `Switch` whose `on` is `ref(<this field id>)`. Each entry pairs the
+   * discriminator value with a human-readable label (the case struct's
+   * `name` or the bare key). Populated by `psmlToRenderer`.
+   */
+  switchCases?: { value: number; label: string }[];
+  /**
+   * Encoding kind when this field's PSML type is `varint`. Drives the
+   * width picker in OverridePanel. The runtime width is the env value
+   * keyed by this field's id (the same convention PSML normalize uses).
+   */
+  varintEncoding?: "quic" | "protobuf" | "cbor";
+  /** True when this field's PSML type is `berLength`. Same env override
+   *  convention as `varintEncoding`. */
+  isBerLength?: boolean;
+  /**
+   * List of Optional containers whose `when` expression is
+   * `ref(<this field id>)`. Each entry is the inner field's name so the
+   * toggle UI can show what it gates. Populated by `psmlToRenderer`.
+   */
+  optionalGateFor?: string[];
+  /**
+   * Enum variant table when this field's PSML type is `enum`. Drives the
+   * EnumDropdown widget so users can pick a known value (e.g. `Protocol=6
+   * → TCP`) instead of typing a raw integer. Populated by `psmlToRenderer`.
+   */
+  enumVariants?: Record<number, string>;
+  /** Per-field byte order override (PSML 0.4). When set, OverridePanel
+   *  surfaces a BE / LE toggle for this field. The mutation goes through
+   *  StudioPanel's edit-reducer because byteOrder is a schema attribute,
+   *  not an env override. */
+  byteOrder?: "BE" | "LE";
 };
 
 export type Packet = {
@@ -134,6 +183,19 @@ export type Packet = {
   description?: string;
   byteOrder?: string;
   fields: Field[];
+  /** Non-TLV / non-chain Repeat counts the user can drive via OverridePanel.
+   *  Surfaced as a "Repeats" stepper section because these counts don't
+   *  belong to a single field (they're synthetic env keys). */
+  freeRepeats?: { name: string; countKey: string }[];
+  /** Switches whose `on` is a `peek` expression — discriminator can't be
+   *  surfaced via a real cell, so OverridePanel offers a synthetic
+   *  case-picker. */
+  peekSwitches?: {
+    id: string;
+    name: string;
+    cases: { value: number; label: string }[];
+    peekKey: string;
+  }[];
 };
 
 /** A laid-out cell within a row. May span multiple rows via segmentation. */
@@ -146,6 +208,15 @@ export type SubCell = {
   isFirst: boolean;
   isLast: boolean;
   bitsTotal: number;
+  /** Per-child decoration flags propagated from the source NormalizedField.
+   *  When a Group collapse spans children with non-uniform encryption /
+   *  byteOrder, the parent cell stays neutral and these per-sub-cell flags
+   *  drive the visual treatment (lock icon, [LE] suffix etc.) instead. */
+  encrypted?: boolean;
+  encryptedParentId?: string;
+  encryptedContextNote?: string;
+  headerProtected?: boolean;
+  byteOrder?: "BE" | "LE";
 };
 
 export type Cell = {
