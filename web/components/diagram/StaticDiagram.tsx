@@ -157,12 +157,11 @@ export function StaticDiagram({
                     key={`${cell.field.id}-${cell.segmentIndex}`}
                     style={{
                       flex: span,
+                      position: "relative",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      background: fill,
-                      opacity: fillOpacity,
                       border: `1px ${isDashed ? "dashed" : "solid"} ${stroke}`,
                       borderRadius: LAYOUT.cellBorderRadius,
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
@@ -170,8 +169,20 @@ export function StaticDiagram({
                       minWidth: 0,
                     }}
                   >
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background: fill,
+                        opacity: fillOpacity,
+                        borderRadius: LAYOUT.cellBorderRadius,
+                        pointerEvents: "none",
+                      }}
+                    />
                     <span
                       style={{
+                        position: "relative",
+                        zIndex: 1,
                         fontSize: titleFontSize,
                         fontWeight: LAYOUT.cellTitleFontWeight,
                         color: titleColor,
@@ -185,6 +196,8 @@ export function StaticDiagram({
                     </span>
                     <span
                       style={{
+                        position: "relative",
+                        zIndex: 1,
                         fontSize: smallFontSize,
                         color: theme.fieldSublabel,
                         marginTop: LAYOUT.cellSubtitleMarginTop,
