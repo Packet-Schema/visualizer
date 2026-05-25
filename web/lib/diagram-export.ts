@@ -307,7 +307,9 @@ export function generateLayoutCssVariables(): string {
   const rules = Array.from(Object.entries(CSS_PROPERTY_MAP))
     .map(([key, cssVar]) => {
       const value = LAYOUT[key as keyof typeof LAYOUT];
-      return `${cssVar}: ${value}px;`;
+      // Only append 'px' for numeric values; skip string values like textAnchor
+      const cssValue = typeof value === "number" ? `${value}px` : String(value);
+      return `${cssVar}: ${cssValue};`;
     })
     .join("");
   return `:root { ${rules} }`;

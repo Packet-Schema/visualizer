@@ -56,7 +56,9 @@ export function StaticDiagram({
   if (targetHeight != null && rowCount > 0) {
     const totalRows = isTruncated ? rowCount + 1 : rowCount;
     let naturalH = naturalDiagramHeight(totalRows);
-    // Account for rows with subfields, which are taller than regular rows
+    // Account for rows with subfields, which add height beyond the standard rowBandHeight.
+    // A row with subfields has total height = rowBandHeight + (subfieldHeight + cellGap),
+    // so we add the difference for each affected row.
     const rowsWithSubfields = rows.filter((r) =>
       r.some((c) => c.subCells && c.subCells.length > 0),
     ).length;
