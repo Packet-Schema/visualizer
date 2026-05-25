@@ -234,7 +234,6 @@ export function StaticDiagram({
                           position: "relative",
                           zIndex: 1,
                           display: "flex",
-                          flexWrap: "wrap",
                           gap: LAYOUT.cellGap,
                           width: "100%",
                           marginTop: "auto",
@@ -242,6 +241,8 @@ export function StaticDiagram({
                       >
                         {cell.subCells!.map((sub) => {
                           const subSpan = sub.endBit - sub.startBit + 1;
+                          const totalSubBits = cell.endBit - cell.startBit + 1;
+                          const subFlexBasis = (subSpan / totalSubBits) * 100;
                           const isSubOverridable = exportField.subfields?.some(
                             (sf) =>
                               sf.id === sub.subfield.id &&
@@ -251,13 +252,13 @@ export function StaticDiagram({
                             <div
                               key={`sub-${sub.id}`}
                               style={{
-                                flex: subSpan,
+                                flex: `0 1 ${subFlexBasis}%`,
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 minHeight: LAYOUT.subfieldHeight,
                                 minWidth: 0,
-                                background: "rgba(255, 255, 255, 0.1)",
+                                background: "rgba(100, 100, 100, 0.3)",
                                 border: `1px solid ${stroke}`,
                                 borderRadius: LAYOUT.subfieldBorderRadius,
                                 fontSize: Math.round(
