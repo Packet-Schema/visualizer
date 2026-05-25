@@ -1,23 +1,88 @@
 /**
- * Color definitions for Packet View.
+ * Complete design system theme definitions.
  *
- * This is the single source of truth for all application colors, including:
- * - UI colors (backgrounds, text, borders, accents)
- * - Diagram-specific colors (fields, rulers, row bands)
- * - Theme timing and easing constants
- *
- * See lib/diagram-themes.ts for generateThemeCssVariables() which converts
- * these definitions to CSS variables for SSR injection.
+ * Single source of truth for all design values:
+ * - Motion and easing (THEME_MOTION)
+ * - Diagram layout constants (LAYOUT)
+ * - Color and opacity values (DIAGRAM_OPACITY, theme definitions)
+ * - UI theme definitions (light and dark)
+ * - Diagram theme definitions (light and dark)
  */
 
 /**
  * Motion and easing constants used throughout the app.
- * These are non-color theme values but are still essential to the design system.
  */
 export const THEME_MOTION = {
   ease: "cubic-bezier(0.32, 0.72, 0, 1)",
   fast: "180ms",
   med: "220ms",
+} as const;
+
+/**
+ * Diagram layout dimensions and spacing.
+ * Used across three diagram rendering paths: SVG export, PNG export, and UI rendering.
+ */
+export const LAYOUT = {
+  padding: 16,
+  rulerHeight: 22,
+  rulerGap: 6,
+  rowHeight: 56,
+  rowPaddingVertical: 4,
+  rowGap: 4,
+  cellPaddingVertical: 6,
+  cellPaddingHorizontal: 8,
+  cellInset: 2,
+  subfieldHeight: 18,
+  subfieldTextXOffset: 6,
+  subfieldTextYOffset: 12,
+  subfieldXPadding: 4,
+  subfieldWidthPadding: 8,
+  cellTitleTextYOffset: 23,
+  cellSubtitleTextYOffset: 36,
+  cellSubtitleMarginTop: 2,
+  diagramGap: 4,
+  rowGap2: 3,
+  cellGap: 2,
+  rowBorderRadius: 8,
+  cellBorderRadius: 10,
+  subfieldBorderRadius: 6,
+  titleFontSize: 12,
+  subtitleFontSize: 10,
+  subfieldFontSize: 9,
+  majorTickHeight: 10,
+  minorTickHeight: 6,
+  strokeWidthSubfield: 0.8,
+  strokeWidthCell: 1,
+  strokeWidthBadge: 1.6,
+  // Lock badge (encryption icon) dimensions
+  badgeSizeLarge: 14,
+  badgeSizeSmall: 10,
+  badgeOffsetX: 20,
+  badgeOffsetY: 6,
+  badgeOffsetXSmall: 14,
+  badgeOffsetYSmall: 14,
+  // Badge SVG constants (16x16 viewBox)
+  badgeSvgViewBox: 16,
+  badgeSvgRectX: 3,
+  badgeSvgRectY: 7,
+  badgeSvgRectWidth: 10,
+  badgeSvgRectHeight: 7,
+  badgeSvgRectRadius: 1.5,
+  // Loading dots
+  loadingDotSize: 6,
+  // Ruler grid intervals (in bits)
+  rulerMajorInterval: 8,
+  rulerLabelInterval: 4,
+  // Grid line dimensions
+  gridLineWidth: 1,
+  // Text styling
+  cellTitleFontWeight: 600,
+  textAnchor: "middle",
+} as const;
+
+// Derived dimensions (calculated from base LAYOUT values)
+export const LAYOUT_DERIVED = {
+  rowBandHeight: LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2,
 } as const;
 
 /**

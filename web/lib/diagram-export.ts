@@ -22,7 +22,10 @@ import type {
   ResolvedLayout,
   SubCell,
 } from "./psml/renderer";
-import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "./colors";
+import { LAYOUT, LAYOUT_DERIVED, LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "./theme";
+
+// Re-export LAYOUT and LAYOUT_DERIVED for backward compatibility
+export { LAYOUT, LAYOUT_DERIVED } from "./theme";
 
 export type DiagramExportTheme = {
   background: string;
@@ -58,68 +61,6 @@ export type CellVisual = {
   subtitle: string;
 };
 
-export const LAYOUT = {
-  padding: 16,
-  rulerHeight: 22,
-  rulerGap: 6,
-  rowHeight: 56,
-  rowPaddingVertical: 4,
-  rowGap: 4,
-  cellPaddingVertical: 6,
-  cellPaddingHorizontal: 8,
-  cellInset: 2,
-  subfieldHeight: 18,
-  subfieldTextXOffset: 6,
-  subfieldTextYOffset: 12,
-  subfieldXPadding: 4,
-  subfieldWidthPadding: 8,
-  cellTitleTextYOffset: 23,
-  cellSubtitleTextYOffset: 36,
-  cellSubtitleMarginTop: 2,
-  diagramGap: 4,
-  rowGap2: 3,
-  cellGap: 2,
-  rowBorderRadius: 8,
-  cellBorderRadius: 10,
-  subfieldBorderRadius: 6,
-  titleFontSize: 12,
-  subtitleFontSize: 10,
-  subfieldFontSize: 9,
-  majorTickHeight: 10,
-  minorTickHeight: 6,
-  strokeWidthSubfield: 0.8,
-  strokeWidthCell: 1,
-  strokeWidthBadge: 1.6,
-  // Lock badge (encryption icon) dimensions
-  badgeSizeLarge: 14,
-  badgeSizeSmall: 10,
-  badgeOffsetX: 20,
-  badgeOffsetY: 6,
-  badgeOffsetXSmall: 14,
-  badgeOffsetYSmall: 14,
-  // Badge SVG constants (16x16 viewBox)
-  badgeSvgViewBox: 16,
-  badgeSvgRectX: 3,
-  badgeSvgRectY: 7,
-  badgeSvgRectWidth: 10,
-  badgeSvgRectHeight: 7,
-  badgeSvgRectRadius: 1.5,
-  // Loading dots
-  loadingDotSize: 6,
-  // Ruler grid intervals (in bits)
-  rulerMajorInterval: 8,
-  rulerLabelInterval: 4,
-  // Grid line dimensions
-  gridLineWidth: 1,
-  // Text styling
-  cellTitleFontWeight: 600,
-  textAnchor: "middle",
-} as const;
-
-// Derived dimensions (calculated from base LAYOUT values)
-export const LAYOUT_DERIVED = {
-  rowBandHeight: LAYOUT.rowHeight + LAYOUT.rowPaddingVertical * 2,
-} as const;
 
 function xmlEscape(value: string): string {
   return value
