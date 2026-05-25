@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { waitFor } from "vitest-canvas-mock";
 
 vi.mock("@/lib/diagram-satori", async () => {
   return {
@@ -158,9 +159,11 @@ describe("ImportExportDrawer", () => {
 
     const formatSelect =
       container.querySelectorAll<HTMLSelectElement>("select")[1];
-    act(() => {
+    await act(async () => {
       formatSelect.value = "svg";
       formatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      // Wait for async preview generation
+      await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
     const previewDiv = container.querySelector(".diagram-export-preview");
