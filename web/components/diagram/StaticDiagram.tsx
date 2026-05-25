@@ -164,7 +164,7 @@ export function StaticDiagram({
                     <span
                       style={{
                         fontSize: titleFontSize,
-                        fontWeight: 600,
+                        fontWeight: LAYOUT.cellTitleFontWeight,
                         color: titleColor,
                         whiteSpace: "nowrap",
                         overflow: "hidden",

@@ -113,6 +113,9 @@ export const LAYOUT = {
   rulerLabelInterval: 4,
   // Grid line dimensions
   gridLineWidth: 1,
+  // Text styling
+  cellTitleFontWeight: 600,
+  textAnchor: "middle",
 } as const;
 
 // Derived dimensions (calculated from base LAYOUT values)
@@ -357,7 +360,7 @@ export function buildDiagramSvg(
     const tickHeight = major ? majorTickH : minorTickH;
     const label =
       bit % LAYOUT.rulerLabelInterval === 0
-        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
+        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="${LAYOUT.textAnchor}" font-size="${subtitleFontSize}" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
         : "";
     return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="${LAYOUT.strokeWidthCell}" opacity="${major ? 1 : theme.rulerMinorOpacity}" />`;
   }).join("");
@@ -387,8 +390,8 @@ export function buildDiagramSvg(
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
             `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="${LAYOUT.cellBorderRadius}" fill="${xmlAttribute(fill)}" fill-opacity="${theme.fieldFillOpacity}" stroke="${xmlAttribute(stroke)}" stroke-width="${LAYOUT.strokeWidthCell}"${dash} />`,
-            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="middle" font-size="${titleFontSize}" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="middle" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${titleFontSize}" font-weight="${LAYOUT.cellTitleFontWeight}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
+            `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
             renderSubfields(
               cell.subCells,
@@ -564,6 +567,8 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   rulerMajorInterval: "--ruler-major-interval",
   rulerLabelInterval: "--ruler-label-interval",
   gridLineWidth: "--grid-line-width",
+  cellTitleFontWeight: "--cell-title-font-weight",
+  textAnchor: "--text-anchor",
 };
 
 export function generateLayoutCssVariables(): string {
