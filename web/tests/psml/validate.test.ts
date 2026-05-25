@@ -177,4 +177,94 @@ describe("validatePsmlPacket — reserved cell-id tokens (Codex P2)", () => {
       ),
     ).not.toThrow();
   });
+
+  it("rejects a Field id containing `#` (repeat-index tag separator)", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([{ id: "foo#1", name: "X", type: { kind: "bits", n: 8 } }]),
+      ),
+    ).toThrow(/#/);
+  });
+
+  it("rejects a plain Field id ending in the reserved `_chain` suffix", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          { id: "nextHeader_chain", name: "X", type: { kind: "bits", n: 8 } },
+        ]),
+      ),
+    ).toThrow(/_chain/);
+  });
+
+  it("allows a Repeat id ending in `_chain` (only Fields are restricted)", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          {
+            kind: "repeat",
+            id: "nh_chain",
+            element: {
+              id: "rec",
+              fields: [{ id: "c", name: "C", type: { kind: "bits", n: 8 } }],
+            },
+            count: { kind: "lit", value: 1 },
+          },
+        ]),
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects duplicate sibling group ids (collapsed-cell boundary) (Codex P2)", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          {
+            kind: "group",
+            id: "dup",
+            children: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
+          },
+          {
+            kind: "group",
+            id: "dup",
+            children: [{ id: "b", name: "B", type: { kind: "bits", n: 8 } }],
+          },
+        ]),
+      ),
+    ).toThrow(/duplicate sibling group id/);
+  });
+
+  it("allows same group id in non-sibling positions (different parents)", () => {
+    expect(() =>
+      validatePsmlPacket(
+        base([
+          {
+            kind: "group",
+            id: "outer1",
+            children: [
+              {
+                kind: "group",
+                id: "inner",
+                children: [
+                  { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+                ],
+              },
+            ],
+          },
+          {
+            kind: "group",
+            id: "outer2",
+            children: [
+              {
+                kind: "group",
+                id: "inner",
+                children: [
+                  { id: "b", name: "B", type: { kind: "bits", n: 8 } },
+                ],
+              },
+            ],
+          },
+        ]),
+      ),
+    ).not.toThrow();
+  });
 });

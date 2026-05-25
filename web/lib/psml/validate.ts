@@ -141,6 +141,12 @@ const RESERVED_ID_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
   // (Codex P2 × 2). Reject the character up front so a hand-authored
   // preset can't break the click-routing.
   { re: /:/, reason: "reserved `:` separator (used in sub-cell ids)" },
+  // Repeat expansion decorates cell ids with a `#<index>` tag (e.g.
+  // `flagsBits#0`), and `resolveSelection` unconditionally strips a
+  // trailing `#\d+(_\d+)*` to recover the base field. A real id
+  // containing `#` would be silently truncated and fail lookup, so
+  // forbid the character outright (Codex P2).
+  { re: /#/, reason: "reserved `#` separator (used in repeat-index tags)" },
 ];
 
 // Applies to every clickable id — Field, Group, and Repeat all surface
@@ -154,11 +160,48 @@ function ensureUnreservedId(id: string, ctx: string): void {
   }
 }
 
+// Reject duplicate ids among the *Group* siblings in one container list.
+// `normalize.walkGroup` derives each Group's container path as
+// `${path}/${g.id}`, and `layout.groupConsecutiveByContainer` merges
+// consecutive cells sharing `groupId` + container path into one collapsed
+// cell. Two sibling Groups with the same id therefore produce identical
+// paths and get wrongly fused — cell width / subCells / selection target
+// all drift from the schema. Enforcing sibling-Group id uniqueness closes
+// that at validation time (Codex P2).
+function ensureUniqueSiblingGroupIds(
+  containers: Container[],
+  ctx: string,
+): void {
+  const seen = new Set<string>();
+  for (const c of containers) {
+    if (isField(c) || c.kind !== "group") continue;
+    if (typeof c.id !== "string") continue;
+    if (seen.has(c.id)) {
+      throw new Error(
+        `${ctx}: duplicate sibling group id "${c.id}" — group ids must be unique among siblings (collapsed-cell boundary relies on it).`,
+      );
+    }
+    seen.add(c.id);
+  }
+}
+
 function validateField(field: Field, ctx: string): void {
   if (typeof field.id !== "string" || field.id.length === 0) {
     throw new Error(`${ctx}: field is missing an id.`);
   }
   ensureUnreservedId(field.id, ctx);
+  // A plain Field id ending in `_chain` collides with the IPv6-style
+  // chain Repeat id convention (`${baseId}_chain`). `rendererToPsml`
+  // emits both a base Field and the chain Repeat when a chain catalog
+  // sits on a `bits > 0` field, and a base Field named `foo_chain` would
+  // make `chainFieldToRepeat` regenerate the same id → duplicate id in
+  // one PSML body. The chain *Repeat* legitimately ends in `_chain`, so
+  // this restriction is Field-only (Codex P2).
+  if (/_chain$/.test(field.id)) {
+    throw new Error(
+      `${ctx}: field id "${field.id}" ends in the reserved \`_chain\` suffix (used for chain Repeat ids).`,
+    );
+  }
   if (typeof field.name !== "string") {
     throw new Error(`${ctx}: field "${field.id}" is missing a name.`);
   }
@@ -183,6 +226,7 @@ function validateGroup(g: Group, ctx: string): void {
     throw new Error(`${ctx}: group "${g.id}" must have a children array.`);
   }
   const sub = `${ctx}/${g.id}`;
+  ensureUniqueSiblingGroupIds(g.children, sub);
   for (const child of g.children) validateContainer(child, sub);
 }
 
@@ -309,6 +353,7 @@ function validateStruct(s: Struct, ctx: string): void {
   if (!Array.isArray(s.fields)) {
     throw new Error(`${ctx}: struct "${s.id}" must have a fields array.`);
   }
+  ensureUniqueSiblingGroupIds(s.fields, `${ctx}/${s.id}`);
   for (const child of s.fields) validateContainer(child, `${ctx}/${s.id}`);
 }
 
@@ -443,5 +488,6 @@ export function validatePsmlPacket(packet: Packet): void {
       `validatePsmlPacket: packet "${packet.name}" body must be an array.`,
     );
   }
+  ensureUniqueSiblingGroupIds(packet.body, packet.name);
   for (const c of packet.body) validateContainer(c, packet.name);
 }
