@@ -190,6 +190,7 @@ export function StaticDiagram({
                         overflow: "hidden",
                         maxWidth: "100%",
                         display: "block",
+                        textAlign: "center",
                       }}
                     >
                       {title}
@@ -205,6 +206,7 @@ export function StaticDiagram({
                         overflow: "hidden",
                         maxWidth: "100%",
                         display: "block",
+                        textAlign: "center",
                       }}
                     >
                       {subtitle}
