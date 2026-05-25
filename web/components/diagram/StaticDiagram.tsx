@@ -42,7 +42,8 @@ export function StaticDiagram({
     const naturalH = naturalDiagramHeight(totalRows);
     // Scale up to fit targetHeight, but cap at 2x to avoid over-enlargement in SSR contexts
     // (OG images with small content should not be upscaled beyond readability limits)
-    scale = Math.min(targetHeight / naturalH, LAYOUT.maxScaleUI);
+    // Cap scale at 2x for OG image generation to avoid over-enlargement
+    scale = Math.min(targetHeight / naturalH, 2.0);
   }
 
   const rulerHeight = LAYOUT.rulerHeight * scale;
