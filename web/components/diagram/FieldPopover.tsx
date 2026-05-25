@@ -9,6 +9,7 @@ import type {
   Packet,
   SubField,
 } from "@/lib/psml/renderer";
+import { parseTlvCellId } from "@/components/field-details/tlv-cell-id";
 
 type Props = {
   packet: Packet;
@@ -31,6 +32,71 @@ function resolve(
   controllers: ControllerState,
   selectedFieldId: string,
 ): Resolved | null {
+  // TLV instance cells (e.g. `options__inst_0` / `options__inst_0__type`)
+  // and the trailing remaining placeholder (`options__remaining`) are
+  // synthetic — they don't live in `packet.fields`. Resolve them back to
+  // the parent TLV's catalog so the popover still has something to show.
+  const role = parseTlvCellId(selectedFieldId);
+  if (role.kind === "instance") {
+    const parent = packet.fields.find(
+      (f) =>
+        f.id === role.baseId && f.tlv?.instances[role.instanceIndex] != null,
+    );
+    if (parent?.tlv) {
+      const inst = parent.tlv.instances[role.instanceIndex];
+      const entry = parent.tlv.catalog.find((e) => e.kind === inst.kind);
+      const bits = (entry?.fields ?? []).reduce((a, f) => a + f.bits, 0);
+      const variantField: Field = {
+        id: `${parent.id}__inst_${role.instanceIndex}`,
+        name: entry?.name ?? `Record #${role.instanceIndex}`,
+        bits,
+        category: parent.category,
+        description:
+          entry?.description ??
+          `One ${parent.name} record. Click to change variant or extras.`,
+      };
+      return { kind: "field", field: variantField, bits };
+    }
+  }
+  if (role.kind === "leaf") {
+    const parent = packet.fields.find(
+      (f) =>
+        f.id === role.baseId && f.tlv?.instances[role.instanceIndex] != null,
+    );
+    if (parent?.tlv) {
+      const inst = parent.tlv.instances[role.instanceIndex];
+      const entry = parent.tlv.catalog.find((e) => e.kind === inst.kind);
+      const leaf = entry?.fields?.find((f) => f.id === role.leafId);
+      if (leaf) {
+        const parentName = entry?.name ?? parent.name;
+        const variantParent: Field = {
+          id: `${parent.id}__inst_${role.instanceIndex}`,
+          name: parentName,
+          bits: 0,
+        };
+        const sub: SubField = {
+          id: leaf.id,
+          name: leaf.name,
+          bits: leaf.bits,
+          description: leaf.description,
+        };
+        return { kind: "subfield", parent: variantParent, sub };
+      }
+    }
+  }
+  if (role.kind === "remaining") {
+    const parent = packet.fields.find((f) => f.id === role.baseId && f.tlv);
+    if (parent) {
+      const placeholder: Field = {
+        id: selectedFieldId,
+        name: `${parent.name} remaining`,
+        bits: 0,
+        description:
+          "Unused space in the slot reserved by the upstream length controller. Append more records to fill it.",
+      };
+      return { kind: "field", field: placeholder, bits: 0 };
+    }
+  }
   if (selectedFieldId.includes(":")) {
     const [parentId, subId] = selectedFieldId.split(":");
     const parent = packet.fields.find((f) => f.id === parentId);

@@ -72,7 +72,7 @@ describe("uiReducer", () => {
       selectedFieldId: "x",
       popoverAnchor: { left: 1 } as unknown as DOMRect,
       editMode: true,
-      showJsonPane: true,
+      studioView: "source",
       hexStripUserSet: true,
       hexStripVisible: true,
       drawerMode: "export",
@@ -82,13 +82,52 @@ describe("uiReducer", () => {
     expect(next.selectedFieldId).toBeNull();
     expect(next.popoverAnchor).toBeNull();
     expect(next.editMode).toBe(false);
-    expect(next.showJsonPane).toBe(false);
+    expect(next.studioView).toBe("form");
     expect(next.hexStripUserSet).toBe(true);
     expect(next.hexStripVisible).toBe(true);
     // Modal-class surfaces are reset so they don't keep pointing at the
     // previous preset after the swap.
     expect(next.drawerMode).toBeNull();
     expect(next.showSaveDialog).toBe(false);
+  });
+
+  it("set-studio-view switches between form and source", () => {
+    const toSource = uiReducer(seed, {
+      type: "set-studio-view",
+      view: "source",
+    });
+    expect(toSource.studioView).toBe("source");
+    const back = uiReducer(toSource, {
+      type: "set-studio-view",
+      view: "form",
+    });
+    expect(back.studioView).toBe("form");
+  });
+
+  it("set-edit-mode false resets studioView back to form", () => {
+    const inSource: UiState = { ...seed, editMode: true, studioView: "source" };
+    const exited = uiReducer(inSource, {
+      type: "set-edit-mode",
+      editing: false,
+    });
+    expect(exited.editMode).toBe(false);
+    expect(exited.studioView).toBe("form");
+  });
+
+  it("toggle-edit-mode preserves studioView while editing, resets on exit", () => {
+    const inSourceEditing: UiState = {
+      ...seed,
+      editMode: true,
+      studioView: "source",
+    };
+    const exited = uiReducer(inSourceEditing, { type: "toggle-edit-mode" });
+    expect(exited.editMode).toBe(false);
+    expect(exited.studioView).toBe("form");
+
+    const reEntered = uiReducer(exited, { type: "toggle-edit-mode" });
+    expect(reEntered.editMode).toBe(true);
+    // 再 entry 時は form から始まる
+    expect(reEntered.studioView).toBe("form");
   });
 
   it("set-share-status / clear-share-status drive the share toast", () => {

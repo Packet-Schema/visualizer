@@ -20,19 +20,31 @@ import { tlvFieldToRepeat } from "./tlv";
 function rendererFieldToPsml(field: RendererField): Container[] {
   if (field.tlv) return [tlvFieldToRepeat(field)];
   if (field.chainCatalog) {
-    // The chain Repeat alone reconstructs the on-wire shape. The source
-    // PSML kept a separate 8-bit NextHeader Field alongside its Repeat,
-    // but `psmlToRenderer` collapses both into a single chainCatalog-
-    // bearing Field with `id === r.id` (which already ends in
-    // `_chain`). Emitting a synthetic base Field here would:
-    //   1. duplicate the Repeat id (after `_chain` strip+append they
-    //      land on the same name), and
-    //   2. add a spurious 8-bit cell to the exported packet's wire
-    //      layout that wasn't in the original source PSML.
-    // Round-trip is lossy by design (see the file header); accept that
-    // NextHeader / Protocol byte vanishes on re-export rather than
-    // breaking every export with an id collision (Copilot review).
-    return [chainFieldToRepeat(field)];
+    // Two shapes can carry a chain catalog after psmlToRenderer:
+    //   (a) `bits > 0` — the chain was merged onto a sibling base Field
+    //       (the IPv6 `nextHeader` 8-bit Field absorbs the
+    //       `nextHeader_chain` Repeat's catalog). Emit BOTH the base
+    //       Field AND the chain Repeat to keep the on-wire shape intact.
+    //   (b) `bits === 0` — no base Field existed at import time, the
+    //       chain landed as a standalone (invisible) catalog holder.
+    //       Emit only the Repeat (back to the pre-merge form).
+    const repeat = chainFieldToRepeat(field);
+    if (field.bits && field.bits > 0) {
+      return [
+        {
+          id: field.id,
+          name: field.name,
+          type: { kind: "bits", n: field.bits },
+          ...(field.category ? { category: field.category } : {}),
+          ...(field.description ? { doc: field.description } : {}),
+          ...(field.defaultValue !== undefined
+            ? { defaultValue: field.defaultValue }
+            : {}),
+        },
+        repeat,
+      ];
+    }
+    return [repeat];
   }
   if (field.subfields && field.subfields.length > 0) {
     return [rendererSubfieldsToGroup(field)];
@@ -61,6 +73,7 @@ function rendererFieldToPsml(field: RendererField): Container[] {
       ...(field.defaultValue !== undefined
         ? { defaultValue: field.defaultValue }
         : {}),
+      ...(field.byteOrder ? { byteOrder: field.byteOrder } : {}),
     },
   ];
 }
