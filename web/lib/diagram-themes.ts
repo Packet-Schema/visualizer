@@ -6,7 +6,6 @@ import {
   DARK_DIAGRAM_THEME,
   THEME_MOTION,
   DIAGRAM_OPACITY,
-  type DiagramTheme,
 } from "./theme";
 
 // Re-export theme constants for backward compatibility
@@ -50,6 +49,8 @@ export function generateThemeCssVariables(): string {
     `--variable-stripe: ${LIGHT_UI_THEME.variableStripe}`,
     `--field-rose-strong: ${LIGHT_UI_THEME.fieldRoseStrong}`,
     `--legend-dim-chroma: ${LIGHT_UI_THEME.legendDimChroma}`,
+    `--marker-accent: ${LIGHT_UI_THEME.markerAccent}`,
+    `--marker-accent-soft: ${LIGHT_UI_THEME.markerAccentSoft}`,
     `--ruler-minor-opacity: ${DIAGRAM_OPACITY.rulerMinor}`,
     `--subfield-background-opacity: ${DIAGRAM_OPACITY.subfieldBackground}`,
     `--pv-ease: ${THEME_MOTION.ease}`,
@@ -96,6 +97,8 @@ export function generateThemeCssVariables(): string {
     `--variable-stripe: ${DARK_UI_THEME.variableStripe}`,
     `--field-rose-strong: ${DARK_UI_THEME.fieldRoseStrong}`,
     `--legend-dim-chroma: ${DARK_UI_THEME.legendDimChroma}`,
+    `--marker-accent: ${DARK_UI_THEME.markerAccent}`,
+    `--marker-accent-soft: ${DARK_UI_THEME.markerAccentSoft}`,
     `--ruler-minor-opacity: ${DIAGRAM_OPACITY.rulerMinor}`,
     `--subfield-background-opacity: ${DIAGRAM_OPACITY.subfieldBackground}`,
     `--pv-ease: ${THEME_MOTION.ease}`,
