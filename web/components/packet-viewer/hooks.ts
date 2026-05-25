@@ -50,6 +50,32 @@ function findRowNeighbor(
 }
 
 /**
+ * Resolve a sub-cell back to the parent field-cell *segment* it visually
+ * sits on. A parent that wraps across rows is rendered as multiple
+ * segments sharing one `data-field-id`; picking the segment whose
+ * `data-row` matches the sub-cell keeps ArrowUp/Down on the current row
+ * instead of jumping to the first segment (Codex P3). Falls back to the
+ * first matching segment when the row attribute is absent.
+ */
+function findParentSegment(
+  root: HTMLElement,
+  subCell: HTMLElement,
+): HTMLElement | null {
+  const parentId = subCell.dataset.parentFieldId;
+  if (!parentId) return null;
+  const segments = Array.from(
+    root.querySelectorAll<HTMLElement>(
+      `.field-cell[data-field-id="${CSS.escape(parentId)}"]`,
+    ),
+  );
+  if (segments.length <= 1) return segments[0] ?? null;
+  const subRow = subCell.dataset.row;
+  return (
+    segments.find((seg) => seg.dataset.row === subRow) ?? segments[0] ?? null
+  );
+}
+
+/**
  * Wrap `callback` in a ref-backed thunk whose identity is stable for the
  * lifetime of the host component but always reads the *latest* callback
  * passed in.
@@ -223,13 +249,12 @@ export function useRovingTabindex(
           if (isSubfieldCell) {
             // Subfields live on a single row of the parent — descending
             // out of a sub-cell exits back to the row of the OWNING
-            // field cell and steps to the row below it.
-            const parentId = (target as HTMLElement).dataset.parentFieldId;
-            const parentCell = parentId
-              ? root.querySelector<HTMLElement>(
-                  `.field-cell[data-field-id="${CSS.escape(parentId)}"]`,
-                )
-              : null;
+            // field cell and steps to the row below it. Pick the parent
+            // *segment* that shares the sub-cell's row, not just the
+            // first segment, so a multi-segment parent navigates from
+            // the current row (Codex P3).
+            const el = target as HTMLElement;
+            const parentCell = findParentSegment(root, el);
             const allFieldCells = Array.from(
               root.querySelectorAll<HTMLElement>(".field-cell"),
             );
@@ -251,15 +276,10 @@ export function useRovingTabindex(
           break;
         case "ArrowUp":
           if (isSubfieldCell) {
-            // Ascending from a sub-cell exits back to its parent
-            // field cell. Lets the user "pop out" of an expanded
-            // Group / TLV variant.
-            const parentId = (target as HTMLElement).dataset.parentFieldId;
-            next = parentId
-              ? root.querySelector<HTMLElement>(
-                  `.field-cell[data-field-id="${CSS.escape(parentId)}"]`,
-                )
-              : null;
+            // Ascending from a sub-cell exits back to its parent field
+            // cell — the segment on the sub-cell's own row, not always
+            // the first segment of a multi-segment parent (Codex P3).
+            next = findParentSegment(root, target as HTMLElement);
           } else {
             next = findRowNeighbor(group, target as HTMLElement, -1);
           }
