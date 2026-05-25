@@ -229,6 +229,7 @@ export default function ImportExportDrawer({
 
   // Generate preview SVG asynchronously using browser-side Satori
   useEffect(() => {
+    const currentSession = exportSessionRef.current;
     const renderPreview = async () => {
       if (!isImageExportMode) {
         setPreviewSvg(null);
@@ -238,9 +239,9 @@ export default function ImportExportDrawer({
       try {
         const theme = readDiagramTheme(exportThemeMode);
 
-        // Calculate preview dimensions based on bitWidth
+        // Calculate preview dimensions based on bitWidth (match final export height for consistency)
         const width = packet.rowBits * diagramWidth;
-        const height = 300;
+        const height = 400;
 
         const diagramComponent = (
           <div
@@ -266,12 +267,15 @@ export default function ImportExportDrawer({
         );
 
         const svg = await renderToSvgString(diagramComponent, width, height);
-        if (isImageExportMode) {
+        // Only set if this is still the latest render request
+        if (isImageExportMode && exportSessionRef.current === currentSession) {
           setPreviewSvg(svg);
         }
       } catch (e) {
         console.error("Failed to render preview SVG:", e);
-        setPreviewSvg(null);
+        if (exportSessionRef.current === currentSession) {
+          setPreviewSvg(null);
+        }
       }
     };
 
@@ -291,6 +295,9 @@ export default function ImportExportDrawer({
       setImageBusy(true);
 
       const theme = readDiagramTheme(exportThemeMode);
+      const width = packet.rowBits * diagramWidth;
+      const height = 400;
+
       const diagramComponent = (
         <div
           style={{
@@ -308,15 +315,11 @@ export default function ImportExportDrawer({
             packet={packet}
             layout={layout}
             theme={theme}
-            targetHeight={transparentBackground ? 400 : 300}
+            targetHeight={height}
             transparentBackground={transparentBackground}
           />
         </div>
       );
-
-      // Calculate dimensions for full-size export (not preview)
-      const width = packet.rowBits * diagramWidth;
-      const height = 400;
 
       const svg = await renderToSvgString(diagramComponent, width, height);
 

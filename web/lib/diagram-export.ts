@@ -136,6 +136,7 @@ export function cellVisual(
 
 export function naturalDiagramHeight(rowCount: number): number {
   return (
+    LAYOUT.padding * 2 +
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
     rowCount * LAYOUT_DERIVED.rowBandHeight +

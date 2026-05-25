@@ -364,12 +364,12 @@ describe("diagram export helpers", () => {
     const height0 = naturalDiagramHeight(0);
     const height1 = naturalDiagramHeight(1);
     const height2 = naturalDiagramHeight(2);
-    // rulerHeight (22) + rulerGap (6) = 28 for 0 rows
-    expect(height0).toBe(28);
+    // padding (16*2=32) + rulerHeight (22) + rulerGap (6) = 60 for 0 rows
+    expect(height0).toBe(60);
     // + 1 row: (rowHeight 56 + rowPaddingVertical*2=8) = 64 per row
-    expect(height1).toBe(28 + 64);
+    expect(height1).toBe(60 + 64);
     // + 1 gap between rows (4)
-    expect(height2).toBe(28 + 64 + 64 + 4);
+    expect(height2).toBe(60 + 64 + 64 + 4);
   });
 
   it("returns correct band color based on row index and theme", () => {
