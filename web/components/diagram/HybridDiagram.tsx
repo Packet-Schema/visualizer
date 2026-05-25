@@ -9,7 +9,7 @@ import type {
   SubField,
 } from "@/lib/psml/renderer";
 import { categoryColor } from "@/lib/render-tokens";
-import { rowsFor, textForCell } from "@/lib/diagram-export";
+import { rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
 
 type Props = {
   packet: Packet;
@@ -249,14 +249,14 @@ function FieldCellImpl({
 
       {isEncryptedBlock && cell.isFirst ? (
         <LockIcon
-          size={14}
+          size={LAYOUT.badgeSizeLarge}
           className="field-lock-icon field-lock-icon--block"
           ariaHidden
         />
       ) : null}
       {isEncryptedChild && cell.isFirst ? (
         <LockIcon
-          size={10}
+          size={LAYOUT.badgeSizeSmall}
           className="field-lock-icon field-lock-icon--child"
           ariaHidden
         />
@@ -306,16 +306,22 @@ function LockIcon({
       className={className}
       width={size}
       height={size}
-      viewBox="0 0 16 16"
+      viewBox={`0 0 ${LAYOUT.badgeSvgViewBox} ${LAYOUT.badgeSvgViewBox}`}
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.6}
+      strokeWidth={LAYOUT.strokeWidthBadge}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden={ariaHidden ? "true" : undefined}
       focusable="false"
     >
-      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <rect
+        x={LAYOUT.badgeSvgRectX}
+        y={LAYOUT.badgeSvgRectY}
+        width={LAYOUT.badgeSvgRectWidth}
+        height={LAYOUT.badgeSvgRectHeight}
+        rx={LAYOUT.badgeSvgRectRadius}
+      />
       <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
     </svg>
   );

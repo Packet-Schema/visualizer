@@ -42,7 +42,7 @@ export function StaticDiagram({
     const naturalH = naturalDiagramHeight(totalRows);
     // Scale up to fit targetHeight, but cap at 2x to avoid over-enlargement in SSR contexts
     // (OG images with small content should not be upscaled beyond readability limits)
-    scale = Math.min(targetHeight / naturalH, 2.0);
+    scale = Math.min(targetHeight / naturalH, LAYOUT.maxScaleUI);
   }
 
   const rulerHeight = LAYOUT.rulerHeight * scale;
@@ -209,8 +209,8 @@ export function StaticDiagram({
           >
             <div
               style={{
-                width: Math.round(6 * scale),
-                height: Math.round(6 * scale),
+                width: Math.round(LAYOUT.loadingDotSize * scale),
+                height: Math.round(LAYOUT.loadingDotSize * scale),
                 borderRadius: "50%",
                 background: theme.fieldLabel,
                 opacity: 0.5,
@@ -218,8 +218,8 @@ export function StaticDiagram({
             />
             <div
               style={{
-                width: Math.round(6 * scale),
-                height: Math.round(6 * scale),
+                width: Math.round(LAYOUT.loadingDotSize * scale),
+                height: Math.round(LAYOUT.loadingDotSize * scale),
                 borderRadius: "50%",
                 background: theme.fieldLabel,
                 opacity: 0.5,
@@ -227,8 +227,8 @@ export function StaticDiagram({
             />
             <div
               style={{
-                width: Math.round(6 * scale),
-                height: Math.round(6 * scale),
+                width: Math.round(LAYOUT.loadingDotSize * scale),
+                height: Math.round(LAYOUT.loadingDotSize * scale),
                 borderRadius: "50%",
                 background: theme.fieldLabel,
                 opacity: 0.5,
