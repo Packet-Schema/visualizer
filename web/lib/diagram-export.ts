@@ -90,6 +90,24 @@ export const LAYOUT = {
   strokeWidthSubfield: 0.8,
   strokeWidthCell: 1,
   strokeWidthBadge: 1.6,
+  // Lock badge (encryption icon) dimensions
+  badgeSizeLarge: 14,
+  badgeSizeSmall: 10,
+  badgeOffsetX: 20,
+  badgeOffsetY: 6,
+  badgeOffsetXSmall: 14,
+  badgeOffsetYSmall: 14,
+  // Badge SVG constants (16x16 viewBox)
+  badgeSvgViewBox: 16,
+  badgeSvgRectX: 3,
+  badgeSvgRectY: 7,
+  badgeSvgRectWidth: 10,
+  badgeSvgRectHeight: 7,
+  badgeSvgRectRadius: 1.5,
+  // Loading dots
+  loadingDotSize: 6,
+  // Scaling limits
+  maxScaleUI: 2.0,
 } as const;
 
 // Derived dimensions (calculated from base LAYOUT values)
@@ -251,10 +269,10 @@ function renderLockBadge(
   size: number,
   color: string,
 ): string {
-  const scale = size / 16;
+  const scale = size / LAYOUT.badgeSvgViewBox;
   return [
     `<g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${xmlAttribute(color)}" stroke-width="${LAYOUT.strokeWidthBadge}" stroke-linecap="round" stroke-linejoin="round">`,
-    '<rect x="3" y="7" width="10" height="7" rx="1.5" />',
+    `<rect x="${LAYOUT.badgeSvgRectX}" y="${LAYOUT.badgeSvgRectY}" width="${LAYOUT.badgeSvgRectWidth}" height="${LAYOUT.badgeSvgRectHeight}" rx="${LAYOUT.badgeSvgRectRadius}" />`,
     '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />',
     "</g>",
   ].join("");
@@ -271,11 +289,23 @@ function renderCellBadges(
   if (!cell.isFirst) return "";
   const badges: string[] = [];
   if (cell.encrypted === true) {
-    badges.push(renderLockBadge(x + width - 20, y + 6, 14, theme.accent));
+    badges.push(
+      renderLockBadge(
+        x + width - LAYOUT.badgeOffsetX,
+        y + LAYOUT.badgeOffsetY,
+        LAYOUT.badgeSizeLarge,
+        theme.accent,
+      ),
+    );
   }
   if (cell.encryptedParentId) {
     badges.push(
-      renderLockBadge(x + width - 14, y + height - 14, 10, theme.accent),
+      renderLockBadge(
+        x + width - LAYOUT.badgeOffsetXSmall,
+        y + height - LAYOUT.badgeOffsetYSmall,
+        LAYOUT.badgeSizeSmall,
+        theme.accent,
+      ),
     );
   }
   if (cell.headerProtected === true) {
@@ -512,6 +542,20 @@ const CSS_PROPERTY_MAP: Record<keyof typeof LAYOUT, string> = {
   strokeWidthSubfield: "--stroke-width-subfield",
   strokeWidthCell: "--stroke-width-cell",
   strokeWidthBadge: "--stroke-width-badge",
+  badgeSizeLarge: "--badge-size-large",
+  badgeSizeSmall: "--badge-size-small",
+  badgeOffsetX: "--badge-offset-x",
+  badgeOffsetY: "--badge-offset-y",
+  badgeOffsetXSmall: "--badge-offset-x-small",
+  badgeOffsetYSmall: "--badge-offset-y-small",
+  badgeSvgViewBox: "--badge-svg-viewbox",
+  badgeSvgRectX: "--badge-svg-rect-x",
+  badgeSvgRectY: "--badge-svg-rect-y",
+  badgeSvgRectWidth: "--badge-svg-rect-width",
+  badgeSvgRectHeight: "--badge-svg-rect-height",
+  badgeSvgRectRadius: "--badge-svg-rect-radius",
+  loadingDotSize: "--loading-dot-size",
+  maxScaleUI: "--max-scale-ui",
 };
 
 export function generateLayoutCssVariables(): string {
