@@ -8,14 +8,17 @@ description: IPv4 header (RFC 791) — IHL drives the Options length.
 _ipv4_option_variants: &ipv4_option_variants
   "0":
     id: eol
+    name: EOL (End of Option List)
     fields:
       - { id: type, name: "Type=0", type: { kind: bits, n: 8 }, category: type }
   "1":
     id: nop
+    name: NOP (No Operation)
     fields:
       - { id: type, name: "Type=1", type: { kind: bits, n: 8 }, category: type }
   "7":
     id: recordRoute
+    name: Record Route
     fields:
       - { id: type, name: "Type=7", type: { kind: bits, n: 8 }, category: type }
       - { id: length, name: "Len=15", type: { kind: bits, n: 8 }, category: length }
@@ -25,6 +28,7 @@ _ipv4_option_variants: &ipv4_option_variants
       - { id: addr2, name: "Addr 3", type: { kind: int, bits: 32 }, category: addressing }
   "131":
     id: looseSourceRoute
+    name: Loose Source Route
     fields:
       - { id: type, name: "Type=131", type: { kind: bits, n: 8 }, category: type }
       - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
@@ -33,6 +37,7 @@ _ipv4_option_variants: &ipv4_option_variants
       - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
   "137":
     id: strictSourceRoute
+    name: Strict Source Route
     fields:
       - { id: type, name: "Type=137", type: { kind: bits, n: 8 }, category: type }
       - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
@@ -41,6 +46,7 @@ _ipv4_option_variants: &ipv4_option_variants
       - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
   "68":
     id: timestamp
+    name: Timestamp
     fields:
       - { id: type, name: "Type=68", type: { kind: bits, n: 8 }, category: type }
       - { id: length, name: "Len=12", type: { kind: bits, n: 8 }, category: length }

@@ -2,15 +2,11 @@ import { CATEGORY_LABELS } from "@/lib/constants";
 import { enrichDescriptionHtml } from "@/lib/enrich";
 import type {
   CategoryToken,
-  ChainInstance,
   ControllerState,
-  Field,
   Packet,
-  TlvInstance,
 } from "@/lib/psml/renderer";
 
-import ChainEditor from "./ChainEditor";
-import TlvEditor from "./TlvEditor";
+import { resolveSelection } from "./selection-resolver";
 
 function EnrichedText({ text }: { text: string }) {
   return (
@@ -25,21 +21,16 @@ type Props = {
   packet: Packet;
   selectedFieldId: string | null;
   controllers: ControllerState;
-  onTlvChange?: (field: Field, next: TlvInstance[]) => void;
-  onChainChange?: (
-    field: Field,
-    next: { instances: ChainInstance[]; finalProto?: number },
-  ) => void;
 };
 
 export default function DetailPanel({
   packet,
   selectedFieldId,
   controllers,
-  onTlvChange,
-  onChainChange,
 }: Props) {
-  if (!selectedFieldId) {
+  const r = resolveSelection(packet, selectedFieldId);
+
+  if (r.kind === "empty") {
     return (
       <p className="m-0 text-sm-tight text-fg-faint">
         Click a field in the diagram to see its details.
@@ -47,29 +38,18 @@ export default function DetailPanel({
     );
   }
 
-  // Subfield resolution. Two shapes feed in here:
-  //   * `parentId:subfieldId` — emitted by `HybridDiagram.onSubfieldClick`.
-  //   * bare `subfieldId` — emitted by `onFieldClick` when a group's child is
-  //     rendered as its own top-level cell (the layout adapter flattens
-  //     groups, but `psmlToRenderer` collapses the group into a parent field
-  //     with `subfields[]`). In that case we look the id up across every
-  //     parent's subfields and present the same "subfield of …" UI.
-  const subPair = (() => {
-    if (selectedFieldId.includes(":")) {
-      const [parentId, subId] = selectedFieldId.split(":");
-      const parent = packet.fields.find((f) => f.id === parentId);
-      const sub = parent?.subfields?.find((s) => s.id === subId);
-      return parent && sub ? { parent, sub } : null;
-    }
-    for (const parent of packet.fields) {
-      const sub = parent.subfields?.find((s) => s.id === selectedFieldId);
-      if (sub) return { parent, sub };
-    }
-    return null;
-  })();
+  if (r.kind === "subfield-not-found") {
+    return (
+      <p className="m-0 text-sm-tight text-fg-faint">Subfield not found.</p>
+    );
+  }
 
-  if (subPair) {
-    const { parent, sub } = subPair;
+  if (r.kind === "field-not-found") {
+    return <p className="m-0 text-sm-tight text-fg-faint">Field not found.</p>;
+  }
+
+  if (r.kind === "subfield") {
+    const { parent, sub } = r;
     return (
       <div>
         <h3 className="m-0 mb-2.5 text-[15px] text-fg">
@@ -94,52 +74,12 @@ export default function DetailPanel({
     );
   }
 
-  if (selectedFieldId.includes(":")) {
-    return (
-      <p className="m-0 text-sm-tight text-fg-faint">Subfield not found.</p>
-    );
-  }
-
-  const field = packet.fields.find((f) => f.id === selectedFieldId);
-  if (!field) {
-    return <p className="m-0 text-sm-tight text-fg-faint">Field not found.</p>;
-  }
-
-  // TLV editor.
-  if (field.tlv && onTlvChange) {
-    return (
-      <TlvEditor
-        field={field}
-        controllers={controllers}
-        onChange={(next) => onTlvChange(field, next)}
-      />
-    );
-  }
-
-  // IPv6 chain editor.
-  if (field.chainCatalog && onChainChange) {
-    return (
-      <ChainEditor
-        field={field}
-        onChange={(next) => onChainChange(field, next)}
-      />
-    );
-  }
-
+  const field = r.field;
   const bits =
     field.variable && field.toBits && field.lengthFrom
       ? field.toBits(controllers[field.lengthFrom] ?? 0)
       : (field.bits ?? 0);
   const sizeStr = `${bits} bits${Number.isInteger(bits / 8) ? ` (${bits / 8} bytes)` : ""}`;
-
-  // Length controller note: when a TLV editor is driving this controller,
-  // the slider in ControlsPanel is read-only-ish (still editable, but the
-  // synced value will reset on next TLV edit). We surface that here.
-  const drivenByTlv = field.controlsLength
-    ? packet.fields.some(
-        (f) => f.tlv && f.tlv.drivesController === field.controlsLength,
-      )
-    : false;
 
   const rows: Array<[string, React.ReactNode] | null> = [
     [
@@ -163,24 +103,6 @@ export default function DetailPanel({
           <code key="driven" className="font-mono">
             {field.lengthFrom}
           </code>,
-        ]
-      : null,
-    field.controlsLength
-      ? [
-          "Controls",
-          <span key="controls">
-            <code className="font-mono">{field.controlsLength}</code>
-            {" (current: "}
-            <span className="font-mono tabular-nums">
-              {controllers[field.controlsLength]}
-            </span>
-            )
-            {drivenByTlv ? (
-              <em className="not-italic ml-2 text-3xs text-fg-muted">
-                — synced from TLV editor
-              </em>
-            ) : null}
-          </span>,
         ]
       : null,
     field.description

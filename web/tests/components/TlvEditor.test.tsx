@@ -97,44 +97,43 @@ describe("TlvEditor", () => {
     expect(container.querySelector("h3")).toBeNull();
   });
 
-  it("adds an instance when 'Add option' is clicked with a kind selected", () => {
+  it("adds an instance when a kind is picked and Add is clicked", () => {
     const { container } = mount(
       <TlvEditor field={mkField()} controllers={{}} onChange={onChange} />,
     );
-    const select = container.querySelector<HTMLSelectElement>("select")!;
+    // Staged-add (Round 7 HIGH): the select stages but does NOT add on
+    // change. The user must click Add to confirm. Verifies arrow-key
+    // navigation through options doesn't append a record per press.
+    const appendSelect = container.querySelector<HTMLSelectElement>("select")!;
     act(() => {
-      select.value = "1";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      appendSelect.value = "1";
+      appendSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
+    expect(lastChange).toBeNull(); // staged, not committed
     const addBtn = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((b) => b.textContent?.includes("Add"));
-    expect(addBtn).toBeDefined();
+    ).find((b) => b.textContent === "Add");
     act(() => {
-      addBtn!.click();
+      addBtn?.click();
     });
     expect(lastChange).toEqual([{ kind: 1 }]);
   });
 
-  it("does nothing when the kind is unknown", () => {
+  it("Add button is disabled until a kind is staged", () => {
     const { container } = mount(
       <TlvEditor field={mkField()} controllers={{}} onChange={onChange} />,
     );
-    const select = container.querySelector<HTMLSelectElement>("select")!;
-    act(() => {
-      select.value = "";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
     const addBtn = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((b) => b.textContent?.includes("Add"));
+    ).find((b) => b.textContent === "Add");
+    expect(addBtn?.disabled).toBe(true);
     act(() => {
-      addBtn!.click();
+      addBtn?.click();
     });
     expect(lastChange).toBeNull();
   });
 
-  it("removes an instance via the Remove button", () => {
+  it("removes an instance via the per-row × button", () => {
     const { container } = mount(
       <TlvEditor
         field={mkField([{ kind: 0 }, { kind: 1 }, { kind: 7 }])}
@@ -144,12 +143,29 @@ describe("TlvEditor", () => {
     );
     const removeButtons = Array.from(
       container.querySelectorAll<HTMLButtonElement>("button"),
-    ).filter((b) => b.textContent === "Remove");
+    ).filter((b) => b.getAttribute("aria-label")?.startsWith("Remove record"));
     expect(removeButtons.length).toBe(3);
     act(() => {
       removeButtons[1].click(); // remove middle item
     });
     expect(lastChange).toEqual([{ kind: 0 }, { kind: 7 }]);
+  });
+
+  it("changes a record's variant in place via the per-row <select>", () => {
+    const { container } = mount(
+      <TlvEditor
+        field={mkField([{ kind: 1 }])}
+        controllers={{}}
+        onChange={onChange}
+      />,
+    );
+    // First <select> is the row's kind selector when one row exists.
+    const rowSelect = container.querySelector<HTMLSelectElement>("select")!;
+    act(() => {
+      rowSelect.value = "7";
+      rowSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(lastChange).toEqual([{ kind: 7 }]);
   });
 
   it("moves an instance up / down via the reorder buttons", () => {
@@ -162,7 +178,7 @@ describe("TlvEditor", () => {
     );
     const moveDown = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        'button[aria-label="Move down"]',
+        'button[aria-label^="Move record"][aria-label$="down"]',
       ),
     );
     act(() => {
@@ -172,7 +188,7 @@ describe("TlvEditor", () => {
 
     const moveUp = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        'button[aria-label="Move up"]',
+        'button[aria-label^="Move record"][aria-label$="up"]',
       ),
     );
     act(() => {
@@ -190,11 +206,11 @@ describe("TlvEditor", () => {
       />,
     );
     const moveUpFirst = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Move up"]',
+      'button[aria-label^="Move record"][aria-label$="up"]',
     );
     const moveDownLast = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        'button[aria-label="Move down"]',
+        'button[aria-label^="Move record"][aria-label$="down"]',
       ),
     ).pop();
     expect(moveUpFirst?.disabled).toBe(true);

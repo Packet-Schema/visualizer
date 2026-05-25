@@ -115,7 +115,7 @@ describe("ChainEditor", () => {
     // Move kind=0 down
     const moveDown = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
-        'button[aria-label="Move down"]',
+        'button[aria-label^="Move header"][aria-label$="down"]',
       ),
     );
     act(() => {
