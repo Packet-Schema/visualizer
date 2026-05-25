@@ -6,9 +6,9 @@ import { createRoot, type Root } from "react-dom/client";
 
 vi.mock("@/lib/diagram-satori", async () => {
   return {
-    renderToSvgString: vi.fn(async (element: any) => {
+    renderToSvgString: vi.fn(async (element: React.ReactElement) => {
       // Extract theme from the component's props to maintain test compatibility
-      const theme = element?.props?.theme;
+      const theme = (element?.props as Record<string, unknown>)?.theme;
       const background = theme?.background ?? "none";
       return `<svg data-bg="${background}"></svg>`;
     }),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createExportTheme, type DiagramTheme } from "../../lib/colors";
+import { createExportTheme } from "../../lib/colors";
 import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "../../lib/theme";
 
 describe("Color conversion for Satori compatibility", () => {
@@ -30,7 +30,10 @@ describe("Color conversion for Satori compatibility", () => {
       const exported = createExportTheme(LIGHT_DIAGRAM_THEME);
 
       Object.entries(exported.fieldPalette).forEach(([color, value]) => {
-        expect(value).toMatch(/^#[0-9A-F]{6}$/, `palette color ${color} should be hex format`);
+        expect(value).toMatch(
+          /^#[0-9A-F]{6}$/,
+          `palette color ${color} should be hex format`,
+        );
       });
     });
 
@@ -79,7 +82,10 @@ describe("Color conversion for Satori compatibility", () => {
       const hexRegex = /^#[0-9A-F]{6}$/;
 
       const testHex = (color: string, colorName: string) => {
-        expect(color).toMatch(hexRegex, `${colorName} should be valid hex format`);
+        expect(color).toMatch(
+          hexRegex,
+          `${colorName} should be valid hex format`,
+        );
       };
 
       testHex(exported.background, "background");

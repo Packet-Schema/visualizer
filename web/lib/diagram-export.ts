@@ -16,13 +16,7 @@
 
 import { CATEGORY_TO_TOKEN } from "./constants";
 import { createExportTheme } from "./colors";
-import type {
-  Cell,
-  Field,
-  Packet,
-  ResolvedLayout,
-  SubCell,
-} from "./psml/renderer";
+import type { Cell, Field, ResolvedLayout } from "./psml/renderer";
 import {
   LAYOUT,
   LAYOUT_DERIVED,
@@ -91,7 +85,6 @@ export function rowsFor(layout: ResolvedLayout): Cell[][] {
   }
   return rows;
 }
-
 
 export function textForCell(cell: Cell): { title: string; subtitle: string } {
   if (!cell.isFirst) {

@@ -142,7 +142,9 @@ export function StaticDiagram({
         }}
       >
         {rows.map((cells: Cell[], rowIdx: number) => {
-          const bandColor = transparentBackground ? "transparent" : rowBandColor(rowIdx, theme);
+          const bandColor = transparentBackground
+            ? "transparent"
+            : rowBandColor(rowIdx, theme);
           const rowHasSubfields = cells.some(
             (c) => c.subCells && c.subCells.length > 0,
           );

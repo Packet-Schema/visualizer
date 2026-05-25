@@ -9,7 +9,7 @@
  * - Diagram theme definitions (light and dark)
  */
 
-import { createExportTheme, type DiagramTheme } from "./colors";
+import type { DiagramTheme } from "./colors";
 
 // Re-export DiagramTheme for convenience (single import point for theme types)
 export type { DiagramTheme };

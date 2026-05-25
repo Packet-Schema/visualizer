@@ -247,7 +247,9 @@ export default function ImportExportDrawer({
             style={{
               width: "100%",
               height: "100%",
-              background: transparentBackground ? "transparent" : theme.background,
+              background: transparentBackground
+                ? "transparent"
+                : theme.background,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -294,7 +296,9 @@ export default function ImportExportDrawer({
           style={{
             width: "100%",
             height: "100%",
-            background: transparentBackground ? "transparent" : theme.background,
+            background: transparentBackground
+              ? "transparent"
+              : theme.background,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
