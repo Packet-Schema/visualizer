@@ -208,6 +208,8 @@ export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
   fieldLabel: "oklch(22% 0.02 270)",
   fieldSublabel: "oklch(28% 0.03 270)",
   fieldContinuation: "oklch(48% 0.02 270)",
+  markerAccent: "oklch(68% 0.24 330)",
+  markerAccentSoft: "oklch(78% 0.18 330 / 0.55)",
   fieldFillOpacity: 0.78,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
@@ -238,6 +240,8 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   fieldLabel: "oklch(18% 0.025 270)",
   fieldSublabel: "oklch(22% 0.03 270)",
   fieldContinuation: "oklch(85% 0.015 270)",
+  markerAccent: "oklch(78% 0.24 330)",
+  markerAccentSoft: "oklch(85% 0.18 330 / 0.55)",
   fieldFillOpacity: 0.85,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
@@ -253,4 +257,3 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
     slate: "oklch(78% 0.02 270)",
   },
 };
-

@@ -43,6 +43,8 @@ export type DiagramExportTheme = {
   fieldLabel: string;
   fieldSublabel: string;
   fieldContinuation: string;
+  markerAccent: string;
+  markerAccentSoft: string;
   fieldFillOpacity: number;
   rulerMinorOpacity: number;
   subfieldBackgroundOpacity: number;
@@ -149,6 +151,19 @@ export function textForCell(cell: Cell): { title: string; subtitle: string } {
     ? `${cell.bitsTotal} bits / ${bytes}B${suffix}`
     : `${cell.bitsTotal} bits${suffix}`;
   return { title, subtitle };
+}
+
+export function isFieldOverridable(field: Field): boolean {
+  return !!(
+    field.controlsLength ||
+    field.tlv ||
+    field.chainCatalog ||
+    field.switchCases ||
+    field.varintEncoding ||
+    field.isBerLength ||
+    field.optionalGateFor ||
+    field.enumVariants
+  );
 }
 
 export function cellVisual(
@@ -269,6 +284,27 @@ function renderCellBadges(
   return badges.join("");
 }
 
+function renderOverridableMarker(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  theme: DiagramExportTheme,
+  isSubfield: boolean = false,
+): string {
+  if (isSubfield) {
+    const markerX = x + 4;
+    const markerY = y + height - 3;
+    const markerW = Math.max(width - 8, 1);
+    return `<rect x="${markerX}" y="${markerY}" width="${markerW}" height="1.5" rx="1.5" fill="url(#marker-grad)" />`;
+  } else {
+    const markerX = x + 7;
+    const markerY = y + height - 5.5;
+    const markerW = Math.max(width - 14, 1);
+    return `<rect x="${markerX}" y="${markerY}" width="${markerW}" height="2.5" rx="2" fill="url(#marker-grad)" />`;
+  }
+}
+
 /**
  * Render the current packet diagram as a standalone, self-contained SVG
  * string. Every color is resolved to an attribute (no external CSS),
@@ -331,6 +367,7 @@ export function buildDiagramSvg(
           const escapedTitle = xmlEscape(title);
           const escapedSubtitle = xmlEscape(subtitle);
           const dash = isDashed ? ' stroke-dasharray="5 3"' : "";
+          const isOverridable = isFieldOverridable(exportField);
           // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
           // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
           return [
@@ -338,6 +375,7 @@ export function buildDiagramSvg(
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellTitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${titleFontSize}" font-weight="${LAYOUT.cellTitleFontWeight}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(titleColor)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
             `<text x="${x + cw / 2}" y="${cy + LAYOUT.cellSubtitleTextYOffset}" text-anchor="${LAYOUT.textAnchor}" font-size="${subtitleFontSize}" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
             renderCellBadges(cell, x, cy, cw, ch, theme),
+            isOverridable ? renderOverridableMarker(x, cy, cw, ch, theme) : "",
             renderSubfields(
               cell.subCells,
               cell,
@@ -359,9 +397,11 @@ export function buildDiagramSvg(
     })
     .join("");
 
+  const markerGradient = `<linearGradient id="marker-grad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:${xmlAttribute(theme.markerAccentSoft)};stop-opacity:1" /><stop offset="50%" style="stop-color:${xmlAttribute(theme.markerAccent)};stop-opacity:1" /><stop offset="100%" style="stop-color:${xmlAttribute(theme.markerAccentSoft)};stop-opacity:1" /></linearGradient>`;
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${xmlEscape(packet.name)} diagram">`,
-    `<defs>${clipPaths}</defs>`,
+    `<defs>${markerGradient}${clipPaths}</defs>`,
     transparentBackground
       ? ""
       : `<rect width="${width}" height="${height}" fill="${xmlAttribute(theme.background)}" />`,

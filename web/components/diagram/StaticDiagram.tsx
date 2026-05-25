@@ -5,6 +5,7 @@ import {
   naturalDiagramHeight,
   rowBandColor,
   LAYOUT,
+  isFieldOverridable,
 } from "@/lib/diagram-export";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
@@ -151,6 +152,12 @@ export function StaticDiagram({
                   title,
                   subtitle,
                 } = cellVisual(cell, exportField, theme);
+                const hasSubfields =
+                  !!cell.subCells && cell.subCells.length > 0;
+                const isOverridable = isFieldOverridable(exportField);
+                const isEncryptedBlock = cell.encrypted === true;
+                const isEncryptedChild = !!cell.encryptedParentId;
+                const isHeaderProtected = cell.headerProtected === true;
 
                 return (
                   <div
@@ -179,38 +186,210 @@ export function StaticDiagram({
                         pointerEvents: "none",
                       }}
                     />
-                    <span
+                    <div
                       style={{
                         position: "relative",
                         zIndex: 1,
-                        fontSize: titleFontSize,
-                        fontWeight: LAYOUT.cellTitleFontWeight,
-                        color: titleColor,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        maxWidth: "100%",
-                        display: "block",
-                        textAlign: "center",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: "100%",
+                        flex: hasSubfields ? "0 0 auto" : "1 1 auto",
                       }}
                     >
-                      {title}
-                    </span>
-                    <span
-                      style={{
-                        position: "relative",
-                        zIndex: 1,
-                        fontSize: smallFontSize,
-                        color: theme.fieldSublabel,
-                        marginTop: LAYOUT.cellSubtitleMarginTop,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        maxWidth: "100%",
-                        display: "block",
-                        textAlign: "center",
-                      }}
-                    >
-                      {subtitle}
-                    </span>
+                      <span
+                        style={{
+                          fontSize: titleFontSize,
+                          fontWeight: LAYOUT.cellTitleFontWeight,
+                          color: titleColor,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          maxWidth: "100%",
+                          display: "block",
+                          textAlign: "center",
+                        }}
+                      >
+                        {title}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: smallFontSize,
+                          color: theme.fieldSublabel,
+                          marginTop: LAYOUT.cellSubtitleMarginTop,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          maxWidth: "100%",
+                          display: "block",
+                          textAlign: "center",
+                        }}
+                      >
+                        {subtitle}
+                      </span>
+                    </div>
+
+                    {hasSubfields ? (
+                      <div
+                        style={{
+                          position: "relative",
+                          zIndex: 1,
+                          display: "grid",
+                          gridTemplateColumns: `repeat(${span}, minmax(0, 1fr))`,
+                          gap: LAYOUT.cellGap,
+                          width: "100%",
+                          marginTop: "auto",
+                        }}
+                      >
+                        {cell.subCells!.map((sub) => {
+                          const subSpan = sub.endBit - sub.startBit + 1;
+                          const isSubOverridable = exportField.subfields?.some(
+                            (sf) =>
+                              sf.id === sub.subfield.id &&
+                              isFieldOverridable(sf),
+                          );
+                          return (
+                            <div
+                              key={`sub-${sub.id}`}
+                              style={{
+                                gridColumn: `${sub.startBit - cell.startBit + 1} / span ${subSpan}`,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                minHeight: LAYOUT.subfieldHeight,
+                                minWidth: 0,
+                                background: "rgba(255, 255, 255, 0.1)",
+                                border: `1px solid ${stroke}`,
+                                borderRadius: LAYOUT.subfieldBorderRadius,
+                                fontSize: Math.round(
+                                  LAYOUT.subfieldFontSize * scale,
+                                ),
+                                fontWeight: 600,
+                                color: theme.fieldLabel,
+                                padding: "0 2px",
+                                position: "relative",
+                              }}
+                            >
+                              {sub.isFirst ? (
+                                <span
+                                  style={{
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    maxWidth: "100%",
+                                  }}
+                                >
+                                  {sub.subfield.name}
+                                </span>
+                              ) : null}
+                              {isSubOverridable ? (
+                                <div
+                                  style={{
+                                    content: '""',
+                                    position: "absolute",
+                                    left: Math.round(4 * scale),
+                                    right: Math.round(4 * scale),
+                                    bottom: Math.round(1 * scale),
+                                    height: Math.round(1.5 * scale),
+                                    borderRadius: Math.round(1.5 * scale),
+                                    background: `linear-gradient(90deg, ${theme.markerAccentSoft} 0%, ${theme.markerAccent} 50%, ${theme.markerAccentSoft} 100%)`,
+                                    pointerEvents: "none",
+                                  }}
+                                />
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {isEncryptedBlock && cell.isFirst ? (
+                      <svg
+                        style={{
+                          position: "absolute",
+                          top: Math.round(LAYOUT.badgeOffsetY * scale),
+                          right: Math.round(LAYOUT.badgeOffsetX * scale),
+                          width: Math.round(LAYOUT.badgeSizeLarge * scale),
+                          height: Math.round(LAYOUT.badgeSizeLarge * scale),
+                          fill: "none",
+                          stroke: theme.accent,
+                          strokeWidth: LAYOUT.strokeWidthBadge,
+                          strokeLinecap: "round",
+                          strokeLinejoin: "round",
+                          zIndex: 2,
+                        }}
+                        viewBox={`0 0 ${LAYOUT.badgeSvgViewBox} ${LAYOUT.badgeSvgViewBox}`}
+                      >
+                        <rect
+                          x={LAYOUT.badgeSvgRectX}
+                          y={LAYOUT.badgeSvgRectY}
+                          width={LAYOUT.badgeSvgRectWidth}
+                          height={LAYOUT.badgeSvgRectHeight}
+                          rx={LAYOUT.badgeSvgRectRadius}
+                        />
+                        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                      </svg>
+                    ) : null}
+
+                    {isEncryptedChild && cell.isFirst ? (
+                      <svg
+                        style={{
+                          position: "absolute",
+                          bottom: Math.round(LAYOUT.badgeOffsetYSmall * scale),
+                          right: Math.round(LAYOUT.badgeOffsetXSmall * scale),
+                          width: Math.round(LAYOUT.badgeSizeSmall * scale),
+                          height: Math.round(LAYOUT.badgeSizeSmall * scale),
+                          fill: "none",
+                          stroke: theme.accent,
+                          strokeWidth: LAYOUT.strokeWidthBadge,
+                          strokeLinecap: "round",
+                          strokeLinejoin: "round",
+                          zIndex: 2,
+                        }}
+                        viewBox={`0 0 ${LAYOUT.badgeSvgViewBox} ${LAYOUT.badgeSvgViewBox}`}
+                      >
+                        <rect
+                          x={LAYOUT.badgeSvgRectX}
+                          y={LAYOUT.badgeSvgRectY}
+                          width={LAYOUT.badgeSvgRectWidth}
+                          height={LAYOUT.badgeSvgRectHeight}
+                          rx={LAYOUT.badgeSvgRectRadius}
+                        />
+                        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+                      </svg>
+                    ) : null}
+
+                    {isHeaderProtected && cell.isFirst ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: Math.round(6 * scale),
+                          right: Math.round(28 * scale),
+                          fontSize: Math.round(9 * scale),
+                          fontWeight: 700,
+                          color: theme.accent,
+                          zIndex: 2,
+                        }}
+                      >
+                        HP
+                      </span>
+                    ) : null}
+
+                    {isOverridable ? (
+                      <div
+                        style={{
+                          content: '""',
+                          position: "absolute",
+                          left: Math.round(7 * scale),
+                          right: Math.round(7 * scale),
+                          bottom: Math.round(3 * scale),
+                          height: Math.round(2.5 * scale),
+                          borderRadius: Math.round(2 * scale),
+                          background: `linear-gradient(90deg, ${theme.markerAccentSoft} 0%, ${theme.markerAccent} 50%, ${theme.markerAccentSoft} 100%)`,
+                          pointerEvents: "none",
+                          zIndex: 2,
+                        }}
+                      />
+                    ) : null}
                   </div>
                 );
               })}
