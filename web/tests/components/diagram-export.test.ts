@@ -157,8 +157,8 @@ describe("diagram export helpers", () => {
   it("returns explicit light/dark theme independent from current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
-    expect(readDiagramTheme("light").background).toBe("oklch(99.5% 0.005 260)");
-    expect(readDiagramTheme("dark").background).toBe("oklch(22% 0.028 270)");
+    expect(readDiagramTheme("light").background).toBe("#FBFEFF");
+    expect(readDiagramTheme("dark").background).toBe("#151A28");
   });
 
   it("returns theme constants independent of CSSLayerBlockRule", () => {
@@ -170,10 +170,8 @@ describe("diagram export helpers", () => {
     delete (globalThis as any).CSSLayerBlockRule;
 
     try {
-      expect(readDiagramTheme("light").background).toBe(
-        "oklch(99.5% 0.005 260)",
-      );
-      expect(readDiagramTheme("dark").background).toBe("oklch(22% 0.028 270)");
+      expect(readDiagramTheme("light").background).toBe("#FBFEFF");
+      expect(readDiagramTheme("dark").background).toBe("#151A28");
     } finally {
       globalThis.CSSLayerBlockRule = original;
     }
@@ -181,20 +179,16 @@ describe("diagram export helpers", () => {
 
   it("uses the current UI theme when mode is follow-ui", () => {
     document.documentElement.setAttribute("data-theme", "dark");
-    expect(readDiagramTheme("follow-ui").background).toBe(
-      "oklch(22% 0.028 270)",
-    );
+    expect(readDiagramTheme("follow-ui").background).toBe("#151A28");
 
     document.documentElement.setAttribute("data-theme", "light");
-    expect(readDiagramTheme("follow-ui").background).toBe(
-      "oklch(99.5% 0.005 260)",
-    );
+    expect(readDiagramTheme("follow-ui").background).toBe("#FBFEFF");
   });
 
   it("returns explicit theme without mutating the current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
-    expect(readDiagramTheme("light").background).toBe("oklch(99.5% 0.005 260)");
+    expect(readDiagramTheme("light").background).toBe("#FBFEFF");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 

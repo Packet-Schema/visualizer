@@ -15,6 +15,7 @@
 //   here before extending the contract.
 
 import { CATEGORY_TO_TOKEN } from "./constants";
+import { createExportTheme } from "./colors";
 import type {
   Cell,
   Field,
@@ -164,17 +165,19 @@ export function rowBandColor(
  */
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
   if (mode === "dark") {
-    return DARK_DIAGRAM_THEME;
+    return createExportTheme(DARK_DIAGRAM_THEME);
   }
   if (mode === "light") {
-    return LIGHT_DIAGRAM_THEME;
+    return createExportTheme(LIGHT_DIAGRAM_THEME);
   }
   // "follow-ui": read current theme from data-theme attribute
   if (typeof document !== "undefined") {
     const theme = document.documentElement.getAttribute("data-theme");
-    return theme === "dark" ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME;
+    return createExportTheme(
+      theme === "dark" ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME,
+    );
   }
-  return LIGHT_DIAGRAM_THEME;
+  return createExportTheme(LIGHT_DIAGRAM_THEME);
 }
 
 export function downloadTextFile(
