@@ -56,7 +56,7 @@ describe.sequential("Homepage and Meta Tags", () => {
       const dom = new JSDOM(html);
       const titleTag = dom.window.document.querySelector("title");
 
-      expect(titleTag).toBeDefined();
+      expect(titleTag).not.toBeNull();
       expect(titleTag?.textContent).toBeTruthy();
       expect(titleTag?.textContent).not.toContain("preset");
     });
@@ -70,20 +70,20 @@ describe.sequential("Homepage and Meta Tags", () => {
       const ogTitle = dom.window.document.querySelector(
         'meta[property="og:title"]',
       );
-      expect(ogTitle).toBeDefined();
+      expect(ogTitle).not.toBeNull();
       expect(ogTitle?.getAttribute("content")).toBeTruthy();
 
       // Check for og:description
       const ogDescription = dom.window.document.querySelector(
         'meta[property="og:description"]',
       );
-      expect(ogDescription).toBeDefined();
+      expect(ogDescription).not.toBeNull();
 
       // Check for og:image
       const ogImage = dom.window.document.querySelector(
         'meta[property="og:image"]',
       );
-      expect(ogImage).toBeDefined();
+      expect(ogImage).not.toBeNull();
       expect(ogImage?.getAttribute("content")).toMatch(/^https?:\/\//);
     });
 
@@ -106,7 +106,7 @@ describe.sequential("Homepage and Meta Tags", () => {
       const dom = new JSDOM(html);
       const titleTag = dom.window.document.querySelector("title");
 
-      expect(titleTag).toBeDefined();
+      expect(titleTag).not.toBeNull();
       expect(titleTag?.textContent).toBeTruthy();
       expect(titleTag?.textContent).toContain("IPv4"); // IPv4 header name
       expect(titleTag?.textContent).toContain("Packet Visualizer");
@@ -123,7 +123,7 @@ describe.sequential("Homepage and Meta Tags", () => {
       const ogTitle = dom.window.document.querySelector(
         'meta[property="og:title"]',
       );
-      expect(ogTitle).toBeDefined();
+      expect(ogTitle).not.toBeNull();
       const ogTitleContent = ogTitle?.getAttribute("content") || "";
       expect(ogTitleContent).toContain("IPv4"); // IPv4 header name
       expect(ogTitleContent).toContain("Packet Visualizer");
@@ -132,7 +132,7 @@ describe.sequential("Homepage and Meta Tags", () => {
       const ogImage = dom.window.document.querySelector(
         'meta[property="og:image"]',
       );
-      expect(ogImage).toBeDefined();
+      expect(ogImage).not.toBeNull();
       const ogImageUrl = ogImage?.getAttribute("content") || "";
       expect(ogImageUrl).toContain("preset=ipv4");
     });
@@ -145,7 +145,7 @@ describe.sequential("Homepage and Meta Tags", () => {
       const ogImage = dom.window.document.querySelector(
         'meta[property="og:image"]',
       );
-      expect(ogImage).toBeDefined();
+      expect(ogImage).not.toBeNull();
       const imageUrl = ogImage?.getAttribute("content") || "";
       expect(imageUrl).toContain("preset=ipv6");
     });
@@ -162,12 +162,12 @@ describe.sequential("Homepage and Meta Tags", () => {
       const ogTitle = dom.window.document.querySelector(
         'meta[property="og:title"]',
       );
-      expect(ogTitle).toBeDefined();
+      expect(ogTitle).not.toBeNull();
 
       const ogImage = dom.window.document.querySelector(
         'meta[property="og:image"]',
       );
-      expect(ogImage).toBeDefined();
+      expect(ogImage).not.toBeNull();
       const ogImageUrl = ogImage?.getAttribute("content") || "";
       expect(ogImageUrl).toContain("preset=ipv4");
       expect(ogImageUrl).toContain("controllers.ihl=5");

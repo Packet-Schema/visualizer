@@ -10,15 +10,16 @@ export const fetchWithRetry = async (
   maxRetries: number = 3,
 ): Promise<Response> => {
   for (let i = 0; i < maxRetries; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
       const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
       return response;
     } catch (err) {
       if (i === maxRetries - 1) throw err;
       await new Promise((resolve) => setTimeout(resolve, 500 * (i + 1)));
+    } finally {
+      clearTimeout(timeout);
     }
   }
   throw new Error("Unreachable");
@@ -35,13 +36,11 @@ export async function waitForServer(
 
   while (Date.now() - startTime < timeoutMs) {
     attempts++;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
       const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
-      if (response.status === 200 || response.status === 404) {
-        // Verify we can actually read the response
+      if (response.status === 200) {
         await response.text();
         console.log(
           `Server ready after ${Date.now() - startTime}ms (${attempts} attempts)`,
@@ -56,6 +55,8 @@ export async function waitForServer(
           `Waiting for server... (${Math.round((Date.now() - startTime) / 1000)}s)`,
         );
       }
+    } finally {
+      clearTimeout(timeout);
     }
     await new Promise((resolve) => setTimeout(resolve, interval));
   }
