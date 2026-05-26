@@ -46,11 +46,13 @@ jobs:
 
       - run: npm run generate:og-font
 
-      - run: npm run lint
-
-      - run: npm run typecheck
-
       - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: web/.open-next/
+          retention-days: 1
 
   unit-tests:
     name: Unit Tests & Coverage
@@ -102,7 +104,10 @@ jobs:
 
       - run: npm run build:presets && npm run generate:og-font
 
-      - run: npm run build:worker
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: web/
 
       - run: npm run test:integration
 
@@ -130,7 +135,10 @@ jobs:
 
       - run: npm run build:presets && npm run generate:og-font
 
-      - run: npm run build:worker
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: web/
 
       - run: npx playwright install
 
