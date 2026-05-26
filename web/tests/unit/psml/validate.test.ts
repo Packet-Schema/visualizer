@@ -106,8 +106,8 @@ describe("validatePacket — structural rules", () => {
 
 describe("validatePsmlPacket — reserved cell-id tokens (Codex P2)", () => {
   const base = (
-    body: import("../../lib/psml/types").Container[],
-  ): import("../../lib/psml/types").Packet => ({
+    body: import("@/lib/psml/types").Container[],
+  ): import("@/lib/psml/types").Packet => ({
     name: "T",
     rowBits: 32,
     body,

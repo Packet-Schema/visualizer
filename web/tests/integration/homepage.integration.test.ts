@@ -92,7 +92,9 @@ describe("Homepage and Meta Tags", () => {
       const html = await response.text();
       const dom = new JSDOM(html);
 
-      const ogUrl = dom.window.document.querySelector('meta[property="og:url"]');
+      const ogUrl = dom.window.document.querySelector(
+        'meta[property="og:url"]',
+      );
       expect(ogUrl).toBeNull();
     });
   });

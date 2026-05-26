@@ -10,7 +10,10 @@ export const fetchWithRetry = async (
 ): Promise<Response> => {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await fetch(url, { timeout: 10000 });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
       return response;
     } catch (err) {
       if (i === maxRetries - 1) throw err;
@@ -31,7 +34,10 @@ export async function waitForServer(
   while (Date.now() - startTime < timeoutMs) {
     attempts++;
     try {
-      const response = await fetch(url, { timeout: 5000 });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
       if (response.status === 404 || response.status === 200) {
         console.log(
           `Server ready after ${Date.now() - startTime}ms (${attempts} attempts)`,
@@ -57,9 +63,13 @@ export async function waitForServer(
 export function startPreviewServer(): ChildProcess {
   // Kill any existing process on port 8787
   console.log("Cleaning up port 8787...");
-  spawnSync("bash", ["-c", "lsof -ti:8787 | xargs kill -9 2>/dev/null || true"], {
-    stdio: "ignore",
-  });
+  spawnSync(
+    "bash",
+    ["-c", "lsof -ti:8787 | xargs kill -9 2>/dev/null || true"],
+    {
+      stdio: "ignore",
+    },
+  );
 
   // Start the Cloudflare worker preview server
   console.log("Starting Cloudflare worker preview server...");
@@ -71,7 +81,7 @@ export function startPreviewServer(): ChildProcess {
   // Log server output for debugging
   devServer.stdout?.on("data", (data) => {
     const lines = data.toString().split("\n");
-    lines.forEach((line) => {
+    lines.forEach((line: string) => {
       if (line.trim()) {
         console.log(`[Server stdout] ${line.trim()}`);
       }
@@ -79,7 +89,7 @@ export function startPreviewServer(): ChildProcess {
   });
   devServer.stderr?.on("data", (data) => {
     const lines = data.toString().split("\n");
-    lines.forEach((line) => {
+    lines.forEach((line: string) => {
       if (line.trim()) {
         console.log(`[Server stderr] ${line.trim()}`);
       }

@@ -7,9 +7,10 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, ".") } },
   test: {
     environment: "node",
-    include: ["tests/integration/**/*.integration.test.ts", "tests/integration/**/*.integration.test.tsx"],
+    include: [
+      "tests/integration/**/*.integration.test.ts",
+      "tests/integration/**/*.integration.test.tsx",
+    ],
     testTimeout: 120000, // 2 minutes for integration tests
-    threads: false, // Run tests sequentially, not in parallel
-    singleThread: true, // Ensure single-threaded execution
   },
 });

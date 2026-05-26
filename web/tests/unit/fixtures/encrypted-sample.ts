@@ -14,8 +14,8 @@
 // Wire totalBits     = 8 + 8 + 64 = 80
 // Semantic totalBits = 8 + 8 + 16 + 64 = 96
 
-import { lit } from "../../lib/psml/expr";
-import type { Encrypted, Packet } from "../../lib/psml/types";
+import { lit } from "@/lib/psml/expr";
+import type { Encrypted, Packet } from "@/lib/psml/types";
 
 export const ENCRYPTED_SAMPLE_PLAINTEXT_BITS = 16 + 64; // msg_id + body
 export const ENCRYPTED_SAMPLE_WIRE_BITS = 64;
