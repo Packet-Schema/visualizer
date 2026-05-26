@@ -24,6 +24,7 @@
     "pretest:coverage": "tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts",
     "test:coverage": "vitest run --coverage",
     "test:format": "vitest run tests/formats",
+    "pretest:integration": "npm run build",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "preview": "npm run build && opennextjs-cloudflare preview",
