@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { createExportTheme } from "../../lib/colors";
-import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "../../lib/theme";
+import { createExportTheme } from "@/lib/colors";
+import { LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from "@/lib/theme";
 
 describe("Color conversion for Satori compatibility", () => {
   describe("createExportTheme", () => {

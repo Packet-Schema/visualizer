@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 
 test.describe("Preview Server Access", () => {
-  test("should load homepage without preset", async ({ page }) => {
+  test("should load homepage without preset", async ({ page }: { page: Page }) => {
     await page.goto("/");
 
     // Check page title (app auto-applies ipv4 preset when accessing /)
@@ -16,7 +16,7 @@ test.describe("Preview Server Access", () => {
     expect(page.url()).toContain("localhost:8787");
   });
 
-  test("should load homepage with preset parameter", async ({ page }) => {
+  test("should load homepage with preset parameter", async ({ page }: { page: Page }) => {
     await page.goto("/?preset=ipv4");
 
     // Check page title contains IPv4
@@ -28,7 +28,7 @@ test.describe("Preview Server Access", () => {
     expect(page.url()).toContain("preset=ipv4");
   });
 
-  test("should display OG meta tags for default page", async ({ page }) => {
+  test("should display OG meta tags for default page", async ({ page }: { page: Page }) => {
     await page.goto("/");
 
     // App auto-applies ipv4 preset when accessing /
@@ -51,7 +51,7 @@ test.describe("Preview Server Access", () => {
     expect(imageUrl).toContain("preset=ipv4");
   });
 
-  test("should display OG meta tags with preset", async ({ page }) => {
+  test("should display OG meta tags with preset", async ({ page }: { page: Page }) => {
     await page.goto("/?preset=ipv4");
 
     // Check for og:title meta tag with preset info
@@ -66,7 +66,7 @@ test.describe("Preview Server Access", () => {
     expect(imageUrl).toContain("preset=ipv4");
   });
 
-  test("should load homepage with custom controllers", async ({ page }) => {
+  test("should load homepage with custom controllers", async ({ page }: { page: Page }) => {
     await page.goto("/?preset=ipv4&controllers.ihl=6&controllers.dscp=20");
 
     // Check page loaded
@@ -85,7 +85,7 @@ test.describe("Preview Server Access", () => {
     expect(imageUrl).toContain("controllers.ihl=6");
   });
 
-  test("should handle different presets", async ({ page }) => {
+  test("should handle different presets", async ({ page }: { page: Page }) => {
     const presets = ["ipv4", "ipv6", "udp"];
 
     for (const preset of presets) {
@@ -106,7 +106,7 @@ test.describe("Preview Server Access", () => {
     }
   });
 
-  test("should have valid HTML structure", async ({ page }) => {
+  test("should have valid HTML structure", async ({ page }: { page: Page }) => {
     await page.goto("/");
 
     // Check for HTML lang attribute
@@ -124,9 +124,9 @@ test.describe("Preview Server Access", () => {
 
   test("should not have console errors on default page load", async ({
     page,
-  }) => {
+  }: { page: Page }) => {
     const errors: string[] = [];
-    page.on("console", (msg) => {
+    page.on("console", (msg: ConsoleMessage) => {
       if (msg.type() === "error") {
         errors.push(msg.text());
       }
@@ -143,9 +143,9 @@ test.describe("Preview Server Access", () => {
     );
   });
 
-  test("should not have console errors with preset", async ({ page }) => {
+  test("should not have console errors with preset", async ({ page }: { page: Page }) => {
     const errors: string[] = [];
-    page.on("console", (msg) => {
+    page.on("console", (msg: ConsoleMessage) => {
       if (msg.type() === "error") {
         errors.push(msg.text());
       }
