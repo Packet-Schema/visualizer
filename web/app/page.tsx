@@ -34,24 +34,29 @@ export async function generateMetadata({
   const shareQuery = buildShareQueryFromParams(params);
   const parsed = parseShareParamsOrFallback(shareQuery);
 
-  const isValidLength = isShareQueryLengthValid(shareQuery);
+  // Determine the packet key (same logic as Page component for consistency)
+  const packetKey =
+    parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
+  const packet = PRESETS[packetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+
+  // Build OG image URL with the determined packet key
+  const ogParams = new URLSearchParams();
+  ogParams.set("preset", packetKey);
+  if (parsed.controllers) {
+    for (const [key, value] of Object.entries(parsed.controllers)) {
+      ogParams.set(`controllers.${key}`, String(value));
+    }
+  }
+  const ogQuery = ogParams.toString();
+  const isValidLength = isShareQueryLengthValid(ogQuery);
   const imageUrl = new URL(
-    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og",
+    isValidLength && ogQuery ? `/api/og?${ogQuery}` : "/api/og",
     await getRequestOrigin(),
   ).toString();
 
-  const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psml";
-  const packet = hasExplicitParams
-    ? parsed.kind === "preset"
-      ? (PRESETS[parsed.presetKey] ?? PRESETS[DEFAULT_PACKET_KEY])
-      : parsed.packet
-    : null;
-
-  const title = packet
-    ? `${packet.name} | Packet Visualizer`
-    : "Packet Visualizer";
+  const title = `${packet.name} | Packet Visualizer`;
   const description =
-    packet?.description ?? "Visual viewer for common network packet headers.";
+    packet.description ?? "Visual viewer for common network packet headers.";
 
   return {
     title,
