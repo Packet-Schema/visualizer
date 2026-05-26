@@ -13,7 +13,8 @@ export default defineConfig({
     // docblock so the bulk of the suite still runs in plain Node.
     coverage: {
       provider: "v8",
-      include: ["lib/formats/**"],
+      include: ["lib/**"],
+      exclude: ["lib/psml/psml.schema.generated.ts"],
       thresholds: {
         lines: 100,
         functions: 100,
