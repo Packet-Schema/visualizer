@@ -4,21 +4,9 @@ test.describe("Preview Server Access", () => {
   test("should load homepage without preset", async ({ page }: { page: Page }) => {
     await page.goto("/");
 
-    // Initially, title should be default (no preset)
-    let title = await page.title();
-    expect(title).toBe("Packet Visualizer");
-
-    // Wait for dynamic preset application (up to 5 seconds)
-    await page.waitForFunction(
-      () => document.title.includes("IPv4"),
-      { timeout: 5000 }
-    ).catch(() => {
-      // It's okay if preset isn't applied dynamically
-    });
-
-    // Check final title after potential dynamic application
-    title = await page.title();
-    expect(title).toBeTruthy();
+    // Title reflects default preset (ipv4) applied by page component
+    const title = await page.title();
+    expect(title).toContain("IPv4");
     expect(title).toContain("Packet Visualizer");
 
     // Check for main content
