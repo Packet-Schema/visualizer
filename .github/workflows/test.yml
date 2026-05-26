@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   setup:
-    name: Setup, Lint & Build
+    name: Setup & Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,25 +50,6 @@ jobs:
       - run: npm run typecheck
 
       - run: npm run build
-
-      - name: Check build output directory
-        run: |
-          echo "=== Current directory ==="
-          pwd
-          echo "=== Files in current dir ==="
-          ls -la
-          echo "=== web directory contents ==="
-          ls -la ../web/ 2>/dev/null || echo "web not accessible"
-          echo "=== Looking for .open-next ==="
-          find . -name ".open-next" -type d 2>/dev/null || echo ".open-next not found"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: .open-next/
-          retention-days: 1
-          if-no-files-found: error
 
   unit-tests:
     name: Unit Tests & Coverage
@@ -120,11 +101,7 @@ jobs:
 
       - run: npm run build:presets && npm run generate:og-font
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: .open-next/
+      - run: npm run build:worker
 
       - run: npm run test:integration
 
@@ -152,11 +129,7 @@ jobs:
 
       - run: npm run build:presets && npm run generate:og-font
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: .open-next/
+      - run: npm run build:worker
 
       - run: npx playwright install
 
