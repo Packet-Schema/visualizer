@@ -41,6 +41,10 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run build:presets
+
+      - run: npm run generate:og-font
+
       - run: npm run lint
 
       - run: npm run typecheck
