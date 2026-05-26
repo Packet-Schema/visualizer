@@ -6,7 +6,7 @@ import {
   rowBandColor,
   isFieldOverridable,
 } from "@/lib/diagram-export";
-import { LAYOUT, DIAGRAM_OPACITY } from "@/lib/theme";
+import { LAYOUT } from "@/lib/theme";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 import { LockIcon } from "@/components/diagram/diagram-badges";
 
@@ -282,8 +282,7 @@ export function StaticDiagram({
                                 ),
                                 minWidth: 0,
                                 background: theme.subfieldBackground,
-                                opacity: DIAGRAM_OPACITY.subfieldBackground,
-                                border: `1px solid ${stroke}`,
+                                border: `1px solid ${theme.fieldStroke}`,
                                 borderRadius: Math.round(
                                   LAYOUT.subfieldBorderRadius * scale,
                                 ),
