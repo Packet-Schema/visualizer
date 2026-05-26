@@ -434,7 +434,7 @@ function SubfieldRow({
             tabIndex={-1}
             // .subfield-cell class kept so PacketViewer's roving keydown
             // handler can target it via querySelectorAll.
-            className={`subfield-cell${isSubSelected ? " selected" : ""}${sub.isFirst ? "" : " continuation"}`}
+            className={`subfield-cell${isSubSelected ? " selected" : ""}${sub.isFirst ? "" : " continuation"} dark:text-white`}
             aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
             data-field-id={`${parent.id}:${sub.subfield.id}`}
             data-parent-field-id={parent.id}
