@@ -5,13 +5,23 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/test.yml"
-      - "web/**"
+      - "web/src/**"
+      - "web/tests/**"
+      - "web/vitest*.config.ts"
+      - "web/playwright.config.ts"
+      - "web/package.json"
+      - "web/package-lock.json"
       - "data/presets/**"
       - "schemas/**"
   pull_request:
     paths:
       - ".github/workflows/test.yml"
-      - "web/**"
+      - "web/src/**"
+      - "web/tests/**"
+      - "web/vitest*.config.ts"
+      - "web/playwright.config.ts"
+      - "web/package.json"
+      - "web/package-lock.json"
       - "data/presets/**"
       - "schemas/**"
 
