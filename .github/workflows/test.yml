@@ -42,10 +42,6 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build:presets
-
-      - run: npm run generate:og-font
-
       - run: npm run build
 
       - uses: actions/upload-artifact@v4
@@ -77,8 +73,6 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build:presets && npm run generate:og-font
-
       - run: npm run test:coverage
 
   integration-tests:
@@ -102,8 +96,6 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
-
-      - run: npm run build:presets && npm run generate:og-font
 
       - uses: actions/download-artifact@v4
         with:
@@ -133,8 +125,6 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
-
-      - run: npm run build:presets && npm run generate:og-font
 
       - uses: actions/download-artifact@v4
         with:
