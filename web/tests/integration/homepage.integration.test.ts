@@ -6,6 +6,7 @@ import {
   fetchWithRetry,
   waitForServer,
   startPreviewServer,
+  exitProcess,
 } from "./helpers";
 
 describe("Homepage and Meta Tags", () => {
@@ -18,7 +19,7 @@ describe("Homepage and Meta Tags", () => {
 
   afterAll(async () => {
     if (devServer) {
-      devServer.kill();
+      await exitProcess(devServer);
     }
   });
 

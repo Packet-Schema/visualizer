@@ -6,6 +6,7 @@ import {
   fetchWithRetry,
   waitForServer,
   startPreviewServer,
+  exitProcess,
 } from "./helpers";
 
 describe("OG Image Download", () => {
@@ -18,7 +19,7 @@ describe("OG Image Download", () => {
 
   afterAll(async () => {
     if (devServer) {
-      devServer.kill();
+      await exitProcess(devServer);
     }
   });
 
