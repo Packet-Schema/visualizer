@@ -65,7 +65,11 @@ test.describe("Preset Auto-Apply Behavior", () => {
     expect(imageUrl).not.toContain("preset=");
   });
 
-  test("should not override explicit preset with default", async ({ page }: { page: Page }) => {
+  test("should not override explicit preset with default", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     // Go to homepage with udp preset
     await page.goto("/?preset=udp");
     await page.waitForLoadState("networkidle");

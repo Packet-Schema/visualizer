@@ -1,7 +1,11 @@
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 
 test.describe("Preview Server Access", () => {
-  test("should load homepage without preset", async ({ page }: { page: Page }) => {
+  test("should load homepage without preset", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
@@ -20,7 +24,11 @@ test.describe("Preview Server Access", () => {
     expect(finalUrl).toContain("preset=ipv4");
   });
 
-  test("should load homepage with preset parameter", async ({ page }: { page: Page }) => {
+  test("should load homepage with preset parameter", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     await page.goto("/?preset=ipv4");
 
     // Check page title contains IPv4
@@ -32,7 +40,11 @@ test.describe("Preview Server Access", () => {
     expect(page.url()).toContain("preset=ipv4");
   });
 
-  test("should display OG meta tags for default page", async ({ page }: { page: Page }) => {
+  test("should display OG meta tags for default page", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     await page.goto("/");
 
     // OG meta tags are server-generated based on URL parameters
@@ -56,7 +68,11 @@ test.describe("Preview Server Access", () => {
     expect(imageUrl).not.toContain("preset=");
   });
 
-  test("should display OG meta tags with preset", async ({ page }: { page: Page }) => {
+  test("should display OG meta tags with preset", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     await page.goto("/?preset=ipv4");
 
     // Check for og:title meta tag with preset info
@@ -71,7 +87,11 @@ test.describe("Preview Server Access", () => {
     expect(imageUrl).toContain("preset=ipv4");
   });
 
-  test("should load homepage with custom controllers", async ({ page }: { page: Page }) => {
+  test("should load homepage with custom controllers", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     await page.goto("/?preset=ipv4&controllers.ihl=6&controllers.dscp=20");
 
     // Check page loaded
@@ -129,7 +149,9 @@ test.describe("Preview Server Access", () => {
 
   test("should not have console errors on default page load", async ({
     page,
-  }: { page: Page }) => {
+  }: {
+    page: Page;
+  }) => {
     const errors: string[] = [];
     page.on("console", (msg: ConsoleMessage) => {
       if (msg.type() === "error") {
@@ -148,7 +170,11 @@ test.describe("Preview Server Access", () => {
     );
   });
 
-  test("should not have console errors with preset", async ({ page }: { page: Page }) => {
+  test("should not have console errors with preset", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
     const errors: string[] = [];
     page.on("console", (msg: ConsoleMessage) => {
       if (msg.type() === "error") {
