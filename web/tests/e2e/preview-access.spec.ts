@@ -5,9 +5,10 @@ test.describe("Preview Server Access", () => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    // Server metadata title (no preset parameter)
+    // Client-side JavaScript has executed and updated title to reflect default preset
     const title = await page.title();
-    expect(title).toBe("Packet Visualizer");
+    expect(title).toContain("IPv4");
+    expect(title).toContain("Packet Visualizer");
 
     // Check for main content
     await expect(page.locator("body")).toContainText("Packet Visualizer");
