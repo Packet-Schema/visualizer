@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { ChildProcess } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import sharp from "sharp";
 import {
   BASE_URL,
@@ -18,18 +19,8 @@ describe("OG Image Download", () => {
 
   afterAll(async () => {
     if (devServer) {
-      devServer.kill("SIGKILL");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      devServer.kill();
     }
-    // Force cleanup of port 8787
-    const { spawnSync } = await import("node:child_process");
-    spawnSync(
-      "bash",
-      ["-c", "lsof -ti:8787 | xargs kill -9 2>/dev/null || true"],
-      {
-        stdio: "ignore",
-      },
-    );
   });
 
   it("downloads OG image with HTTP protocol", async () => {
