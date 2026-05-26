@@ -5,11 +5,11 @@
   "compatibility_date": "2026-05-21",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
-    "run_worker_first": true
-  }
+    "run_worker_first": true,
+  },
 }
