@@ -20,7 +20,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test:
+  setup:
+    name: Setup & Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,28 +47,75 @@ jobs:
 
       - run: npm run build
 
+  unit-tests:
+    name: Unit Tests & Coverage
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
       - run: npm run test:coverage
+
+  integration-tests:
+    name: Integration Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
 
       - run: npm run test:integration
 
-      - run: |
-          set -e
-          # Wait for port 8787 to be released
-          max_attempts=30
-          attempt=0
-          while lsof -i :8787 > /dev/null 2>&1 && [ $attempt -lt $max_attempts ]; do
-            echo "Port 8787 still in use, waiting... ($((attempt+1))/$max_attempts)"
-            sleep 1
-            attempt=$((attempt+1))
-          done
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
 
-          if lsof -i :8787 > /dev/null 2>&1; then
-            echo "Port 8787 still in use after $max_attempts seconds, forcing cleanup"
-            lsof -ti :8787 | xargs kill -9 2>/dev/null || true
-            sleep 2
-          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-          echo "Port 8787 is now available"
+      - run: npm ci
 
       - run: npx playwright install
 
