@@ -24,8 +24,10 @@ test.describe("Preview Server Access", () => {
     // Check for main content
     await expect(page.locator("body")).toContainText("Packet Visualizer");
 
-    // Check that page loaded
-    expect(page.url()).toContain("localhost:8787");
+    // Check that page loaded and URL is updated with preset
+    const finalUrl = page.url();
+    expect(finalUrl).toContain("localhost:8787");
+    expect(finalUrl).toContain("preset=ipv4");
   });
 
   test("should load homepage with preset parameter", async ({ page }: { page: Page }) => {
