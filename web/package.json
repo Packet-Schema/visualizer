@@ -19,9 +19,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:format": "vitest run tests/formats",
     "build:worker": "npm run build",
     "preview:worker": "npm run build:worker && opennextjs-cloudflare preview",
+    "preview:worker:start": "opennextjs-cloudflare preview",
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
@@ -54,6 +56,7 @@
     "jsdom": "^29.1.1",
     "postcss": "^8.5.1",
     "prettier": "3.8.3",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
