@@ -38,7 +38,7 @@ export async function waitForServer(
         );
         return;
       }
-    } catch (err) {
+    } catch {
       // Server not ready yet
       if (attempts % 5 === 0) {
         console.log(
