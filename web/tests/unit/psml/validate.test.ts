@@ -4,9 +4,9 @@
 // `validatePsmlPacket` walker.
 
 import { describe, expect, it } from "vitest";
-import { validatePacket } from "../../lib/psml/renderer-helpers";
-import { validatePsmlPacket } from "../../lib/psml/validate";
-import type { Packet } from "../../lib/psml/renderer";
+import { validatePacket } from "@/lib/psml/renderer-helpers";
+import { validatePsmlPacket } from "@/lib/psml/validate";
+import type { Packet } from "@/lib/psml/renderer";
 
 function pkt(fields: Packet["fields"]): Packet {
   return { name: "Test", rowBits: 32, fields };

@@ -3,10 +3,10 @@
 // regression, and label-truncation behaviour for the field-line printer.
 
 import { describe, expect, it } from "vitest";
-import { toAscii } from "../../lib/formats/rfc-ascii";
-import { initialEnv, normalize } from "../../lib/psml/normalize";
-import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
-import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psml/types";
+import { toAscii } from "@/lib/formats/rfc-ascii";
+import { initialEnv, normalize } from "@/lib/psml/normalize";
+import { PRESETS as ALL_PRESETS } from "@/lib/psml/presets";
+import type { Encrypted, Expr, Packet, PacketEnv } from "@/lib/psml/types";
 
 function envWithRefs(p: Packet): PacketEnv {
   const env = initialEnv(p);

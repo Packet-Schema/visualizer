@@ -9,8 +9,8 @@ import {
   readDiagramTheme,
   readDiagramThemeFromDocument,
   svgToPngBlob,
-} from "../../lib/diagram-export";
-import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
+} from "@/lib/diagram-export";
+import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
 
 const packet: Packet = {
   name: "Demo & Packet",

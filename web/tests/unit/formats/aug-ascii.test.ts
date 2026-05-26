@@ -4,7 +4,7 @@
 // unsupported-construct warning channel.
 
 import { describe, expect, it } from "vitest";
-import { fromAad } from "../../lib/formats/aug-ascii";
+import { fromAad } from "@/lib/formats/aug-ascii";
 
 const IPV4_AAD = `
 An IPv4 Header is formatted as follows:

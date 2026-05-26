@@ -10,8 +10,8 @@ import {
   listCustomPresets,
   loadCustomPresets,
   saveCustomPreset,
-} from "../../lib/psml/custom-presets";
-import type { PsmlPacket } from "../../lib/psml/types";
+} from "@/lib/psml/custom-presets";
+import type { PsmlPacket } from "@/lib/psml/types";
 
 function mkPacket(name: string): PsmlPacket {
   return {

@@ -16,8 +16,8 @@ import {
   slugify,
   uniqueKey,
   type FormatKey,
-} from "../../lib/preset-file-io";
-import type { PsmlPacket } from "../../lib/psml/types";
+} from "@/lib/preset-file-io";
+import type { PsmlPacket } from "@/lib/psml/types";
 
 describe("slugify", () => {
   it("converts ASCII names to kebab-case", () => {

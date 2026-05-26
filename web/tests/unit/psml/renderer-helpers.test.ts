@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { PRESETS } from "../../lib/psml/presets";
+import { PRESETS } from "@/lib/psml/presets";
 import {
   initialState,
   syncChainControllers,
-} from "../../lib/psml/renderer-helpers";
-import { psmlToRenderer } from "../../lib/psml/psml-to-renderer";
+} from "@/lib/psml/renderer-helpers";
+import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
 
 describe("renderer helper controller state", () => {
   it("seeds IPv6 chain repeat count refs", () => {

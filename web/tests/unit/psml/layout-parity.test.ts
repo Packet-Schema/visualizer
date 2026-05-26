@@ -4,11 +4,11 @@
 // applicable) semantic view modes.
 
 import { describe, expect, it } from "vitest";
-import { resolveLayout } from "../../lib/psml/layout";
-import { initialEnv, normalize } from "../../lib/psml/normalize";
-import { validatePsmlPacket } from "../../lib/psml/validate";
-import { PRESETS } from "../../lib/psml/presets";
-import type { Expr, Packet } from "../../lib/psml/types";
+import { resolveLayout } from "@/lib/psml/layout";
+import { initialEnv, normalize } from "@/lib/psml/normalize";
+import { validatePsmlPacket } from "@/lib/psml/validate";
+import { PRESETS } from "@/lib/psml/presets";
+import type { Expr, Packet } from "@/lib/psml/types";
 import {
   EXPECTED_TOTAL_BITS,
   EXPECTED_TOTAL_BITS_PSML_04,

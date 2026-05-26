@@ -2,9 +2,9 @@
 // detection, ref-only direction, and validate().
 
 import { describe, expect, it } from "vitest";
-import { lit, op, ref } from "../../lib/psml/expr";
-import { propagate, validate } from "../../lib/psml/constraint";
-import type { Constraint, PacketEnv } from "../../lib/psml/types";
+import { lit, op, ref } from "@/lib/psml/expr";
+import { propagate, validate } from "@/lib/psml/constraint";
+import type { Constraint, PacketEnv } from "@/lib/psml/types";
 
 const ihlConstraint: Constraint = {
   lhs: op("*", ref("ihl"), lit(4)),
