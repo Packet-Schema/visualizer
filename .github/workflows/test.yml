@@ -48,19 +48,10 @@ jobs:
 
       - run: npm run build
 
-      - run: |
-          echo "=== Workspace: ${{ github.workspace }} ==="
-          echo "=== Current dir ==="
-          pwd
-          echo "=== Repo root listing ==="
-          ls -la /home/runner/work/packet-view/packet-view/ | head -20
-          echo "=== Find .open-next ==="
-          find /home/runner/work/packet-view/packet-view -name ".open-next" -type d
-
       - uses: actions/upload-artifact@v4
         with:
           name: build-output
-          path: ${{ github.workspace }}/web/.open-next/
+          path: ${{ github.workspace }}/web/.open-next/**/*
           retention-days: 1
 
   unit-tests:
