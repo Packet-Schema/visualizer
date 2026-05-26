@@ -48,12 +48,10 @@ jobs:
 
       - run: npm run build
 
-      - run: ls -la .open-next/ || echo ".open-next not found"
-
       - uses: actions/upload-artifact@v4
         with:
           name: build-output
-          path: .open-next/
+          path: web/.open-next/
           retention-days: 1
 
   unit-tests:
