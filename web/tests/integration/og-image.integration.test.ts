@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { ChildProcess } from "node:child_process";
 import sharp from "sharp";
 import {
-  PORT,
   BASE_URL,
   fetchWithRetry,
   waitForServer,
