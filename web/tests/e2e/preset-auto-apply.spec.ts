@@ -107,15 +107,11 @@ test.describe("Preset Auto-Apply Behavior", () => {
     expect(title).toContain("IPv4");
 
     // Look for preset selector/dropdown
-    const presetSelectors = page.locator('[data-testid*="preset"]');
-    await expect(presetSelectors.first()).toBeVisible({
-      timeout: 5000,
-    });
+    const presetSelect = page.locator('[data-testid="preset-picker"]');
+    await expect(presetSelect).toBeVisible({ timeout: 5000 });
 
-    // Find and click on IPv6 option
-    const ipv6Option = page.locator("text=/IPv6|ipv6/i");
-    await expect(ipv6Option.first()).toBeVisible({ timeout: 5000 });
-    await ipv6Option.first().click();
+    // Switch to IPv6
+    await presetSelect.selectOption("ipv6");
     await page.waitForLoadState("networkidle");
 
     // Title should be updated to IPv6
