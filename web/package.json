@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts",
     "dev": "next dev",
-    "dev:fresh": "tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts && next dev",
     "build:presets": "tsx scripts/build-presets.ts",
     "generate:og-font": "tsx scripts/generate-og-font.ts",
     "prebuild": "tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts",
