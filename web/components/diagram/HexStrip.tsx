@@ -3,7 +3,7 @@ import { useMemo, type CSSProperties } from "react";
 import type { ResolvedLayout } from "@/lib/psml/renderer";
 import {
   categoryCellColorClasses,
-  categoryTailwindColorVar,
+  categoryTailwindGradientColor,
 } from "@/lib/render-tokens";
 
 type Props = {
@@ -20,8 +20,8 @@ type ByteOwner = {
   fieldId: string;
   /** Display name used in the aria-label. */
   name: string;
-  /** Tailwind built-in palette CSS variable used for split-byte gradients. */
-  color: string;
+  /** Tailwind built-in palette color used for split-byte gradients. */
+  gradientColor: string;
   /** Tailwind built-in palette classes used when the byte has a single owner. */
   colorClassName: string;
   /** Bits this owner contributes within this byte (1..8). */
@@ -43,7 +43,7 @@ function computeByteOwners(
   for (const cell of layout.cells) {
     const absStart = cell.row * rowBits + cell.startBit;
     const absEnd = cell.row * rowBits + cell.endBit;
-    const color = categoryTailwindColorVar(cell.field);
+    const gradientColor = categoryTailwindGradientColor(cell.field);
     const colorClassName = categoryCellColorClasses(cell.field);
 
     // If a cell has subCells, prefer them for owner attribution so sub-byte
@@ -57,7 +57,7 @@ function computeByteOwners(
         addRange(owners, subAbsStart, subAbsEnd, {
           fieldId: subFieldId,
           name: subName,
-          color, // subfields inherit parent category color
+          gradientColor, // subfields inherit parent category color
           colorClassName,
         });
       }
@@ -75,7 +75,7 @@ function computeByteOwners(
         addRange(owners, b, b, {
           fieldId: cell.field.id,
           name: cell.field.name,
-          color,
+          gradientColor,
           colorClassName,
         });
       }
@@ -83,7 +83,7 @@ function computeByteOwners(
       addRange(owners, absStart, absEnd, {
         fieldId: cell.field.id,
         name: cell.field.name,
-        color,
+        gradientColor,
         colorClassName,
       });
     }
@@ -137,12 +137,12 @@ function coalesceByteOwners(byte: ByteOwner[]): ByteOwner[] {
  * gradient is horizontal; each segment width is `bits/8 * 100%`. We use
  * hard color stops (no blend) so each owner's slice reads as a flat color.
  */
-function gradientFor(owners: ByteOwner[]): string {
+function splitByteGradientFor(owners: ByteOwner[]): string {
   const stops: string[] = [];
   let pct = 0;
   for (const o of owners) {
     const next = pct + (o.bits / 8) * 100;
-    stops.push(`${o.color} ${pct}%`, `${o.color} ${next}%`);
+    stops.push(`${o.gradientColor} ${pct}%`, `${o.gradientColor} ${next}%`);
     pct = next;
   }
   return `linear-gradient(to right, ${stops.join(", ")})`;
@@ -202,7 +202,9 @@ export default function HexStrip({
           const colorClassName =
             owners.length === 1 ? dominant.colorClassName : "";
           const style: CSSProperties | undefined =
-            owners.length > 1 ? { background: gradientFor(owners) } : undefined;
+            owners.length > 1
+              ? { background: splitByteGradientFor(owners) }
+              : undefined;
           return (
             <button
               key={`hex-${byteIdx}`}

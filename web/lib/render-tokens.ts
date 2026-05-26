@@ -93,16 +93,16 @@ export const FIELD_CELL_SELECTED_COLOR_CLASSES: Record<ColorToken, string> = {
     "bg-slate-300/95 hover:bg-slate-300/95 dark:bg-slate-300 dark:hover:bg-slate-300",
 };
 
-const TAILWIND_COLOR_VARIABLES: Record<ColorToken, string> = {
-  blue: "var(--color-sky-300)",
-  indigo: "var(--color-indigo-300)",
-  violet: "var(--color-violet-300)",
-  teal: "var(--color-cyan-300)",
-  green: "var(--color-emerald-300)",
-  amber: "var(--color-amber-300)",
-  orange: "var(--color-orange-300)",
-  rose: "var(--color-rose-300)",
-  slate: "var(--color-slate-300)",
+const TAILWIND_GRADIENT_COLORS: Record<ColorToken, string> = {
+  blue: "color-mix(in oklab, var(--color-sky-400) 85%, transparent)",
+  indigo: "color-mix(in oklab, var(--color-indigo-400) 85%, transparent)",
+  violet: "color-mix(in oklab, var(--color-violet-400) 85%, transparent)",
+  teal: "color-mix(in oklab, var(--color-cyan-400) 85%, transparent)",
+  green: "color-mix(in oklab, var(--color-emerald-400) 85%, transparent)",
+  amber: "color-mix(in oklab, var(--color-amber-400) 85%, transparent)",
+  orange: "color-mix(in oklab, var(--color-orange-400) 85%, transparent)",
+  rose: "color-mix(in oklab, var(--color-rose-400) 85%, transparent)",
+  slate: "color-mix(in oklab, var(--color-slate-400) 85%, transparent)",
 };
 
 function tokenForCellClass(
@@ -149,9 +149,9 @@ export function categoryCellColorClasses(
     : FIELD_CELL_COLOR_CLASSES[token];
 }
 
-export function categoryTailwindColorVar(
+export function categoryTailwindGradientColor(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
 ): string {
   const token = tokenForCellClass(field);
-  return TAILWIND_COLOR_VARIABLES[token];
+  return TAILWIND_GRADIENT_COLORS[token];
 }
