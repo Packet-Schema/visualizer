@@ -51,6 +51,17 @@ jobs:
 
       - run: npm run build
 
+      - name: Check build output directory
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo "=== Files in current dir ==="
+          ls -la
+          echo "=== web directory contents ==="
+          ls -la ../web/ 2>/dev/null || echo "web not accessible"
+          echo "=== Looking for .open-next ==="
+          find . -name ".open-next" -type d 2>/dev/null || echo ".open-next not found"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
