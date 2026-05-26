@@ -9,7 +9,7 @@ import {
   exitProcess,
 } from "./helpers";
 
-describe("Homepage and Meta Tags", () => {
+describe.sequential("Homepage and Meta Tags", () => {
   let devServer: ChildProcess;
 
   beforeAll(async () => {

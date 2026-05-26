@@ -12,6 +12,5 @@ export default defineConfig({
       "tests/integration/**/*.integration.test.tsx",
     ],
     testTimeout: 120000, // 2 minutes for integration tests
-    singleThread: true, // Run serially to avoid port conflicts
   },
 });

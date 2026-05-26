@@ -9,7 +9,7 @@ import {
   exitProcess,
 } from "./helpers";
 
-describe("OG Image Download", () => {
+describe.sequential("OG Image Download", () => {
   let devServer: ChildProcess;
 
   beforeAll(async () => {
