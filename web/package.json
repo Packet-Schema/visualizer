@@ -48,6 +48,7 @@
     "@opennextjs/cloudflare": "^1.8.6",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
