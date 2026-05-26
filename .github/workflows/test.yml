@@ -1,4 +1,5 @@
 name: test
+# Simplified workflow: builds are done per job, no artifact sharing
 
 on:
   push:
