@@ -5,17 +5,22 @@ test.describe("Preset Auto-Apply Behavior", () => {
     page,
   }) => {
     // Go to homepage without preset parameter
-    await page.goto("/");
+    // Use domcontentloaded to check title before JavaScript fully executes
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    // Wait for any dynamic content to load
+    // Server-generated title (before useEffect runs)
+    let title = await page.title();
+    expect(title).toBe("Packet Visualizer");
+
+    // Wait for dynamic content to load and useEffect to update title
     await page.waitForLoadState("networkidle");
 
-    // By this point, client-side JavaScript has executed and updated the title
-    // Server sends "Packet Visualizer", but useEffect updates it to "IPv4 Header | Packet Visualizer"
-    const title = await page.title();
+    // Client-side JavaScript has executed and updated the title
+    // useEffect updates it from "Packet Visualizer" to "IPv4 Header | Packet Visualizer"
+    title = await page.title();
     expect(title).toBe("IPv4 Header | Packet Visualizer");
 
-    // URL should also be updated to include preset parameter
+    // URL should also be updated to include preset parameter (client-side)
     const finalUrl = page.url();
     expect(finalUrl).toContain("preset=ipv4");
 
