@@ -13,143 +13,18 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
-  /* ---- Surfaces & text (OKLCH for perceptual stability across themes) ---- */
-  --bg: oklch(97% 0.012 260);
-  --bg-elevated: oklch(99.5% 0.005 260);
-  --bg-subtle: oklch(95% 0.014 260);
-  --bg-header: linear-gradient(
-    135deg,
-    oklch(32% 0.07 270) 0%,
-    oklch(24% 0.08 268) 100%
-  );
-  --header-fg: oklch(99% 0 0);
-  --header-fg-muted: oklch(99% 0 0 / 0.78);
-
-  --fg: oklch(22% 0.02 270);
-  --fg-muted: oklch(46% 0.02 270);
-  --fg-faint: oklch(60% 0.02 270);
-
-  --border: oklch(88% 0.012 260);
-  --border-strong: oklch(80% 0.018 260);
-  --focus-ring: oklch(62% 0.18 265);
-
-  --accent: oklch(62% 0.18 265);
-  --accent-fg: oklch(99% 0 0);
-  --accent-glow: oklch(65% 0.2 265 / 0.45);
-
-  /* Affordance accent — used for "this is interactive" markers in the
-     diagram. Picked to live outside every `--field-*` category hue so it
-     reads as a UI signal, not a field semantics token. Magenta-orchid at
-     hue 330 sits between rose (18) and violet (310) but with higher
-     chroma, so it pops on any cell color. */
-  --marker-accent: oklch(68% 0.24 330);
-  --marker-accent-soft: oklch(78% 0.18 330 / 0.55);
-
-  /* Diagram surface */
-  --row-band-even: oklch(98% 0.008 260);
-  --row-band-odd: oklch(99.5% 0.005 260);
-  --grid-major: oklch(85% 0.014 260);
-  --grid-minor: oklch(93% 0.01 260);
-  --ruler-tick: oklch(58% 0.02 270);
-  --ruler-label: oklch(42% 0.02 270);
-  --field-stroke: oklch(38% 0.04 270);
-  --field-stroke-selected: oklch(22% 0.04 270);
-  --field-label: oklch(22% 0.02 270);
-  --field-sublabel: oklch(28% 0.03 270);
-  --field-continuation: oklch(48% 0.02 270);
-  --field-fill-opacity: 0.78;
-  --field-fill-opacity-hover: 0.95;
-  --variable-stripe: oklch(22% 0.02 270 / 0.18);
-
-  /* Curated field palette (light mode), OKLCH for the new diagram. */
-  --field-blue: oklch(70% 0.14 255);
-  --field-indigo: oklch(68% 0.16 280);
-  --field-violet: oklch(70% 0.16 310);
-  --field-teal: oklch(74% 0.11 195);
-  --field-green: oklch(78% 0.13 145);
-  --field-amber: oklch(82% 0.13 85);
-  --field-orange: oklch(74% 0.14 50);
-  --field-rose: oklch(72% 0.14 18);
-  /* Prose-only strong variant of `--field-rose`. Use through the
-     `text-field-rose-strong` Tailwind utility for `role="alert"` and
-     similar error text where the standard rose (~3:1) is fine for legend
-     chips but fails WCAG AA against `--bg-elevated`. Do NOT use as a
-     background (`bg-field-rose-strong`) — the chroma is calibrated for
-     foreground contrast, not as a fill surface. */
-  --field-rose-strong: oklch(50% 0.18 18);
-  --field-slate: oklch(72% 0.02 270);
-
-  /* Chroma applied to non-matching cells while a legend item is hovered. */
-  --legend-dim-chroma: 0.04;
-
-  /* Motion: spring-ish easing token reused across components. */
-  --pv-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --pv-fast: 180ms;
-  --pv-med: 220ms;
-
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --bg: oklch(18% 0.025 270);
-  --bg-elevated: oklch(22% 0.028 270);
-  --bg-subtle: oklch(26% 0.03 270);
-  --bg-header: linear-gradient(
-    135deg,
-    oklch(22% 0.06 270) 0%,
-    oklch(14% 0.06 270) 100%
-  );
-  --header-fg: oklch(96% 0.012 270);
-  --header-fg-muted: oklch(96% 0.012 270 / 0.7);
-
-  --fg: oklch(94% 0.015 270);
-  --fg-muted: oklch(72% 0.02 270);
-  --fg-faint: oklch(58% 0.02 270);
-
-  --border: oklch(32% 0.03 270);
-  --border-strong: oklch(40% 0.035 270);
-  /* Dark mode focus ring brightened (was 72%) so the 2px outline sits above
-     the WCAG SC 2.4.7 visible-focus threshold against `--bg` (18%). The
-     contrast ratio is now ~5.5:1, up from ~4.5:1. */
-  --focus-ring: oklch(78% 0.16 265);
-
-  --accent: oklch(72% 0.16 265);
-  --accent-fg: oklch(18% 0.025 270);
-  --accent-glow: oklch(72% 0.16 265 / 0.55);
-
-  /* Dark-mode affordance accent: brightened so it stays above WCAG
-     contrast against the elevated row background. */
-  --marker-accent: oklch(78% 0.24 330);
-  --marker-accent-soft: oklch(85% 0.18 330 / 0.55);
-
-  --row-band-even: oklch(24% 0.03 270);
-  --row-band-odd: oklch(22% 0.028 270);
-  --grid-major: oklch(40% 0.034 270);
-  --grid-minor: oklch(30% 0.028 270);
-  --ruler-tick: oklch(60% 0.025 270);
-  --ruler-label: oklch(78% 0.02 270);
-  --field-stroke: oklch(28% 0.03 270);
-  --field-stroke-selected: oklch(96% 0.012 270);
-  --field-label: oklch(18% 0.025 270);
-  --field-sublabel: oklch(22% 0.03 270);
-  --field-continuation: oklch(85% 0.015 270);
-  --field-fill-opacity: 0.85;
-  --field-fill-opacity-hover: 1;
-  --variable-stripe: oklch(99% 0 0 / 0.22);
-
-  --field-blue: oklch(74% 0.14 255);
-  --field-indigo: oklch(72% 0.17 280);
-  --field-violet: oklch(74% 0.17 310);
-  --field-teal: oklch(78% 0.11 195);
-  --field-green: oklch(80% 0.14 145);
-  --field-amber: oklch(85% 0.14 85);
-  --field-orange: oklch(78% 0.15 50);
-  --field-rose: oklch(76% 0.15 18);
-  --field-rose-strong: oklch(82% 0.17 18);
-  --field-slate: oklch(78% 0.02 270);
-
   color-scheme: dark;
 }
+
+/* All color and layout variables are now injected via SSR in
+   lib/theme.ts + lib/diagram-themes.ts → app/layout.tsx <style> tags.
+   This keeps the single source of truth in TypeScript rather than split
+   between CSS and code. The @theme inline section below still references
+   these variables and exposes them to Tailwind utilities. */
 
 @theme inline {
   --color-bg: var(--bg);

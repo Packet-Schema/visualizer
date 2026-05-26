@@ -9,7 +9,9 @@ import type {
   SubField,
 } from "@/lib/psml/renderer";
 import { categoryColor } from "@/lib/render-tokens";
+import { rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
 import { tlvBaseId } from "@/components/field-details/tlv-cell-id";
+import { LockIcon } from "@/components/diagram/diagram-badges";
 
 type Props = {
   packet: Packet;
@@ -24,12 +26,6 @@ type Props = {
   /** Optional hover sink (used by HexStrip for bidirectional highlight). */
   onFieldHover?: (fieldId: string | null) => void;
 };
-
-function formatBitsLabel(bits: number, field: Field): string {
-  if (field.variable) return `${bits} bits (var)`;
-  const bytes = bits / 8;
-  return Number.isInteger(bytes) ? `${bits} bits / ${bytes}B` : `${bits} bits`;
-}
 
 /**
  * HybridDiagram replaces the SVG renderer with an HTML CSS Grid that produces
@@ -50,9 +46,8 @@ export default function HybridDiagram({
   onFieldHover,
 }: Props) {
   const rowBits = packet.rowBits;
-  const rowsTotal = layout.cells.length
-    ? Math.max(...layout.cells.map((c) => c.row)) + 1
-    : 0;
+  const rows = rowsFor(layout);
+  const rowsTotal = rows.length;
 
   // Override-capable field ids, sourced from the renderer mirror (`packet`).
   // Layout cells carry a synthetic `field` built from NormalizedField, which
@@ -106,10 +101,6 @@ export default function HybridDiagram({
     }
     return s;
   }, [packet]);
-
-  // Group cells by row for clean grid wrapping.
-  const rows: Cell[][] = Array.from({ length: rowsTotal }, () => []);
-  for (const cell of layout.cells) rows[cell.row].push(cell);
 
   const rowStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${rowBits}, minmax(0, 1fr))`,
@@ -293,9 +284,7 @@ function FieldCellImpl({
     .filter(Boolean)
     .join(" ");
 
-  const displayName = cell.field.variable
-    ? `~${cell.field.name}`
-    : cell.field.name;
+  const { title, subtitle } = textForCell(cell);
 
   // We use a `<div role="button">` rather than a native `<button>` because
   // interactive nested content (subfield clickable spans) is invalid inside
@@ -334,30 +323,31 @@ function FieldCellImpl({
       <span className="cell-body">
         {cell.isFirst ? (
           <>
-            <span className="cell-name" title={displayName}>
-              {displayName}
+            <span className="cell-name" title={title}>
+              {title}
             </span>
-            <span className="cell-sublabel">
-              {formatBitsLabel(cell.bitsTotal, cell.field)}
-            </span>
+            <span className="cell-sublabel">{subtitle}</span>
           </>
         ) : (
-          <span className="cell-continuation" title={cell.field.name}>
-            {`… ${displayName} (cont.)`}
-          </span>
+          <>
+            <span className="cell-name cell-name--continuation" title={title}>
+              {title}
+            </span>
+            <span className="cell-sublabel">{subtitle}</span>
+          </>
         )}
       </span>
 
       {isEncryptedBlock && cell.isFirst ? (
         <LockIcon
-          size={14}
+          size={LAYOUT.badgeSizeLarge}
           className="field-lock-icon field-lock-icon--block"
           ariaHidden
         />
       ) : null}
       {isEncryptedChild && cell.isFirst ? (
         <LockIcon
-          size={10}
+          size={LAYOUT.badgeSizeSmall}
           className="field-lock-icon field-lock-icon--child"
           ariaHidden
         />
@@ -386,41 +376,6 @@ function FieldCellImpl({
         />
       ) : null}
     </div>
-  );
-}
-
-/**
- * Inline lock SVG used to decorate encrypted cells. Two sizes:
- *   * 14px — wire-mode opaque block (visible against the stripe pattern)
- *   * 10px — semantic-mode child field (subtle corner badge)
- * Decorative-only; the parent cell already carries an accessible label.
- */
-function LockIcon({
-  size,
-  className,
-  ariaHidden,
-}: {
-  size: number;
-  className?: string;
-  ariaHidden?: boolean;
-}) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden={ariaHidden ? "true" : undefined}
-      focusable="false"
-    >
-      <rect x="3" y="7" width="10" height="7" rx="1.5" />
-      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-    </svg>
   );
 }
 

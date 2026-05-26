@@ -9,6 +9,7 @@ import type { CategoryToken } from "./psml/renderer";
 
 export {
   CATEGORY_TO_TOKEN,
+  FIELD_PALETTE_TOKENS,
   tokenToCssVar,
   type ColorToken,
 } from "./render-tokens";
@@ -59,3 +60,5 @@ export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [
 ];
 
 export const THEME_STORAGE_KEY = "packet-view-theme";
+
+export const FIELD_FILL_OPACITY = 0.78;
