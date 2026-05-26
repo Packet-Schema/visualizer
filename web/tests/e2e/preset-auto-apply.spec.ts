@@ -26,6 +26,10 @@ test.describe("Preset Auto-Apply Behavior", () => {
     title = await page.title();
     expect(title).toBe("IPv4 Header | Packet Visualizer");
 
+    // URL should also be updated to include preset parameter
+    const finalUrl = page.url();
+    expect(finalUrl).toContain("preset=ipv4");
+
     // OG meta tag is server-generated based on URL (no preset param means no preset in OG)
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute("content");
