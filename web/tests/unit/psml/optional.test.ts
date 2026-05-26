@@ -7,10 +7,10 @@
 //   * validator rejects malformed `when` and missing inner field.
 
 import { describe, expect, it } from "vitest";
-import { lit, op, ref } from "../../lib/psml/expr";
-import { normalize } from "../../lib/psml/normalize";
-import { validatePsmlPacket } from "../../lib/psml/validate";
-import type { Encrypted, Field, Optional, Packet } from "../../lib/psml/types";
+import { lit, op, ref } from "@/lib/psml/expr";
+import { normalize } from "@/lib/psml/normalize";
+import { validatePsmlPacket } from "@/lib/psml/validate";
+import type { Encrypted, Field, Optional, Packet } from "@/lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
 

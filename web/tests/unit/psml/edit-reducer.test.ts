@@ -8,14 +8,14 @@ import {
   HISTORY_LIMIT,
   type EditAction,
   type EditState,
-} from "../../lib/psml/edit-reducer";
+} from "@/lib/psml/edit-reducer";
 import type {
   Constraint,
   Container,
   Field,
   Packet,
   PsmlPacket,
-} from "../../lib/psml/types";
+} from "@/lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
 const int = (n: number) => ({ kind: "int" as const, bits: n });

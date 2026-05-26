@@ -9,9 +9,9 @@
 //     the correct total bit width (8/16/32/64).
 
 import { describe, expect, it } from "vitest";
-import { typeBits } from "../../lib/psml/normalize";
-import { validatePsmlPacket } from "../../lib/psml/validate";
-import type { Packet, PacketEnv, TypeVarint } from "../../lib/psml/types";
+import { typeBits } from "@/lib/psml/normalize";
+import { validatePsmlPacket } from "@/lib/psml/validate";
+import type { Packet, PacketEnv, TypeVarint } from "@/lib/psml/types";
 
 function mkPacket(encoding: TypeVarint["encoding"] | string): Packet {
   return {

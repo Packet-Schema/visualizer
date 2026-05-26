@@ -11,8 +11,8 @@ import {
   extToFormat,
   getFormat,
   type FormatKey,
-} from "../../lib/formats/registry";
-import { PRESETS } from "../../lib/psml/presets";
+} from "@/lib/formats/registry";
+import { PRESETS } from "@/lib/psml/presets";
 
 describe("format registry shape", () => {
   it("exposes every format with id, label, extension and mime", () => {

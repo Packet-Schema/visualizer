@@ -7,10 +7,10 @@
 //   * validator rejects values other than 'BE' or 'LE'.
 
 import { describe, expect, it } from "vitest";
-import { normalize } from "../../lib/psml/normalize";
-import { resolveLayout } from "../../lib/psml/layout";
-import { validatePsmlPacket } from "../../lib/psml/validate";
-import type { Field, Packet } from "../../lib/psml/types";
+import { normalize } from "@/lib/psml/normalize";
+import { resolveLayout } from "@/lib/psml/layout";
+import { validatePsmlPacket } from "@/lib/psml/validate";
+import type { Field, Packet } from "@/lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
 

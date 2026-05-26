@@ -10,8 +10,8 @@ import {
   MissingRefError,
   op,
   ref,
-} from "../../lib/psml/expr";
-import type { Expr, PacketEnv } from "../../lib/psml/types";
+} from "@/lib/psml/expr";
+import type { Expr, PacketEnv } from "@/lib/psml/types";
 
 const env: PacketEnv = new Map([
   ["a", 5],

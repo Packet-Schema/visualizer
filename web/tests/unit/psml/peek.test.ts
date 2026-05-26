@@ -6,10 +6,10 @@
 // switching on a discriminator that hasn't been parsed yet.
 
 import { describe, expect, it } from "vitest";
-import { evalExpr, lit, peek, peekEnvKey, ref } from "../../lib/psml/expr";
-import { normalize } from "../../lib/psml/normalize";
-import { isValidExpr } from "../../lib/psml/validate";
-import type { ExprPeek, Packet } from "../../lib/psml/types";
+import { evalExpr, lit, peek, peekEnvKey, ref } from "@/lib/psml/expr";
+import { normalize } from "@/lib/psml/normalize";
+import { isValidExpr } from "@/lib/psml/validate";
+import type { ExprPeek, Packet } from "@/lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
 

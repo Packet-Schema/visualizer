@@ -4,10 +4,10 @@
 // version/format-tag error paths.
 
 import { describe, expect, it } from "vitest";
-import { fromJson, toJson } from "../../lib/formats/json";
-import { initialEnv } from "../../lib/psml/normalize";
-import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
-import type { Packet, PacketEnv } from "../../lib/psml/types";
+import { fromJson, toJson } from "@/lib/formats/json";
+import { initialEnv } from "@/lib/psml/normalize";
+import { PRESETS as ALL_PRESETS } from "@/lib/psml/presets";
+import type { Packet, PacketEnv } from "@/lib/psml/types";
 
 describe("toJson / fromJson — every preset round-trips", () => {
   for (const [key, pkt] of Object.entries(ALL_PRESETS)) {

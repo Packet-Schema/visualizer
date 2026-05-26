@@ -7,10 +7,10 @@
 //   * the validator accepts the new type kind.
 
 import { describe, expect, it } from "vitest";
-import { berLenEnvKey, typeBits } from "../../lib/psml/normalize";
-import { resolveLayout } from "../../lib/psml/layout";
-import { validatePsmlPacket } from "../../lib/psml/validate";
-import type { Packet, PacketEnv, TypeBerLength } from "../../lib/psml/types";
+import { berLenEnvKey, typeBits } from "@/lib/psml/normalize";
+import { resolveLayout } from "@/lib/psml/layout";
+import { validatePsmlPacket } from "@/lib/psml/validate";
+import type { Packet, PacketEnv, TypeBerLength } from "@/lib/psml/types";
 
 const berT: TypeBerLength = { kind: "berLength" };
 

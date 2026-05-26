@@ -20,7 +20,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:format": "vitest run tests/formats",
+    "test:format": "vitest run tests/unit/formats",
     "build:worker": "npm run build",
     "preview:worker": "npm run build:worker && opennextjs-cloudflare preview",
     "preview:worker:start": "opennextjs-cloudflare preview",

@@ -3,8 +3,8 @@
 // with-Repeat, plus default-value seeding and the byte-typed `bytes` Type.
 
 import { describe, expect, it } from "vitest";
-import { lit, op, ref } from "../../lib/psml/expr";
-import { initialEnv, normalize, typeBits } from "../../lib/psml/normalize";
+import { lit, op, ref } from "@/lib/psml/expr";
+import { initialEnv, normalize, typeBits } from "@/lib/psml/normalize";
 import type {
   Container,
   Group,
@@ -12,7 +12,7 @@ import type {
   PacketEnv,
   Struct,
   Switch,
-} from "../../lib/psml/types";
+} from "@/lib/psml/types";
 
 const bits = (n: number) => ({ kind: "bits" as const, n });
 const int = (n: number) => ({ kind: "int" as const, bits: n });

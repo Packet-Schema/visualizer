@@ -10,10 +10,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse as yamlParse } from "yaml";
 
-import { fromKsy, toKsy } from "../../lib/formats/ksy";
-import { initialEnv, normalize } from "../../lib/psml/normalize";
+import { fromKsy, toKsy } from "@/lib/formats/ksy";
+import { initialEnv, normalize } from "@/lib/psml/normalize";
 
-const here = path.resolve(__dirname, "../..");
+const here = path.resolve(__dirname, "../../../");
 const KSY_DIR = path.join(here, "data", "ksy-examples");
 const ipv4MinText = readFileSync(path.join(KSY_DIR, "ipv4_min.ksy"), "utf8");
 const bmpHeaderText = readFileSync(
