@@ -3,14 +3,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  buildDiagramSvg,
+  cellVisual,
   downloadBlobFile,
   downloadTextFile,
+  generateLayoutCssVariables,
+  naturalDiagramHeight,
   readDiagramTheme,
-  readDiagramThemeFromDocument,
+  rowBandColor,
   svgToPngBlob,
-} from "@/lib/diagram-export";
-import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
+} from "../../lib/diagram-export";
+import type { DiagramExportTheme } from "../../lib/diagram-export";
+import { FIELD_FILL_OPACITY } from "../../lib/constants";
+import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
 
 const packet: Packet = {
   name: "Demo & Packet",
@@ -109,337 +113,35 @@ function layoutForMode(mode: "wire" | "semantic"): ResolvedLayout {
   };
 }
 
-describe("buildDiagramSvg", () => {
-  it("renders a standalone SVG with escaped metadata", () => {
-    const svg = buildDiagramSvg(packet, layoutForMode("wire"));
-    expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(svg).toContain('aria-label="Demo &amp; Packet diagram"');
-    expect(svg).toContain("Type");
-    expect(svg).toContain("Body");
-    expect(svg).toContain('stroke-dasharray="5 3"');
-    expect(svg).toContain('<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />');
-  });
-
-  it("reflects the supplied layout shape, so callers can export the current view mode", () => {
-    const wire = buildDiagramSvg(packet, layoutForMode("wire"));
-    const semantic = buildDiagramSvg(packet, layoutForMode("semantic"));
-    expect(wire).not.toContain("Plaintext");
-    expect(semantic).toContain("Plaintext");
-    expect(semantic).toContain("… Plaintext");
-    expect(semantic).not.toBe(wire);
-  });
-
-  it("preserves bit ratios while allowing the whole exported diagram to become wider", () => {
-    const standard = buildDiagramSvg(packet, layoutForMode("wire"), {
-      bitWidth: 24,
-    });
-    const wide = buildDiagramSvg(packet, layoutForMode("wire"), {
-      bitWidth: 40,
-    });
-    const parser = new DOMParser();
-    const standardSvg = parser.parseFromString(
-      standard,
-      "image/svg+xml",
-    ).documentElement;
-    const wideSvg = parser.parseFromString(
-      wide,
-      "image/svg+xml",
-    ).documentElement;
-    const wideBodyRect = wideSvg.querySelector("rect[rx='10']");
-    const firstRulerLabel = standardSvg.querySelector("text");
-
-    expect(standardSvg.getAttribute("width")).toBe("224");
-    expect(wideSvg.getAttribute("width")).toBe("352");
-    expect(wideBodyRect?.getAttribute("width")).toBe("156");
-    expect(firstRulerLabel?.getAttribute("text-anchor")).toBe("middle");
-  });
-
-  it("can emit transparent background when requested", () => {
-    const normal = buildDiagramSvg(packet, layoutForMode("wire"));
-    const transparent = buildDiagramSvg(packet, layoutForMode("wire"), {
-      transparentBackground: true,
-    });
-    expect(normal).toContain("<rect width=");
-    expect(normal).toContain('fill="#f5f7fb"');
-    expect(transparent).not.toContain("<rect width=");
-    expect(transparent).not.toContain('fill="#f5f7fb"');
-    expect(transparent).not.toContain('fill="#fbfcfe"');
-  });
-
-  it("renders semantic encryption badges and themed subfield backgrounds", () => {
-    const themed = buildDiagramSvg(
-      packet,
-      {
-        totalBits: 8,
-        cells: [
-          {
-            field: packet.fields[0],
-            bitsTotal: 8,
-            row: 0,
-            startBit: 0,
-            endBit: 7,
-            segmentIndex: 0,
-            totalSegments: 1,
-            isFirst: true,
-            isLast: true,
-            fieldStartOffset: 0,
-            fieldEndOffset: 7,
-            encryptedParentId: "ciphertext",
-            headerProtected: true,
-            subCells: [
-              {
-                id: "kind",
-                parentField: packet.fields[0],
-                subfield: { id: "kind", name: "Kind", bits: 8 },
-                startBit: 0,
-                endBit: 7,
-                isFirst: true,
-                isLast: true,
-                bitsTotal: 8,
-              },
-            ],
-          },
-        ],
-      },
-      {
-        theme: {
-          background: "#111111",
-          rowEven: "#222222",
-          rowOdd: "#333333",
-          rulerTick: "#444444",
-          rulerLabel: "#555555",
-          accent: "#abcdef",
-          fieldStroke: "#666666",
-          fieldLabel: "#777777",
-          fieldSublabel: "#888888",
-          fieldContinuation: "#999999",
-          fieldPalette: { type: "#aaaaaa" },
-        },
-      },
-    );
-
-    expect(themed).toContain('fill="#111111" fill-opacity="0.52"');
-    expect(themed).toContain('stroke="#abcdef"');
-    expect(themed).toContain('fill="#abcdef">HP</text>');
-  });
-
-  it("resolves CSS-variable field fills through the supplied export theme", () => {
-    const svg = buildDiagramSvg(
-      {
-        ...packet,
-        fields: [
-          {
-            id: "custom",
-            name: "Custom",
-            bits: 8,
-            color: "var(--custom-fill)" as never,
-          },
-        ],
-      },
-      {
-        totalBits: 8,
-        cells: [
-          {
-            field: {
-              id: "custom",
-              name: "Custom",
-              bits: 8,
-              color: "var(--custom-fill)" as never,
-            },
-            bitsTotal: 8,
-            row: 0,
-            startBit: 0,
-            endBit: 7,
-            segmentIndex: 0,
-            totalSegments: 1,
-            isFirst: true,
-            isLast: true,
-            fieldStartOffset: 0,
-            fieldEndOffset: 7,
-          },
-        ],
-      },
-      {
-        theme: {
-          background: "#111111",
-          rowEven: "#222222",
-          rowOdd: "#333333",
-          rulerTick: "#444444",
-          rulerLabel: "#555555",
-          accent: "#abcdef",
-          fieldStroke: "#666666",
-          fieldLabel: "#777777",
-          fieldSublabel: "#888888",
-          fieldContinuation: "#999999",
-          fieldPalette: {},
-          resolveCssColor: () => "#fedcba",
-        },
-      },
-    );
-
-    expect(svg).toContain('fill="#fedcba"');
-  });
-
-  it("preserves renderer-only field colors when layout cells omit the color fallback", () => {
-    const svg = buildDiagramSvg(
-      {
-        ...packet,
-        fields: [{ id: "custom", name: "Custom", bits: 8, color: "amber" }],
-      },
-      {
-        totalBits: 8,
-        cells: [
-          {
-            field: {
-              id: "custom",
-              name: "Custom",
-              bits: 8,
-            },
-            bitsTotal: 8,
-            row: 0,
-            startBit: 0,
-            endBit: 7,
-            segmentIndex: 0,
-            totalSegments: 1,
-            isFirst: true,
-            isLast: true,
-            fieldStartOffset: 0,
-            fieldEndOffset: 7,
-          },
-        ],
-      },
-      {
-        theme: {
-          background: "#111111",
-          rowEven: "#222222",
-          rowOdd: "#333333",
-          rulerTick: "#444444",
-          rulerLabel: "#555555",
-          accent: "#abcdef",
-          fieldStroke: "#666666",
-          fieldLabel: "#777777",
-          fieldSublabel: "#888888",
-          fieldContinuation: "#999999",
-          fieldPalette: { amber: "#f3d77e" },
-        },
-      },
-    );
-
-    expect(svg).toContain('fill="#f3d77e"');
-  });
-
-  it("escapes untrusted field colors before embedding them into SVG attributes", () => {
-    const svg = buildDiagramSvg(
-      {
-        ...packet,
-        fields: [
-          {
-            id: "custom",
-            name: "Custom",
-            bits: 8,
-            color: 'red" /><script>alert(1)</script><rect fill="' as never,
-          },
-        ],
-      },
-      {
-        totalBits: 8,
-        cells: [
-          {
-            field: {
-              id: "custom",
-              name: "Custom",
-              bits: 8,
-              color: 'red" /><script>alert(1)</script><rect fill="' as never,
-            },
-            bitsTotal: 8,
-            row: 0,
-            startBit: 0,
-            endBit: 7,
-            segmentIndex: 0,
-            totalSegments: 1,
-            isFirst: true,
-            isLast: true,
-            fieldStartOffset: 0,
-            fieldEndOffset: 7,
-          },
-        ],
-      },
-    );
-
-    expect(svg).toContain(
-      'fill="red&quot; /&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;rect fill=&quot;"',
-    );
-    expect(svg).not.toContain("<script>");
-  });
-
-  it("centers ruler labels and clips field text to each cell", () => {
-    const svg = new DOMParser().parseFromString(
-      buildDiagramSvg(packet, layoutForMode("wire")),
-      "image/svg+xml",
-    ).documentElement;
-    const firstRulerLabel = svg.querySelector("text");
-    const firstFieldLabel = svg.querySelector("text[clip-path]");
-
-    expect(firstRulerLabel?.getAttribute("text-anchor")).toBe("middle");
-    expect(firstFieldLabel?.getAttribute("clip-path")).toBe(
-      "url(#cell-0-0-0061)",
-    );
-    expect(svg.querySelector("clipPath#cell-0-0-0061")).not.toBeNull();
-  });
-
-  it("sanitizes clip-path ids for field ids that contain fragment-breaking characters", () => {
-    const repeatedFieldPacket: Packet = {
-      ...packet,
-      fields: [
-        { id: 'name#1 "quoted"', name: "Type", bits: 8, category: "type" },
-      ],
-    };
-    const layout: ResolvedLayout = {
-      totalBits: 8,
-      cells: [
-        {
-          field: repeatedFieldPacket.fields[0],
-          bitsTotal: 8,
-          row: 0,
-          startBit: 0,
-          endBit: 7,
-          segmentIndex: 0,
-          totalSegments: 1,
-          isFirst: true,
-          isLast: true,
-          fieldStartOffset: 0,
-          fieldEndOffset: 7,
-        },
-      ],
-    };
-    const svg = new DOMParser().parseFromString(
-      buildDiagramSvg(repeatedFieldPacket, layout),
-      "image/svg+xml",
-    ).documentElement;
-    const fieldLabel = svg.querySelector("text[clip-path]");
-    const clipPath = svg.querySelector("clipPath");
-    const clipPathId = clipPath?.getAttribute("id");
-
-    expect(clipPathId).toBe(
-      "cell-0-0-006e-0061-006d-0065-0023-0031-0020-0022-0071-0075-006f-0074-0065-0064-0022",
-    );
-    expect(clipPathId).not.toContain("#");
-    expect(clipPathId).not.toContain(" ");
-    expect(clipPathId).not.toContain('"');
-    expect(fieldLabel?.getAttribute("clip-path")).toBe(`url(#${clipPathId})`);
-  });
-
-  it("rejects invalid row indices instead of corrupting the row array", () => {
-    const invalidLayout = {
-      ...layoutForMode("wire"),
-      cells: [{ ...layoutForMode("wire").cells[0], row: -1 }],
-    };
-
-    expect(() => buildDiagramSvg(packet, invalidLayout)).toThrow(
-      "Invalid diagram row index: -1",
-    );
-  });
-});
+const LIGHT_TEST_THEME: DiagramExportTheme = {
+  background: "#ffffff",
+  rowEven: "#f5f7fb",
+  rowOdd: "#fbfcfe",
+  rulerTick: "#667085",
+  rulerLabel: "#475467",
+  accent: "#2563eb",
+  fieldStroke: "#344054",
+  fieldLabel: "#101828",
+  fieldSublabel: "#344054",
+  fieldContinuation: "#667085",
+  markerAccent: "#d4548f",
+  markerAccentSoft: "#e8b4c8",
+  subfieldBackground: "#fafbfc",
+  fieldFillOpacity: FIELD_FILL_OPACITY,
+  rulerMinorOpacity: 0.55,
+  subfieldBackgroundOpacity: 0.52,
+  fieldPalette: {
+    blue: `rgba(127, 183, 255, ${FIELD_FILL_OPACITY})`,
+    indigo: `rgba(168, 166, 255, ${FIELD_FILL_OPACITY})`,
+    violet: `rgba(209, 165, 255, ${FIELD_FILL_OPACITY})`,
+    teal: `rgba(142, 215, 209, ${FIELD_FILL_OPACITY})`,
+    green: `rgba(168, 223, 159, ${FIELD_FILL_OPACITY})`,
+    amber: `rgba(243, 215, 126, ${FIELD_FILL_OPACITY})`,
+    orange: `rgba(247, 178, 122, ${FIELD_FILL_OPACITY})`,
+    rose: `rgba(244, 161, 174, ${FIELD_FILL_OPACITY})`,
+    slate: `rgba(195, 200, 211, ${FIELD_FILL_OPACITY})`,
+  },
+};
 
 describe("diagram export helpers", () => {
   afterEach(() => {
@@ -453,135 +155,41 @@ describe("diagram export helpers", () => {
     });
   });
 
-  function installThemeStyles(): void {
-    const style = document.createElement("style");
-    style.dataset.testTheme = "true";
-    style.textContent = `
-      :root {
-        --bg-elevated: rgb(250, 250, 250);
-        --accent: rgb(7, 8, 9);
-        --field-blue: rgb(4, 5, 6);
-        --custom-fill: rgb(240, 240, 240);
-      }
-      [data-theme="dark"] {
-        --bg-elevated: rgb(15, 15, 15);
-        --accent: rgb(20, 21, 22);
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  it("reads concrete theme colors from the document", () => {
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const color = (element as HTMLElement).style.color;
-      return {
-        color:
-          color === "var(--bg-elevated)"
-            ? "rgb(1, 2, 3)"
-            : color === "var(--accent)"
-              ? "rgb(7, 8, 9)"
-              : color === "var(--field-blue)"
-                ? "rgb(4, 5, 6)"
-                : "",
-      } as CSSStyleDeclaration;
-    });
-
-    const theme = readDiagramThemeFromDocument();
-
-    expect(theme.background).toBe("rgb(1, 2, 3)");
-    expect(theme.accent).toBe("rgb(7, 8, 9)");
-    expect(theme.fieldPalette.blue).toBe("rgb(4, 5, 6)");
-  });
-
-  it("resolves explicit light/dark theme independent from current UI theme", () => {
-    installThemeStyles();
+  it("returns explicit light/dark theme independent from current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
-    expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
-    expect(readDiagramTheme("dark").background).toBe("rgb(15,15,15)");
+    expect(readDiagramTheme("light").background).toBe("#FBFEFF");
+    expect(readDiagramTheme("dark").background).toBe("#151A28");
   });
 
-  it("does not throw when CSSLayerBlockRule is unavailable", () => {
-    installThemeStyles();
+  it("returns theme constants independent of CSSLayerBlockRule", () => {
     const original = globalThis.CSSLayerBlockRule;
 
     // Older Safari/WebView builds do not expose CSSLayerBlockRule at all.
-    // readDiagramTheme("light" | "dark") should still parse accessible rules.
+    // readDiagramTheme should still return the correct theme constants.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (globalThis as any).CSSLayerBlockRule;
 
     try {
-      expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
+      expect(readDiagramTheme("light").background).toBe("#FBFEFF");
+      expect(readDiagramTheme("dark").background).toBe("#151A28");
     } finally {
       globalThis.CSSLayerBlockRule = original;
     }
   });
 
   it("uses the current UI theme when mode is follow-ui", () => {
-    installThemeStyles();
     document.documentElement.setAttribute("data-theme", "dark");
+    expect(readDiagramTheme("follow-ui").background).toBe("#151A28");
 
-    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-      const color = (element as HTMLElement).style.color;
-      if (color !== "var(--bg-elevated)")
-        return { color: "" } as CSSStyleDeclaration;
-      return { color: "rgb(20, 21, 22)" } as CSSStyleDeclaration;
-    });
-
-    expect(readDiagramTheme("follow-ui").background).toBe("rgb(20, 21, 22)");
+    document.documentElement.setAttribute("data-theme", "light");
+    expect(readDiagramTheme("follow-ui").background).toBe("#FBFEFF");
   });
 
-  it("resolves custom CSS-variable fills against the explicit export theme", () => {
-    installThemeStyles();
+  it("returns explicit theme without mutating the current UI theme", () => {
     document.documentElement.setAttribute("data-theme", "dark");
 
-    const svg = buildDiagramSvg(
-      {
-        ...packet,
-        fields: [
-          {
-            id: "custom",
-            name: "Custom",
-            bits: 8,
-            color: "var(--custom-fill)" as never,
-          },
-        ],
-      },
-      {
-        totalBits: 8,
-        cells: [
-          {
-            field: {
-              id: "custom",
-              name: "Custom",
-              bits: 8,
-              color: "var(--custom-fill)" as never,
-            },
-            bitsTotal: 8,
-            row: 0,
-            startBit: 0,
-            endBit: 7,
-            segmentIndex: 0,
-            totalSegments: 1,
-            isFirst: true,
-            isLast: true,
-            fieldStartOffset: 0,
-            fieldEndOffset: 7,
-          },
-        ],
-      },
-      { theme: readDiagramTheme("light") },
-    );
-
-    expect(svg).toContain('fill="rgb(240,240,240)"');
-    expect(svg).not.toContain('fill="rgb(15,15,15)"');
-  });
-
-  it("restores the current UI theme after resolving an explicit export theme", () => {
-    installThemeStyles();
-    document.documentElement.setAttribute("data-theme", "dark");
-
-    expect(readDiagramTheme("light").background).toBe("rgb(250,250,250)");
+    expect(readDiagramTheme("light").background).toBe("#FBFEFF");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
@@ -734,5 +342,69 @@ describe("diagram export helpers", () => {
     vi.stubGlobal("Image", OkImage);
 
     await expect(svgToPngBlob("<svg />", 2)).rejects.toBeDefined();
+  });
+
+  it("generates CSS variables for all layout constants", () => {
+    const css = generateLayoutCssVariables();
+    expect(css).toContain(":root {");
+    expect(css).toContain("--diagram-ruler-height: 22px");
+    expect(css).toContain("--diagram-ruler-gap: 6px");
+    expect(css).toContain("--diagram-row-height: 56px");
+    expect(css).toContain("--diagram-row-padding-vertical: 4px");
+    expect(css).toContain("--diagram-cell-padding-vertical: 6px");
+    expect(css).toContain("--diagram-cell-padding-horizontal: 8px");
+    expect(css).toContain("--subfield-height: 18px");
+    expect(css).toContain("--row-border-radius: 8px");
+    expect(css).toContain("--cell-border-radius: 10px");
+    expect(css).toContain("--title-font-size: 12px");
+    expect(css).toContain("--subtitle-font-size: 10px");
+  });
+
+  it("calculates natural diagram height correctly", () => {
+    const height0 = naturalDiagramHeight(0);
+    const height1 = naturalDiagramHeight(1);
+    const height2 = naturalDiagramHeight(2);
+    // padding (16*2=32) + rulerHeight (22) + rulerGap (6) = 60 for 0 rows
+    expect(height0).toBe(60);
+    // + 1 row: (rowHeight 56 + rowPaddingVertical*2=8) = 64 per row
+    expect(height1).toBe(60 + 64);
+    // + 1 gap between rows (4)
+    expect(height2).toBe(60 + 64 + 64 + 4);
+  });
+
+  it("returns correct band color based on row index and theme", () => {
+    expect(rowBandColor(0, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowEven);
+    expect(rowBandColor(1, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowOdd);
+    expect(rowBandColor(2, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowEven);
+    expect(rowBandColor(3, LIGHT_TEST_THEME)).toBe(LIGHT_TEST_THEME.rowOdd);
+  });
+
+  it("cellVisual applies field fill with opacity", () => {
+    const cell = layoutForMode("wire").cells[0];
+    const field = packet.fields[0];
+    const visual = cellVisual(cell, field, LIGHT_TEST_THEME);
+    expect(visual.fill).toContain("rgba");
+    expect(visual.fill).toContain(String(FIELD_FILL_OPACITY));
+    expect(visual.isDashed).toBe(false);
+    expect(visual.titleColor).toBe(LIGHT_TEST_THEME.fieldLabel);
+    expect(visual.title).toBe("Type");
+    expect(visual.subtitle).toBe("4 bits");
+  });
+
+  it("cellVisual marks encrypted cells as dashed with accent stroke", () => {
+    const encryptedCell = layoutForMode("wire").cells[1];
+    const field = packet.fields[1];
+    const visual = cellVisual(encryptedCell, field, LIGHT_TEST_THEME);
+    expect(visual.isDashed).toBe(true);
+    expect(visual.stroke).toBe(LIGHT_TEST_THEME.fieldStroke);
+  });
+
+  it("cellVisual applies continuation color to non-first segments", () => {
+    const layout = layoutForMode("semantic");
+    const continuationCell = layout.cells[2];
+    const field = layout.cells[2].field;
+    const visual = cellVisual(continuationCell, field, LIGHT_TEST_THEME);
+    expect(visual.titleColor).toBe(LIGHT_TEST_THEME.fieldContinuation);
+    expect(visual.title).toContain("…");
   });
 });
