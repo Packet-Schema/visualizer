@@ -4,21 +4,9 @@ test.describe("Preview Server Access", () => {
   test("should load homepage without preset", async ({ page }: { page: Page }) => {
     await page.goto("/");
 
-    // Initially, title should be default (no preset)
-    let title = await page.title();
-    expect(title).toBe("Packet Visualizer");
-
-    // Wait for dynamic preset application (up to 5 seconds)
-    await page.waitForFunction(
-      () => document.title.includes("IPv4"),
-      { timeout: 5000 }
-    ).catch(() => {
-      // It's okay if preset isn't applied dynamically
-    });
-
-    // Check final title after potential dynamic application
-    title = await page.title();
-    expect(title).toBeTruthy();
+    // Server applies default preset (ipv4) - check title reflects this
+    const title = await page.title();
+    expect(title).toContain("IPv4");
     expect(title).toContain("Packet Visualizer");
 
     // Check for main content
@@ -45,11 +33,10 @@ test.describe("Preview Server Access", () => {
   test("should display OG meta tags for default page", async ({ page }: { page: Page }) => {
     await page.goto("/");
 
-    // OG meta tags are server-generated based on URL parameters
-    // Since we access "/" without preset, OG tags are default (no preset info)
+    // Server applies default preset (ipv4) for OG tags
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute("content");
-    expect(ogTitleContent).toBeTruthy();
+    expect(ogTitleContent).toContain("IPv4");
     expect(ogTitleContent).toContain("Packet Visualizer");
 
     // Check for og:description meta tag
@@ -58,12 +45,12 @@ test.describe("Preview Server Access", () => {
     expect(descriptionContent).toBeTruthy();
     expect(descriptionContent).toContain("network");
 
-    // Check for og:image meta tag (should be default without preset)
+    // Check for og:image meta tag (includes default preset)
     const ogImage = page.locator('meta[property="og:image"]');
     const imageUrl = await ogImage.getAttribute("content");
     expect(imageUrl).toMatch(/^http:\/\/localhost:8787\/api\/og/);
-    // Should NOT have preset parameter since URL is /
-    expect(imageUrl).not.toContain("preset=");
+    // Should have preset parameter with default ipv4
+    expect(imageUrl).toContain("preset=ipv4");
   });
 
   test("should display OG meta tags with preset", async ({ page }: { page: Page }) => {
