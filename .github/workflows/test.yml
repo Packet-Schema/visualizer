@@ -73,6 +73,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run build:presets
+
       - run: npm run test:coverage
 
   integration-tests:
