@@ -10,18 +10,30 @@ test.describe("Preset Auto-Apply Behavior", () => {
     // Wait for any dynamic content to load
     await page.waitForLoadState("networkidle");
 
-    // Server applies default preset (ipv4) for consistency between metadata and rendering
-    const title = await page.title();
+    // Initially, title should be default (no preset info)
+    let title = await page.title();
+    expect(title).toBe("Packet Visualizer");
+
+    // Wait for dynamic preset application (up to 5 seconds)
+    await page.waitForFunction(
+      () => document.title.includes("IPv4"),
+      { timeout: 5000 }
+    ).catch(() => {
+      // It's okay if preset isn't applied dynamically
+    });
+
+    // Check final title (should have ipv4 applied dynamically)
+    title = await page.title();
     expect(title).toBe("IPv4 Header | Packet Visualizer");
 
-    // URL should be updated to include preset parameter
+    // URL should also be updated to include preset parameter
     const finalUrl = page.url();
     expect(finalUrl).toContain("preset=ipv4");
 
-    // OG meta tag should also reflect the default preset
+    // OG meta tag is server-generated based on URL (no preset param means no preset in OG)
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute("content");
-    expect(ogTitleContent).toBe("IPv4 Header | Packet Visualizer");
+    expect(ogTitleContent).toBe("Packet Visualizer");
   });
 
   test("should preserve title when preset is explicitly set", async ({
