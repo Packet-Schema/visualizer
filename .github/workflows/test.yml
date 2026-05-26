@@ -52,6 +52,7 @@ jobs:
         with:
           name: build-output
           path: web/.open-next/
+          include-hidden-files: true
           retention-days: 1
 
   unit-tests:
