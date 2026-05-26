@@ -18,9 +18,18 @@ describe("Homepage and Meta Tags", () => {
 
   afterAll(async () => {
     if (devServer) {
-      devServer.kill();
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      devServer.kill("SIGKILL");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
+    // Force cleanup of port 8787
+    const { spawnSync } = await import("node:child_process");
+    spawnSync(
+      "bash",
+      ["-c", "lsof -ti:8787 | xargs kill -9 2>/dev/null || true"],
+      {
+        stdio: "ignore",
+      },
+    );
   });
 
   describe("Homepage access", () => {
