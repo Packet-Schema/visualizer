@@ -112,7 +112,7 @@ export function startPreviewServer(): ChildProcess {
 
   // Start the Cloudflare worker preview server
   console.log("Starting Cloudflare worker preview server...");
-  const devServer = spawn("npm", ["run", "preview:worker:start"], {
+  const devServer = spawn("npm", ["run", "preview"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
   });
