@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 test.describe("Preset Auto-Apply Behavior", () => {
   test("should have default title when accessing without preset", async ({
@@ -56,7 +56,7 @@ test.describe("Preset Auto-Apply Behavior", () => {
     expect(imageUrl).not.toContain("preset=");
   });
 
-  test("should not override explicit preset with default", async ({ page }) => {
+  test("should not override explicit preset with default", async ({ page }: { page: Page }) => {
     // Go to homepage with udp preset
     await page.goto("/?preset=udp");
     await page.waitForLoadState("networkidle");

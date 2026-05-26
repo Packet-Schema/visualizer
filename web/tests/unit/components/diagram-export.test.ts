@@ -11,10 +11,10 @@ import {
   readDiagramTheme,
   rowBandColor,
   svgToPngBlob,
-} from "../../lib/diagram-export";
-import type { DiagramExportTheme } from "../../lib/diagram-export";
-import { FIELD_FILL_OPACITY } from "../../lib/constants";
-import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
+} from "@/lib/diagram-export";
+import type { DiagramExportTheme } from "@/lib/diagram-export";
+import { FIELD_FILL_OPACITY } from "@/lib/constants";
+import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
 
 const packet: Packet = {
   name: "Demo & Packet",
