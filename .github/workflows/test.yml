@@ -51,7 +51,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: build-output
-          path: web/.open-next/
+          path: ${{ github.workspace }}/web/.open-next/
           retention-days: 1
 
   unit-tests:
