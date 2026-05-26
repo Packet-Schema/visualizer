@@ -75,6 +75,8 @@ jobs:
 
       - run: npm run build:presets
 
+      - run: npm run generate:og-font
+
       - run: npm run test:coverage
 
   integration-tests:
