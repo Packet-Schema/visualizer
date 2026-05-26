@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { spawnSync } from "node:child_process";
 import { JSDOM } from "jsdom";
 import {
   BASE_URL,
