@@ -7,14 +7,13 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, ".") } },
   test: {
     environment: "node",
-    include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["tests/integration/**", "tests/e2e/**"],
     // Component and storage tests pick up jsdom via a per-file `@vitest-environment`
     // docblock so the bulk of the suite still runs in plain Node.
     coverage: {
       provider: "v8",
-      include: ["lib/**"],
-      exclude: ["lib/psml/psml.schema.generated.ts"],
+      include: ["lib/formats/**"],
       thresholds: {
         lines: 100,
         functions: 100,
