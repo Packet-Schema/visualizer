@@ -50,6 +50,24 @@ jobs:
 
       - run: npm run test:integration
 
+      - run: |
+          # Wait for port 8787 to be released
+          max_attempts=30
+          attempt=0
+          while lsof -i :8787 > /dev/null 2>&1 && [ $attempt -lt $max_attempts ]; do
+            echo "Port 8787 still in use, waiting... ($((attempt+1))/$max_attempts)"
+            sleep 1
+            attempt=$((attempt+1))
+          done
+
+          if lsof -i :8787 > /dev/null 2>&1; then
+            echo "Port 8787 still in use after $max_attempts seconds, forcing cleanup"
+            lsof -ti :8787 | xargs kill -9 2>/dev/null || true
+            sleep 2
+          fi
+
+          echo "Port 8787 is now available"
+
       - run: npx playwright install
 
       - run: npm run test:e2e
