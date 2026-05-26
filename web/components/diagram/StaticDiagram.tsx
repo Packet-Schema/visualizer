@@ -281,9 +281,8 @@ export function StaticDiagram({
                                   LAYOUT.subfieldHeight * scale,
                                 ),
                                 minWidth: 0,
-                                background: theme.subfieldBackground,
-                                opacity: DIAGRAM_OPACITY.subfieldBackground,
-                                border: `1px solid ${stroke}`,
+                                background: `rgba(${hexToRgb(theme.subfieldBackground).join(", ")}, ${DIAGRAM_OPACITY.subfieldBackground})`,
+                                border: `1px solid ${theme.fieldStroke}`,
                                 borderRadius: Math.round(
                                   LAYOUT.subfieldBorderRadius * scale,
                                 ),
