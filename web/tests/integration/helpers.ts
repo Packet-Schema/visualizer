@@ -105,7 +105,9 @@ export function startPreviewServer(): ChildProcess {
   }
 
   if (!portFree) {
-    console.warn("Port 8787 may still be in use, attempting to start server anyway");
+    console.warn(
+      "Port 8787 may still be in use, attempting to start server anyway",
+    );
   }
 
   // Start the Cloudflare worker preview server
