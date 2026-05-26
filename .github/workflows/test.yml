@@ -51,6 +51,7 @@ jobs:
       - run: npm run test:integration
 
       - run: |
+          set -e
           # Wait for port 8787 to be released
           max_attempts=30
           attempt=0
