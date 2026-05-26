@@ -1,9 +1,7 @@
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 export default defineConfig({
-  plugins: [react()],
   resolve: { alias: { "@": path.resolve(__dirname, ".") } },
   test: {
     environment: "node",
@@ -11,6 +9,7 @@ export default defineConfig({
       "tests/integration/**/*.integration.test.ts",
       "tests/integration/**/*.integration.test.tsx",
     ],
-    testTimeout: 120000, // 2 minutes for integration tests
+    testTimeout: 180000, // 3 minutes for integration tests (includes server startup)
+    fileParallelism: false, // prevent port conflicts between test files
   },
 });

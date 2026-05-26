@@ -53,7 +53,6 @@ jobs:
 
   unit-tests:
     name: Unit Tests & Coverage
-    needs: setup
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -100,7 +99,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
-          path: web/
+          path: web/.open-next/
 
       - run: npm run test:integration
 
@@ -129,7 +128,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-output
-          path: web/
+          path: web/.open-next/
 
       - run: npx playwright install
 

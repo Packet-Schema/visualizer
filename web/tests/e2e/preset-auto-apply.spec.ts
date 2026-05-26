@@ -107,23 +107,20 @@ test.describe("Preset Auto-Apply Behavior", () => {
     expect(title).toContain("IPv4");
 
     // Look for preset selector/dropdown
-    // This is a UI interaction test - if the app has a preset selector
     const presetSelectors = page.locator('[data-testid*="preset"]');
-    const selectorCount = await presetSelectors.count();
+    await expect(presetSelectors.first()).toBeVisible({
+      timeout: 5000,
+    });
 
-    // If there's a preset selector, try to interact with it
-    if (selectorCount > 0) {
-      // Try to find and click on a different preset option
-      const ipv6Option = page.locator("text=/IPv6|ipv6/i");
-      if ((await ipv6Option.count()) > 0) {
-        await ipv6Option.first().click();
-        await page.waitForTimeout(500); // Wait for UI update
+    // Find and click on IPv6 option
+    const ipv6Option = page.locator("text=/IPv6|ipv6/i");
+    await expect(ipv6Option.first()).toBeVisible({ timeout: 5000 });
+    await ipv6Option.first().click();
+    await page.waitForLoadState("networkidle");
 
-        // Title should be updated to IPv6
-        title = await page.title();
-        expect(title).toContain("IPv6");
-      }
-    }
+    // Title should be updated to IPv6
+    title = await page.title();
+    expect(title).toContain("IPv6");
   });
 
   test("should maintain title consistency across page reloads with auto-applied preset", async ({
@@ -195,10 +192,6 @@ test.describe("Preset Auto-Apply Behavior", () => {
 
     let title = await page.title();
     expect(title).toContain("IPv6");
-
-    // Simulate a navigation that should preserve state
-    // (e.g., if the app has internal navigation)
-    await page.waitForTimeout(500);
 
     // Title should still be ipv6
     title = await page.title();

@@ -66,19 +66,32 @@ export async function waitForServer(
 }
 
 export function startPreviewServer(): ChildProcess {
-  // Kill any existing process on port 8787 with multiple attempts
+  // Kill any existing process on port 8787 with graceful shutdown first
   console.log("Cleaning up port 8787...");
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      // Kill by port
-      execSync("lsof -ti:8787 | xargs kill -9 2>/dev/null || true", {
-        stdio: "ignore",
-      });
-      // Kill by command
-      execSync("pkill -9 -f wrangler 2>/dev/null || true", {
-        stdio: "ignore",
-      });
-      execSync("pkill -9 -f workerd 2>/dev/null || true", {
+      // Get PIDs listening on port 8787 and send SIGTERM first (graceful)
+      try {
+        const pids = execSync("lsof -ti:8787", { stdio: "pipe" })
+          .toString()
+          .trim()
+          .split("\n")
+          .filter((line) => line);
+        for (const pid of pids) {
+          try {
+            process.kill(parseInt(pid), "SIGTERM");
+          } catch {
+            // Process may already be dead
+          }
+        }
+        // Wait for graceful shutdown
+        execSync("sleep 0.5", { stdio: "ignore" });
+      } catch {
+        // No processes found or error getting PIDs
+      }
+
+      // If still alive, use SIGKILL as last resort
+      execSync("lsof -ti:8787 | xargs -r kill -9 2>/dev/null || true", {
         stdio: "ignore",
       });
     } catch {
@@ -112,7 +125,7 @@ export function startPreviewServer(): ChildProcess {
 
   // Start the Cloudflare worker preview server
   console.log("Starting Cloudflare worker preview server...");
-  const devServer = spawn("npm", ["run", "preview"], {
+  const devServer = spawn("npm", ["run", "preview:start"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
   });
