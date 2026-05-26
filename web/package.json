@@ -20,8 +20,11 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:format": "vitest run tests/formats",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
     "build:worker": "npm run build",
     "preview:worker": "npm run build:worker && opennextjs-cloudflare preview",
+    "preview:worker:start": "npm run build:worker && opennextjs-cloudflare preview",
     "deploy": "npm run build:worker && opennextjs-cloudflare deploy"
   },
   "dependencies": {
