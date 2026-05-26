@@ -49,3 +49,7 @@ jobs:
       - run: npm run test:coverage
 
       - run: npm run test:integration
+
+      - run: npx playwright install
+
+      - run: npm run test:e2e
