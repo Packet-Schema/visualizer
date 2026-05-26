@@ -10,14 +10,14 @@ test.describe("Preset Auto-Apply Behavior", () => {
     // Wait for any dynamic content to load
     await page.waitForLoadState("networkidle");
 
-    // Metadata title (server-generated)
+    // Server-generated metadata title (no preset parameter in initial URL)
+    const title = await page.title();
+    expect(title).toBe("Packet Visualizer");
+
+    // OG meta tag is server-generated based on initial URL (no preset param)
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute("content");
     expect(ogTitleContent).toBe("Packet Visualizer");
-
-    // Page title updated by client-side useEffect with default preset (ipv4)
-    const title = await page.title();
-    expect(title).toBe("IPv4 Header | Packet Visualizer");
 
     // URL should be updated to include preset parameter
     const finalUrl = page.url();
