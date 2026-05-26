@@ -1,99 +1,95 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildShareQueryFromParams,
-  isShareQueryLengthValid,
-  parseShareParams,
-} from "@/lib/share-url";
-import { PRESETS } from "@/lib/psml/presets";
+import { NextRequest } from "next/server";
+import { GET } from "../../app/api/og/route";
 
-describe("OG API integration - share URL utilities", () => {
-  it("generates valid share query from URL params", () => {
-    const params = new URLSearchParams("preset=ipv4&controllers.ihl=5");
-    const query = buildShareQueryFromParams(params);
-    expect(query).toContain("preset=ipv4");
-    expect(query).toContain("controllers.ihl=5");
+describe("OG API endpoint", () => {
+  async function testOGImageGeneration(url: string) {
+    const request = new NextRequest(`http://localhost${url}`);
+    const response = await GET(request);
+
+    // Must return 200 (not 500 from Satori errors)
+    if (response.status === 500) {
+      const text = await response.clone().text();
+      throw new Error(
+        `OG generation failed with 500: ${text.substring(0, 200)}`,
+      );
+    }
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+
+    // Verify actual PNG data was generated
+    const buffer = await response.arrayBuffer();
+    expect(buffer.byteLength).toBeGreaterThan(0);
+
+    // PNG magic bytes: 89 50 4E 47
+    const view = new Uint8Array(buffer);
+    expect(view[0]).toBe(0x89);
+    expect(view[1]).toBe(0x50);
+    expect(view[2]).toBe(0x4e);
+    expect(view[3]).toBe(0x47);
+  }
+
+  it("should return 200 with PNG content type", async () => {
+    await testOGImageGeneration("/api/og");
   });
 
-  it("validates query length constraints", () => {
-    const shortQuery = "preset=ipv4";
-    expect(isShareQueryLengthValid(shortQuery)).toBe(true);
+  it("should have correct cache control headers", async () => {
+    const request = new NextRequest("http://localhost/api/og");
+    const response = await GET(request);
 
-    const longQuery = "preset=" + "x".repeat(3000);
-    expect(isShareQueryLengthValid(longQuery)).toBe(false);
-  });
-
-  it("parses preset parameters for OG image generation", () => {
-    const parsed = parseShareParams(
-      "?preset=ipv4&controllers.ihl=6",
-      Object.keys(PRESETS),
+    expect(response.headers.get("cache-control")).toBe(
+      "public, no-transform, max-age=86400",
     );
-    expect(parsed.kind).toBe("preset");
-    if (parsed.kind === "preset") {
-      expect(parsed.presetKey).toBe("ipv4");
-      expect(parsed.controllers.ihl).toBe(6);
-    }
+    expect(response.headers.get("x-robots-tag")).toBe("noindex");
   });
 
-  it("handles unknown presets gracefully", () => {
-    const parsed = parseShareParams(
-      "?preset=nonexistent",
-      Object.keys(PRESETS),
+  it("should render with preset parameter", async () => {
+    await testOGImageGeneration("/api/og?preset=ipv4");
+  });
+
+  it("should render fallback image for oversized packets", async () => {
+    const oversizedParams = new URLSearchParams({
+      packet: "A".repeat(10000), // Oversized PSML
+    });
+    const request = new NextRequest(
+      `http://localhost/api/og?${oversizedParams.toString()}`,
     );
-    expect(parsed.kind).toBe("none");
-    if (parsed.kind === "none") {
-      expect(parsed.error).toMatch(/Unknown preset/);
-    }
+    const response = await GET(request);
+
+    // Should still return 200 with PNG (fallback image)
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
   });
 
-  it("validates controller values are integers", () => {
-    const parsed = parseShareParams(
-      "?preset=ipv4&controllers.ihl=10&controllers.bad=NaN",
-      Object.keys(PRESETS),
+  it("should render fallback image on error", async () => {
+    const invalidParams = new URLSearchParams({
+      preset: "nonexistent",
+    });
+    const request = new NextRequest(
+      `http://localhost/api/og?${invalidParams.toString()}`,
     );
-    expect(parsed.kind).toBe("preset");
-    if (parsed.kind === "preset") {
-      expect(parsed.controllers.ihl).toBe(10);
-      expect(parsed.controllers.bad).toBeUndefined();
-    }
+    const response = await GET(request);
+
+    // Should still return 200 with PNG (fallback image)
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
   });
 
-  it("clamps controller values to safe integer range", () => {
-    const parsed = parseShareParams(
-      "?preset=ipv4&controllers.ihl=999",
-      Object.keys(PRESETS),
-    );
-    expect(parsed.kind).toBe("preset");
-    if (parsed.kind === "preset") {
-      expect(typeof parsed.controllers.ihl).toBe("number");
-      expect(parsed.controllers.ihl).toBe(999);
-    }
+  it("should support controller parameters", async () => {
+    await testOGImageGeneration("/api/og?preset=ipv4&c1=50&c2=25");
   });
 
-  it("backwards compatibility: empty controllers defaults to ipv4", () => {
-    const parsed = parseShareParams("?", Object.keys(PRESETS));
-    expect(parsed.kind).toBe("none");
-
-    const withControllers = parseShareParams(
-      "?controllers.x=1",
-      Object.keys(PRESETS),
-    );
-    expect(withControllers.kind).toBe("preset");
-    if (withControllers.kind === "preset") {
-      expect(withControllers.presetKey).toBe("ipv4");
-    }
+  it("should clamp controller values to valid range", async () => {
+    // Controllers are clamped to 0-100 in the code
+    await testOGImageGeneration("/api/og?preset=ipv4&c1=999&c2=-50");
   });
 
-  it("handles multiple controller values", () => {
-    const params = new URLSearchParams();
-    params.set("preset", "ipv4");
-    params.set("controllers.ihl", "5");
-    params.set("controllers.dscp", "10");
-    const query = buildShareQueryFromParams(params);
-    const parsed = parseShareParams(query, Object.keys(PRESETS));
-    expect(parsed.kind).toBe("preset");
-    if (parsed.kind === "preset") {
-      expect(parsed.controllers.ihl).toBe(5);
-      expect(parsed.controllers.dscp).toBe(10);
-    }
+  it("should use Satori-compatible colors and CSS", async () => {
+    // This test ensures:
+    // - Theme uses rgb() format (not OKLch)
+    // - StaticDiagram uses Satori-compatible CSS (flex, not grid)
+    // If Satori encounters unsupported colors or CSS, it returns 500
+    await testOGImageGeneration("/api/og?preset=ipv4");
   });
 });

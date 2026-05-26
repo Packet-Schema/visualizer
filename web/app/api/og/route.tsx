@@ -1,8 +1,9 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-import { DEFAULT_THEME } from "@/lib/diagram-export";
 import { PRESETS } from "@/lib/psml/presets";
+import { LIGHT_DIAGRAM_THEME } from "@/lib/theme";
+import { createExportTheme } from "@/lib/colors";
 import { resolveLayout } from "@/lib/psml/layout";
 import { initialState } from "@/lib/psml/renderer-helpers";
 import { initialEnv } from "@/lib/psml/normalize";
@@ -36,6 +37,8 @@ const OG_HEADERS = {
   "cache-control": "public, no-transform, max-age=86400",
   "x-robots-tag": "noindex",
 } as const;
+
+const OG_THEME = createExportTheme(LIGHT_DIAGRAM_THEME);
 
 const createOGImageResponseOptions = () => ({
   width: OG_WIDTH,
@@ -179,7 +182,7 @@ export async function GET(request: NextRequest) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: DEFAULT_THEME.background,
+          background: OG_THEME.background,
         }}
       >
         <div
@@ -193,7 +196,7 @@ export async function GET(request: NextRequest) {
           <StaticDiagram
             packet={packet}
             layout={layout}
-            theme={DEFAULT_THEME}
+            theme={OG_THEME}
             fontFamily={FONT_NAME}
             targetHeight={availableH}
             maxRows={OG_MAX_ROWS}
