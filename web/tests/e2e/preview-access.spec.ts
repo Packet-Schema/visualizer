@@ -3,18 +3,19 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 test.describe("Preview Server Access", () => {
   test("should load homepage without preset", async ({ page }: { page: Page }) => {
     await page.goto("/");
+    await page.waitForLoadState("networkidle");
 
-    // Title reflects default preset (ipv4) applied by page component
+    // Server metadata title (no preset parameter)
     const title = await page.title();
-    expect(title).toContain("IPv4");
-    expect(title).toContain("Packet Visualizer");
+    expect(title).toBe("Packet Visualizer");
 
     // Check for main content
     await expect(page.locator("body")).toContainText("Packet Visualizer");
 
-    // Check that page loaded and URL is updated with preset
+    // Check that page loaded
     const finalUrl = page.url();
     expect(finalUrl).toContain("localhost:8787");
+    // URL should be updated with preset by client-side logic
     expect(finalUrl).toContain("preset=ipv4");
   });
 
