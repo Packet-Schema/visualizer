@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Preset Auto-Apply Behavior', () => {
-  test('should auto-apply default preset (ipv4) when accessing without preset', async ({
+  test('should have default title when accessing without preset', async ({
     page,
   }) => {
     // Go to homepage without preset parameter
@@ -10,15 +10,15 @@ test.describe('Preset Auto-Apply Behavior', () => {
     // Wait for any dynamic content to load
     await page.waitForLoadState('networkidle');
 
-    // Check that page title includes "IPv4" (auto-applied default preset)
+    // Page title should be default (no preset info)
+    // because OGP is generated server-side based on URL parameters
     const title = await page.title();
-    expect(title).toContain('IPv4');
-    expect(title).toContain('Packet Visualizer');
+    expect(title).toBe('Packet Visualizer');
 
-    // Check og:title meta tag reflects the auto-applied preset
+    // OGP title should also be default since URL has no preset
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute('content');
-    expect(ogTitleContent).toContain('IPv4');
+    expect(ogTitleContent).toBe('Packet Visualizer');
   });
 
   test('should preserve title when preset is explicitly set', async ({
@@ -39,18 +39,21 @@ test.describe('Preset Auto-Apply Behavior', () => {
     expect(page.url()).toContain('preset=ipv6');
   });
 
-  test('should update OG image URL based on auto-applied preset', async ({
+  test('should have default OG image URL when accessing without preset', async ({
     page,
   }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Check og:image includes API endpoint
+    // OG image should be default (no preset parameters in URL)
+    // because OG is generated server-side based on URL parameters
     const ogImage = page.locator('meta[property="og:image"]');
     const imageUrl = await ogImage.getAttribute('content');
 
-    // Image URL should be for OG API
+    // Image URL should be for OG API without preset
     expect(imageUrl).toContain('/api/og');
+    // Should NOT have preset parameter since URL is /
+    expect(imageUrl).not.toContain('preset=');
   });
 
   test('should not override explicit preset with default', async ({ page }) => {
@@ -132,7 +135,7 @@ test.describe('Preset Auto-Apply Behavior', () => {
   test('should update meta tags when preset changes via URL navigation', async ({
     page,
   }) => {
-    // Start with ipv4
+    // Start with ipv4 - server generates OG with preset info
     await page.goto('/?preset=ipv4');
     await page.waitForLoadState('networkidle');
 
@@ -140,11 +143,12 @@ test.describe('Preset Auto-Apply Behavior', () => {
     let ogTitleContent = await ogTitle.getAttribute('content');
     expect(ogTitleContent).toContain('IPv4');
 
-    // Navigate to ipv6
+    // Navigate to ipv6 - server should generate new OG with ipv6 info
     await page.goto('/?preset=ipv6');
     await page.waitForLoadState('networkidle');
 
-    // Meta tags should be updated
+    // Meta tags should be updated because it's a full page load
+    // with a different URL (server-side regeneration)
     ogTitle = page.locator('meta[property="og:title"]');
     ogTitleContent = await ogTitle.getAttribute('content');
     expect(ogTitleContent).toContain('IPv6');
