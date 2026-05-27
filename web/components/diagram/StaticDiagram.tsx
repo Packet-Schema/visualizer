@@ -290,7 +290,7 @@ export function StaticDiagram({
                                   LAYOUT.subfieldFontSize * scale,
                                 ),
                                 fontWeight: 600,
-                                color: theme.fieldLabel,
+                                color: theme.subfieldLabel,
                                 padding: `0 ${LAYOUT.subfieldPaddingHorizontal}px`,
                                 position: "relative",
                               }}
