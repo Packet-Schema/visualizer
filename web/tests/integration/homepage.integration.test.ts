@@ -13,7 +13,7 @@ describe.sequential("Homepage and Meta Tags", () => {
   let devServer: ChildProcess;
 
   beforeAll(async () => {
-    devServer = startPreviewServer();
+    devServer = await startPreviewServer();
     await waitForServer(BASE_URL, 90000);
   }, 120000);
 

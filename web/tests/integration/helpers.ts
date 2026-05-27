@@ -1,6 +1,6 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { execSync } from "node:child_process";
+import * as net from "node:net";
 
 export const PORT = 8787;
 export const BASE_URL = `http://localhost:${PORT}`;
@@ -65,61 +65,43 @@ export async function waitForServer(
   );
 }
 
-export function startPreviewServer(): ChildProcess {
-  // Kill any existing process on port 8787
-  console.log("Cleaning up port 8787...");
-  try {
-    // Get PIDs listening on port 8787 and send SIGTERM first
-    const pids = execSync("lsof -ti:8787 2>/dev/null || true", {
-      stdio: "pipe",
-    })
-      .toString()
-      .trim()
-      .split("\n")
-      .filter((line) => line);
-    for (const pid of pids) {
-      try {
-        process.kill(parseInt(pid), "SIGTERM");
-      } catch {
-        // Process may already be dead
-      }
-    }
-    if (pids.length > 0) {
-      execSync("sleep 0.5", { stdio: "ignore" });
-      // Force kill if still alive
-      for (const pid of pids) {
-        try {
-          process.kill(parseInt(pid), "SIGKILL");
-        } catch {
-          // Already dead
-        }
-      }
-    }
-  } catch {
-    // Ignore errors during cleanup
-  }
-
-  // Wait for port to actually be released
-  let portFree = false;
-  for (let i = 0; i < 100; i++) {
-    const result = spawnSync("bash", ["-c", "lsof -i :8787 > /dev/null 2>&1"], {
-      stdio: "ignore",
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
     });
-    if (result.status !== 0) {
-      portFree = true;
-      console.log(`Port 8787 is now available (waited ${i * 100}ms)`);
-      break;
+    server.listen(port);
+  });
+}
+
+async function waitForPortFree(
+  port: number,
+  timeoutMs: number = 10000,
+): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    if (await isPortFree(port)) {
+      console.log(
+        `Port ${port} is now available (waited ${Date.now() - startTime}ms)`,
+      );
+      return;
     }
-    execSync("sleep 0.1", { stdio: "ignore" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  console.warn(
+    `Port ${port} may still be in use, attempting to start server anyway`,
+  );
+}
+
+export async function startPreviewServer(): Promise<ChildProcess> {
+  // If port is already in use, wait briefly for it to free (e.g. previous test run)
+  if (!(await isPortFree(PORT))) {
+    console.log(`Port ${PORT} is in use, waiting for it to free...`);
+    await waitForPortFree(PORT);
   }
 
-  if (!portFree) {
-    console.warn(
-      "Port 8787 may still be in use, attempting to start server anyway",
-    );
-  }
-
-  // Start the Cloudflare worker preview server
   console.log("Starting Cloudflare worker preview server...");
   const devServer = spawn("npm", ["run", "preview:start"], {
     stdio: ["ignore", "pipe", "pipe"],

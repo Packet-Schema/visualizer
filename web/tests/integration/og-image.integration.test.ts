@@ -13,7 +13,7 @@ describe.sequential("OG Image Download", () => {
   let devServer: ChildProcess;
 
   beforeAll(async () => {
-    devServer = startPreviewServer();
+    devServer = await startPreviewServer();
     await waitForServer(BASE_URL, 90000);
   }, 120000);
 
