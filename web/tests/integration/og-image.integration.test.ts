@@ -123,9 +123,8 @@ describe.sequential("OG Image Download", () => {
     const image = sharp(Buffer.from(buffer));
     const stats = await image.stats();
 
-    expect(stats).toBeDefined();
     expect(stats.channels.length).toBeGreaterThanOrEqual(3); // RGB or RGBA channels
-    expect(stats.isOpaque).toBeDefined();
+    expect(typeof stats.isOpaque).toBe("boolean");
   });
 
   it("returns consistent image dimensions across multiple requests", async () => {

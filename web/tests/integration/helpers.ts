@@ -48,7 +48,6 @@ export async function waitForServer(
         return;
       }
     } catch (err) {
-      // Server not ready yet
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempts % 5 === 0) {
         console.log(
@@ -67,54 +66,50 @@ export async function waitForServer(
 }
 
 export function startPreviewServer(): ChildProcess {
-  // Kill any existing process on port 8787 with graceful shutdown first
+  // Kill any existing process on port 8787
   console.log("Cleaning up port 8787...");
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      // Get PIDs listening on port 8787 and send SIGTERM first (graceful)
+  try {
+    // Get PIDs listening on port 8787 and send SIGTERM first
+    const pids = execSync("lsof -ti:8787 2>/dev/null || true", {
+      stdio: "pipe",
+    })
+      .toString()
+      .trim()
+      .split("\n")
+      .filter((line) => line);
+    for (const pid of pids) {
       try {
-        const pids = execSync("lsof -ti:8787", { stdio: "pipe" })
-          .toString()
-          .trim()
-          .split("\n")
-          .filter((line) => line);
-        for (const pid of pids) {
-          try {
-            process.kill(parseInt(pid), "SIGTERM");
-          } catch {
-            // Process may already be dead
-          }
-        }
-        // Wait for graceful shutdown
-        execSync("sleep 0.5", { stdio: "ignore" });
+        process.kill(parseInt(pid), "SIGTERM");
       } catch {
-        // No processes found or error getting PIDs
+        // Process may already be dead
       }
-
-      // If still alive, use SIGKILL as last resort
-      execSync("lsof -ti:8787 | xargs -r kill -9 2>/dev/null || true", {
-        stdio: "ignore",
-      });
-    } catch {
-      // Ignore errors during cleanup
     }
-    // Wait before next attempt
-    execSync("sleep 0.2", { stdio: "ignore" });
+    if (pids.length > 0) {
+      execSync("sleep 0.5", { stdio: "ignore" });
+      // Force kill if still alive
+      for (const pid of pids) {
+        try {
+          process.kill(parseInt(pid), "SIGKILL");
+        } catch {
+          // Already dead
+        }
+      }
+    }
+  } catch {
+    // Ignore errors during cleanup
   }
 
-  // Wait for port to actually be released (TCP TIME_WAIT state)
+  // Wait for port to actually be released
   let portFree = false;
   for (let i = 0; i < 100; i++) {
     const result = spawnSync("bash", ["-c", "lsof -i :8787 > /dev/null 2>&1"], {
       stdio: "ignore",
     });
     if (result.status !== 0) {
-      // Port is free
       portFree = true;
       console.log(`Port 8787 is now available (waited ${i * 100}ms)`);
       break;
     }
-    // Sleep 100ms synchronously
     execSync("sleep 0.1", { stdio: "ignore" });
   }
 
@@ -131,7 +126,6 @@ export function startPreviewServer(): ChildProcess {
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
   });
 
-  // Log server output for debugging
   devServer.stdout?.on("data", (data) => {
     const lines = data.toString().split("\n");
     lines.forEach((line: string) => {
@@ -149,7 +143,6 @@ export function startPreviewServer(): ChildProcess {
     });
   });
 
-  // Log when server exits unexpectedly
   devServer.on("error", (err) => {
     console.error("[Server error]", err);
   });
@@ -181,11 +174,9 @@ export async function exitProcess(
 
     process.once("exit", exitHandler);
 
-    // Send SIGTERM
     console.log("[Cleanup] Sending SIGTERM to process");
     process.kill("SIGTERM");
 
-    // Set timeout for force kill
     const killTimeout = setTimeout(() => {
       if (!exitedNormally) {
         process.removeListener("exit", exitHandler);
@@ -199,7 +190,6 @@ export async function exitProcess(
       }
     }, timeoutMs);
 
-    // Clean up timeout if process exits normally
     process.once("exit", () => {
       clearTimeout(killTimeout);
     });
