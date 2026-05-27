@@ -1,22 +1,27 @@
-name: prettier
+name: check
 
 on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/prettier.yml"
+      - ".github/workflows/check.yml"
       - "web/**"
+      - "data/presets/**"
+      - "schemas/**"
   pull_request:
     paths:
-      - ".github/workflows/prettier.yml"
+      - ".github/workflows/check.yml"
       - "web/**"
+      - "data/presets/**"
+      - "schemas/**"
 
 concurrency:
-  group: prettier-${{ github.ref }}
+  group: check-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  prettier:
+  check:
+    name: Lint, Format & Type Check
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,3 +40,7 @@ jobs:
       - run: npm ci
 
       - run: npm run format:check
+
+      - run: npm run lint
+
+      - run: npm run typecheck

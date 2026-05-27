@@ -1,4 +1,5 @@
 name: test
+# Simplified workflow: builds are done per job, no artifact sharing
 
 on:
   push:
@@ -20,7 +21,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test:
+  setup:
+    name: Setup & Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,10 +42,99 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run lint
-
-      - run: npm run typecheck
-
       - run: npm run build
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: web/.open-next/
+          include-hidden-files: true
+          retention-days: 1
+
+  unit-tests:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
       - run: npm run test:coverage
+
+  integration-tests:
+    name: Integration Tests
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: web/.open-next/
+
+      - run: npm run test:integration
+
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: web/.open-next/
+
+      - run: npx playwright install --with-deps
+
+      - run: npm run test:e2e
