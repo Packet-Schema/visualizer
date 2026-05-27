@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
-    exclude: ["tests/integration/**", "tests/e2e/**"],
+    exclude: ["tests/integration/**", "tests/e2e/**", "**/*.spec.ts"],
     // Component and storage tests pick up jsdom via a per-file `@vitest-environment`
     // docblock so the bulk of the suite still runs in plain Node.
     coverage: {
