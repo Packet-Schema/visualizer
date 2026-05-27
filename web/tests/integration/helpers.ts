@@ -36,10 +36,10 @@ export async function waitForServer(
   let lastError: Error | null = null;
 
   while (Date.now() - startTime < timeoutMs) {
-    // Bail early if the server process has already exited
-    if (process && process.exitCode !== null) {
+    // Bail early if the server process has already exited (covers both exit code and signal)
+    if (process && (process.exitCode !== null || process.signalCode !== null)) {
       throw new Error(
-        `Server process exited with code ${process.exitCode} before becoming ready`,
+        `Server process exited (code=${process.exitCode}, signal=${process.signalCode}) before becoming ready`,
       );
     }
 
