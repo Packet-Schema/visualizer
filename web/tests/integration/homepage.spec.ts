@@ -49,6 +49,28 @@ test.describe("Homepage and Meta Tags", () => {
       expect(html).toContain('property="og:image"');
     });
 
+    test("includes correct og:description content without preset", async ({
+      request,
+    }) => {
+      const response = await request.get("/");
+      const html = await response.text();
+
+      expect(html).toContain(
+        'property="og:description" content="Visual viewer for common network packet headers."',
+      );
+    });
+
+    test("includes description meta tag without preset", async ({
+      request,
+    }) => {
+      const response = await request.get("/");
+      const html = await response.text();
+
+      expect(html).toContain(
+        'name="description" content="Visual viewer for common network packet headers."',
+      );
+    });
+
     test("does not include og:url meta tag when accessing without preset", async ({
       request,
     }) => {
@@ -79,8 +101,27 @@ test.describe("Homepage and Meta Tags", () => {
 
       expect(html).toContain('property="og:title"');
       expect(html).toContain("IPv4");
+      expect(html).toContain('property="og:description"');
       expect(html).toContain('property="og:image"');
       expect(html).toContain("preset=ipv4");
+    });
+
+    test("includes correct og:description with preset", async ({ request }) => {
+      const response = await request.get("/?preset=ipv4");
+      const html = await response.text();
+
+      expect(html).toContain(
+        'property="og:description" content="IPv4 header (RFC 791) — IHL drives the Options length."',
+      );
+    });
+
+    test("includes description meta tag with preset", async ({ request }) => {
+      const response = await request.get("/?preset=ipv4");
+      const html = await response.text();
+
+      expect(html).toContain(
+        'name="description" content="IPv4 header (RFC 791) — IHL drives the Options length."',
+      );
     });
 
     test("includes og:image with preset parameters in URL", async ({
@@ -91,6 +132,16 @@ test.describe("Homepage and Meta Tags", () => {
 
       expect(html).toContain('property="og:image"');
       expect(html).toContain("preset=ipv6");
+    });
+
+    test("includes correct og:description with different preset", async ({
+      request,
+    }) => {
+      const response = await request.get("/?preset=ipv6");
+      const html = await response.text();
+
+      expect(html).toContain('property="og:description"');
+      expect(html).toContain("IPv6");
     });
   });
 
@@ -105,9 +156,36 @@ test.describe("Homepage and Meta Tags", () => {
 
       expect(html).toContain('property="og:title"');
       expect(html).toContain("IPv4");
+      expect(html).toContain('property="og:description"');
       expect(html).toContain('property="og:image"');
       expect(html).toContain("preset=ipv4");
       expect(html).toContain("controllers.ihl=5");
+    });
+
+    test("includes correct og:description with controller parameters", async ({
+      request,
+    }) => {
+      const response = await request.get(
+        "/?preset=ipv4&controllers.ihl=5&controllers.dscp=20",
+      );
+      const html = await response.text();
+
+      expect(html).toContain(
+        'property="og:description" content="IPv4 header (RFC 791) — IHL drives the Options length."',
+      );
+    });
+
+    test("includes description meta tag with controller parameters", async ({
+      request,
+    }) => {
+      const response = await request.get(
+        "/?preset=ipv4&controllers.ihl=5&controllers.dscp=20",
+      );
+      const html = await response.text();
+
+      expect(html).toContain(
+        'name="description" content="IPv4 header (RFC 791) — IHL drives the Options length."',
+      );
     });
   });
 });
