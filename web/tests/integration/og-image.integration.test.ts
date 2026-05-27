@@ -3,7 +3,6 @@ import sharp from "sharp";
 import { BASE_URL, fetchWithRetry } from "./helpers";
 
 describe("OG Image Download", () => {
-
   it("downloads OG image with HTTP protocol", async () => {
     const url = `${BASE_URL}/api/og`;
     const response = await fetchWithRetry(url);

@@ -3,7 +3,6 @@ import { JSDOM } from "jsdom";
 import { BASE_URL, fetchWithRetry } from "./helpers";
 
 describe("Homepage and Meta Tags", () => {
-
   describe("Homepage access", () => {
     it("returns 200 status when accessing homepage", async () => {
       const response = await fetchWithRetry(`${BASE_URL}/`);
