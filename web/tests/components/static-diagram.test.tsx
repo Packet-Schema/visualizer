@@ -172,7 +172,7 @@ describe("StaticDiagram", () => {
 
     expect(result.props.style).toHaveProperty(
       "fontFamily",
-      "LINE Seed JP, system-ui, sans-serif",
+      "LINE Seed JP",
     );
   });
 

@@ -40,7 +40,7 @@ export function StaticDiagram({
   packet,
   layout,
   theme,
-  fontFamily = "LINE Seed JP, system-ui, sans-serif",
+  fontFamily = "LINE Seed JP",
   targetHeight,
   maxRows,
   transparentBackground,
