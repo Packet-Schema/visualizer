@@ -131,15 +131,15 @@ const FIELD_CELL_SELECTED_COLOR_CLASSES: Record<ColorToken, string> = {
 // Gradient values are used in style={} as CSS strings, not as Tailwind classes,
 // so template literals are safe here.
 const FIELD_GRADIENT_COLORS: Record<ColorToken, string> = {
-  blue: "color-mix(in oklab, var(--color-field-blue) 85%, transparent)",
-  indigo: "color-mix(in oklab, var(--color-field-indigo) 85%, transparent)",
-  violet: "color-mix(in oklab, var(--color-field-violet) 85%, transparent)",
-  teal: "color-mix(in oklab, var(--color-field-teal) 85%, transparent)",
-  green: "color-mix(in oklab, var(--color-field-green) 85%, transparent)",
-  amber: "color-mix(in oklab, var(--color-field-amber) 85%, transparent)",
-  orange: "color-mix(in oklab, var(--color-field-orange) 85%, transparent)",
-  rose: "color-mix(in oklab, var(--color-field-rose) 85%, transparent)",
-  slate: "color-mix(in oklab, var(--color-field-slate) 85%, transparent)",
+  blue: "color-mix(in oklab, var(--field-blue) 85%, transparent)",
+  indigo: "color-mix(in oklab, var(--field-indigo) 85%, transparent)",
+  violet: "color-mix(in oklab, var(--field-violet) 85%, transparent)",
+  teal: "color-mix(in oklab, var(--field-teal) 85%, transparent)",
+  green: "color-mix(in oklab, var(--field-green) 85%, transparent)",
+  amber: "color-mix(in oklab, var(--field-amber) 85%, transparent)",
+  orange: "color-mix(in oklab, var(--field-orange) 85%, transparent)",
+  rose: "color-mix(in oklab, var(--field-rose) 85%, transparent)",
+  slate: "color-mix(in oklab, var(--field-slate) 85%, transparent)",
 };
 
 export function categoryCellColorClasses(
