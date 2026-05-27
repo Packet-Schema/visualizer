@@ -131,12 +131,28 @@ export function toAscii(
       .sort((a, b) => a.startBit - b.startBit);
     if (row.length === 0) continue;
     /* v8 ignore stop */
-    const expanded: RowCellLike[] = row.map((c) => ({
-      startBit: c.startBit,
-      endBit: c.endBit,
-      isFirst: c.isFirst,
-      field: { name: displayName(c) },
-    }));
+    // Layout collapses Group children into one Cell with `subCells[]` so
+    // the modern HybridDiagram can show e.g. flags as a nested block. For
+    // ASCII output we want the historical per-bit view, so expand back
+    // into one entry per sub-cell when present.
+    const expanded: RowCellLike[] = row.flatMap((c) => {
+      if (c.subCells && c.subCells.length > 0) {
+        return c.subCells.map((sc) => ({
+          startBit: sc.startBit,
+          endBit: sc.endBit,
+          isFirst: sc.isFirst,
+          field: { name: sc.subfield.name },
+        }));
+      }
+      return [
+        {
+          startBit: c.startBit,
+          endBit: c.endBit,
+          isFirst: c.isFirst,
+          field: { name: displayName(c) },
+        },
+      ];
+    });
     const last = expanded[expanded.length - 1];
     const rowWidth = last.endBit + 1;
     // Semantic mode: mark every row whose cells come from inside an Encrypted

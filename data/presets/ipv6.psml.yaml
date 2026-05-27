@@ -39,11 +39,32 @@ body:
       n: 8
     category: type
     doc: Type of the immediately following header — uses the same numbering as IPv4 Protocol. e.g. 6=TCP, 17=UDP, 58=ICMPv6, 0=Hop-by-Hop, 43=Routing, 44=Fragment, 50=ESP, 51=AH.
+  - id: hopLimit
+    name: Hop Limit
+    type:
+      kind: bits
+      n: 8
+    category: identifier
+    doc: Hop counter decremented by each forwarding router; the packet is dropped at 0. IPv6 equivalent of IPv4 TTL; default is typically 64. [RFC 8200]
+  - id: srcAddr
+    name: Source Address
+    type:
+      kind: bits
+      n: 128
+    category: addressing
+    doc: "128-bit sender address — written as eight 16-bit hex groups, with :: collapsing one run of zero groups. e.g. 2001:db8::1, fe80::1 (link-local). [RFC 4291]"
+  - id: dstAddr
+    name: Destination Address
+    type:
+      kind: bits
+      n: 128
+    category: addressing
+    doc: 128-bit receiver address — also supports multicast (ff00::/8) and anycast. e.g. 2606:4700:4700::1111 is one of Cloudflare's public DNS resolvers. [RFC 4291]
   - kind: repeat
     id: nextHeader_chain
     name: Next Header (chain)
     category: type
-    doc: IPv6 extension-header chain (mechanically migrated).
+    doc: IPv6 extension-header chain. Sits after the 40-byte base header (RFC 8200 §4); each entry is selected by the preceding Next Header value.
     element:
       id: nextHeader_chainRecord
       fields:
@@ -210,24 +231,3 @@ body:
     count:
       kind: ref
       field: nextHeader_chainCount
-  - id: hopLimit
-    name: Hop Limit
-    type:
-      kind: bits
-      n: 8
-    category: identifier
-    doc: Hop counter decremented by each forwarding router; the packet is dropped at 0. IPv6 equivalent of IPv4 TTL; default is typically 64. [RFC 8200]
-  - id: srcAddr
-    name: Source Address
-    type:
-      kind: bits
-      n: 128
-    category: addressing
-    doc: "128-bit sender address — written as eight 16-bit hex groups, with :: collapsing one run of zero groups. e.g. 2001:db8::1, fe80::1 (link-local). [RFC 4291]"
-  - id: dstAddr
-    name: Destination Address
-    type:
-      kind: bits
-      n: 128
-    category: addressing
-    doc: 128-bit receiver address — also supports multicast (ff00::/8) and anycast. e.g. 2606:4700:4700::1111 is one of Cloudflare's public DNS resolvers. [RFC 4291]

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
+import { generateLayoutCssVariables } from "@/lib/diagram-export";
+import { generateThemeCssVariables } from "@/lib/diagram-themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,6 +50,9 @@ const themeBootstrap = `
 })();
 `;
 
+const layoutCssVariables = generateLayoutCssVariables();
+const themeCssVariables = generateThemeCssVariables();
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     // `suppressHydrationWarning` only suppresses the immediate-children attr
@@ -59,6 +64,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${geistSans.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <style>{layoutCssVariables}</style>
+        <style>{themeCssVariables}</style>
+      </head>
       <body>
         {/* `beforeInteractive` runs in <head> before hydration and is the
             Next-sanctioned way to ship a synchronous inline bootstrap. */}

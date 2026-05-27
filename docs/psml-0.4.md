@@ -19,7 +19,7 @@ the in-memory TypeScript shape lives at
 > evaluates truthy — TLS extensions, IPv6 next-header options); a
 > `berLength` Type for ASN.1 BER/DER short- and long-form length
 > octets (X.509, SNMP, LDAP); a `peek` Expression that reads N bits
-> from a forthcoming offset *without consuming them*, which lets
+> from a forthcoming offset _without consuming them_, which lets
 > `Switch` discriminate on a field that hasn't been parsed yet
 > (TLS extension type, framed protocols); and a per-field
 > `byteOrder` override so a single packet can mix endiannesses
@@ -52,14 +52,14 @@ the in-memory TypeScript shape lives at
 
 ## Types
 
-| Kind | Shape | Bits |
-| --- | --- | --- |
-| `int` | `{ kind: "int", bits, signed? }` | fixed |
-| `bits` | `{ kind: "bits", n }` | fixed |
-| `bytes` | `{ kind: "bytes", n: Expr }` | `evalExpr(n) * 8` |
-| `enum` | `{ kind: "enum", bits, variants: { [n]: label } }` | fixed |
-| `varint` *(0.3)* | `{ kind: "varint", encoding: "quic" \| "protobuf" \| "cbor" }` | runtime (see below) |
-| `berLength` *(0.4)* | `{ kind: "berLength" }` | runtime (1 / 2 / 3 / 5 / 9 bytes — see below) |
+| Kind                | Shape                                                          | Bits                                          |
+| ------------------- | -------------------------------------------------------------- | --------------------------------------------- |
+| `int`               | `{ kind: "int", bits, signed? }`                               | fixed                                         |
+| `bits`              | `{ kind: "bits", n }`                                          | fixed                                         |
+| `bytes`             | `{ kind: "bytes", n: Expr }`                                   | `evalExpr(n) * 8`                             |
+| `enum`              | `{ kind: "enum", bits, variants: { [n]: label } }`             | fixed                                         |
+| `varint` _(0.3)_    | `{ kind: "varint", encoding: "quic" \| "protobuf" \| "cbor" }` | runtime (see below)                           |
+| `berLength` _(0.4)_ | `{ kind: "berLength" }`                                        | runtime (1 / 2 / 3 / 5 / 9 bytes — see below) |
 
 `int` is conventionally network-byte-order; the explicit per-packet
 `byteOrder` field documents the protocol's policy.
@@ -70,11 +70,11 @@ A `varint` Type describes a self-describing variable-length integer whose
 on-wire bit width is determined by reading a prefix from the value bytes,
 not by the schema. PSML 0.3 names three encodings:
 
-| Encoding | Length determined by | Possible widths |
-| --- | --- | --- |
-| `quic` | first 2 bits of the first byte select 1 / 2 / 4 / 8 bytes (RFC 9000 §16) | 6, 14, 30, or 62 value bits (1 / 2 / 4 / 8 bytes total) |
-| `protobuf` | continuation-bit (MSB) on every byte | multiple of 7 value bits per byte, until MSB is clear |
-| `cbor` | initial-byte additional-info (RFC 8949 §3) | 0 / 1 / 2 / 4 / 8 follow-on bytes |
+| Encoding   | Length determined by                                                     | Possible widths                                         |
+| ---------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `quic`     | first 2 bits of the first byte select 1 / 2 / 4 / 8 bytes (RFC 9000 §16) | 6, 14, 30, or 62 value bits (1 / 2 / 4 / 8 bytes total) |
+| `protobuf` | continuation-bit (MSB) on every byte                                     | multiple of 7 value bits per byte, until MSB is clear   |
+| `cbor`     | initial-byte additional-info (RFC 8949 §3)                               | 0 / 1 / 2 / 4 / 8 follow-on bytes                       |
 
 Because the width is data-dependent, `normalize` and `resolveLayout`
 treat a `varint` field as design-time-empty (0 bits) unless the env
@@ -86,9 +86,12 @@ supply a concrete width for layout.
 JSON form:
 
 ```json
-{ "id": "pktnum_len", "name": "Packet Number Length",
+{
+  "id": "pktnum_len",
+  "name": "Packet Number Length",
   "type": { "kind": "varint", "encoding": "quic" },
-  "category": "length" }
+  "category": "length"
+}
 ```
 
 Typst dict form (preset-library authoring shape):
@@ -111,14 +114,14 @@ A `berLength` Type describes an ASN.1 BER/DER length octet sequence as
 specified in ITU-T X.690 §8.1.3. Like `varint`, the on-wire bit width is
 data-dependent:
 
-| First-byte form | Meaning | Total bytes |
-| --- | --- | --- |
-| `0x00..0x7F` | short form: low 7 bits *are* the length | 1 |
-| `0x81` + 1 byte | long form, 1 follow-on byte (length 0..255) | 2 |
-| `0x82` + 2 bytes | long form, 2 follow-on bytes (length 0..65535) | 3 |
-| `0x84` + 4 bytes | long form, 4 follow-on bytes | 5 |
-| `0x88` + 8 bytes | long form, 8 follow-on bytes | 9 |
-| `0x80` | indefinite form (BER only; terminated by end-of-contents) | 1 + content |
+| First-byte form  | Meaning                                                   | Total bytes |
+| ---------------- | --------------------------------------------------------- | ----------- |
+| `0x00..0x7F`     | short form: low 7 bits _are_ the length                   | 1           |
+| `0x81` + 1 byte  | long form, 1 follow-on byte (length 0..255)               | 2           |
+| `0x82` + 2 bytes | long form, 2 follow-on bytes (length 0..65535)            | 3           |
+| `0x84` + 4 bytes | long form, 4 follow-on bytes                              | 5           |
+| `0x88` + 8 bytes | long form, 8 follow-on bytes                              | 9           |
+| `0x80`           | indefinite form (BER only; terminated by end-of-contents) | 1 + content |
 
 Because the width is data-dependent, `normalize` and `resolveLayout`
 treat a `berLength` field as 8 bits (the short form, the minimum) unless
@@ -129,9 +132,12 @@ override is the concrete bit count for that instance. This matches the
 JSON form:
 
 ```json
-{ "id": "sigLen", "name": "Signature Length",
+{
+  "id": "sigLen",
+  "name": "Signature Length",
   "type": { "kind": "berLength" },
-  "category": "length" }
+  "category": "length"
+}
 ```
 
 #### Worked example: X.509 SEQUENCE
@@ -147,12 +153,25 @@ const x509Outer: Packet = {
   rowBits: 8,
   byteOrder: "BE",
   body: [
-    { id: "tag", name: "Tag=SEQUENCE (0x30)",
-      type: int(8), category: "type", defaultValue: 0x30 },
-    { id: "len", name: "Length",
-      type: { kind: "berLength" }, category: "length" },
-    { id: "value", name: "TBSCertificate + sig",
-      type: { kind: "bytes", n: ref("len") }, category: "payload-marker" },
+    {
+      id: "tag",
+      name: "Tag=SEQUENCE (0x30)",
+      type: int(8),
+      category: "type",
+      defaultValue: 0x30,
+    },
+    {
+      id: "len",
+      name: "Length",
+      type: { kind: "berLength" },
+      category: "length",
+    },
+    {
+      id: "value",
+      name: "TBSCertificate + sig",
+      type: { kind: "bytes", n: ref("len") },
+      category: "payload-marker",
+    },
   ],
 };
 ```
@@ -172,7 +191,7 @@ Pure, side-effect-free integer expressions. Operators: `+ - * / % << >>`
 ```ts
 type Expr =
   | { kind: "lit"; value: number }
-  | { kind: "ref"; field: string }              // env lookup
+  | { kind: "ref"; field: string } // env lookup
   | { kind: "op"; op: BinOp; a: Expr; b: Expr }
   | { kind: "cond"; test: Expr; t: Expr; f: Expr }
   | { kind: "peek"; bits: number; offset?: Expr }; // 0.4 — lookahead
@@ -186,7 +205,7 @@ translate that into safe default behaviour where appropriate.
 
 `peek` reads `bits` bits starting at byte `offset` (default `0`)
 **without consuming them**. It exists so a `Switch` can dispatch on a
-discriminator that lives *inside* one of the cases — the canonical
+discriminator that lives _inside_ one of the cases — the canonical
 example is a TLS extension block, where the variant of each element is
 selected by reading the first 16 bits of that element (the extension
 type) before the element itself begins.
@@ -204,7 +223,7 @@ full `Expr`, so the offset itself can depend on earlier fields.
 
 A TLS 1.2/1.3 ClientHello carries a length-prefixed sequence of
 `(type:16, length:16, body:length-bytes)` extension records. Each
-record's variant is selected by the *type* — but the type is the
+record's variant is selected by the _type_ — but the type is the
 extension's first 16 bits, so a plain `Switch on ref(...)` can't see
 it. With `peek` the dispatch becomes natural:
 
@@ -255,13 +274,80 @@ type Container = Field | Repeat | Switch | Group | Encrypted | Optional;
   - an `Expr` evaluated against the env;
   - the literal string `"eos"`, meaning "consume the rest of the parent";
   - `{ until: Expr }`, a predicate that terminates expansion.
-  Each copy gets `repeatIndex` in the normalized output.
+    Each copy gets `repeatIndex` in the normalized output. A Repeat used as
+    a TLV catalog (`Repeat<Switch on ref(...)>` whose cases are integer-
+    keyed) may additionally carry an `instances` array — see
+    ["Persisted TLV / chain records"](#persisted-tlv--chain-records-04).
 - **`Switch`** — pick one of several variant Structs by evaluating `on`
   and matching against the case key (stringified). Optional `default`.
-- **`Encrypted`** *(0.3)* — an opaque blob on the wire whose interior
+- **`Encrypted`** _(0.3)_ — an opaque blob on the wire whose interior
   fields are knowable only after decryption. See below.
-- **`Optional`** *(0.4)* — a single child `Field` that exists when a
+- **`Optional`** _(0.4)_ — a single child `Field` that exists when a
   predicate `Expr` evaluates truthy. See below.
+
+### Persisted TLV / chain records (0.4)
+
+A `Repeat` can optionally carry the user's currently-attached records
+directly in the schema, via `instances` (TLV catalogs) or
+`chainInstances` (IPv6 extension-header chains):
+
+```ts
+type TlvInstancePsml = { kind: number; extras?: Record<string, number> };
+type ChainInstancePsml = { proto: number; extras?: Record<string, number> };
+
+type Repeat = {
+  // ...
+  instances?: TlvInstancePsml[];
+  chainInstances?: ChainInstancePsml[];
+  /** Terminal Next-Header value after the last chain entry (IPv6's
+   *  "what comes after all the extension headers?"). */
+  chainFinalProto?: number;
+};
+```
+
+Both fields are optional and additive: a Repeat that omits them behaves
+exactly as in 0.3 and earlier (empty catalog at hydrate time). When
+present, `psmlToRenderer` lifts each entry onto the renderer mirror's
+`tlv.instances` / `chainInstances` so the diagram materialises one cell
+per record and the layout pass pre-resolves variant-specific leaf
+fields. The lift is filtered against the catalog — entries whose
+`kind` / `proto` aren't declared in the parent Switch are dropped with
+a console warn so a hostile share URL can't render a catalog-mismatched
+Repeat as an empty placeholder.
+
+JSON form (IPv4 Options with NOP × 2 + Record Route):
+
+```json
+{
+  "kind": "repeat",
+  "id": "options",
+  "element": {
+    "id": "optRecord",
+    "fields": [
+      /* Switch on optionType */
+    ]
+  },
+  "count": { "kind": "ref", "field": "options_count" },
+  "instances": [
+    { "kind": 1 },
+    { "kind": 1 },
+    { "kind": 7, "extras": { "addrCount": 3 } }
+  ]
+}
+```
+
+**Why this isn't purely presentational.** PSML's design principle is
+"semantic, not presentational" — the schema shouldn't encode visual
+choices the renderer can recompute. User-chosen records sit on the
+border: they're not pure presentation (they describe what's actually
+on the wire), but they're also not derivable from the schema alone.
+The alternative — keeping instances out-of-band in a renderer cache —
+doesn't survive a share URL or "Save as preset" because nothing
+serialises the cache. We picked PSML-side persistence so the URL
+exporter, the JSON pane, and the localStorage-backed presets all
+round-trip without bespoke side-channels. Treat `instances` as
+"persisted user state about which records are attached", not as part
+of the wire shape's specification.
 
 ### Optional (0.4)
 
@@ -274,7 +360,7 @@ type Optional = {
 ```
 
 When `eval(when, env)` is truthy, normalize emits the inner `field` as
-if it were a sibling. When falsy, the optional is *erased* — it
+if it were a sibling. When falsy, the optional is _erased_ — it
 contributes 0 bits to the wire layout and no row to the diagram. The
 renderer surfaces a faint placeholder slot (a "~ Optional ~" row) in
 RFC-ASCII output so readers can see where the conditional lives.
@@ -369,8 +455,13 @@ const tiny: Packet = {
   rowBits: 32,
   byteOrder: "BE",
   body: [
-    { id: "magic", name: "Magic", type: int(16), category: "type",
-      defaultValue: 0xABCD },
+    {
+      id: "magic",
+      name: "Magic",
+      type: int(16),
+      category: "type",
+      defaultValue: 0xabcd,
+    },
     {
       kind: "encrypted",
       id: "payload",
@@ -379,8 +470,8 @@ const tiny: Packet = {
       wireBits: lit(32),
       headerProtected: ["seq"],
       plaintext: struct("payloadPt", [
-        { id: "seq", name: "Seq",  type: bits(8),  category: "identifier" },
-        { id: "msg", name: "Msg",  type: bits(24), category: "variable"   },
+        { id: "seq", name: "Seq", type: bits(8), category: "identifier" },
+        { id: "msg", name: "Msg", type: bits(24), category: "variable" },
       ]),
     },
   ],
@@ -389,20 +480,20 @@ const tiny: Packet = {
 
 Normalized in **wire** mode (`{ viewMode: 'wire' }`):
 
-| id | name | bits | encrypted |
-| --- | --- | --- | --- |
-| `magic`   | Magic              | 16 | — |
-| `payload` | Encrypted Payload  | 32 | `true` |
+| id        | name              | bits | encrypted |
+| --------- | ----------------- | ---- | --------- |
+| `magic`   | Magic             | 16   | —         |
+| `payload` | Encrypted Payload | 32   | `true`    |
 
 Total bits: 48.
 
 Normalized in **semantic** mode (`{ viewMode: 'semantic' }`):
 
-| id | name | bits | encryptedParentId | headerProtected |
-| --- | --- | --- | --- | --- |
-| `magic` | Magic | 16 | — | — |
-| `seq`   | Seq   |  8 | `payload` | `true` |
-| `msg`   | Msg   | 24 | `payload` | — |
+| id      | name  | bits | encryptedParentId | headerProtected |
+| ------- | ----- | ---- | ----------------- | --------------- |
+| `magic` | Magic | 16   | —                 | —               |
+| `seq`   | Seq   | 8    | `payload`         | `true`          |
+| `msg`   | Msg   | 24   | `payload`         | —               |
 
 Total bits: 48. Each semantic-mode leaf also carries
 `encryptedContextNote = "Demo session keys"`.
@@ -433,7 +524,7 @@ resolveLayout(packet, { env, viewMode });
   flatten into the surrounding layout, each tagged with
   `encryptedParentId` so the renderer can decorate (lock badge, thin
   accent border). This is the right view for teaching "what does the
-  data *mean*".
+  data _mean_".
 
 `viewMode` is **not** part of the on-disk PSML schema. It's UI state.
 A serialised packet round-trips unchanged regardless of the view it was
@@ -452,13 +543,13 @@ badge. Hovering an encrypted region always surfaces the `contextNote`
 
 ### When to use which
 
-| Protocol | wire | semantic |
-| --- | --- | --- |
-| Ethernet, IPv4, TCP, UDP, ICMP, ARP | identical | identical |
-| TLS Record Layer (1.2) | identical | identical |
-| TLS 1.3 (post-ServerHello) | record + opaque AEAD ciphertext | record + handshake messages |
-| QUIC short header | header + encrypted payload + auth tag | header + STREAM / ACK / CRYPTO frames |
-| QUIC long header (Initial / Handshake / 0-RTT) | header + length + encrypted payload | header + length + CRYPTO frames |
+| Protocol                                       | wire                                  | semantic                              |
+| ---------------------------------------------- | ------------------------------------- | ------------------------------------- |
+| Ethernet, IPv4, TCP, UDP, ICMP, ARP            | identical                             | identical                             |
+| TLS Record Layer (1.2)                         | identical                             | identical                             |
+| TLS 1.3 (post-ServerHello)                     | record + opaque AEAD ciphertext       | record + handshake messages           |
+| QUIC short header                              | header + encrypted payload + auth tag | header + STREAM / ACK / CRYPTO frames |
+| QUIC long header (Initial / Handshake / 0-RTT) | header + length + encrypted payload   | header + length + CRYPTO frames       |
 
 For protocols that don't carry an `Encrypted` container, both view modes
 produce the same normalized output — the toggle is a no-op.
@@ -476,15 +567,15 @@ arithmetic. The canonical example is `IHL × 4 = headerBytes`.
 
 ## Field metadata
 
-| Field | Notes |
-| --- | --- |
-| `id` | Unique within the containing struct; allowed characters are alphanumerics and underscore. |
-| `name` | Human-readable label shown in the diagram. |
-| `type` | One of the four Type kinds above. |
-| `category` | Optional semantic tag (drives renderer color via `web/lib/render-tokens.ts`). |
-| `doc` | Free-form description. RFC references like `RFC 791` get auto-linked by the runtime enrichment pass. |
-| `defaultValue` | Seeded into the env on initial layout. |
-| `byteOrder` *(0.4)* | Optional `"BE"` \| `"LE"` override for **this field only**, taking precedence over the packet-level `byteOrder`. |
+| Field               | Notes                                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `id`                | Unique within the containing struct; allowed characters are alphanumerics and underscore.                        |
+| `name`              | Human-readable label shown in the diagram.                                                                       |
+| `type`              | One of the four Type kinds above.                                                                                |
+| `category`          | Optional semantic tag (drives renderer color via `web/lib/render-tokens.ts`).                                    |
+| `doc`               | Free-form description. RFC references like `RFC 791` get auto-linked by the runtime enrichment pass.             |
+| `defaultValue`      | Seeded into the env on initial layout.                                                                           |
+| `byteOrder` _(0.4)_ | Optional `"BE"` \| `"LE"` override for **this field only**, taking precedence over the packet-level `byteOrder`. |
 
 Doc-refs follow the convention `[RFC 9293 §4.1]` — anything that matches
 `RFC \d+` is replaced by an anchor at runtime.
@@ -531,16 +622,18 @@ const pcieTlpFragment: Packet = {
   rowBits: 32,
   byteOrder: "BE",
   body: [
-    { id: "fmt_type", name: "Fmt/Type",
-      type: bits(8), category: "type" },
+    { id: "fmt_type", name: "Fmt/Type", type: bits(8), category: "type" },
     { id: "tc", name: "TC", type: bits(3), category: "flags" },
     { id: "flags", name: "Flags", type: bits(13), category: "flags" },
-    { id: "length", name: "Length",
-      type: bits(10), category: "length" },
+    { id: "length", name: "Length", type: bits(10), category: "length" },
     // Address payload is little-endian in the host's view.
-    { id: "address", name: "Address",
-      type: int(32), category: "addressing",
-      byteOrder: "LE" },
+    {
+      id: "address",
+      name: "Address",
+      type: int(32),
+      category: "addressing",
+      byteOrder: "LE",
+    },
   ],
 };
 ```
@@ -555,7 +648,7 @@ and stricter alignment, but the byte-order pattern is exactly this.
 ```ts
 type Packet = {
   name: string;
-  rowBits: number;             // visual row width (e.g. 32 for IPv4)
+  rowBits: number; // visual row width (e.g. 32 for IPv4)
   body: Container[];
   constraints?: Constraint[];
   byteOrder?: "BE" | "LE" | string;
@@ -607,8 +700,12 @@ const ipv4: Packet = {
   rowBits: 32,
   byteOrder: "BE",
   description: "IPv4 header (RFC 791) — IHL drives the Options length.",
-  body: [ /* fields */ ],
-  constraints: [ /* IHL ⇔ headerBytes */ ],
+  body: [
+    /* fields */
+  ],
+  constraints: [
+    /* IHL ⇔ headerBytes */
+  ],
 };
 ```
 
@@ -707,7 +804,7 @@ the constraint solver only handles one operator at a time, which is
 sufficient for every preset Packet View ships.
 
 > IPv4 is intentionally a 0.2-only example — it uses none of 0.3's new
-> primitives. The wire layout *is* the semantic layout, so `viewMode`
+> primitives. The wire layout _is_ the semantic layout, so `viewMode`
 > is a no-op for IPv4. For a 0.3-flavoured worked example, see the QUIC
 > sketch below.
 
@@ -722,9 +819,14 @@ const quicShort: Packet = {
   byteOrder: "BE",
   body: [
     // Header byte (bottom 5 bits are header-protected — see Encrypted below).
-    { id: "header_form", name: "Header Form=0", type: bits(1), category: "type" },
-    { id: "fixed_bit",   name: "Fixed=1",       type: bits(1), category: "reserved" },
-    { id: "spin_bit",    name: "Spin",          type: bits(1), category: "flags" },
+    {
+      id: "header_form",
+      name: "Header Form=0",
+      type: bits(1),
+      category: "type",
+    },
+    { id: "fixed_bit", name: "Fixed=1", type: bits(1), category: "reserved" },
+    { id: "spin_bit", name: "Spin", type: bits(1), category: "flags" },
     // Reserved (R), Key-phase (K), and Packet Number Length live in an
     // Encrypted block because they're recovered from header protection.
     {
@@ -735,15 +837,23 @@ const quicShort: Packet = {
       wireBits: lit(5),
       headerProtected: ["hp_r", "hp_kp", "pn_len"],
       plaintext: struct("hpPt", [
-        { id: "hp_r",   name: "R",   type: bits(2), category: "reserved" },
-        { id: "hp_kp",  name: "K",   type: bits(1), category: "flags" },
+        { id: "hp_r", name: "R", type: bits(2), category: "reserved" },
+        { id: "hp_kp", name: "K", type: bits(1), category: "flags" },
         { id: "pn_len", name: "PNL", type: bits(2), category: "length" },
       ]),
     },
-    { id: "dcid",  name: "Dest Conn ID",
-      type: { kind: "bytes", n: ref("dcidLen") }, category: "addressing" },
-    { id: "pn",    name: "Packet Number",
-      type: { kind: "varint", encoding: "quic" }, category: "identifier" },
+    {
+      id: "dcid",
+      name: "Dest Conn ID",
+      type: { kind: "bytes", n: ref("dcidLen") },
+      category: "addressing",
+    },
+    {
+      id: "pn",
+      name: "Packet Number",
+      type: { kind: "varint", encoding: "quic" },
+      category: "identifier",
+    },
     {
       kind: "encrypted",
       id: "payload",
@@ -795,11 +905,11 @@ drawer). The format hub itself is three files:
 - **RFC ASCII** — renders Optional as a faint `~ Optional ~` row when
   the predicate is falsy and inline as the inner field when truthy;
   prints `BER len` with a tilde-bordered placeholder cell whose width
-  reflects the env override (or 1 byte fallback); leaves `peek` *no
-  visible artefact* (it's a dispatch helper, not a wire field); and
+  reflects the env override (or 1 byte fallback); leaves `peek` _no
+  visible artefact_ (it's a dispatch helper, not a wire field); and
   appends `[LE]` (or `[BE]`) to any field carrying a per-field
   byteOrder override.
-- **Augmented ASCII (AAD)** — *cannot* express any 0.4 primitive. The
+- **Augmented ASCII (AAD)** — _cannot_ express any 0.4 primitive. The
   importer warns when it would have to invent one (e.g. a TLS
   extensions block in AAD source becomes a single opaque `bytes`
   field with a warning); the exporter has no inverse.
@@ -844,37 +954,37 @@ anything PSML-specific as YAML comments prefixed `# psml-only:`.
 
 ### Supported (import)
 
-| Kaitai construct | PSML mapping |
-| --- | --- |
-| `meta.id` / `meta.title` | `Packet.name` |
-| `meta.endian: be \| le` | `Packet.byteOrder = "BE" \| "LE"` |
-| `seq[]` | top-level `body: Container[]` |
-| `type: u1 \| u2 \| u4 \| u8` | `TypeInt { bits: 8/16/32/64 }` |
-| `type: s1 \| s2 \| s4 \| s8` | `TypeInt { signed: true }` |
-| `type: b1..b64` | `TypeBits { n }` |
-| `type: str \| strz` + `size: N` | `TypeBytes { n: lit(N) }` |
-| `size: N` (no type) or `size: <ref>` | `TypeBytes` |
-| `contents: "..."` | `TypeBytes` of magic byte length |
-| `type: <userTypeName>` | `Group` whose children are the resolved seq |
-| `types:` (nested) | recursive walk, merged into a child registry |
-| `if: <simple-ref>` | `Switch` with cases `"1"` (present) / `"0"` (absent) |
-| `repeat: expr` + `repeat-expr` | `Repeat { count: ref \| lit }` |
-| `repeat: until` | `Repeat { count: { until: env-ref } }` |
-| `repeat: eos` | `Repeat { count: "eos" }` |
-| `doc` / `doc-ref` | concatenated into `Field.doc` (refs prefixed `See:`) |
-| `enums:` (integer keys → labels) | `TypeEnum.variants` when the field cites the enum |
+| Kaitai construct                     | PSML mapping                                         |
+| ------------------------------------ | ---------------------------------------------------- |
+| `meta.id` / `meta.title`             | `Packet.name`                                        |
+| `meta.endian: be \| le`              | `Packet.byteOrder = "BE" \| "LE"`                    |
+| `seq[]`                              | top-level `body: Container[]`                        |
+| `type: u1 \| u2 \| u4 \| u8`         | `TypeInt { bits: 8/16/32/64 }`                       |
+| `type: s1 \| s2 \| s4 \| s8`         | `TypeInt { signed: true }`                           |
+| `type: b1..b64`                      | `TypeBits { n }`                                     |
+| `type: str \| strz` + `size: N`      | `TypeBytes { n: lit(N) }`                            |
+| `size: N` (no type) or `size: <ref>` | `TypeBytes`                                          |
+| `contents: "..."`                    | `TypeBytes` of magic byte length                     |
+| `type: <userTypeName>`               | `Group` whose children are the resolved seq          |
+| `types:` (nested)                    | recursive walk, merged into a child registry         |
+| `if: <simple-ref>`                   | `Switch` with cases `"1"` (present) / `"0"` (absent) |
+| `repeat: expr` + `repeat-expr`       | `Repeat { count: ref \| lit }`                       |
+| `repeat: until`                      | `Repeat { count: { until: env-ref } }`               |
+| `repeat: eos`                        | `Repeat { count: "eos" }`                            |
+| `doc` / `doc-ref`                    | concatenated into `Field.doc` (refs prefixed `See:`) |
+| `enums:` (integer keys → labels)     | `TypeEnum.variants` when the field cites the enum    |
 
 ### Unsupported / lossy
 
-| Construct | Status | Behaviour |
-| --- | --- | --- |
-| `instances:` (computed) | won't-fix | every instance emits a warning and is dropped |
-| `process: zlib \| xor \| rotate` | won't-fix | warned and dropped (PSML has no transform pipeline) |
-| Parametric types (`type(args)`) | planned | parameters dropped; bare type name resolved |
-| `switch-on` type with complex cases | planned | non-`string` cases skipped with warnings |
-| Kaitai expression language | planned | only bare `<identifier>` refs and integer literals are modelled; anything richer (arithmetic, `_io.eof`, ternaries) collapses to a placeholder ref and a warning |
-| `valid:`, `terminator:`, `eos-error:` | planned | warned and dropped |
-| `-webide-` / `-orig-id` extension keys | n/a | ignored silently |
+| Construct                              | Status    | Behaviour                                                                                                                                                        |
+| -------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `instances:` (computed)                | won't-fix | every instance emits a warning and is dropped                                                                                                                    |
+| `process: zlib \| xor \| rotate`       | won't-fix | warned and dropped (PSML has no transform pipeline)                                                                                                              |
+| Parametric types (`type(args)`)        | planned   | parameters dropped; bare type name resolved                                                                                                                      |
+| `switch-on` type with complex cases    | planned   | non-`string` cases skipped with warnings                                                                                                                         |
+| Kaitai expression language             | planned   | only bare `<identifier>` refs and integer literals are modelled; anything richer (arithmetic, `_io.eof`, ternaries) collapses to a placeholder ref and a warning |
+| `valid:`, `terminator:`, `eos-error:`  | planned   | warned and dropped                                                                                                                                               |
+| `-webide-` / `-orig-id` extension keys | n/a       | ignored silently                                                                                                                                                 |
 
 ### Export (PSML → .ksy)
 
@@ -921,8 +1031,8 @@ are stripped from the generated registry. Example:
 
 ```yaml
 _tcp_option_variants: &tcp_option_variants
-  "0": { id: eol, fields: [ ... ] }
-  "1": { id: nop, fields: [ ... ] }
+  "0": { id: eol, fields: [...] }
+  "1": { id: nop, fields: [...] }
   # ...
 
 body:
@@ -941,9 +1051,86 @@ body:
 The generated file (`web/lib/psml/presets.generated.ts`) is gitignored;
 do not edit it by hand and do not commit it.
 
+## Renderer interpretation
+
+PSML is intentionally semantic-only — the schema declares structure and
+intent (`category`, Group / Repeat / Switch), the renderer decides how to
+draw it. The first design principle ("Semantic, not presentational")
+already calls this out for `category → CSS color`; the diagram-first UI
+extends the same idea to layout.
+
+### Group collapse → parent cell + sub-cells
+
+A `Group` whose children are all leaf `Field`s renders as **one parent
+cell with sub-cells** rather than N flat sibling cells:
+
+| PSML                                                                                        | Renderer                                                      |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `Group { children: [R, DF, MF] }` (IPv4 flags)                                              | One `flagsBits` cell with three 1-bit sub-cells `R / DF / MF` |
+| `Group { children: [Type, Length, Pointer, Addr 1, Addr 2, Addr 3] }` (Record Route option) | One `Record Route` cell with the variant's six sub-cells      |
+
+Two policy details worth being explicit about:
+
+- **Single-child Groups** stay flat by default — a hand-authored
+  `Group { children: [F] }` keeps `F` as the visible cell with its own
+  label. The exception is Groups minted by `applyTlvInstances` (their
+  id ends in `__inst_<N>`); those always collapse so NOP / EOL etc.
+  read as the variant name rather than the leaf field's name.
+- **Groups containing compound children** (nested `Repeat` / `Switch` /
+  `Group`) fall back to splice — those structurally have to flatten.
+- **Groups inside a Repeat** get the iteration index baked into the
+  collapsed cell's id (`flagsBits#0`, `flagsBits#1`, …) so each
+  iteration is selectable / addressable independently.
+
+Other consumers (RFC ASCII / JSON / Kaitai) keep the flat read of
+`NormalizedField[]`; only the layout pass interprets adjacency.
+
+### Slot-based TLV workflow
+
+A TLV `Repeat<Switch>` rewrites to one of three diagram shapes depending
+on the renderer mirror's `tlv.instances` and a caller-supplied slot
+size (= the number of bytes the upstream length controller has reserved,
+e.g. `(IHL − 5) × 4` for IPv4):
+
+1. **Slot only** (no instances yet) — emit a single `bytes(slot)` cell
+   labelled `Options`. Clicking it opens the full `TlvEditor` so the
+   user can append the first record.
+2. **Populated** — emit one `Group` per instance (= the variant's leaf
+   fields). Each instance renders as a single cell whose sub-cells
+   show the Type / Length / Value internals.
+3. **Populated + remaining** — when instances total bytes are less than
+   the slot, emit a trailing `bytes(remaining)` placeholder. The
+   diagram visually closes on the controller boundary.
+
+The rewrite happens in `web/lib/psml/psml-to-renderer/apply-tlv.ts`. It
+runs only at layout time — `NormalizedField[]` and the on-disk PSML are
+unchanged, so a roundtrip through JSON / share-URL stays canonical.
+
+### Override surfaces
+
+Editing affordances are derived from PSML primitives, not declared in
+the schema:
+
+| Primitive                                                      | Affordance                                                |
+| -------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------- |
+| `Constraint` of `ref × lit = ref` (or `± lit`)                 | length-controller slider in `OverridePanel`               |
+| `Switch on ref(X)` (top-level / Group subfield)                | dropdown that sets env[X]                                 |
+| `Switch on peek(...)`                                          | synthetic case picker in panel extras                     |
+| `Optional when ref(X)`                                         | toggle that sets env[X] to 0/1                            |
+| `TypeVarint` / `TypeBerLength`                                 | width radio (`8 / 16 / 32 / 64` bits etc.)                |
+| `TypeEnum`                                                     | dropdown of variants                                      |
+| Field-level `byteOrder: "BE"                                   | "LE"`                                                     | BE/LE toggle (schema-edit via studio reducer) |
+| `Repeat<Switch>` (TLV catalog)                                 | `TlvEditor` (append + per-row variant + reorder + remove) |
+| `Repeat<Switch>` (chain catalog)                               | `ChainEditor` (IPv6 extension headers)                    |
+| `Repeat { count: until / eos / ref(X) }` (non-TLV / non-chain) | stepper in the panel extras                               |
+
+This list IS the surface area of `OverridePanel` and the matching
+widgets. PSML doesn't need a `ui:` field — the renderer picks an
+affordance based on the structure alone.
+
 ## Out of scope
 
-- Actual decryption — PSML 0.3 models the *shape* of an encrypted
+- Actual decryption — PSML 0.3 models the _shape_ of an encrypted
   payload but does not handle keys, AEAD, or SSLKEYLOGFILE-style flows.
   The renderer renders structure, not bytes.
 - Generating parser code (that's Kaitai's job; we don't try to replace
