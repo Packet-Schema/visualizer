@@ -103,7 +103,7 @@ test.describe("Preset Auto-Apply Behavior", () => {
     await page.waitForLoadState("networkidle");
 
     // Get initial title
-    let title = await page.title();
+    const title = await page.title();
     expect(title).toContain("IPv4");
 
     // Look for preset selector/dropdown
@@ -112,11 +112,10 @@ test.describe("Preset Auto-Apply Behavior", () => {
 
     // Switch to IPv6
     await presetSelect.selectOption("ipv6");
-    await page.waitForLoadState("networkidle");
 
-    // Title should be updated to IPv6
-    title = await page.title();
-    expect(title).toContain("IPv6");
+    // Title is updated via document.title in a useEffect (double rAF),
+    // so wait for the title to actually change rather than networkidle.
+    await expect(page).toHaveTitle(/IPv6/, { timeout: 5000 });
   });
 
   test("should maintain title consistency across page reloads with auto-applied preset", async ({
