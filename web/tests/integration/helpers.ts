@@ -189,7 +189,9 @@ export async function exitProcess(
     const killTimeout = setTimeout(() => {
       if (!exitedNormally) {
         process.removeListener("exit", exitHandler);
-        console.log("[Cleanup] Process did not exit, sending SIGKILL to process group");
+        console.log(
+          "[Cleanup] Process did not exit, sending SIGKILL to process group",
+        );
         try {
           process.kill("SIGKILL");
         } catch {
