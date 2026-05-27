@@ -18,6 +18,10 @@ import {
   type FormatKey,
 } from "@/lib/formats/registry";
 import {
+  buildIframeEmbedHtml,
+  estimateEmbedIframeHeight,
+} from "@/lib/embed-url";
+import {
   downloadBlob,
   extToFormat,
   readFileAsText,
@@ -41,6 +45,8 @@ type Props = {
   mode: DrawerMode;
   /** Current packet (used to seed Export). */
   packet: Packet;
+  /** Lossless URL for the current packet/controller state (used by iframe export). */
+  buildShareUrl: () => string;
   /** Current controller state (used to seed Export). */
   controllers: ControllerState;
   /** Current resolved layout (used to export the live diagram). */
@@ -77,6 +83,7 @@ export default function ImportExportDrawer({
   open,
   mode,
   packet,
+  buildShareUrl,
   controllers,
   layout,
   onClose,
@@ -148,6 +155,17 @@ export default function ImportExportDrawer({
       return;
     }
     try {
+      if (format === "iframe") {
+        setText(
+          buildIframeEmbedHtml({
+            baseUrl: buildShareUrl(),
+            packetName: packet.name,
+            height: estimateEmbedIframeHeight(layout),
+          }),
+        );
+        setStatus(null);
+        return;
+      }
       // Lower the runtime packet to PSML for the format hub. controllers is a
       // plain object keyed by controller id; PSML's PacketEnv is a Map.
       const psml = rendererToPsml(packet);
@@ -166,7 +184,7 @@ export default function ImportExportDrawer({
         kind: "error",
       });
     }
-  }, [open, currentMode, format, packet, controllers]);
+  }, [open, currentMode, format, packet, buildShareUrl, controllers, layout]);
 
   const handleModeChange = useCallback(
     (next: DrawerMode) => {

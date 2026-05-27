@@ -1,0 +1,30 @@
+@layer components {
+  .embed-root {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px;
+    color: var(--fg);
+    background: var(--bg);
+  }
+
+  .embed-diagram-shell {
+    min-width: 0;
+    overflow-x: auto;
+    padding: 2px;
+  }
+
+  .embed-error {
+    margin: 0;
+    padding: 10px 12px;
+    color: var(--field-rose-strong);
+    font-size: 13px;
+    line-height: 1.35;
+    background: var(--bg-elevated);
+  }
+
+  @media (max-width: 640px) {
+    .embed-root {
+      padding: 6px;
+    }
+  }
+}

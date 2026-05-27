@@ -23,7 +23,8 @@ export type FormatKey =
   | "aug-ascii"
   | "ksy"
   | "svg"
-  | "png";
+  | "png"
+  | "iframe";
 
 export type ImportResult = {
   packet: PsmlPacket;
@@ -121,6 +122,13 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
     exportable: true,
     extension: "png",
     mime: "image/png",
+  },
+  {
+    id: "iframe",
+    label: "iframe HTML",
+    exportable: true,
+    extension: "html",
+    mime: "text/html",
   },
 ];
 

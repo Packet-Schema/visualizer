@@ -37,10 +37,9 @@
   --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
-  /* Category color tokens — exposed to Tailwind so the editor and badges can
-     write `bg-field-rose`, `text-field-green`, etc. without dropping back to
-     an inline style. The raw `--field-*` variables stay in place because the
-     diagram cell fill uses them directly through `var(--cell-fill)`. */
+  /* Category color tokens — exposed to Tailwind so the editor, badges, legend,
+     hex strip, and export pipeline can keep sharing the app theme tokens. The
+     live diagram cells use Tailwind's built-in palette classes directly. */
   --color-field-blue: var(--field-blue);
   --color-field-indigo: var(--field-indigo);
   --color-field-violet: var(--field-violet);
@@ -128,6 +127,7 @@ code {
 @import "./styles/encryption.css";
 @import "./styles/drawer.css";
 @import "./styles/theme-toggle.css";
+@import "./styles/embed.css";
 /* ==========================================================================
    Reduced motion
    ========================================================================== */

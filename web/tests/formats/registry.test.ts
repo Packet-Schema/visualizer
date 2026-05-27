@@ -41,6 +41,8 @@ describe("format registry shape", () => {
     expect(IMPORTABLE_FORMATS).not.toContain("rfc-ascii");
     expect(EXPORTABLE_FORMATS).toContain("svg");
     expect(EXPORTABLE_FORMATS).toContain("png");
+    expect(EXPORTABLE_FORMATS).toContain("iframe");
+    expect(IMPORTABLE_FORMATS).not.toContain("iframe");
   });
 
   it("looks up adapters by id and throws on unknown", () => {
@@ -114,10 +116,12 @@ A Frame is formatted as follows:
     expect(Array.isArray(result.warnings)).toBe(true);
   });
 
-  it("svg/png are export-only selector entries without text renderers", () => {
+  it("svg/png/iframe are export-only selector entries without text renderers", () => {
     expect(getFormat("svg").render).toBeUndefined();
     expect(getFormat("png").render).toBeUndefined();
+    expect(getFormat("iframe").render).toBeUndefined();
     expect(getFormat("svg").exportable).toBe(true);
     expect(getFormat("png").exportable).toBe(true);
+    expect(getFormat("iframe").exportable).toBe(true);
   });
 });

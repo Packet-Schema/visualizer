@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
 vi.mock("@/lib/diagram-satori", async () => {
   return {
     renderToSvgString: vi.fn(async (element: React.ReactElement) => {
@@ -77,6 +81,7 @@ afterEach(() => {
   }
   mounted = [];
   document.documentElement.setAttribute("data-theme", "light");
+  window.history.replaceState({}, "", "/");
 });
 
 describe("ImportExportDrawer", () => {
@@ -109,6 +114,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
         onClose={() => {}}
@@ -149,6 +155,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
         onClose={() => {}}
@@ -201,6 +208,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
         onClose={() => {}}
@@ -260,6 +268,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
         onClose={() => {}}
@@ -286,5 +295,70 @@ describe("ImportExportDrawer", () => {
     if (previewDiv?.innerHTML.length ?? 0 > 0) {
       expect(previewDiv?.innerHTML).toContain('data-bg="light-bg"');
     }
+  });
+});
+
+describe("ImportExportDrawer iframe export", () => {
+  it("fills the textarea with iframe HTML for the selected packet", async () => {
+    window.history.pushState({}, "", "/viewer?preset=ipv4");
+
+    const packet = {
+      name: 'Demo "Packet" & <One>',
+      rowBits: 8,
+      fields: [{ id: "a", name: "A", bits: 8 }],
+    } as const;
+    const layout = {
+      totalBits: 8,
+      cells: [
+        {
+          field: packet.fields[0],
+          bitsTotal: 8,
+          row: 0,
+          startBit: 0,
+          endBit: 7,
+          segmentIndex: 0,
+          totalSegments: 1,
+          isFirst: true,
+          isLast: true,
+          fieldStartOffset: 0,
+          fieldEndOffset: 7,
+        },
+      ],
+    };
+    const buildShareUrl = vi.fn(
+      () => "https://packet-view.example/view?psml=encoded&controllers.x=1",
+    );
+    const { container } = mount(
+      <ImportExportDrawer
+        open={true}
+        mode="export"
+        packet={packet as never}
+        buildShareUrl={buildShareUrl}
+        controllers={{}}
+        layout={layout as never}
+        onClose={() => {}}
+        onImport={() => {}}
+      />,
+    );
+
+    const formatSelect =
+      container.querySelectorAll<HTMLSelectElement>("select")[1];
+    await act(async () => {
+      formatSelect.value = "iframe";
+      formatSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const textarea = container.querySelector("textarea");
+    expect(buildShareUrl).toHaveBeenCalled();
+    expect(textarea?.value).toContain("<iframe");
+    expect(textarea?.value).toContain(
+      'title="Demo &quot;Packet&quot; &amp; &lt;One&gt; packet diagram"',
+    );
+    expect(textarea?.value).toContain(
+      "https://packet-view.example/embed?psml=encoded&amp;controllers.x=1",
+    );
+    expect(textarea?.value).toContain('height="280"');
+    expect(container.querySelector(".diagram-export-preview")).toBeNull();
   });
 });
