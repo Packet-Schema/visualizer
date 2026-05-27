@@ -22,7 +22,7 @@ const FALLBACK_PRESET_KEY = "ipv4";
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;
 const OG_MARGIN = 60;
-const FONT_NAME = "Geist";
+const FONT_NAME = "LINE Seed JP";
 
 function getDefaultPreset() {
   const primary = PRESETS[FALLBACK_PRESET_KEY];
