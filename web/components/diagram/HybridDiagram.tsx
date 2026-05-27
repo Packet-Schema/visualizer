@@ -8,7 +8,7 @@ import type {
   SubCell,
   SubField,
 } from "@/lib/psml/renderer";
-import { categoryColor } from "@/lib/render-tokens";
+import { categoryCellColorClasses } from "@/lib/render-tokens";
 import { rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
 import { tlvBaseId } from "@/components/field-details/tlv-cell-id";
 import { LockIcon } from "@/components/diagram/diagram-badges";
@@ -253,7 +253,6 @@ function FieldCellImpl({
   const span = cell.endBit - cell.startBit + 1;
   const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
   const variableNote = cell.field.variable ? ", variable-length" : "";
-  const fill = categoryColor(cell.field);
   // Encryption-decoration props are written to the rendered cell on PSML 0.3
   // packets. Wire mode collapses to one `encrypted` block; semantic mode emits
   // child fields tagged with `encryptedParentId`. `headerProtected` is a
@@ -263,17 +262,16 @@ function FieldCellImpl({
   const isHeaderProtected = cell.headerProtected === true;
   const encryptionTitle = cell.encryptedContextNote ?? undefined;
 
-  // CSS custom properties drive the cell's column span (animatable) and
-  // category fill color. The span class also hands `--cell-span` to CSS in
-  // case a downstream rule needs it.
+  // CSS custom properties drive the cell's column span (animatable). Cell fill
+  // color is assigned with Tailwind palette classes in `className`.
   const style: CSSProperties = {
     gridColumn: `span ${span}`,
-    ["--cell-fill" as string]: fill,
     ["--cell-span" as string]: String(span),
   };
 
   const className = [
     "cell field-cell",
+    categoryCellColorClasses(cell.field, isSelected),
     isSelected ? "selected" : "",
     cell.field.variable ? "variable" : "",
     cell.isFirst ? "" : "continuation",
@@ -434,7 +432,7 @@ function SubfieldRow({
             tabIndex={-1}
             // .subfield-cell class kept so PacketViewer's roving keydown
             // handler can target it via querySelectorAll.
-            className={`subfield-cell${isSubSelected ? " selected" : ""}${sub.isFirst ? "" : " continuation"} dark:text-white`}
+            className={`subfield-cell${isSubSelected ? " selected" : ""}${sub.isFirst ? "" : " continuation"} dark:bg-black/70 dark:text-white`}
             aria-label={`${sub.subfield.name} (subfield of ${parent.name}), ${sub.bitsTotal} bit${sub.bitsTotal === 1 ? "" : "s"}${isSubSelected ? ", selected" : ""}`}
             data-field-id={`${parent.id}:${sub.subfield.id}`}
             data-parent-field-id={parent.id}
