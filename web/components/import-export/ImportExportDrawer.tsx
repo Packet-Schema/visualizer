@@ -279,7 +279,6 @@ export default function ImportExportDrawer({
               packet={packet}
               layout={layout}
               theme={theme}
-              fontFamily="LINE Seed JP"
               targetHeight={height}
               transparentBackground={transparentBackground}
             />

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 
 const FONT_NAME = "LINE Seed JP";
-const FONT_FAMILY = "LINE Seed JP, system-ui, sans-serif";
 
 /**
  * Renders a React element to SVG using Satori in the browser.
