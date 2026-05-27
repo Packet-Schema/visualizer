@@ -7,11 +7,11 @@ import {
   SourcePane,
   Toolbar,
 } from "@/components/custom-packet-studio";
-import type { EditAction, EditState } from "@/lib/psml/edit-reducer";
+import type { EditAction, EditState } from "@/lib/psdl/edit-reducer";
 import type {
-  Container as PsmlContainer,
-  Field as PsmlField,
-} from "@/lib/psml/types";
+  Container as PsdlContainer,
+  Field as PsdlField,
+} from "@/lib/psdl/types";
 import type { StudioView } from "./ui-state-reducer";
 
 type Props = {
@@ -60,25 +60,25 @@ export default function StudioPanel({
       {view === "form" ? (
         <>
           <ol className="mt-3 flex flex-col gap-2 list-none p-0">
-            {state.packet.body.map((node: PsmlContainer, i: number) => (
+            {state.packet.body.map((node: PsdlContainer, i: number) => (
               <li key={containerId(node, i)}>
                 {isLeafField(node) ? (
                   <FieldRow
-                    field={node as PsmlField}
+                    field={node as PsdlField}
                     path={[i]}
                     dispatch={dispatch}
                     siblingFieldIds={state.packet.body
                       .filter(isLeafField)
-                      .map((n) => (n as PsmlField).id)}
+                      .map((n) => (n as PsdlField).id)}
                   />
                 ) : (
                   <ContainerRow
-                    container={node as PsmlContainer}
+                    container={node as PsdlContainer}
                     path={[i]}
                     dispatch={dispatch}
                     siblingFieldIds={state.packet.body
                       .filter(isLeafField)
-                      .map((n) => (n as PsmlField).id)}
+                      .map((n) => (n as PsdlField).id)}
                   />
                 )}
               </li>
@@ -89,7 +89,7 @@ export default function StudioPanel({
               constraints={state.packet.constraints ?? []}
               fieldIds={state.packet.body
                 .filter(isLeafField)
-                .map((n) => (n as PsmlField).id)}
+                .map((n) => (n as PsdlField).id)}
               dispatch={dispatch}
             />
           </div>
@@ -107,12 +107,12 @@ export default function StudioPanel({
   );
 }
 
-function isLeafField(node: PsmlContainer): boolean {
+function isLeafField(node: PsdlContainer): boolean {
   const k = (node as { kind?: string }).kind;
   return !k || k === "field";
 }
 
-function containerId(node: PsmlContainer, fallback: number): string {
+function containerId(node: PsdlContainer, fallback: number): string {
   const id = (node as { id?: string }).id;
   return id ?? `node-${fallback}`;
 }

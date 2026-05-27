@@ -9,8 +9,8 @@
 /**
  * `CSS.escape` polyfill — jsdom doesn't ship one, so we mirror the MDN
  * implementation closely enough that our selectors stay valid against any
- * id `validatePsmlPacket` accepts. The earlier replace-list missed
- * whitespace / control characters (PSML ids are validated as non-empty
+ * id `validatePsdlPacket` accepts. The earlier replace-list missed
+ * whitespace / control characters (PSDL ids are validated as non-empty
  * strings, so a newline is technically legal), which made
  * `querySelector(All)` throw a `DOMException: invalid selector` whenever
  * such an id reached the diagram (Copilot review).

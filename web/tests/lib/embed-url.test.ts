@@ -7,7 +7,7 @@ import {
   estimateEmbedIframeHeight,
   parseEmbedThemeParam,
 } from "@/lib/embed-url";
-import type { ResolvedLayout } from "@/lib/psml/renderer";
+import type { ResolvedLayout } from "@/lib/psdl/renderer";
 
 describe("embed URL params", () => {
   it("parses supported theme values", () => {

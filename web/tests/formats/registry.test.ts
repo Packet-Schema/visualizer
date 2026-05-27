@@ -12,7 +12,7 @@ import {
   getFormat,
   type FormatKey,
 } from "../../lib/formats/registry";
-import { PRESETS } from "../../lib/psml/presets";
+import { PRESETS } from "../../lib/psdl/presets";
 
 describe("format registry shape", () => {
   it("exposes every format with id, label, extension and mime", () => {
@@ -59,8 +59,8 @@ describe("extToFormat", () => {
     }
   });
 
-  it("prefers the longer compound extension (.psml.json over .json)", () => {
-    expect(extToFormat("foo.psml.json")).toBe("json");
+  it("prefers the longer compound extension (.psdl.json over .json)", () => {
+    expect(extToFormat("foo.psdl.json")).toBe("json");
   });
 
   it("falls back to the friendly .json alias", () => {

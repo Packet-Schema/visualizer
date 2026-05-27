@@ -11,7 +11,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import TlvEditor from "@/components/field-details/TlvEditor";
-import type { Field, TlvCatalogEntry, TlvInstance } from "@/lib/psml/renderer";
+import type { Field, TlvCatalogEntry, TlvInstance } from "@/lib/psdl/renderer";
 
 let mounted: { container: HTMLDivElement; root: Root }[] = [];
 

@@ -1,6 +1,6 @@
 import { useMemo, type CSSProperties } from "react";
 
-import type { ResolvedLayout } from "@/lib/psml/renderer";
+import type { ResolvedLayout } from "@/lib/psdl/renderer";
 import {
   categoryCellColorClasses,
   categoryTailwindGradientColor,

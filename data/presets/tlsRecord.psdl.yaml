@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TLS Record Layer
+rowBits: 8
+byteOrder: Network byte order (big-endian, MSB-first). The 16-bit Length is split here as high byte then low byte.
+description: TLS record layer header (RFC 8446 §5.1). 5-byte fixed header that frames every TLS record on the wire.
+body:
+  - id: type
+    name: Content Type
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: What kind of record this carries — drives demultiplexing inside the TLS stack. e.g. 20=ChangeCipherSpec, 21=Alert, 22=Handshake (ClientHello/ServerHello/...), 23=ApplicationData (encrypted HTTP traffic), 24=Heartbeat. [RFC 8446 §5.1]
+  - id: versionMajor
+    name: Version (Major)
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: Legacy record-version major byte — always 0x03 from SSL 3.0 through TLS 1.3. The actual negotiated version lives in the Handshake messages, not here.
+  - id: versionMinor
+    name: Version (Minor)
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: Legacy record-version minor byte. 0x01=TLS 1.0, 0x03=TLS 1.2. TLS 1.3 still sends 0x0303 here so middleboxes that hard-code TLS 1.2 don't drop the packet. [RFC 8446 §5.1]
+  - id: lengthHi
+    name: Length (high byte)
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: High byte of the 16-bit big-endian fragment length — receiver uses (Hi << 8) | Lo to know how many bytes follow this header. Max 2^14 + 256 bytes for a TLSCiphertext fragment.
+  - id: lengthLo
+    name: Length (low byte)
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Low byte of the 16-bit big-endian fragment length. Combined with the high byte to give the total bytes of TLS fragment that follow.

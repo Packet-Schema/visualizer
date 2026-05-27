@@ -1,0 +1,140 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OSPFv2 Hello Packet
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first).
+description: OSPFv2 Hello packet (RFC 2328 Appendix A.3.1 / A.3.2). 24-byte OSPF common header followed by the Hello-specific body, sent over IP protocol 89 to the AllSPFRouters (224.0.0.5) or AllDRouters (224.0.0.6) multicast group. Hello packets discover neighbors and maintain adjacencies; the Neighbor list at the tail enumerates every router from which a valid Hello has been received during the last RouterDeadInterval.
+body:
+  - id: version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 2
+    doc: OSPF protocol version. Always 2 for OSPFv2 (OSPFv3 for IPv6 uses a separate packet format). [RFC 2328 §A.3.1]
+  - id: packetType
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 1
+    doc: OSPF packet type. 1=Hello (this preset), 2=Database Description, 3=Link State Request, 4=Link State Update, 5=Link State Acknowledgment. [RFC 2328 §A.3.1]
+  - id: packetLength
+    name: Packet Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Length of the OSPF packet in bytes, including the 24-byte common header. For a Hello with N neighbors = 24 + 20 + 4 × N. [RFC 2328 §A.3.1]
+  - id: routerId
+    name: Router ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the originating router. Written in dotted-quad form like an IPv4 address; conventionally chosen as the largest IP address configured on the router, or a manually assigned value. Must be unique within the OSPF routing domain. [RFC 2328 §A.3.1]
+  - id: areaId
+    name: Area ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the OSPF area this packet belongs to. 0.0.0.0 is the backbone area. Two routers will only become neighbors if their Area IDs match. [RFC 2328 §A.3.1]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: Standard IP checksum (one's complement of one's-complement 16-bit sum) over the entire OSPF packet excluding the 64-bit Authentication field. [RFC 2328 §A.3.1]
+  - id: authType
+    name: Authentication Type
+    type: { kind: int, bits: 16 }
+    category: type
+    defaultValue: 0
+    doc: Authentication scheme applied per-interface. 0=Null (no authentication), 1=Simple password, 2=Cryptographic (MD5/HMAC). [RFC 2328 §D.1]
+  - id: authentication
+    name: Authentication
+    type: { kind: bits, n: 64 }
+    category: identifier
+    doc: 64-bit authentication payload whose meaning is set by Authentication Type. Null→zero; Simple→ASCII password padded with zeros; Cryptographic→2-byte reserved (0) || 1-byte Key ID || 1-byte Auth Data Length || 4-byte cryptographic sequence number, with the actual MAC appended after the packet. [RFC 2328 §D.3]
+  - id: networkMask
+    name: Network Mask
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: Subnet mask of the interface this Hello was sent on (dotted-quad on the wire). Two routers will only become neighbors if their Network Masks match on a non-point-to-point link. Set to 0.0.0.0 on unnumbered point-to-point and virtual links. [RFC 2328 §A.3.2]
+  - id: helloInterval
+    name: HelloInterval
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 10
+    doc: Interval in seconds between successive Hello packets on this interface. Default 10 s on broadcast / point-to-point links, 30 s on NBMA links. Two routers' HelloInterval values must match to become neighbors. [RFC 2328 §A.3.2]
+  - kind: group
+    id: optionsBits
+    name: Options
+    children:
+      - id: opt_dn1
+        name: "*"
+        type: { kind: bits, n: 1 }
+        category: reserved
+        doc: Unused bit (high-order). Transmitted as zero, ignored on receipt. [RFC 2328 §A.2]
+      - id: opt_dn0
+        name: "*"
+        type: { kind: bits, n: 1 }
+        category: reserved
+        doc: Unused bit. Transmitted as zero, ignored on receipt. [RFC 2328 §A.2]
+      - id: opt_dc
+        name: DC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Demand Circuit support — router handles demand-driven (e.g. dial-up) circuits and the associated LSA suppression. [RFC 1793]
+      - id: opt_ea
+        name: EA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: External-Attributes-LSA support. Originally proposed for BGP-via-OSPF redistribution; in practice always 0. [RFC 2328 §A.2]
+      - id: opt_np
+        name: N/P
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: When set, indicates the router supports Type-7 (NSSA) LSAs. Used in Database Description packets to negotiate NSSA behaviour; reset (0) in Hello packets except when used for NSSA-specific signalling. [RFC 1587]
+      - id: opt_mc
+        name: MC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Multicast Capability — router forwards IP multicast datagrams per the MOSPF specification. [RFC 1584]
+      - id: opt_e
+        name: E
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: External Routing capability — router can flood AS-external-LSAs. Must be reset for stub areas; Hello packets carrying different E-bit values do not form an adjacency. [RFC 2328 §A.2]
+      - id: opt_t
+        name: T
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: TOS capability — router supports the historical TOS-based routing of RFC 1583. Deprecated; transmitted as zero in modern deployments. [RFC 1583]
+  - id: routerPriority
+    name: Router Priority
+    type: { kind: int, bits: 8 }
+    category: identifier
+    defaultValue: 1
+    doc: Per-interface priority used to elect the Designated Router. Higher value wins, ties broken by larger Router ID. Priority 0 means "never become DR or BDR". [RFC 2328 §A.3.2]
+  - id: routerDeadInterval
+    name: Router Dead Interval
+    type: { kind: int, bits: 32 }
+    category: identifier
+    defaultValue: 40
+    doc: Seconds before a neighbor that has stopped sending Hellos is declared down. Conventionally 4 × HelloInterval. Must match between two routers for them to become neighbors. [RFC 2328 §A.3.2]
+  - id: designatedRouter
+    name: Designated Router
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: Interface address of the Designated Router on this segment (dotted-quad on the wire). 0.0.0.0 if no DR has been elected. The DR centralises LSA flooding on broadcast / NBMA links to reduce adjacency mesh size. [RFC 2328 §A.3.2]
+  - id: backupDesignatedRouter
+    name: Backup Designated Router
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: Interface address of the Backup Designated Router (dotted-quad). 0.0.0.0 if no BDR has been elected. The BDR takes over instantly if the DR fails. [RFC 2328 §A.3.2]
+  - kind: repeat
+    id: neighbors
+    name: Neighbor List
+    category: variable
+    doc: Zero or more 32-bit Router IDs of neighbors from whom a valid Hello has been received within the last RouterDeadInterval. The two-way state is established once a router sees its own ID listed here in a neighbor's Hello. [RFC 2328 §A.3.2]
+    element:
+      id: neighborRecord
+      fields:
+        - id: neighborId
+          name: Neighbor Router ID
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Router ID of one neighbor. [RFC 2328 §A.3.2]
+    count: { kind: ref, field: ospfNeighborCount }

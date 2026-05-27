@@ -1,12 +1,12 @@
-// PSML RFC-style ASCII exporter — well-formedness across every preset, the
+// PSDL RFC-style ASCII exporter — well-formedness across every preset, the
 // canonical IPv4 inline snapshot, the trailing-partial-row Ethernet
 // regression, and label-truncation behaviour for the field-line printer.
 
 import { describe, expect, it } from "vitest";
 import { toAscii } from "../../lib/formats/rfc-ascii";
-import { initialEnv, normalize } from "../../lib/psml/normalize";
-import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
-import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psml/types";
+import { initialEnv, normalize } from "../../lib/psdl/normalize";
+import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets";
+import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psdl/types";
 
 function envWithRefs(p: Packet): PacketEnv {
   const env = initialEnv(p);
@@ -181,7 +181,7 @@ describe("toAscii — UDP layout (sanity)", () => {
   });
 });
 
-describe("toAscii — PSML 0.3 Encrypted container", () => {
+describe("toAscii — PSDL 0.3 Encrypted container", () => {
   const enc: Encrypted = {
     kind: "encrypted",
     id: "enc",
@@ -237,7 +237,7 @@ describe("toAscii — PSML 0.3 Encrypted container", () => {
   });
 });
 
-describe("toAscii — PSML 0.3 Varint type", () => {
+describe("toAscii — PSDL 0.3 Varint type", () => {
   it("auto-seeds worst-case width (64 bits for QUIC) when env omits it", () => {
     const pkt: Packet = {
       name: "V",
@@ -409,7 +409,7 @@ describe("toAscii — PSML 0.3 Varint type", () => {
 describe("toAscii — invariants vs normalize", () => {
   // The invariant "rendered rows == ceil(totalBits / rowBits)" only holds for
   // presets whose layout is a flat sequence of byte-aligned fields. Presets
-  // containing an Encrypted container (PSML 0.3+) intentionally inflate the
+  // containing an Encrypted container (PSDL 0.3+) intentionally inflate the
   // rendering with a "~Encrypted Payload~" marker plus interior plaintext
   // padding, breaking the cheap row arithmetic. Skip those by id rather than
   // by deeper container inspection so the invariant stays load-bearing for
@@ -428,7 +428,7 @@ describe("toAscii — invariants vs normalize", () => {
       const text = toAscii(pkt, env);
       // Cheap sanity: count the field lines (one per row excluding the
       // header trio) and compare against ceil(total/rowBits) row count.
-      // PSML 0.4 Optional placeholder rows (`~ (Optional X) ~`) do not consume
+      // PSDL 0.4 Optional placeholder rows (`~ (Optional X) ~`) do not consume
       // any bits, so they're filtered out of the row-count comparison.
       const rowCount = Math.ceil(total / pkt.rowBits);
       const fieldLines = text
@@ -441,8 +441,8 @@ describe("toAscii — invariants vs normalize", () => {
   });
 });
 
-// PSML 0.4 — adapter decorations for the new primitives.
-describe("toAscii — PSML 0.4 decorations", () => {
+// PSDL 0.4 — adapter decorations for the new primitives.
+describe("toAscii — PSDL 0.4 decorations", () => {
   it("emits an `~ (Optional <name>) ~` row when the predicate is falsy", () => {
     const pkt: Packet = {
       name: "Opt",

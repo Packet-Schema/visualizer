@@ -16,7 +16,7 @@
 
 import { CATEGORY_TO_TOKEN } from "./constants";
 import { createExportTheme } from "./colors";
-import type { Cell, Field, ResolvedLayout } from "./psml/renderer";
+import type { Cell, Field, ResolvedLayout } from "./psdl/renderer";
 import {
   LAYOUT,
   LAYOUT_DERIVED,

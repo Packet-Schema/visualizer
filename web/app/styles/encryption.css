@@ -1,6 +1,6 @@
 @layer components {
   /* ==========================================================================
-   Encryption decoration (PSML 0.3)
+   Encryption decoration (PSDL 0.3)
 
    Wire-mode encrypted blocks render as one opaque field with a diagonal
    stripe pattern + a small lock icon top-right. The opacity reduction

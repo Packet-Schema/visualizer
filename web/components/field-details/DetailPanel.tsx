@@ -4,7 +4,7 @@ import type {
   CategoryToken,
   ControllerState,
   Packet,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 
 import { resolveSelection } from "./selection-resolver";
 

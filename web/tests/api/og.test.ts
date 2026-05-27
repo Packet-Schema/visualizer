@@ -50,7 +50,7 @@ describe("OG API endpoint", () => {
 
   it("should render fallback image for oversized packets", async () => {
     const oversizedParams = new URLSearchParams({
-      packet: "A".repeat(10000), // Oversized PSML
+      packet: "A".repeat(10000), // Oversized PSDL
     });
     const request = new NextRequest(
       `http://localhost/api/og?${oversizedParams.toString()}`,
