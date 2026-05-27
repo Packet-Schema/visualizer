@@ -214,6 +214,27 @@ export const DARK_UI_THEME: UITheme = {
 };
 
 /**
+ * Tailwind palette values (400 shade) for each field token.
+ * Single source of truth: UI (via --field-* CSS vars) and Satori both read from here.
+ * To change a color, update the mapping here — UI and export stay in sync automatically.
+ *
+ * Token → Tailwind scale mapping:
+ *   blue=sky  indigo=indigo  violet=violet  teal=cyan  green=emerald
+ *   amber=amber  orange=orange  rose=rose  slate=slate
+ */
+const FIELD_PALETTE: DiagramTheme["fieldPalette"] = {
+  blue: "oklch(74.6% 0.16 232.661)", // sky-400
+  indigo: "oklch(67.3% 0.182 276.935)", // indigo-400
+  violet: "oklch(70.2% 0.183 293.541)", // violet-400
+  teal: "oklch(78.9% 0.154 211.53)", // cyan-400
+  green: "oklch(76.5% 0.177 163.223)", // emerald-400
+  amber: "oklch(82.8% 0.189 84.429)", // amber-400
+  orange: "oklch(75% 0.183 55.934)", // orange-400
+  rose: "oklch(71.2% 0.194 13.428)", // rose-400
+  slate: "oklch(70.4% 0.04 256.788)", // slate-400
+};
+
+/**
  * Light theme diagram colors.
  */
 export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
@@ -233,17 +254,7 @@ export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
   fieldFillOpacity: 0.78,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
-  fieldPalette: {
-    blue: "oklch(70% 0.14 255)",
-    indigo: "oklch(68% 0.16 280)",
-    violet: "oklch(70% 0.16 310)",
-    teal: "oklch(74% 0.11 195)",
-    green: "oklch(78% 0.13 145)",
-    amber: "oklch(82% 0.13 85)",
-    orange: "oklch(74% 0.14 50)",
-    rose: "oklch(72% 0.14 18)",
-    slate: "oklch(72% 0.02 270)",
-  },
+  fieldPalette: FIELD_PALETTE,
 };
 
 /**
@@ -266,15 +277,5 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   fieldFillOpacity: 0.85,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
-  fieldPalette: {
-    blue: "oklch(74% 0.14 255)",
-    indigo: "oklch(72% 0.17 280)",
-    violet: "oklch(74% 0.17 310)",
-    teal: "oklch(78% 0.11 195)",
-    green: "oklch(80% 0.14 145)",
-    amber: "oklch(85% 0.14 85)",
-    orange: "oklch(78% 0.15 50)",
-    rose: "oklch(76% 0.15 18)",
-    slate: "oklch(78% 0.02 270)",
-  },
+  fieldPalette: FIELD_PALETTE,
 };
