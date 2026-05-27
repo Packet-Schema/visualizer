@@ -61,6 +61,6 @@
 
 ## 参照ドキュメント
 
-- PSML の概要や詳細は `docs/psml-cheatsheet.md` と `docs/psml-0.4.md` を参照する。
+- PSDL の概要や詳細は `docs/psdl-cheatsheet.md` と `docs/psdl-0.4.md` を参照する。
 - リポジトリ構成や実装場所の把握には `docs/architecture.md` を参照する。
 - テストの書き方や方針は `docs/testing.md` を参照する。

@@ -1,4 +1,4 @@
-import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Cell, Packet, ResolvedLayout } from "@/lib/psdl/renderer";
 import {
   rowsFor,
   cellVisual,

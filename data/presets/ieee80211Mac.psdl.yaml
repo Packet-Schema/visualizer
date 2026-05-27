@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IEEE 802.11 MAC Header (Data Frame)
+rowBits: 32
+byteOrder: LE
+description: IEEE 802.11 Data Frame MAC header (IEEE 802.11-2020 §9.2.4). 24-byte basic form (Frame Control 2 + Duration/ID 2 + Address 1/2/3 18 + Sequence Control 2). Address 4 (6 bytes) appears when To-DS=1 AND From-DS=1 (WDS / 4-address mode). HT Control (4 bytes) appears when the +HTC/Order bit is set. QoS Control (2 bytes) for QoS Data subtypes (Type=Data, Subtype 0x8..0xF) is documented but not modelled — it would sit between Sequence Control / Address 4 and the frame body. FCS (4-byte CRC32) at the very end of the MAC frame is also omitted; this preset is the header only. The 802.11 MAC is transmitted little-endian on the air, so packet-level byteOrder is LE (matching the PCIe TLP "mixed endian" pattern of declaring the field-level convention up-front).
+body:
+  - kind: group
+    id: frameControl
+    name: Frame Control
+    children:
+      - id: protocolVersion
+        name: Protocol Version
+        type: { kind: int, bits: 2 }
+        category: type
+        defaultValue: 0
+        doc: 802.11 MAC protocol version. Always 0 for all revisions of IEEE 802.11 through 2020; a non-zero value signals a future incompatible protocol and frames carrying it are silently dropped by current stations. [IEEE 802.11-2020 §9.2.4.1.1]
+      - id: frameType
+        name: Type
+        type: { kind: int, bits: 2 }
+        category: type
+        defaultValue: 2
+        doc: "Top-level frame class. 0=Management (Beacon, Probe, Association, Authentication, Deauthentication, ...), 1=Control (RTS, CTS, ACK, Block-ACK, ...), 2=Data (this preset's focus — carries higher-layer payloads), 3=Extension (DMG / S1G beacons and similar later additions). [IEEE 802.11-2020 §9.2.4.1.3]"
+      - id: frameSubtype
+        name: Subtype
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 0
+        doc: "Frame variant within the Type. For Type=Data, common subtypes are 0=Data, 4=Null (no data), 8=QoS Data, 12=QoS Null. Subtypes 0x8..0xF (high bit set) are the QoS variants — when present, a 2-byte QoS Control field is inserted between Sequence Control (or Address 4 if it appears) and the frame body. This preset does NOT model QoS Control; see the preset description. [IEEE 802.11-2020 §9.2.4.1.3 / Table 9-1]"
+      - id: toDS
+        name: To DS
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Frame is destined for the Distribution System (i.e. sent from a STA to its AP for forwarding). Combined with From-DS selects the address-field interpretation: (0,0)=IBSS / direct STA-to-STA, (0,1)=AP→STA, (1,0)=STA→AP, (1,1)=WDS (AP-to-AP, four-address mode — enables Address 4). [IEEE 802.11-2020 §9.2.4.1.4 / Table 9-3]"
+      - id: fromDS
+        name: From DS
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Frame originates from the Distribution System. See To-DS for the joint interpretation of the (To-DS, From-DS) pair. When both bits are 1 the frame uses four addresses (Address 4 present). [IEEE 802.11-2020 §9.2.4.1.5]
+      - id: moreFragments
+        name: More Frag
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Set when this MSDU/MMPDU is fragmented and another fragment follows. The receiver reassembles using Sequence Number (same value across fragments) and Fragment Number (incrementing). Cleared on the last fragment and on unfragmented frames. [IEEE 802.11-2020 §9.2.4.1.6]
+      - id: retry
+        name: Retry
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Set in a retransmission of a Data or Management frame. Receivers use it together with Sequence Control to discard duplicates that arrive after the original was successfully delivered. Always 0 in Control frames. [IEEE 802.11-2020 §9.2.4.1.7]
+      - id: powerManagement
+        name: Pwr Mgt
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Indicates the power-management state the sending STA will be in *after* this frame exchange completes. 1=Power Save, 0=Active. The AP uses this to buffer downstream frames for sleeping STAs and announce them via TIM in Beacons. Always 0 in frames sent by an AP. [IEEE 802.11-2020 §9.2.4.1.8]
+      - id: moreData
+        name: More Data
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: AP→STA only — set when the AP has additional buffered frames queued for a power-saving STA, prompting the STA to stay awake (or send another PS-Poll / trigger frame) instead of returning to sleep. [IEEE 802.11-2020 §9.2.4.1.9]
+      - id: protectedFrame
+        name: Protected
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Set when the frame body is encrypted (WEP, TKIP, CCMP, GCMP). When set, a cipher-specific header (e.g. 8-byte CCMP header) precedes the ciphertext in the frame body. Management frames may also set this bit when management-frame protection (PMF, 802.11w) is in use. [IEEE 802.11-2020 §9.2.4.1.10]
+      - id: order
+        name: +HTC/Order
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Dual meaning. In a non-QoS Data frame this is the legacy 'strict ordering' bit (transmit MSDUs in order). In a QoS Data or Management frame it is the '+HTC' bit indicating that a 4-byte HT Control field follows Sequence Control (or QoS Control, when present). This preset models the +HTC interpretation: when Order=1, the optional HT Control field at the tail of the header is emitted. [IEEE 802.11-2020 §9.2.4.1.11]"
+  - id: durationId
+    name: Duration / ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Dual-purpose 16-bit field. In most Data and Management frames it carries the NAV duration in microseconds (bit 15 = 0; bits 14..0 = duration) — the time the medium will remain busy for this exchange, used by other STAs to update their Network Allocation Vector and defer transmission. In PS-Poll Control frames (bit 15 = 1, bit 14 = 1) it instead carries the sender's 14-bit Association ID. [IEEE 802.11-2020 §9.2.4.2]"
+  - id: address1
+    name: Address 1 (RA)
+    type: { kind: bits, n: 48 }
+    category: addressing
+    doc: "48-bit IEEE EUI-48 Receiver Address — the immediate next-hop on the wireless medium. Always present and always the RA. For unicast Data frames the RA equals either the destination STA's MAC (To-DS=0) or the AP's BSSID (To-DS=1); for group-addressed frames it is a multicast / broadcast MAC. [IEEE 802.11-2020 §9.2.4.3 / Table 9-3]"
+  - id: address2
+    name: Address 2 (TA)
+    type: { kind: bits, n: 48 }
+    category: addressing
+    doc: "48-bit Transmitter Address — the MAC of the STA that put this frame on the air. Present in all Data and Management frames (and in most Control frames). In a frame from a STA going up to the AP, TA = STA MAC; in a frame from the AP going down, TA = AP BSSID. [IEEE 802.11-2020 §9.2.4.4 / Table 9-3]"
+  - id: address3
+    name: Address 3
+    type: { kind: bits, n: 48 }
+    category: addressing
+    doc: "48-bit address whose role depends on (To-DS, From-DS). (0,0) IBSS: BSSID of the IBSS. (0,1) AP→STA: Source Address (the original DS-side sender). (1,0) STA→AP: Destination Address (the final DS-side receiver). (1,1) WDS: Destination Address (with Address 4 carrying the Source Address). [IEEE 802.11-2020 §9.2.4.5 / Table 9-3]"
+  - kind: group
+    id: sequenceControl
+    name: Sequence Control
+    children:
+      - id: fragmentNumber
+        name: Frag #
+        type: { kind: bits, n: 4 }
+        category: identifier
+        doc: 4-bit fragment number, starting at 0 for the first (or only) fragment of an MSDU / MMPDU and incrementing by 1 for each subsequent fragment. Stays at 0 for unfragmented frames. Combined with Sequence Number to detect duplicates and reassemble fragments. [IEEE 802.11-2020 §9.2.4.4]
+      - id: sequenceNumber
+        name: Seq #
+        type: { kind: bits, n: 12 }
+        category: identifier
+        doc: 12-bit modulo-4096 sequence number assigned by the sender per traffic-identifier (TID). Identical across all fragments of one MSDU. Receivers use it with Address 2 (TA) and Fragment Number to discard duplicates of retransmitted frames. [IEEE 802.11-2020 §9.2.4.4]
+  - kind: optional
+    when:
+      kind: op
+      op: "*"
+      a: { kind: ref, field: toDS }
+      b: { kind: ref, field: fromDS }
+    field:
+      id: address4
+      name: Address 4 (SA, WDS)
+      type: { kind: bits, n: 48 }
+      category: addressing
+      doc: "48-bit Source Address, present only in four-address (WDS) frames where both To-DS and From-DS are 1. In WDS the four addresses are RA (Address 1) = next-hop AP, TA (Address 2) = previous-hop AP, DA (Address 3) = final destination, SA (Address 4) = original source. Modelled here as Optional with `when = To-DS * From-DS` because PSDL 0.4 has no boolean AND — the product of two 1-bit fields is 1 iff both are 1. [IEEE 802.11-2020 §9.2.4.6 / Table 9-3]"
+  - kind: optional
+    when: { kind: ref, field: order }
+    field:
+      id: htControl
+      name: HT Control
+      type: { kind: bits, n: 32 }
+      category: flags
+      doc: "4-byte High-Throughput Control field, present iff the +HTC/Order bit in Frame Control is 1. Carries link-adaptation, calibration, MIMO power-save, and (in later amendments) VHT/HE control subfields used to coordinate high-throughput PHY features between transmitter and receiver. The first bit (VHT/HE) distinguishes the HT variant from the VHT/HE variant of the field. [IEEE 802.11-2020 §9.2.4.6 / §9.2.4.6a]"

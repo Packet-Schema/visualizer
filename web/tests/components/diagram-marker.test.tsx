@@ -10,9 +10,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import HybridDiagram from "@/components/diagram/HybridDiagram";
-import { PRESETS } from "@/lib/psml/presets.generated";
-import { resolveLayout } from "@/lib/psml/layout";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { PRESETS } from "@/lib/psdl/presets.generated";
+import { resolveLayout } from "@/lib/psdl/layout";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 let activeRoot: Root | null = null;
 let activeContainer: HTMLElement | null = null;
@@ -43,7 +43,7 @@ async function mount(ui: React.ReactNode) {
 describe("HybridDiagram override marker", () => {
   it("marks the IHL cell as overridable on IPv4", async () => {
     const ipv4 = PRESETS.ipv4!;
-    const packet = psmlToRenderer(ipv4);
+    const packet = psdlToRenderer(ipv4);
     const layout = resolveLayout(ipv4, {
       env: new Map<string, number>([
         ["ihl", 5],

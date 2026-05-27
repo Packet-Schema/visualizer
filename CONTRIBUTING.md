@@ -1,7 +1,7 @@
 # Contributing — Packet View
 
 ようこそ! このドキュメントは「最初に読む」前提で書かれています。長く読む必要はなく、
-詰まった所だけ拾い読みしてください。深い仕様は [`docs/psml-0.4.md`](./docs/psml-0.4.md)
+詰まった所だけ拾い読みしてください。深い仕様は [`docs/psdl-0.4.md`](./docs/psdl-0.4.md)
 と [`docs/architecture.md`](./docs/architecture.md) にあります。
 
 ## 環境構築
@@ -15,7 +15,7 @@ npm run dev          # http://localhost:3000
 ```
 
 `npm run dev` は内部で `npm run build:presets` を先に走らせるので、
-`data/presets/*.psml.yaml` を編集した直後でも追加コマンドは不要です。
+`data/presets/*.psdl.yaml` を編集した直後でも追加コマンドは不要です。
 
 ## 主要コマンド (すべて `web/` で実行)
 
@@ -23,7 +23,7 @@ npm run dev          # http://localhost:3000
 | --- | --- |
 | `npm run dev` | 開発サーバ (Next.js) を起動 |
 | `npm run build` | 本番ビルド (Cloudflare Workers 向け静的出力) |
-| `npm run build:presets` | `data/presets/*.psml.yaml` → `web/lib/psml/presets.generated.ts` を再生成 |
+| `npm run build:presets` | `data/presets/*.psdl.yaml` → `web/lib/psdl/presets.generated.ts` を再生成 |
 | `npm test` | Vitest スイート (約 265 ケース) |
 | `npm run test:watch` | Watch モード |
 | `npm run test:coverage` | カバレッジレポート |
@@ -32,7 +32,7 @@ npm run dev          # http://localhost:3000
 
 ## preset の追加
 
-ワンライナーで言うと「`data/presets/<key>.psml.yaml` を作って `npm run build:presets`」
+ワンライナーで言うと「`data/presets/<key>.psdl.yaml` を作って `npm run build:presets`」
 だけです。step-by-step の手順は [`docs/adding-a-preset.md`](./docs/adding-a-preset.md)
 にあります。
 
@@ -66,6 +66,6 @@ PR テンプレが自動で挿入されるので、関連 issue・変更点・�
 
 ## 困ったら
 
-- PSML の書き方 → [`docs/psml-cheatsheet.md`](./docs/psml-cheatsheet.md) (1 ページ要約) → 詳しくは [`docs/psml-0.4.md`](./docs/psml-0.4.md)
+- PSDL の書き方 → [`docs/psdl-cheatsheet.md`](./docs/psdl-cheatsheet.md) (1 ページ要約) → 詳しくは [`docs/psdl-0.4.md`](./docs/psdl-0.4.md)
 - どこに何があるか → [`docs/architecture.md`](./docs/architecture.md)
 - テストの書き方 → [`docs/testing.md`](./docs/testing.md)

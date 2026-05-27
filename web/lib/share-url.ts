@@ -4,54 +4,54 @@ import {
 } from "lz-string";
 
 import { fromJson, toJson } from "./formats/json";
-import { validatePsmlPacket } from "./psml/validate";
-import type { ControllerState } from "./psml/renderer";
-import type { Packet as PsmlPacket, PacketEnv } from "./psml/types";
+import { validatePsdlPacket } from "./psdl/validate";
+import type { ControllerState } from "./psdl/renderer";
+import type { Packet as PsdlPacket, PacketEnv } from "./psdl/types";
 
 export const CONTROLLER_PARAM_PREFIX = "controllers.";
 export const SHARE_URL_WARN_BYTES = 2048;
 // Maximum URL length to ensure compatibility across browsers and social media platforms.
 // Exceeding this limit may cause truncation or rendering issues when sharing links.
 export const SHARE_URL_MAX_LENGTH = 2048;
-export const SHARE_PARAM_KEYS = ["preset", "psml"] as const;
+export const SHARE_PARAM_KEYS = ["preset", "psdl"] as const;
 
 export type ParsedShareParams =
   | { kind: "none"; controllers: ControllerState; error?: string }
   | { kind: "preset"; presetKey: string; controllers: ControllerState }
-  | { kind: "psml"; packet: PsmlPacket; controllers: ControllerState };
+  | { kind: "psdl"; packet: PsdlPacket; controllers: ControllerState };
 
 export type BuildShareUrlOptions = {
   baseUrl: string | URL;
   packetKey: string;
-  packet: PsmlPacket;
+  packet: PsdlPacket;
   controllers: ControllerState;
   builtInKeys: Iterable<string>;
   defaultControllers?: ControllerState;
-  forcePsml?: boolean;
+  forcePsdl?: boolean;
 };
 
-export function encodePsmlParam(
-  packet: PsmlPacket,
+export function encodePsdlParam(
+  packet: PsdlPacket,
   controllers: ControllerState = {},
 ): string {
   const json = toJson(packet, controllersToEnv(controllers));
   return compressToEncodedURIComponent(json);
 }
 
-export function decodePsmlParam(value: string): {
-  packet: PsmlPacket;
+export function decodePsdlParam(value: string): {
+  packet: PsdlPacket;
   controllers: ControllerState;
 } {
   const json = decompressFromEncodedURIComponent(value);
   if (!json) {
     // User-facing — surfaced verbatim by parseShareParams' error toast.
-    // Avoid leaking internal terms ("PSML") and tell the user what to do.
+    // Avoid leaking internal terms ("PSDL") and tell the user what to do.
     throw new Error(
       "Invalid shared link — the packet data could not be read. Please verify the link is complete.",
     );
   }
   const { packet, env } = fromJson(json);
-  validatePsmlPacket(packet);
+  validatePsdlPacket(packet);
   return { packet, controllers: envToControllers(env) };
 }
 
@@ -61,18 +61,18 @@ export function parseShareParams(
 ): ParsedShareParams {
   const params = typeof input === "string" ? new URLSearchParams(input) : input;
   const controllers = parseControllers(params);
-  const psml = params.get("psml");
+  const psdl = params.get("psdl");
 
-  if (psml) {
+  if (psdl) {
     try {
-      return { kind: "psml", ...decodePsmlParam(psml) };
+      return { kind: "psdl", ...decodePsdlParam(psdl) };
     } catch (err) {
-      // `decodePsmlParam` already throws a curated user-facing message
+      // `decodePsdlParam` already throws a curated user-facing message
       // ("Invalid shared link — …"); wrapping it again here produced
       // the duplicated phrasing "Invalid shared link: Invalid shared
       // link — …" the user saw in the toast (Copilot review).
       // Pass the inner message through verbatim. Errors from downstream
-      // codecs (`fromJson` / `validatePsmlPacket`) are short enough to
+      // codecs (`fromJson` / `validatePsdlPacket`) are short enough to
       // be informative on their own — surfacing them as-is is the
       // closest we can get to actionable feedback without inventing
       // ad-hoc copy on every adapter failure.
@@ -103,7 +103,7 @@ export function parseShareParams(
     };
   }
 
-  // Backwards compatibility: URLs with only controller params (no preset/psml)
+  // Backwards compatibility: URLs with only controller params (no preset/psdl)
   // are interpreted as ipv4 preset. This handles URLs generated before explicit
   // preset parameters were always included.
   if (Object.keys(controllers).length > 0) {
@@ -120,12 +120,12 @@ export function buildShareUrl({
   controllers,
   builtInKeys,
   defaultControllers,
-  forcePsml = false,
+  forcePsdl = false,
 }: BuildShareUrlOptions): string {
   const url = new URL(baseUrl.toString());
   const params = new URLSearchParams();
   const known = new Set(builtInKeys);
-  const usePreset = !forcePsml && known.has(packetKey);
+  const usePreset = !forcePsdl && known.has(packetKey);
 
   if (usePreset) {
     // Always include preset parameter for explicit clarity, even for ipv4.
@@ -136,7 +136,7 @@ export function buildShareUrl({
       params.set(`${CONTROLLER_PARAM_PREFIX}${key}`, String(value));
     }
   } else {
-    params.set("psml", encodePsmlParam(packet, controllers));
+    params.set("psdl", encodePsdlParam(packet, controllers));
   }
 
   url.search = params.toString();

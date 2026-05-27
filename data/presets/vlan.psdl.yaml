@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: Ethernet II + 802.1Q VLAN Tag
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). The TCI (PCP/DEI/VID) is packed into a single 16-bit big-endian field after TPID.
+description: "Ethernet II frame header with an inserted 802.1Q VLAN tag (IEEE 802.1Q-2018). 18-byte header: a 4-byte tag (TPID + TCI) sits between Source MAC and the original EtherType."
+body:
+  - id: dstMac
+    name: Destination MAC
+    type:
+      kind: bits
+      n: 48
+    category: addressing
+    doc: 48-bit destination MAC — same role as in a plain Ethernet frame. The VLAN tag does not change addressing, only the broadcast domain on the switch.
+  - id: srcMac
+    name: Source MAC
+    type:
+      kind: bits
+      n: 48
+    category: addressing
+    doc: 48-bit sender MAC. Switches learn it per-VLAN, so the same MAC can theoretically be reused in different VLANs.
+  - id: tpid
+    name: TPID
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: Tag Protocol Identifier — the magic value that announces a VLAN tag is present. 0x8100 for a single 802.1Q tag; 0x88A8 marks an outer 802.1ad (Q-in-Q / provider) tag.
+  - id: pcp
+    name: PCP
+    type:
+      kind: bits
+      n: 3
+    category: type
+    doc: Priority Code Point — 3-bit IEEE 802.1p class-of-service (0–7) that switches use to pick output queues. e.g. 5 for voice, 6 for video, 0 for best-effort.
+  - id: dei
+    name: DEI
+    type:
+      kind: bits
+      n: 1
+    category: flags
+    doc: Drop Eligible Indicator — when set, marks the frame as a candidate to drop first during congestion. Formerly CFI in legacy 802.1Q.
+  - id: vid
+    name: VLAN ID
+    type:
+      kind: bits
+      n: 12
+    category: identifier
+    doc: 12-bit VLAN identifier (0–4095) — selects the virtual LAN this frame belongs to. 0=priority-tagged only (no VLAN), 1=default VLAN, 4095=reserved.
+  - id: etherType
+    name: EtherType
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: EtherType of the payload after the VLAN tag — the same field that would have appeared in an untagged frame. e.g. 0x0800=IPv4, 0x86DD=IPv6, 0x0806=ARP.

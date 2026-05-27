@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
-import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Packet, ResolvedLayout } from "@/lib/psdl/renderer";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
 const mockTheme: DiagramExportTheme = {

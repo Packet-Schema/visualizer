@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ICMPv6 Echo
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). The Identifier and Sequence Number are 16-bit big-endian.
+description: ICMP for IPv6 echo request/reply layout (RFC 4443). Carried in IPv6 with Next Header=58.
+body:
+  - id: type
+    name: Type
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: ICMPv6 message type. e.g. 128=Echo Request, 129=Echo Reply, 1=Destination Unreachable, 3=Time Exceeded, 135/136=NDP Neighbor Solicitation/Advertisement (the IPv6 equivalent of ARP). [RFC 4443]
+  - id: code
+    name: Code
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: "Sub-type refining the Type. 0 for Echo Request/Reply; for Type=1 (Destination Unreachable): 0=no route, 3=address unreachable, 4=port unreachable."
+  - id: checksum
+    name: Checksum
+    type:
+      kind: bits
+      n: 16
+    category: checksum
+    doc: 16-bit one's-complement checksum over the ICMPv6 message plus an IPv6 pseudo-header (src/dst, length, next header). Mandatory in IPv6. [RFC 4443 §2.3]
+  - id: identifier
+    name: Identifier
+    type:
+      kind: bits
+      n: 16
+    category: identifier
+    doc: Echo identifier — lets the sender pair replies with outstanding requests; commonly the ping process's PID.
+  - id: sequence
+    name: Sequence Number
+    type:
+      kind: bits
+      n: 16
+    category: identifier
+    doc: Echo sequence number — incremented per ping so dropped responses are visible.

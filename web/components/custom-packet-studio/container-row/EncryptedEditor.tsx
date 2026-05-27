@@ -1,5 +1,5 @@
-import type { Container, Encrypted } from "@/lib/psml/types";
-import { isField } from "@/lib/psml/utils";
+import type { Container, Encrypted } from "@/lib/psdl/types";
+import { isField } from "@/lib/psdl/utils";
 
 import ExprBuilder from "../ExprBuilder";
 
@@ -7,7 +7,7 @@ import { Frame, inputStyle, type Patch } from "./shared";
 
 /**
  * Walk the plaintext body recursively and return every reachable leaf
- * Field id. `validatePsmlPacket` resolves `headerProtected` entries
+ * Field id. `validatePsdlPacket` resolves `headerProtected` entries
  * against this same set (leaves under Group / Repeat / Switch /
  * Optional are all valid targets), so the UI must mirror it — picking
  * a Group / Repeat id from the surface level would fail validation, and
@@ -17,7 +17,7 @@ import { Frame, inputStyle, type Patch } from "./shared";
 function collectLeafFieldIds(containers: Container[]): string[] {
   // De-dup via Set: a Switch fan-out can declare the same leaf id
   // (`type`, `length`, …) in multiple case arms, and we'd otherwise
-  // render the checkbox twice. `validatePsmlPacket` resolves against a
+  // render the checkbox twice. `validatePsdlPacket` resolves against a
   // Set, so the editor mirrors that semantics — the first occurrence
   // dictates checkbox order to keep the layout stable across renders
   // (Copilot review).
