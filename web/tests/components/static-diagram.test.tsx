@@ -170,7 +170,10 @@ describe("StaticDiagram", () => {
       theme: mockTheme,
     });
 
-    expect(result.props.style).toHaveProperty("fontFamily", "LINE Seed JP");
+    expect(result.props.style).toHaveProperty(
+      "fontFamily",
+      "LINE Seed JP, system-ui, sans-serif",
+    );
   });
 
   it("renders cells for each row", () => {
