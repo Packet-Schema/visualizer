@@ -28,6 +28,7 @@ export const fetchWithRetry = async (
 export async function waitForServer(
   url: string,
   timeoutMs: number = 60000,
+  process?: ChildProcess,
 ): Promise<void> {
   const startTime = Date.now();
   const interval = 1000;
@@ -35,6 +36,13 @@ export async function waitForServer(
   let lastError: Error | null = null;
 
   while (Date.now() - startTime < timeoutMs) {
+    // Bail early if the server process has already exited
+    if (process && process.exitCode !== null) {
+      throw new Error(
+        `Server process exited with code ${process.exitCode} before becoming ready`,
+      );
+    }
+
     attempts++;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -105,7 +113,12 @@ export async function startPreviewServer(): Promise<ChildProcess> {
   console.log("Starting Cloudflare worker preview server...");
   const devServer = spawn("npm", ["run", "preview:start"], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+    env: {
+      ...process.env,
+      NEXT_TELEMETRY_DISABLED: "1",
+      // Point wrangler config to a writable temp dir (avoids EROFS in read-only envs)
+      WRANGLER_HOME: "/tmp/.wrangler",
+    },
   });
 
   devServer.stdout?.on("data", (data) => {

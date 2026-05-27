@@ -14,7 +14,7 @@ describe.sequential("Homepage and Meta Tags", () => {
 
   beforeAll(async () => {
     devServer = await startPreviewServer();
-    await waitForServer(BASE_URL, 90000);
+    await waitForServer(BASE_URL, 90000, devServer);
   }, 120000);
 
   afterAll(async () => {

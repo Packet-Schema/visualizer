@@ -3,22 +3,19 @@ import { test, expect, type Page } from "@playwright/test";
 test.describe("Preset Auto-Apply Behavior", () => {
   test("should have default title when accessing without preset", async ({
     page,
+    request,
   }) => {
-    // Go to homepage without preset parameter
-    // Use domcontentloaded to check title before JavaScript fully executes
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    // Verify SSR title via raw HTML response (timing-independent)
+    const response = await request.get("/");
+    const html = await response.text();
+    expect(html).toContain("<title>Packet Visualizer</title>");
 
-    // Server-generated title (before useEffect runs)
-    let title = await page.title();
-    expect(title).toBe("Packet Visualizer");
-
-    // Wait for dynamic content to load and useEffect to update title
+    // Load the page and wait for client-side hydration to update the title
+    await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    // Client-side JavaScript has executed and updated the title
-    // useEffect updates it from "Packet Visualizer" to "IPv4 Header | Packet Visualizer"
-    title = await page.title();
-    expect(title).toBe("IPv4 Header | Packet Visualizer");
+    // Client-side useEffect updates title to include default preset
+    await expect(page).toHaveTitle("IPv4 Header | Packet Visualizer");
 
     // URL should also be updated to include preset parameter (client-side)
     const finalUrl = page.url();
