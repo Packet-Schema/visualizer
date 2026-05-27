@@ -67,6 +67,7 @@ export function generateThemeCssVariables(): string {
     `--field-stroke: ${LIGHT_DIAGRAM_THEME.fieldStroke}`,
     `--field-label: ${LIGHT_DIAGRAM_THEME.fieldLabel}`,
     `--field-sublabel: ${LIGHT_DIAGRAM_THEME.fieldSublabel}`,
+    `--field-sublabel-text: ${LIGHT_DIAGRAM_THEME.subfieldLabel}`,
     `--field-continuation: ${LIGHT_DIAGRAM_THEME.fieldContinuation}`,
     ...Object.entries(LIGHT_DIAGRAM_THEME.fieldPalette).map(
       ([token, color]) => `--field-${token}: ${color}`,
@@ -115,6 +116,7 @@ export function generateThemeCssVariables(): string {
     `--field-stroke: ${DARK_DIAGRAM_THEME.fieldStroke}`,
     `--field-label: ${DARK_DIAGRAM_THEME.fieldLabel}`,
     `--field-sublabel: ${DARK_DIAGRAM_THEME.fieldSublabel}`,
+    `--field-sublabel-text: ${DARK_DIAGRAM_THEME.subfieldLabel}`,
     `--field-continuation: ${DARK_DIAGRAM_THEME.fieldContinuation}`,
     ...Object.entries(DARK_DIAGRAM_THEME.fieldPalette).map(
       ([token, color]) => `--field-${token}: ${color}`,
