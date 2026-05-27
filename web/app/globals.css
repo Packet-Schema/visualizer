@@ -127,6 +127,7 @@ code {
 @import "./styles/encryption.css";
 @import "./styles/drawer.css";
 @import "./styles/theme-toggle.css";
+@import "./styles/embed.css";
 /* ==========================================================================
    Reduced motion
    ========================================================================== */
