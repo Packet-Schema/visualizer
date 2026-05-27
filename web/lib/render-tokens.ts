@@ -94,16 +94,26 @@ export function categoryColor(
 // Static maps required — Tailwind scans source for literal class strings.
 // Template literals like `bg-field-${token}/80` are invisible to the scanner
 // and would be dropped from the generated CSS.
+//
+// Opacity uses CSS variables so light (0.78) and dark (0.85) values from
+// LIGHT/DARK_UI_THEME.fieldFillOpacity are applied automatically without
+// dark: modifiers. The variables are injected by generateThemeCssVariables().
 const FIELD_CELL_COLOR_CLASSES: Record<ColorToken, string> = {
-  blue: "bg-field-blue/80 hover:bg-field-blue/95",
-  indigo: "bg-field-indigo/80 hover:bg-field-indigo/95",
-  violet: "bg-field-violet/80 hover:bg-field-violet/95",
-  teal: "bg-field-teal/80 hover:bg-field-teal/95",
-  green: "bg-field-green/80 hover:bg-field-green/95",
-  amber: "bg-field-amber/80 hover:bg-field-amber/95",
-  orange: "bg-field-orange/80 hover:bg-field-orange/95",
-  rose: "bg-field-rose/80 hover:bg-field-rose/95",
-  slate: "bg-field-slate/80 hover:bg-field-slate/95",
+  blue: "bg-field-blue/[var(--field-fill-opacity)] hover:bg-field-blue/[var(--field-fill-opacity-hover)]",
+  indigo:
+    "bg-field-indigo/[var(--field-fill-opacity)] hover:bg-field-indigo/[var(--field-fill-opacity-hover)]",
+  violet:
+    "bg-field-violet/[var(--field-fill-opacity)] hover:bg-field-violet/[var(--field-fill-opacity-hover)]",
+  teal: "bg-field-teal/[var(--field-fill-opacity)] hover:bg-field-teal/[var(--field-fill-opacity-hover)]",
+  green:
+    "bg-field-green/[var(--field-fill-opacity)] hover:bg-field-green/[var(--field-fill-opacity-hover)]",
+  amber:
+    "bg-field-amber/[var(--field-fill-opacity)] hover:bg-field-amber/[var(--field-fill-opacity-hover)]",
+  orange:
+    "bg-field-orange/[var(--field-fill-opacity)] hover:bg-field-orange/[var(--field-fill-opacity-hover)]",
+  rose: "bg-field-rose/[var(--field-fill-opacity)] hover:bg-field-rose/[var(--field-fill-opacity-hover)]",
+  slate:
+    "bg-field-slate/[var(--field-fill-opacity)] hover:bg-field-slate/[var(--field-fill-opacity-hover)]",
 };
 
 const FIELD_CELL_SELECTED_COLOR_CLASSES: Record<ColorToken, string> = {
