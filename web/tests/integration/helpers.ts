@@ -158,11 +158,11 @@ export async function startPreviewServer(): Promise<ChildProcess> {
 }
 
 export async function exitProcess(
-  process: ChildProcess,
+  childProcess: ChildProcess,
   timeoutMs: number = 5000,
 ): Promise<void> {
   return new Promise((resolve) => {
-    if (!process.pid) {
+    if (!childProcess.pid) {
       console.log("[Cleanup] Process already exited");
       resolve();
       return;
@@ -176,24 +176,25 @@ export async function exitProcess(
       resolve();
     };
 
-    process.once("exit", exitHandler);
+    childProcess.once("exit", exitHandler);
 
     console.log("[Cleanup] Sending SIGTERM to process group");
     try {
-      // Kill the entire process group (negative pid) to ensure child processes are also terminated
-      process.kill("SIGTERM");
+      // Kill the entire process group using negative PID (-pid) to ensure all child processes are terminated
+      // This is necessary because we start with detached: true
+      process.kill(-childProcess.pid, "SIGTERM");
     } catch {
       // Process may already be dead
     }
 
     const killTimeout = setTimeout(() => {
       if (!exitedNormally) {
-        process.removeListener("exit", exitHandler);
+        childProcess.removeListener("exit", exitHandler);
         console.log(
           "[Cleanup] Process did not exit, sending SIGKILL to process group",
         );
         try {
-          process.kill("SIGKILL");
+          process.kill(-childProcess.pid, "SIGKILL");
         } catch {
           // Process may already be dead
         }
@@ -201,7 +202,7 @@ export async function exitProcess(
       }
     }, timeoutMs);
 
-    process.once("exit", () => {
+    childProcess.once("exit", () => {
       clearTimeout(killTimeout);
     });
   });
