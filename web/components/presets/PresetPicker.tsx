@@ -44,6 +44,7 @@ export default function PresetPicker({
       <span>Preset:</span>
       <select
         suppressHydrationWarning
+        data-testid="preset-picker"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="text-sm px-2.5 py-1.5 rounded-md border"

@@ -15,13 +15,17 @@
 //   here before extending the contract.
 
 import { CATEGORY_TO_TOKEN } from "./constants";
-import type {
-  Cell,
-  Field,
-  Packet,
-  ResolvedLayout,
-  SubCell,
-} from "./psdl/renderer";
+import { createExportTheme } from "./colors";
+import type { Cell, Field, ResolvedLayout } from "./psdl/renderer";
+import {
+  LAYOUT,
+  LAYOUT_DERIVED,
+  LIGHT_DIAGRAM_THEME,
+  DARK_DIAGRAM_THEME,
+} from "./theme";
+
+// Re-export LAYOUT and LAYOUT_DERIVED for backward compatibility
+export { LAYOUT, LAYOUT_DERIVED } from "./theme";
 
 export type DiagramExportTheme = {
   background: string;
@@ -34,66 +38,26 @@ export type DiagramExportTheme = {
   fieldLabel: string;
   fieldSublabel: string;
   fieldContinuation: string;
+  markerAccent: string;
+  markerAccentSoft: string;
+  subfieldBackground: string;
+  fieldFillOpacity: number;
+  rulerMinorOpacity: number;
+  subfieldBackgroundOpacity: number;
   fieldPalette: Record<string, string>;
-  resolveCssColor?: (name: string, fallback: string) => string;
 };
 
 export type DiagramThemeMode = "follow-ui" | "light" | "dark";
 
-export type DiagramSvgOptions = {
-  theme?: DiagramExportTheme;
-  bitWidth?: number;
-  transparentBackground?: boolean;
+export type CellVisual = {
+  fill: string;
+  fillOpacity: number;
+  stroke: string;
+  isDashed: boolean;
+  titleColor: string;
+  title: string;
+  subtitle: string;
 };
-
-const DEFAULT_THEME: DiagramExportTheme = {
-  background: "#ffffff",
-  rowEven: "#f5f7fb",
-  rowOdd: "#fbfcfe",
-  rulerTick: "#667085",
-  rulerLabel: "#475467",
-  accent: "#2563eb",
-  fieldStroke: "#344054",
-  fieldLabel: "#101828",
-  fieldSublabel: "#344054",
-  fieldContinuation: "#667085",
-  fieldPalette: {
-    blue: "#7fb7ff",
-    indigo: "#a8a6ff",
-    violet: "#d1a5ff",
-    teal: "#8ed7d1",
-    green: "#a8df9f",
-    amber: "#f3d77e",
-    orange: "#f7b27a",
-    rose: "#f4a1ae",
-    slate: "#c3c8d3",
-  },
-};
-
-const LAYOUT = {
-  padding: 16,
-  rulerHeight: 26,
-  rulerGap: 8,
-  rowHeight: 64,
-  rowGap: 6,
-  cellInset: 2,
-  subfieldHeight: 18,
-} as const;
-
-export { DEFAULT_THEME, LAYOUT };
-
-function xmlEscape(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function xmlAttribute(value: string): string {
-  return xmlEscape(value);
-}
 
 export function resolveToken(field: Field): string {
   if (field.category && CATEGORY_TO_TOKEN[field.category]) {
@@ -104,14 +68,13 @@ export function resolveToken(field: Field): string {
 
 export function fieldFill(field: Field, theme: DiagramExportTheme): string {
   const token = resolveToken(field);
-  if (theme.fieldPalette[token]) return theme.fieldPalette[token];
-  const cssVariable = token.match(/^var\((--[^)]+)\)$/);
-  return cssVariable
-    ? (theme.resolveCssColor?.(
-        cssVariable[1],
-        DEFAULT_THEME.fieldPalette.slate,
-      ) ?? cssColor(cssVariable[1], DEFAULT_THEME.fieldPalette.slate))
-    : token;
+  const color = theme.fieldPalette[token];
+  if (color) return color;
+  // Fallback: use the field's own color if it exists, otherwise use slate palette default
+  if (field.color && field.color in theme.fieldPalette) {
+    return theme.fieldPalette[field.color];
+  }
+  return theme.fieldPalette.slate;
 }
 
 export function rowsFor(layout: ResolvedLayout): Cell[][] {
@@ -127,32 +90,6 @@ export function rowsFor(layout: ResolvedLayout): Cell[][] {
     rows[cell.row].push(cell);
   }
   return rows;
-}
-
-export function rowY(row: number): number {
-  return (
-    LAYOUT.padding +
-    LAYOUT.rulerHeight +
-    LAYOUT.rulerGap +
-    row * (LAYOUT.rowHeight + LAYOUT.rowGap)
-  );
-}
-
-export function cellGeometry(cell: Cell, bitWidth: number) {
-  const x = LAYOUT.padding + cell.startBit * bitWidth + LAYOUT.cellInset;
-  const y = rowY(cell.row) + LAYOUT.cellInset;
-  const width =
-    (cell.endBit - cell.startBit + 1) * bitWidth - LAYOUT.cellInset * 2;
-  const height = LAYOUT.rowHeight - LAYOUT.cellInset * 2;
-  return { x, y, width, height };
-}
-
-function clipPathIdForCell(cell: Cell): string {
-  const encodedFieldId = Array.from(
-    cell.field.id,
-    (char) => char.codePointAt(0)?.toString(16).padStart(4, "0") ?? "fffd",
-  ).join("-");
-  return `cell-${cell.row}-${cell.segmentIndex}-${encodedFieldId}`;
 }
 
 export function textForCell(cell: Cell): { title: string; subtitle: string } {
@@ -173,337 +110,75 @@ export function textForCell(cell: Cell): { title: string; subtitle: string } {
   return { title, subtitle };
 }
 
-function renderSubfields(
-  subCells: SubCell[] | undefined,
-  cell: Cell,
-  bitWidth: number,
-  theme: DiagramExportTheme,
-): string {
-  if (!subCells?.length) return "";
-  const parent = cellGeometry(cell, bitWidth);
-  const y = parent.y + parent.height - LAYOUT.subfieldHeight - 5;
-  return subCells
-    .map((sub) => {
-      const x = LAYOUT.padding + sub.startBit * bitWidth + LAYOUT.cellInset + 4;
-      const width =
-        (sub.endBit - sub.startBit + 1) * bitWidth - LAYOUT.cellInset * 2 - 8;
-      const label = sub.isFirst ? xmlEscape(sub.subfield.name) : "";
-      return [
-        `<rect x="${x}" y="${y}" width="${Math.max(width, 1)}" height="${LAYOUT.subfieldHeight}" rx="5" fill="${xmlAttribute(theme.background)}" fill-opacity="0.52" stroke="${xmlAttribute(theme.fieldStroke)}" stroke-width="0.8" />`,
-        label
-          ? `<text x="${x + 6}" y="${y + 12}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldLabel)}" overflow="hidden">${label}</text>`
-          : "",
-      ].join("");
-    })
-    .join("");
-}
-
-function renderLockBadge(
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-): string {
-  const scale = size / 16;
-  return [
-    `<g transform="translate(${x} ${y}) scale(${scale})" fill="none" stroke="${xmlAttribute(color)}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">`,
-    '<rect x="3" y="7" width="10" height="7" rx="1.5" />',
-    '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />',
-    "</g>",
-  ].join("");
-}
-
-function renderCellBadges(
-  cell: Cell,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  theme: DiagramExportTheme,
-): string {
-  if (!cell.isFirst) return "";
-  const badges: string[] = [];
-  if (cell.encrypted === true) {
-    badges.push(renderLockBadge(x + width - 20, y + 6, 14, theme.accent));
-  }
-  if (cell.encryptedParentId) {
-    badges.push(
-      renderLockBadge(x + width - 14, y + height - 14, 10, theme.accent),
-    );
-  }
-  if (cell.headerProtected === true) {
-    badges.push(
-      `<text x="${x + width - 28}" y="${y + height - 6}" font-size="9" font-weight="700" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.accent)}">HP</text>`,
-    );
-  }
-  return badges.join("");
-}
-
-/**
- * Render the current packet diagram as a standalone, self-contained SVG
- * string. Every color is resolved to an attribute (no external CSS),
- * making the output safe to drop into `dangerouslySetInnerHTML`, save
- * as a file, or rasterize via {@link svgToPngBlob}.
- *
- * @param packet  Runtime packet (typically the rendered preset or the
- *                live studio packet for edit-mode exports).
- * @param layout  Pre-computed cell layout from `resolveLayout`.
- * @param options Theme override, per-bit pixel width, transparency.
- */
-export function buildDiagramSvg(
-  packet: Packet,
-  layout: ResolvedLayout,
-  options: DiagramSvgOptions = {},
-): string {
-  const theme = options.theme ?? DEFAULT_THEME;
-  const bitWidth = options.bitWidth ?? 24;
-  const transparentBackground = options.transparentBackground === true;
-  const rows = rowsFor(layout);
-  const packetFieldsById = new Map(
-    packet.fields.map((field) => [field.id, field]),
+export function isFieldOverridable(field: Field): boolean {
+  return !!(
+    field.controlsLength ||
+    field.tlv ||
+    field.chainCatalog ||
+    field.switchCases ||
+    field.varintEncoding ||
+    field.isBerLength ||
+    field.optionalGateFor ||
+    field.enumVariants
   );
-  const width = LAYOUT.padding * 2 + packet.rowBits * bitWidth;
-  const height =
+}
+
+export function cellVisual(
+  cell: Cell,
+  field: Field,
+  theme: DiagramExportTheme,
+): CellVisual {
+  const { title, subtitle } = textForCell(cell);
+  return {
+    fill: fieldFill(field, theme),
+    fillOpacity: theme.fieldFillOpacity,
+    stroke: cell.encryptedParentId ? theme.accent : theme.fieldStroke,
+    isDashed: cell.encrypted === true,
+    titleColor: cell.isFirst ? theme.fieldLabel : theme.fieldContinuation,
+    title,
+    subtitle,
+  };
+}
+
+export function naturalDiagramHeight(rowCount: number): number {
+  return (
     LAYOUT.padding * 2 +
     LAYOUT.rulerHeight +
     LAYOUT.rulerGap +
-    rows.length * LAYOUT.rowHeight +
-    Math.max(rows.length - 1, 0) * LAYOUT.rowGap;
-
-  const ruler = Array.from({ length: packet.rowBits }, (_, bit) => {
-    const x = LAYOUT.padding + bit * bitWidth;
-    const major = bit % 8 === 0;
-    const tickHeight = major ? 10 : 6;
-    const label =
-      bit % 4 === 0
-        ? `<text x="${x}" y="${LAYOUT.padding + 10}" text-anchor="middle" font-size="10" font-family="ui-monospace, SFMono-Regular, monospace" fill="${xmlAttribute(theme.rulerLabel)}">${bit}</text>`
-        : "";
-    return `${label}<line x1="${x}" y1="${LAYOUT.padding + LAYOUT.rulerHeight - tickHeight}" x2="${x}" y2="${LAYOUT.padding + LAYOUT.rulerHeight}" stroke="${xmlAttribute(theme.rulerTick)}" stroke-width="1" opacity="${major ? 1 : 0.6}" />`;
-  }).join("");
-
-  const body = rows
-    .map((cells, rowIndex) => {
-      const y = rowY(rowIndex);
-      const band = transparentBackground
-        ? ""
-        : `<rect x="${LAYOUT.padding}" y="${y}" width="${packet.rowBits * bitWidth}" height="${LAYOUT.rowHeight}" rx="8" fill="${xmlAttribute(rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd)}" />`;
-      const renderedCells = cells
-        .map((cell) => {
-          const {
-            x,
-            y: cy,
-            width: cw,
-            height: ch,
-          } = cellGeometry(cell, bitWidth);
-          const { title, subtitle } = textForCell(cell);
-          const escapedTitle = xmlEscape(title);
-          const escapedSubtitle = xmlEscape(subtitle);
-          const exportField = packetFieldsById.get(cell.field.id) ?? cell.field;
-          const fill = fieldFill(exportField, theme);
-          const dash = cell.encrypted ? ' stroke-dasharray="5 3"' : "";
-          const stroke = cell.encryptedParentId
-            ? theme.accent
-            : theme.fieldStroke;
-          // Note: SVG text attributes include overflow="hidden" and clip-path for text truncation.
-          // Attribute order does not affect rendering; kept for consistency with StaticDiagram.
-          return [
-            `<rect x="${x}" y="${cy}" width="${Math.max(cw, 1)}" height="${ch}" rx="10" fill="${xmlAttribute(fill)}" stroke="${xmlAttribute(stroke)}" stroke-width="1"${dash} />`,
-            `<text x="${x + 8}" y="${cy + 23}" font-size="12" font-weight="600" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(cell.isFirst ? theme.fieldLabel : theme.fieldContinuation)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedTitle}</text>`,
-            `<text x="${x + 8}" y="${cy + 40}" font-size="10" font-family="ui-sans-serif, system-ui, sans-serif" fill="${xmlAttribute(theme.fieldSublabel)}" overflow="hidden" clip-path="url(#${clipPathIdForCell(cell)})">${escapedSubtitle}</text>`,
-            renderCellBadges(cell, x, cy, cw, ch, theme),
-            renderSubfields(cell.subCells, cell, bitWidth, theme),
-          ].join("");
-        })
-        .join("");
-      return `${band}${renderedCells}`;
-    })
-    .join("");
-
-  const clipPaths = layout.cells
-    .map((cell) => {
-      const { x, y, width, height } = cellGeometry(cell, bitWidth);
-      return `<clipPath id="${clipPathIdForCell(cell)}"><rect x="${x + 4}" y="${y}" width="${Math.max(width - 8, 1)}" height="${height}" /></clipPath>`;
-    })
-    .join("");
-
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${xmlEscape(packet.name)} diagram">`,
-    `<defs>${clipPaths}</defs>`,
-    transparentBackground
-      ? ""
-      : `<rect width="${width}" height="${height}" fill="${xmlAttribute(theme.background)}" />`,
-    ruler,
-    body,
-    "</svg>",
-  ].join("");
+    rowCount * LAYOUT_DERIVED.rowBandHeight +
+    Math.max(rowCount - 1, 0) * LAYOUT.rowGap
+  );
 }
 
-function cssColor(name: string, fallback: string): string {
-  if (typeof document === "undefined" || !document.body) return fallback;
-  const probe = document.createElement("span");
-  probe.style.color = `var(${name})`;
-  probe.style.display = "none";
-  document.body.appendChild(probe);
-  const color = getComputedStyle(probe).color || fallback;
-  probe.remove();
-  return color;
-}
-
-type ThemeVariableMaps = {
-  light: Map<string, string>;
-  dark: Map<string, string>;
-};
-
-function collectThemeVariables(): ThemeVariableMaps {
-  const light = new Map<string, string>();
-  const dark = new Map<string, string>();
-  if (typeof document === "undefined") {
-    return { light, dark };
-  }
-
-  const hasCssLayerBlockRule = typeof CSSLayerBlockRule !== "undefined";
-
-  const visitRules = (rules: CSSRuleList): void => {
-    for (const rule of Array.from(rules)) {
-      if (rule instanceof CSSStyleRule) {
-        const selector = rule.selectorText;
-        const target =
-          selector.includes('[data-theme="dark"]') ||
-          selector === "[data-theme='dark']"
-            ? dark
-            : selector.includes(":root")
-              ? light
-              : null;
-        if (!target) continue;
-        for (const name of Array.from(rule.style)) {
-          if (!name.startsWith("--")) continue;
-          target.set(name, rule.style.getPropertyValue(name).trim());
-        }
-        continue;
-      }
-      if (
-        rule instanceof CSSMediaRule ||
-        (hasCssLayerBlockRule && rule instanceof CSSLayerBlockRule)
-      ) {
-        visitRules(rule.cssRules);
-      }
-    }
-  };
-
-  for (const sheet of Array.from(document.styleSheets)) {
-    try {
-      visitRules(sheet.cssRules);
-    } catch {
-      // Ignore cross-origin or inaccessible stylesheets.
-    }
-  }
-
-  return { light, dark };
-}
-
-function resolveThemeVariable(
-  maps: ThemeVariableMaps,
-  mode: DiagramThemeMode,
-  name: string,
-  fallback: string,
+export function rowBandColor(
+  rowIndex: number,
+  theme: DiagramExportTheme,
 ): string {
-  if (mode === "follow-ui") {
-    return cssColor(name, fallback);
-  }
-  const value =
-    (mode === "dark" ? maps.dark.get(name) : maps.light.get(name)) ??
-    maps.light.get(name) ??
-    fallback;
-  return value || fallback;
-}
-
-function readCssColorFromRoot(
-  root: ParentNode,
-  name: string,
-  fallback: string,
-): string {
-  if (typeof document === "undefined") return fallback;
-  const probe = document.createElement("span");
-  probe.style.color = `var(${name})`;
-  probe.style.display = "none";
-  root.appendChild(probe);
-  const color = getComputedStyle(probe).color || fallback;
-  probe.remove();
-  return color;
-}
-
-function buildTheme(
-  resolveCssColor: (name: string, fallback: string) => string,
-): DiagramExportTheme {
-  return {
-    background: resolveCssColor("--bg-elevated", DEFAULT_THEME.background),
-    rowEven: resolveCssColor("--row-band-even", DEFAULT_THEME.rowEven),
-    rowOdd: resolveCssColor("--row-band-odd", DEFAULT_THEME.rowOdd),
-    rulerTick: resolveCssColor("--ruler-tick", DEFAULT_THEME.rulerTick),
-    rulerLabel: resolveCssColor("--ruler-label", DEFAULT_THEME.rulerLabel),
-    accent: resolveCssColor("--accent", DEFAULT_THEME.accent),
-    fieldStroke: resolveCssColor("--field-stroke", DEFAULT_THEME.fieldStroke),
-    fieldLabel: resolveCssColor("--field-label", DEFAULT_THEME.fieldLabel),
-    fieldSublabel: resolveCssColor(
-      "--field-sublabel",
-      DEFAULT_THEME.fieldSublabel,
-    ),
-    fieldContinuation: resolveCssColor(
-      "--field-continuation",
-      DEFAULT_THEME.fieldContinuation,
-    ),
-    fieldPalette: Object.fromEntries(
-      Object.keys(DEFAULT_THEME.fieldPalette).map((token) => [
-        token,
-        resolveCssColor(`--field-${token}`, DEFAULT_THEME.fieldPalette[token]),
-      ]),
-    ),
-    resolveCssColor,
-  };
-}
-
-function readDiagramThemeFromRoot(root: ParentNode): DiagramExportTheme {
-  const resolveCssColor = (name: string, fallback: string): string =>
-    readCssColorFromRoot(root, name, fallback);
-
-  return buildTheme(resolveCssColor);
+  return rowIndex % 2 === 0 ? theme.rowEven : theme.rowOdd;
 }
 
 /**
  * Resolve a {@link DiagramExportTheme} for the requested mode.
  *
- * - `"follow-ui"`: reads the currently applied `:root` / `[data-theme]`
- *   variables from `document.body`, so a Dark UI exports a Dark image.
- * - `"light"` / `"dark"`: walks the stylesheets to find the requested
- *   palette without mutating `document.documentElement` (so picking
- *   "Light" while in Dark mode doesn't flash the page).
- *
- * Falls back to the bundled {@link DEFAULT_THEME} when no `document` is
- * available (SSR) or the required CSS variables aren't loaded.
+ * - `"follow-ui"`: returns the theme matching the current `data-theme` attribute
+ * - `"light"`: returns the light theme
+ * - `"dark"`: returns the dark theme
  */
 export function readDiagramTheme(mode: DiagramThemeMode): DiagramExportTheme {
-  if (typeof document === "undefined" || !document.body) {
-    return readDiagramThemeFromDocument();
+  if (mode === "dark") {
+    return createExportTheme(DARK_DIAGRAM_THEME);
   }
-
-  if (mode === "follow-ui") {
-    return readDiagramThemeFromRoot(document.body);
+  if (mode === "light") {
+    return createExportTheme(LIGHT_DIAGRAM_THEME);
   }
-
-  const maps = collectThemeVariables();
-  const resolveCssColor = (name: string, fallback: string): string =>
-    resolveThemeVariable(maps, mode, name, fallback);
-  return buildTheme(resolveCssColor);
-}
-
-export function readDiagramThemeFromDocument(): DiagramExportTheme {
-  if (typeof document === "undefined" || !document.body) {
-    return {
-      ...DEFAULT_THEME,
-      fieldPalette: { ...DEFAULT_THEME.fieldPalette },
-    };
+  // "follow-ui": read current theme from data-theme attribute
+  if (typeof document !== "undefined") {
+    const theme = document.documentElement.getAttribute("data-theme");
+    return createExportTheme(
+      theme === "dark" ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME,
+    );
   }
-  return readDiagramThemeFromRoot(document.body);
+  return createExportTheme(LIGHT_DIAGRAM_THEME);
 }
 
 export function downloadTextFile(
@@ -574,4 +249,68 @@ export async function svgToPngBlob(svg: string, scale: number): Promise<Blob> {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+const CSS_PROPERTY_MAP: Partial<Record<keyof typeof LAYOUT, string>> = {
+  padding: "--diagram-padding",
+  rulerHeight: "--diagram-ruler-height",
+  rulerGap: "--diagram-ruler-gap",
+  rowHeight: "--diagram-row-height",
+  rowPaddingVertical: "--diagram-row-padding-vertical",
+  rowGap: "--diagram-row-gap",
+  cellPaddingVertical: "--diagram-cell-padding-vertical",
+  cellPaddingHorizontal: "--diagram-cell-padding-horizontal",
+  cellInset: "--diagram-cell-inset",
+  subfieldHeight: "--subfield-height",
+  subfieldTextXOffset: "--subfield-text-x-offset",
+  subfieldTextYOffset: "--subfield-text-y-offset",
+  subfieldXPadding: "--subfield-x-padding",
+  subfieldWidthPadding: "--subfield-width-padding",
+  cellTitleTextYOffset: "--cell-title-text-y-offset",
+  cellSubtitleTextYOffset: "--cell-subtitle-text-y-offset",
+  cellSubtitleMarginTop: "--cell-subtitle-margin-top",
+  diagramGap: "--diagram-gap",
+  rowGap2: "--row-gap-2",
+  cellGap: "--cell-gap",
+  rowBorderRadius: "--row-border-radius",
+  cellBorderRadius: "--cell-border-radius",
+  subfieldBorderRadius: "--subfield-border-radius",
+  titleFontSize: "--title-font-size",
+  subtitleFontSize: "--subtitle-font-size",
+  subfieldFontSize: "--subfield-font-size",
+  majorTickHeight: "--major-tick-height",
+  minorTickHeight: "--minor-tick-height",
+  strokeWidthSubfield: "--stroke-width-subfield",
+  strokeWidthCell: "--stroke-width-cell",
+  strokeWidthBadge: "--stroke-width-badge",
+  badgeSizeLarge: "--badge-size-large",
+  badgeSizeSmall: "--badge-size-small",
+  badgeOffsetX: "--badge-offset-x",
+  badgeOffsetY: "--badge-offset-y",
+  badgeOffsetXSmall: "--badge-offset-x-small",
+  badgeOffsetYSmall: "--badge-offset-y-small",
+  badgeSvgViewBox: "--badge-svg-viewbox",
+  badgeSvgRectX: "--badge-svg-rect-x",
+  badgeSvgRectY: "--badge-svg-rect-y",
+  badgeSvgRectWidth: "--badge-svg-rect-width",
+  badgeSvgRectHeight: "--badge-svg-rect-height",
+  badgeSvgRectRadius: "--badge-svg-rect-radius",
+  loadingDotSize: "--loading-dot-size",
+  rulerMajorInterval: "--ruler-major-interval",
+  rulerLabelInterval: "--ruler-label-interval",
+  gridLineWidth: "--grid-line-width",
+  cellTitleFontWeight: "--cell-title-font-weight",
+  textAnchor: "--text-anchor",
+};
+
+export function generateLayoutCssVariables(): string {
+  const rules = Array.from(Object.entries(CSS_PROPERTY_MAP))
+    .map(([key, cssVar]) => {
+      const value = LAYOUT[key as keyof typeof LAYOUT];
+      // Only append 'px' for numeric values; skip string values like textAnchor
+      const cssValue = typeof value === "number" ? `${value}px` : String(value);
+      return `${cssVar}: ${cssValue};`;
+    })
+    .join("");
+  return `:root { ${rules} }`;
 }

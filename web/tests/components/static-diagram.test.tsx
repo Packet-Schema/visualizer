@@ -16,6 +16,12 @@ const mockTheme: DiagramExportTheme = {
   fieldLabel: "#000000",
   fieldSublabel: "#666666",
   fieldContinuation: "#cccccc",
+  markerAccent: "#d4548f",
+  markerAccentSoft: "#e8b4c8",
+  subfieldBackground: "#fafbfc",
+  fieldFillOpacity: 0.78,
+  rulerMinorOpacity: 0.55,
+  subfieldBackgroundOpacity: 0.52,
   fieldPalette: {
     type: "#ff6b6b",
     flag: "#4ecdc4",

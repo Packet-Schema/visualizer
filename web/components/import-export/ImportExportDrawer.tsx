@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  buildDiagramSvg,
   downloadBlobFile,
   downloadTextFile,
   readDiagramTheme,
   svgToPngBlob,
   type DiagramThemeMode,
 } from "@/lib/diagram-export";
+import { renderToSvgString } from "@/lib/diagram-satori";
+import { LAYOUT } from "@/lib/theme";
+import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 import {
   EXPORTABLE_FORMATS,
   FORMATS,
@@ -15,6 +17,10 @@ import {
   getFormat,
   type FormatKey,
 } from "@/lib/formats/registry";
+import {
+  buildIframeEmbedHtml,
+  estimateEmbedIframeHeight,
+} from "@/lib/embed-url";
 import {
   downloadBlob,
   extToFormat,
@@ -39,6 +45,8 @@ type Props = {
   mode: DrawerMode;
   /** Current packet (used to seed Export). */
   packet: Packet;
+  /** Lossless URL for the current packet/controller state (used by iframe export). */
+  buildShareUrl: () => string;
   /** Current controller state (used to seed Export). */
   controllers: ControllerState;
   /** Current resolved layout (used to export the live diagram). */
@@ -75,6 +83,7 @@ export default function ImportExportDrawer({
   open,
   mode,
   packet,
+  buildShareUrl,
   controllers,
   layout,
   onClose,
@@ -90,6 +99,7 @@ export default function ImportExportDrawer({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [pngScale, setPngScale] = useState(2);
   const [imageBusy, setImageBusy] = useState(false);
+  const [previewSvg, setPreviewSvg] = useState<string | null>(null);
 
   const drawerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -145,6 +155,17 @@ export default function ImportExportDrawer({
       return;
     }
     try {
+      if (format === "iframe") {
+        setText(
+          buildIframeEmbedHtml({
+            baseUrl: buildShareUrl(),
+            packetName: packet.name,
+            height: estimateEmbedIframeHeight(layout),
+          }),
+        );
+        setStatus(null);
+        return;
+      }
       // Lower the runtime packet to PSDL for the format hub. controllers is a
       // plain object keyed by controller id; PSDL's PacketEnv is a Map.
       const psdl = rendererToPsdl(packet);
@@ -163,7 +184,7 @@ export default function ImportExportDrawer({
         kind: "error",
       });
     }
-  }, [open, currentMode, format, packet, controllers]);
+  }, [open, currentMode, format, packet, buildShareUrl, controllers, layout]);
 
   const handleModeChange = useCallback(
     (next: DrawerMode) => {
@@ -225,18 +246,65 @@ export default function ImportExportDrawer({
   const isImageExportMode =
     currentMode === "export" && (format === "svg" || format === "png");
 
-  const previewSvg = useMemo(() => {
-    if (!isImageExportMode) return null;
-    return buildDiagramSvg(packet, layout, {
-      theme: readDiagramTheme(exportThemeMode),
-      bitWidth: diagramWidth,
-      transparentBackground,
-    });
+  // Generate preview SVG asynchronously using browser-side Satori
+  useEffect(() => {
+    const currentSession = exportSessionRef.current;
+    const renderPreview = async () => {
+      if (!open || !isImageExportMode) {
+        setPreviewSvg(null);
+        return;
+      }
+
+      try {
+        const theme = readDiagramTheme(exportThemeMode);
+
+        // Calculate preview dimensions based on bitWidth (match final export height for consistency)
+        const width = packet.rowBits * diagramWidth + LAYOUT.padding * 2;
+        const height = LAYOUT.imageExportHeight;
+
+        const diagramComponent = (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: transparentBackground
+                ? "transparent"
+                : theme.background,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <StaticDiagram
+              packet={packet}
+              layout={layout}
+              theme={theme}
+              targetHeight={height}
+              transparentBackground={transparentBackground}
+            />
+          </div>
+        );
+
+        const svg = await renderToSvgString(diagramComponent, width, height);
+        // Only set if this is still the latest render request
+        if (isImageExportMode && exportSessionRef.current === currentSession) {
+          setPreviewSvg(svg);
+        }
+      } catch (e) {
+        console.error("Failed to render preview SVG:", e);
+        if (exportSessionRef.current === currentSession) {
+          setPreviewSvg(null);
+        }
+      }
+    };
+
+    void renderPreview();
   }, [
     diagramWidth,
     exportThemeMode,
     isImageExportMode,
     layout,
+    open,
     packet,
     transparentBackground,
   ]);
@@ -245,11 +313,36 @@ export default function ImportExportDrawer({
     const exportSession = exportSessionRef.current;
     try {
       setImageBusy(true);
-      const svg = buildDiagramSvg(packet, layout, {
-        theme: readDiagramTheme(exportThemeMode),
-        bitWidth: diagramWidth,
-        transparentBackground,
-      });
+
+      const theme = readDiagramTheme(exportThemeMode);
+      const width = packet.rowBits * diagramWidth + LAYOUT.padding * 2;
+      const height = LAYOUT.imageExportHeight;
+
+      const diagramComponent = (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: transparentBackground
+              ? "transparent"
+              : theme.background,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <StaticDiagram
+            packet={packet}
+            layout={layout}
+            theme={theme}
+            targetHeight={height}
+            transparentBackground={transparentBackground}
+          />
+        </div>
+      );
+
+      const svg = await renderToSvgString(diagramComponent, width, height);
+
       if (!openRef.current || exportSessionRef.current !== exportSession) {
         return;
       }
