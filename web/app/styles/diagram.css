@@ -339,7 +339,7 @@
     font-family: var(--font-sans, system-ui), sans-serif;
     font-size: var(--subfield-font-size);
     font-weight: 600;
-    color: var(--field-label);
+    color: var(--field-sublabel-text);
     cursor: pointer;
     padding: 0 2px;
     transition:
