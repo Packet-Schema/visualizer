@@ -1,27 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import type { ChildProcess } from "node:child_process";
+import { describe, it, expect } from "vitest";
 import { JSDOM } from "jsdom";
-import {
-  BASE_URL,
-  fetchWithRetry,
-  waitForServer,
-  startPreviewServer,
-  exitProcess,
-} from "./helpers";
+import { BASE_URL, fetchWithRetry } from "./helpers";
 
-describe.sequential("Homepage and Meta Tags", () => {
-  let devServer: ChildProcess;
-
-  beforeAll(async () => {
-    devServer = await startPreviewServer();
-    await waitForServer(BASE_URL, 90000, devServer);
-  }, 120000);
-
-  afterAll(async () => {
-    if (devServer) {
-      await exitProcess(devServer);
-    }
-  });
+describe("Homepage and Meta Tags", () => {
 
   describe("Homepage access", () => {
     it("returns 200 status when accessing homepage", async () => {

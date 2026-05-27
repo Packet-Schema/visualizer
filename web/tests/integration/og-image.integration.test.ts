@@ -1,27 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import type { ChildProcess } from "node:child_process";
+import { describe, it, expect } from "vitest";
 import sharp from "sharp";
-import {
-  BASE_URL,
-  fetchWithRetry,
-  waitForServer,
-  startPreviewServer,
-  exitProcess,
-} from "./helpers";
+import { BASE_URL, fetchWithRetry } from "./helpers";
 
-describe.sequential("OG Image Download", () => {
-  let devServer: ChildProcess;
-
-  beforeAll(async () => {
-    devServer = await startPreviewServer();
-    await waitForServer(BASE_URL, 90000, devServer);
-  }, 120000);
-
-  afterAll(async () => {
-    if (devServer) {
-      await exitProcess(devServer);
-    }
-  });
+describe("OG Image Download", () => {
 
   it("downloads OG image with HTTP protocol", async () => {
     const url = `${BASE_URL}/api/og`;

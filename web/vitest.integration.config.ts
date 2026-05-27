@@ -11,5 +11,6 @@ export default defineConfig({
     ],
     testTimeout: 180000, // 3 minutes for integration tests (includes server startup)
     fileParallelism: false, // prevent port conflicts between test files
+    globalSetup: ["tests/integration/global-setup.ts"],
   },
 });

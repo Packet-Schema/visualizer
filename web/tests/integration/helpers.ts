@@ -113,6 +113,8 @@ export async function startPreviewServer(): Promise<ChildProcess> {
   console.log("Starting Cloudflare worker preview server...");
   const devServer = spawn("npm", ["run", "preview:start"], {
     stdio: ["ignore", "pipe", "pipe"],
+    shell: false,
+    detached: false,
     env: {
       ...process.env,
       NEXT_TELEMETRY_DISABLED: "1",

@@ -32,7 +32,7 @@ export default defineConfig({
         command: "npm run preview",
         url: "http://localhost:8787",
         reuseExistingServer: true,
-        timeout: 120 * 1000,
+        timeout: 180 * 1000,
         env: { XDG_CONFIG_HOME: "/tmp/.wrangler-config" },
       },
 });
