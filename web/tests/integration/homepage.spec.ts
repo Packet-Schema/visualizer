@@ -140,8 +140,9 @@ test.describe("Homepage and Meta Tags", () => {
       const response = await request.get("/?preset=ipv6");
       const html = await response.text();
 
-      expect(html).toContain('property="og:description"');
-      expect(html).toContain("IPv6");
+      expect(html).toContain(
+        'property="og:description" content="Internet Protocol version 6 header (RFC 8200 §3). Fixed 40 bytes; optional features such as fragmentation and routing live in chained extension headers selected by Next Header."',
+      );
     });
   });
 
