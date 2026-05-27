@@ -105,8 +105,8 @@ async function waitForPortFree(
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  console.warn(
-    `Port ${port} may still be in use, attempting to start server anyway`,
+  throw new Error(
+    `Port ${port} is still in use after ${timeoutMs}ms. Cannot start preview server.`,
   );
 }
 
