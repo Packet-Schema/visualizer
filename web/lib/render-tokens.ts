@@ -57,54 +57,6 @@ export const CATEGORY_TO_TOKEN: Record<CategoryToken, ColorToken> = {
   "payload-marker": "violet",
 };
 
-export const FIELD_CELL_COLOR_CLASSES: Record<ColorToken, string> = {
-  blue: "bg-sky-400/80 hover:bg-sky-400/95 dark:bg-sky-400/85 dark:hover:bg-sky-400",
-  indigo:
-    "bg-indigo-400/80 hover:bg-indigo-400/95 dark:bg-indigo-400/85 dark:hover:bg-indigo-400",
-  violet:
-    "bg-violet-400/80 hover:bg-violet-400/95 dark:bg-violet-400/85 dark:hover:bg-violet-400",
-  teal: "bg-cyan-400/80 hover:bg-cyan-400/95 dark:bg-cyan-400/85 dark:hover:bg-cyan-400",
-  green:
-    "bg-emerald-400/80 hover:bg-emerald-400/95 dark:bg-emerald-400/85 dark:hover:bg-emerald-400",
-  amber:
-    "bg-amber-400/80 hover:bg-amber-400/95 dark:bg-amber-400/85 dark:hover:bg-amber-400",
-  orange:
-    "bg-orange-400/80 hover:bg-orange-400/95 dark:bg-orange-400/85 dark:hover:bg-orange-400",
-  rose: "bg-rose-400/80 hover:bg-rose-400/95 dark:bg-rose-400/85 dark:hover:bg-rose-400",
-  slate:
-    "bg-slate-400/80 hover:bg-slate-400/95 dark:bg-slate-400/85 dark:hover:bg-slate-400",
-};
-
-export const FIELD_CELL_SELECTED_COLOR_CLASSES: Record<ColorToken, string> = {
-  blue: "bg-sky-300/95 hover:bg-sky-300/95 dark:bg-sky-300 dark:hover:bg-sky-300",
-  indigo:
-    "bg-indigo-300/95 hover:bg-indigo-300/95 dark:bg-indigo-300 dark:hover:bg-indigo-300",
-  violet:
-    "bg-violet-300/95 hover:bg-violet-300/95 dark:bg-violet-300 dark:hover:bg-violet-300",
-  teal: "bg-cyan-300/95 hover:bg-cyan-300/95 dark:bg-cyan-300 dark:hover:bg-cyan-300",
-  green:
-    "bg-emerald-300/95 hover:bg-emerald-300/95 dark:bg-emerald-300 dark:hover:bg-emerald-300",
-  amber:
-    "bg-amber-300/95 hover:bg-amber-300/95 dark:bg-amber-300 dark:hover:bg-amber-300",
-  orange:
-    "bg-orange-300/95 hover:bg-orange-300/95 dark:bg-orange-300 dark:hover:bg-orange-300",
-  rose: "bg-rose-300/95 hover:bg-rose-300/95 dark:bg-rose-300 dark:hover:bg-rose-300",
-  slate:
-    "bg-slate-300/95 hover:bg-slate-300/95 dark:bg-slate-300 dark:hover:bg-slate-300",
-};
-
-const TAILWIND_GRADIENT_COLORS: Record<ColorToken, string> = {
-  blue: "color-mix(in oklab, var(--color-sky-400) 85%, transparent)",
-  indigo: "color-mix(in oklab, var(--color-indigo-400) 85%, transparent)",
-  violet: "color-mix(in oklab, var(--color-violet-400) 85%, transparent)",
-  teal: "color-mix(in oklab, var(--color-cyan-400) 85%, transparent)",
-  green: "color-mix(in oklab, var(--color-emerald-400) 85%, transparent)",
-  amber: "color-mix(in oklab, var(--color-amber-400) 85%, transparent)",
-  orange: "color-mix(in oklab, var(--color-orange-400) 85%, transparent)",
-  rose: "color-mix(in oklab, var(--color-rose-400) 85%, transparent)",
-  slate: "color-mix(in oklab, var(--color-slate-400) 85%, transparent)",
-};
-
 function tokenForCellClass(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
 ): ColorToken {
@@ -139,19 +91,32 @@ export function categoryColor(
   return tokenToCssVar(field.color ?? null);
 }
 
+/**
+ * Returns Tailwind classes for a field cell using `bg-field-{token}` utilities.
+ * `--field-{token}` CSS variables are injected at SSR time from `lib/theme.ts`
+ * and exposed via `@theme inline` in globals.css, so light/dark switching is
+ * automatic — no `dark:` modifier needed here.
+ * Satori reads the same color values from `LIGHT/DARK_DIAGRAM_THEME.fieldPalette`.
+ */
 export function categoryCellColorClasses(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
   selected = false,
 ): string {
   const token = tokenForCellClass(field);
-  return selected
-    ? FIELD_CELL_SELECTED_COLOR_CLASSES[token]
-    : FIELD_CELL_COLOR_CLASSES[token];
+  if (selected) {
+    return `bg-field-${token}/95 hover:bg-field-${token}`;
+  }
+  return `bg-field-${token}/80 hover:bg-field-${token}/95`;
 }
 
-export function categoryTailwindGradientColor(
+/**
+ * Returns a CSS `color-mix()` value for HexStrip split-byte gradients.
+ * Uses `var(--color-field-{token})` which resolves to the same `--field-{token}`
+ * variable that drives HybridDiagram cells — guaranteed to match.
+ */
+export function categoryGradientColor(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
 ): string {
   const token = tokenForCellClass(field);
-  return TAILWIND_GRADIENT_COLORS[token];
+  return `color-mix(in oklab, var(--color-field-${token}) 85%, transparent)`;
 }
