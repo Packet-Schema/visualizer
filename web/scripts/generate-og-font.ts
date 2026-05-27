@@ -7,7 +7,7 @@ const fontPath = resolve(
   "@fontsource",
   "line-seed-jp",
   "files",
-  "line-seed-jp-0-400-normal.woff",
+  "line-seed-jp-latin-400-normal.woff",
 );
 
 try {
