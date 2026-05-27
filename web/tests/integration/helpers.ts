@@ -117,7 +117,7 @@ export async function startPreviewServer(): Promise<ChildProcess> {
       ...process.env,
       NEXT_TELEMETRY_DISABLED: "1",
       // Point wrangler config to a writable temp dir (avoids EROFS in read-only envs)
-      WRANGLER_HOME: "/tmp/.wrangler",
+      XDG_CONFIG_HOME: "/tmp/.wrangler-config",
     },
   });
 

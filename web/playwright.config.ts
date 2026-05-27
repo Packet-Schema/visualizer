@@ -26,13 +26,13 @@ export default defineConfig({
         url: "http://localhost:8787",
         reuseExistingServer: false,
         timeout: 120 * 1000,
-        env: { WRANGLER_HOME: "/tmp/.wrangler" },
+        env: { XDG_CONFIG_HOME: "/tmp/.wrangler-config" },
       }
     : {
         command: "npm run preview",
         url: "http://localhost:8787",
         reuseExistingServer: true,
         timeout: 120 * 1000,
-        env: { WRANGLER_HOME: "/tmp/.wrangler" },
+        env: { XDG_CONFIG_HOME: "/tmp/.wrangler-config" },
       },
 });
