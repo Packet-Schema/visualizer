@@ -48,7 +48,14 @@ export async function waitForServer(
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const response = await fetch(url, { signal: controller.signal });
-      if (response.status === 200) {
+      if (response.status !== 200) {
+        lastError = new Error(`Server returned ${response.status}`);
+        if (attempts % 5 === 0) {
+          console.log(
+            `Waiting for server... (${Math.round((Date.now() - startTime) / 1000)}s)`,
+          );
+        }
+      } else {
         await response.text();
         console.log(
           `Server ready after ${Date.now() - startTime}ms (${attempts} attempts)`,
@@ -114,7 +121,7 @@ export async function startPreviewServer(): Promise<ChildProcess> {
   const devServer = spawn("npm", ["run", "preview:start"], {
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
-    detached: false,
+    detached: true,
     env: {
       ...process.env,
       NEXT_TELEMETRY_DISABLED: "1",
@@ -171,13 +178,18 @@ export async function exitProcess(
 
     process.once("exit", exitHandler);
 
-    console.log("[Cleanup] Sending SIGTERM to process");
-    process.kill("SIGTERM");
+    console.log("[Cleanup] Sending SIGTERM to process group");
+    try {
+      // Kill the entire process group (negative pid) to ensure child processes are also terminated
+      process.kill("SIGTERM");
+    } catch {
+      // Process may already be dead
+    }
 
     const killTimeout = setTimeout(() => {
       if (!exitedNormally) {
         process.removeListener("exit", exitHandler);
-        console.log("[Cleanup] Process did not exit, sending SIGKILL");
+        console.log("[Cleanup] Process did not exit, sending SIGKILL to process group");
         try {
           process.kill("SIGKILL");
         } catch {
