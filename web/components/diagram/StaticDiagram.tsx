@@ -205,7 +205,9 @@ export function StaticDiagram({
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                       overflow: "hidden",
                       minWidth: 0,
-                      background: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                      background: isDashed
+                        ? `repeating-linear-gradient(135deg, transparent 0px, transparent 5px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, 0.3) 5px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, 0.3) 6px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
+                        : `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
                     }}
                   >
                     <div
