@@ -46,4 +46,16 @@
       padding: 1px;
     }
   }
+
+  @media (max-width: 480px) {
+    .legend-swatch {
+      width: calc(var(--legend-swatch-size) * 0.6);
+      height: calc(var(--legend-swatch-size) * 0.6);
+    }
+
+    .legend-item {
+      font-size: var(--text-2xs);
+      padding: 0;
+    }
+  }
 }
