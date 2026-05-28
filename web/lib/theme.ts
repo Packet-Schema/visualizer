@@ -131,6 +131,8 @@ export const ENCRYPTED_STRIPE = {
   gapPx: 5,
   /** Width of the colored stripe line (px). */
   linePx: 1,
+  /** Cell opacity for encrypted blocks — matches `opacity: 0.65` in encryption.css. */
+  cellOpacity: 0.65,
 } as const;
 
 /**
