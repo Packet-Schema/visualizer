@@ -1,9 +1,9 @@
 import { useMemo, type CSSProperties } from "react";
 
-import type { ResolvedLayout } from "@/lib/psml/renderer";
+import type { ResolvedLayout } from "@/lib/psdl/renderer";
 import {
   categoryCellColorClasses,
-  categoryTailwindGradientColor,
+  categoryGradientColor,
 } from "@/lib/render-tokens";
 
 type Props = {
@@ -43,7 +43,7 @@ function computeByteOwners(
   for (const cell of layout.cells) {
     const absStart = cell.row * rowBits + cell.startBit;
     const absEnd = cell.row * rowBits + cell.endBit;
-    const gradientColor = categoryTailwindGradientColor(cell.field);
+    const gradientColor = categoryGradientColor(cell.field);
     const colorClassName = categoryCellColorClasses(cell.field);
 
     // If a cell has subCells, prefer them for owner attribution so sub-byte

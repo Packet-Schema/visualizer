@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { Expr, Switch } from "@/lib/psml/types";
+import type { Expr, Switch } from "@/lib/psdl/types";
 
 import ExprBuilder from "../ExprBuilder";
 

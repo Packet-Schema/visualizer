@@ -1,11 +1,11 @@
-// PSML 0.2 — renderer tokens.
+// PSDL 0.2 — renderer tokens.
 //
-// PSML carries semantic intent only (`category`); the renderer decides how
+// PSDL carries semantic intent only (`category`); the renderer decides how
 // to paint each category. This module owns that mapping plus the legacy
-// `ColorToken` palette the v1 → PSML migrator preserves so older imports
+// `ColorToken` palette the v1 → PSDL migrator preserves so older imports
 // still hit a familiar swatch when no category is set.
 
-import type { CategoryToken } from "./psml/renderer";
+import type { CategoryToken } from "./psdl/renderer";
 
 /** Palette token kept around for legacy v1 imports without a category. */
 export type ColorToken =
@@ -57,54 +57,6 @@ export const CATEGORY_TO_TOKEN: Record<CategoryToken, ColorToken> = {
   "payload-marker": "violet",
 };
 
-export const FIELD_CELL_COLOR_CLASSES: Record<ColorToken, string> = {
-  blue: "bg-sky-400/80 hover:bg-sky-400/95 dark:bg-sky-400/85 dark:hover:bg-sky-400",
-  indigo:
-    "bg-indigo-400/80 hover:bg-indigo-400/95 dark:bg-indigo-400/85 dark:hover:bg-indigo-400",
-  violet:
-    "bg-violet-400/80 hover:bg-violet-400/95 dark:bg-violet-400/85 dark:hover:bg-violet-400",
-  teal: "bg-cyan-400/80 hover:bg-cyan-400/95 dark:bg-cyan-400/85 dark:hover:bg-cyan-400",
-  green:
-    "bg-emerald-400/80 hover:bg-emerald-400/95 dark:bg-emerald-400/85 dark:hover:bg-emerald-400",
-  amber:
-    "bg-amber-400/80 hover:bg-amber-400/95 dark:bg-amber-400/85 dark:hover:bg-amber-400",
-  orange:
-    "bg-orange-400/80 hover:bg-orange-400/95 dark:bg-orange-400/85 dark:hover:bg-orange-400",
-  rose: "bg-rose-400/80 hover:bg-rose-400/95 dark:bg-rose-400/85 dark:hover:bg-rose-400",
-  slate:
-    "bg-slate-400/80 hover:bg-slate-400/95 dark:bg-slate-400/85 dark:hover:bg-slate-400",
-};
-
-export const FIELD_CELL_SELECTED_COLOR_CLASSES: Record<ColorToken, string> = {
-  blue: "bg-sky-300/95 hover:bg-sky-300/95 dark:bg-sky-300 dark:hover:bg-sky-300",
-  indigo:
-    "bg-indigo-300/95 hover:bg-indigo-300/95 dark:bg-indigo-300 dark:hover:bg-indigo-300",
-  violet:
-    "bg-violet-300/95 hover:bg-violet-300/95 dark:bg-violet-300 dark:hover:bg-violet-300",
-  teal: "bg-cyan-300/95 hover:bg-cyan-300/95 dark:bg-cyan-300 dark:hover:bg-cyan-300",
-  green:
-    "bg-emerald-300/95 hover:bg-emerald-300/95 dark:bg-emerald-300 dark:hover:bg-emerald-300",
-  amber:
-    "bg-amber-300/95 hover:bg-amber-300/95 dark:bg-amber-300 dark:hover:bg-amber-300",
-  orange:
-    "bg-orange-300/95 hover:bg-orange-300/95 dark:bg-orange-300 dark:hover:bg-orange-300",
-  rose: "bg-rose-300/95 hover:bg-rose-300/95 dark:bg-rose-300 dark:hover:bg-rose-300",
-  slate:
-    "bg-slate-300/95 hover:bg-slate-300/95 dark:bg-slate-300 dark:hover:bg-slate-300",
-};
-
-const TAILWIND_GRADIENT_COLORS: Record<ColorToken, string> = {
-  blue: "color-mix(in oklab, var(--color-sky-400) 85%, transparent)",
-  indigo: "color-mix(in oklab, var(--color-indigo-400) 85%, transparent)",
-  violet: "color-mix(in oklab, var(--color-violet-400) 85%, transparent)",
-  teal: "color-mix(in oklab, var(--color-cyan-400) 85%, transparent)",
-  green: "color-mix(in oklab, var(--color-emerald-400) 85%, transparent)",
-  amber: "color-mix(in oklab, var(--color-amber-400) 85%, transparent)",
-  orange: "color-mix(in oklab, var(--color-orange-400) 85%, transparent)",
-  rose: "color-mix(in oklab, var(--color-rose-400) 85%, transparent)",
-  slate: "color-mix(in oklab, var(--color-slate-400) 85%, transparent)",
-};
-
 function tokenForCellClass(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
 ): ColorToken {
@@ -139,6 +91,57 @@ export function categoryColor(
   return tokenToCssVar(field.color ?? null);
 }
 
+// Static maps required — Tailwind scans source for literal class strings.
+// Template literals like `bg-field-${token}/80` are invisible to the scanner
+// and would be dropped from the generated CSS.
+//
+// Opacity modifier with CSS variables (/[var(...)]) doesn't work because Tailwind
+// generates color-mix() which requires a literal <percentage>, not a variable.
+// Light (80%) and dark (85%) opacities are expressed as static dark: variants.
+const FIELD_CELL_COLOR_CLASSES: Record<ColorToken, string> = {
+  blue: "bg-field-blue/80 hover:bg-field-blue/95 dark:bg-field-blue/85 dark:hover:bg-field-blue",
+  indigo:
+    "bg-field-indigo/80 hover:bg-field-indigo/95 dark:bg-field-indigo/85 dark:hover:bg-field-indigo",
+  violet:
+    "bg-field-violet/80 hover:bg-field-violet/95 dark:bg-field-violet/85 dark:hover:bg-field-violet",
+  teal: "bg-field-teal/80 hover:bg-field-teal/95 dark:bg-field-teal/85 dark:hover:bg-field-teal",
+  green:
+    "bg-field-green/80 hover:bg-field-green/95 dark:bg-field-green/85 dark:hover:bg-field-green",
+  amber:
+    "bg-field-amber/80 hover:bg-field-amber/95 dark:bg-field-amber/85 dark:hover:bg-field-amber",
+  orange:
+    "bg-field-orange/80 hover:bg-field-orange/95 dark:bg-field-orange/85 dark:hover:bg-field-orange",
+  rose: "bg-field-rose/80 hover:bg-field-rose/95 dark:bg-field-rose/85 dark:hover:bg-field-rose",
+  slate:
+    "bg-field-slate/80 hover:bg-field-slate/95 dark:bg-field-slate/85 dark:hover:bg-field-slate",
+};
+
+const FIELD_CELL_SELECTED_COLOR_CLASSES: Record<ColorToken, string> = {
+  blue: "bg-field-blue/95 hover:bg-field-blue",
+  indigo: "bg-field-indigo/95 hover:bg-field-indigo",
+  violet: "bg-field-violet/95 hover:bg-field-violet",
+  teal: "bg-field-teal/95 hover:bg-field-teal",
+  green: "bg-field-green/95 hover:bg-field-green",
+  amber: "bg-field-amber/95 hover:bg-field-amber",
+  orange: "bg-field-orange/95 hover:bg-field-orange",
+  rose: "bg-field-rose/95 hover:bg-field-rose",
+  slate: "bg-field-slate/95 hover:bg-field-slate",
+};
+
+// Gradient values are used in style={} as CSS strings, not as Tailwind classes,
+// so template literals are safe here.
+const FIELD_GRADIENT_COLORS: Record<ColorToken, string> = {
+  blue: "color-mix(in oklab, var(--field-blue) 85%, transparent)",
+  indigo: "color-mix(in oklab, var(--field-indigo) 85%, transparent)",
+  violet: "color-mix(in oklab, var(--field-violet) 85%, transparent)",
+  teal: "color-mix(in oklab, var(--field-teal) 85%, transparent)",
+  green: "color-mix(in oklab, var(--field-green) 85%, transparent)",
+  amber: "color-mix(in oklab, var(--field-amber) 85%, transparent)",
+  orange: "color-mix(in oklab, var(--field-orange) 85%, transparent)",
+  rose: "color-mix(in oklab, var(--field-rose) 85%, transparent)",
+  slate: "color-mix(in oklab, var(--field-slate) 85%, transparent)",
+};
+
 export function categoryCellColorClasses(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
   selected = false,
@@ -149,9 +152,8 @@ export function categoryCellColorClasses(
     : FIELD_CELL_COLOR_CLASSES[token];
 }
 
-export function categoryTailwindGradientColor(
+export function categoryGradientColor(
   field: { category?: CategoryToken; color?: string | null } | null | undefined,
 ): string {
-  const token = tokenForCellClass(field);
-  return TAILWIND_GRADIENT_COLORS[token];
+  return FIELD_GRADIENT_COLORS[tokenForCellClass(field)];
 }

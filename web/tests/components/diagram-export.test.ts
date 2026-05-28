@@ -14,7 +14,7 @@ import {
 } from "../../lib/diagram-export";
 import type { DiagramExportTheme } from "../../lib/diagram-export";
 import { FIELD_FILL_OPACITY } from "../../lib/constants";
-import type { Packet, ResolvedLayout } from "../../lib/psml/renderer";
+import type { Packet, ResolvedLayout } from "../../lib/psdl/renderer";
 
 const packet: Packet = {
   name: "Demo & Packet",
@@ -127,6 +127,7 @@ const LIGHT_TEST_THEME: DiagramExportTheme = {
   markerAccent: "#d4548f",
   markerAccentSoft: "#e8b4c8",
   subfieldBackground: "#fafbfc",
+  subfieldLabel: "#222222",
   fieldFillOpacity: FIELD_FILL_OPACITY,
   rulerMinorOpacity: 0.55,
   subfieldBackgroundOpacity: 0.52,

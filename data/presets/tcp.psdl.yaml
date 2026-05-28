@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TCP Header
+rowBits: 32
+byteOrder: BE
+description: TCP header (RFC 9293).
+
+_tcp_option_variants: &tcp_option_variants
+  "0":
+    id: eol
+    fields:
+      - { id: kind, name: "Kind=0", type: { kind: bits, n: 8 }, category: type }
+  "1":
+    id: nop
+    fields:
+      - { id: kind, name: "Kind=1", type: { kind: bits, n: 8 }, category: type }
+  "2":
+    id: mss
+    fields:
+      - { id: kind, name: "Kind=2", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=4", type: { kind: bits, n: 8 }, category: length }
+      - { id: mss, name: MSS, type: { kind: int, bits: 16 }, category: length }
+  "3":
+    id: windowScale
+    fields:
+      - { id: kind, name: "Kind=3", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=3", type: { kind: bits, n: 8 }, category: length }
+      - { id: shift, name: Shift, type: { kind: int, bits: 8 }, category: identifier }
+  "4":
+    id: sackPermitted
+    fields:
+      - { id: kind, name: "Kind=4", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=2", type: { kind: bits, n: 8 }, category: length }
+  "5":
+    id: sack
+    fields:
+      - { id: kind, name: "Kind=5", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=10", type: { kind: bits, n: 8 }, category: length }
+      - { id: leftEdge, name: Left Edge, type: { kind: int, bits: 32 }, category: identifier }
+      - { id: rightEdge, name: Right Edge, type: { kind: int, bits: 32 }, category: identifier }
+  "8":
+    id: timestamps
+    fields:
+      - { id: kind, name: "Kind=8", type: { kind: bits, n: 8 }, category: type }
+      - { id: length, name: "Len=10", type: { kind: bits, n: 8 }, category: length }
+      - { id: tsval, name: TS Value, type: { kind: int, bits: 32 }, category: identifier }
+      - { id: tsecr, name: TS Echo Reply, type: { kind: int, bits: 32 }, category: identifier }
+
+body:
+  - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing }
+  - { id: dstPort, name: Destination Port, type: { kind: int, bits: 16 }, category: addressing }
+  - { id: seqNum, name: Sequence Number, type: { kind: int, bits: 32 }, category: identifier }
+  - { id: ackNum, name: Acknowledgment Number, type: { kind: int, bits: 32 }, category: identifier }
+  - { id: dataOffset, name: Data Offset, type: { kind: bits, n: 4 }, category: length, defaultValue: 5 }
+  - { id: reserved, name: Rsvd, type: { kind: bits, n: 4 }, category: reserved }
+  - kind: group
+    id: flagsBits
+    children:
+      - { id: flags_cwr, name: CWR, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_ece, name: ECE, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_urg, name: URG, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_ack, name: ACK, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_psh, name: PSH, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_rst, name: RST, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_syn, name: SYN, type: { kind: bits, n: 1 }, category: flags }
+      - { id: flags_fin, name: FIN, type: { kind: bits, n: 1 }, category: flags }
+  - { id: window, name: Window, type: { kind: int, bits: 16 }, category: flags }
+  - { id: checksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum }
+  - { id: urgent, name: Urgent Pointer, type: { kind: int, bits: 16 }, category: identifier }
+  - kind: repeat
+    id: options
+    name: Options
+    category: variable
+    element:
+      id: optionRecord
+      fields:
+        - kind: switch
+          id: byKind
+          on: { kind: ref, field: optKind }
+          cases: *tcp_option_variants
+    count: { kind: ref, field: tcpOptionsCount }
+
+constraints:
+  - lhs:
+      kind: op
+      op: "*"
+      a: { kind: ref, field: dataOffset }
+      b: { kind: lit, value: 4 }
+    rhs: { kind: ref, field: tcpHeaderBytes }
+    doc: Data Offset counts 32-bit words; tcpHeaderBytes = Data Offset × 4.

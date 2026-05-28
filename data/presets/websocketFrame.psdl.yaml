@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: WebSocket Frame
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). Extended payload length is BE; the 8-byte form's MSB MUST be 0 (max payload 2^63 - 1).
+description: WebSocket data frame (RFC 6455 §5.2) — 2-byte fixed header with FIN/RSV/Opcode + MASK/Length7, optional extended length (126 → +2 B, 127 → +8 B), optional 4-byte Masking Key (MASK=1, mandatory client→server per §5.3), then payload. PSDL 0.4 has no comparison operator, so the 126/127 magic on the 7-bit Payload Length is unpacked with a Switch (default = 0..125 inline).
+
+body:
+  - kind: group
+    id: wsByte1
+    name: Byte 1 (FIN/RSV/Opcode)
+    children:
+      - id: fin
+        name: FIN
+        type: { kind: bits, n: 1 }
+        category: flags
+        defaultValue: 1
+        doc: "Final-fragment indicator. 1 = this is the last (or only) fragment of a message; 0 = more continuation frames follow. A single unfragmented message has FIN=1 in its first and only frame. [RFC 6455 §5.2]"
+      - id: rsv1
+        name: RSV1
+        type: { kind: bits, n: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit 1. MUST be 0 unless an extension has been negotiated that defines a non-zero meaning (e.g. per-message-deflate uses RSV1 to mark a compressed frame, RFC 7692). If a peer receives a non-zero RSV bit without a negotiated extension, it MUST Fail the WebSocket Connection. [RFC 6455 §5.2]"
+      - id: rsv2
+        name: RSV2
+        type: { kind: bits, n: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit 2. MUST be 0 unless an extension defines a meaning. [RFC 6455 §5.2]"
+      - id: rsv3
+        name: RSV3
+        type: { kind: bits, n: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit 3. MUST be 0 unless an extension defines a meaning. [RFC 6455 §5.2]"
+      - id: opcode
+        name: Opcode
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            0: Continuation
+            1: Text
+            2: Binary
+            8: Close
+            9: Ping
+            10: Pong
+        category: type
+        defaultValue: 1
+        doc: "4-bit opcode defining how to interpret the payload. Non-control frames: 0x0 Continuation (subsequent fragment), 0x1 Text (UTF-8), 0x2 Binary; 0x3-0x7 reserved for non-control. Control frames (MUST be ≤ 125 bytes and MUST NOT be fragmented): 0x8 Close, 0x9 Ping, 0xA Pong; 0xB-0xF reserved for control. Receivers MUST Fail the WebSocket Connection on an unknown opcode. [RFC 6455 §5.2 / §5.5]"
+  - kind: group
+    id: wsByte2
+    name: Byte 2 (MASK/Payload Length)
+    children:
+      - id: mask
+        name: MASK
+        type: { kind: bits, n: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Masking flag. 1 = the Payload Data is XOR-masked with the 4-byte Masking-key that follows the (extended) length; 0 = no Masking-key, payload is on the wire as-is. All client → server frames MUST have MASK=1 (with a fresh, unpredictable key per frame); all server → client frames MUST have MASK=0. A server MUST close the connection on receiving an unmasked client frame, and a client MUST close on receiving a masked server frame. [RFC 6455 §5.2 / §5.3]"
+      - id: payloadLength7
+        name: Payload Length (7)
+        type: { kind: int, bits: 7 }
+        category: length
+        defaultValue: 0
+        doc: "7-bit Payload Length with magic values. 0..125 = the payload length itself (no Extended Payload Length follows). 126 = the next 2 bytes are an unsigned 16-bit BE Extended Payload Length (range 126..65535; the minimal encoding rule says values < 126 MUST use the 7-bit form). 127 = the next 8 bytes are an unsigned 64-bit BE Extended Payload Length whose MSB MUST be 0 (range 65536..2^63-1; again, the minimal-encoding rule forbids smaller values here). [RFC 6455 §5.2]"
+  - kind: switch
+    id: byPayloadLength7
+    name: Extended Payload Length
+    on: { kind: ref, field: payloadLength7 }
+    doc: "Switch on the 7-bit Payload Length to insert the conditional Extended Payload Length. Case 126 adds 16 bits (BE), case 127 adds 64 bits (BE, MSB MUST be 0). Default (0..125) inserts nothing — the 7-bit value is the payload length itself. PSDL 0.4 has no comparison operator, so the 126/127 magic is dispatched here rather than via a predicate. [RFC 6455 §5.2]"
+    cases:
+      "126":
+        id: extLen16
+        name: Extended Payload Length (16)
+        fields:
+          - id: extPayloadLength16
+            name: Extended Payload Length (16)
+            type: { kind: int, bits: 16 }
+            category: length
+            defaultValue: 126
+            doc: "16-bit unsigned Extended Payload Length in network byte order. Present only when Payload Length (7) == 126; carries the actual payload length in the range 126..65535. Values 0..125 MUST NOT be encoded here (minimal-length-encoding rule). [RFC 6455 §5.2]"
+      "127":
+        id: extLen64
+        name: Extended Payload Length (64)
+        fields:
+          - id: extPayloadLength64
+            name: Extended Payload Length (64)
+            type: { kind: int, bits: 64 }
+            category: length
+            defaultValue: 65536
+            doc: "64-bit unsigned Extended Payload Length in network byte order. Present only when Payload Length (7) == 127; the most significant bit MUST be 0 (so the effective range is 0..2^63-1, in practice 65536..2^63-1 because 0..65535 MUST use the shorter encodings). [RFC 6455 §5.2]"
+    default:
+      id: extLenInline
+      name: (no Extended Length)
+      fields: []
+  - kind: optional
+    when: { kind: ref, field: mask }
+    field:
+      id: maskingKey
+      name: Masking-key
+      type: { kind: bytes, n: { kind: lit, value: 4 } }
+      category: identifier
+      doc: "4-byte Masking-key. Present iff MASK=1. The unmasked payload at octet i is `original[i] XOR maskingKey[i mod 4]`. The key MUST be unpredictable per-frame (drawn from a cryptographic PRNG) so it cannot be guessed by intermediaries — this prevents the cache-poisoning attack class that motivated masking in the first place. The XOR is its own inverse, so the same operation un-masks on the receiver. [RFC 6455 §5.2 / §5.3]"
+  - id: payload
+    name: Payload Data
+    type: { kind: bytes, n: { kind: ref, field: websocketPayloadBytes } }
+    category: payload-marker
+    doc: "Application-data + extension-data payload, length determined by Payload Length (7) (when 0..125) or Extended Payload Length (when 126/127). When MASK=1 this is the masked octet stream — apply the XOR with Masking-key before consuming. For control frames (opcode 0x8/0x9/0xA) the total payload MUST be ≤ 125 bytes, so the 7-bit form is the only one used. [RFC 6455 §5.2 / §5.5]"

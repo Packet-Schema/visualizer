@@ -1,4 +1,4 @@
-// PSML Augmented ASCII (AAD) importer tests — covers the diagram parser
+// PSDL Augmented ASCII (AAD) importer tests — covers the diagram parser
 // (ruler inference, cell width math, row width validation, label
 // continuations), the optional where-block, category guessing, and the
 // unsupported-construct warning channel.

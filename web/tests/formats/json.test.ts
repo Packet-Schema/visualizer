@@ -1,13 +1,13 @@
-// PSML JSON format — round-trip parity for every preset (with default and
+// PSDL JSON format — round-trip parity for every preset (with default and
 // non-default controllers, with TLV instances, with chain instances), plus
 // edge cases: empty packet, missing optionals, unknown extra keys, and the
 // version/format-tag error paths.
 
 import { describe, expect, it } from "vitest";
 import { fromJson, toJson } from "../../lib/formats/json";
-import { initialEnv } from "../../lib/psml/normalize";
-import { PRESETS as ALL_PRESETS } from "../../lib/psml/presets";
-import type { Packet, PacketEnv } from "../../lib/psml/types";
+import { initialEnv } from "../../lib/psdl/normalize";
+import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets";
+import type { Packet, PacketEnv } from "../../lib/psdl/types";
 
 describe("toJson / fromJson — every preset round-trips", () => {
   for (const [key, pkt] of Object.entries(ALL_PRESETS)) {
@@ -25,7 +25,7 @@ describe("toJson — preset shape", () => {
   it("emits format/version tags", () => {
     const text = toJson(ALL_PRESETS.udp, new Map());
     const obj = JSON.parse(text);
-    expect(obj.format).toBe("psml");
+    expect(obj.format).toBe("psdl");
     expect(obj.version).toBe("0.2");
     expect(obj.name).toBe(ALL_PRESETS.udp.name);
     expect(obj.rowBits).toBe(32);
@@ -121,7 +121,7 @@ describe("toJson / fromJson — chain (IPv6 extension headers)", () => {
 describe("fromJson — edge cases", () => {
   it("handles a minimal empty packet (only name + rowBits)", () => {
     const text = JSON.stringify({
-      format: "psml",
+      format: "psdl",
       version: "0.2",
       name: "Empty",
       rowBits: 8,
@@ -135,7 +135,7 @@ describe("fromJson — edge cases", () => {
 
   it("treats missing optional fields as absent", () => {
     const text = JSON.stringify({
-      format: "psml",
+      format: "psdl",
       version: "0.2",
       name: "x",
       rowBits: 8,
@@ -149,7 +149,7 @@ describe("fromJson — edge cases", () => {
 
   it("ignores unknown extra keys at the root", () => {
     const text = JSON.stringify({
-      format: "psml",
+      format: "psdl",
       version: "0.2",
       name: "x",
       rowBits: 8,
@@ -162,7 +162,7 @@ describe("fromJson — edge cases", () => {
 
   it("filters non-finite numbers out of env on import", () => {
     const text = JSON.stringify({
-      format: "psml",
+      format: "psdl",
       version: "0.2",
       name: "x",
       rowBits: 8,
@@ -176,7 +176,7 @@ describe("fromJson — edge cases", () => {
   });
 });
 
-describe("toJson / fromJson — PSML 0.3 Varint Type", () => {
+describe("toJson / fromJson — PSDL 0.3 Varint Type", () => {
   it("round-trips a varint-typed field with all three encodings", () => {
     for (const encoding of ["quic", "protobuf", "cbor"] as const) {
       const pkt: Packet = {
@@ -196,7 +196,7 @@ describe("toJson / fromJson — PSML 0.3 Varint Type", () => {
   });
 });
 
-describe("toJson / fromJson — PSML 0.3 Encrypted Container", () => {
+describe("toJson / fromJson — PSDL 0.3 Encrypted Container", () => {
   it("round-trips an encrypted container with plaintext Struct, wireBits, headerProtected, contextNote", () => {
     const pkt: Packet = {
       name: "QuicShort",
@@ -315,18 +315,18 @@ describe("fromJson — error paths", () => {
     expect(() => fromJson(JSON.stringify({}))).toThrow(/Unknown format tag/);
   });
 
-  it("throws on the wrong PSML version", () => {
+  it("throws on the wrong PSDL version", () => {
     expect(() =>
-      fromJson(JSON.stringify({ format: "psml", version: "0.1" })),
-    ).toThrow(/Unsupported PSML version/);
+      fromJson(JSON.stringify({ format: "psdl", version: "0.1" })),
+    ).toThrow(/Unsupported PSDL version/);
   });
 
   it("requires a non-empty name", () => {
     expect(() =>
-      fromJson(JSON.stringify({ format: "psml", version: "0.2", name: "" })),
+      fromJson(JSON.stringify({ format: "psdl", version: "0.2", name: "" })),
     ).toThrow(/missing string `name`/);
     expect(() =>
-      fromJson(JSON.stringify({ format: "psml", version: "0.2" })),
+      fromJson(JSON.stringify({ format: "psdl", version: "0.2" })),
     ).toThrow(/missing string `name`/);
   });
 
@@ -334,7 +334,7 @@ describe("fromJson — error paths", () => {
     expect(() =>
       fromJson(
         JSON.stringify({
-          format: "psml",
+          format: "psdl",
           version: "0.2",
           name: "x",
           rowBits: 0,
@@ -344,7 +344,7 @@ describe("fromJson — error paths", () => {
     expect(() =>
       fromJson(
         JSON.stringify({
-          format: "psml",
+          format: "psdl",
           version: "0.2",
           name: "x",
           rowBits: 1.5,
@@ -357,7 +357,7 @@ describe("fromJson — error paths", () => {
     expect(() =>
       fromJson(
         JSON.stringify({
-          format: "psml",
+          format: "psdl",
           version: "0.2",
           name: "x",
           rowBits: 8,
@@ -368,10 +368,10 @@ describe("fromJson — error paths", () => {
   });
 });
 
-// PSML 0.4 — round-trip the four new primitives through the JSON serializer.
+// PSDL 0.4 — round-trip the four new primitives through the JSON serializer.
 // Each test builds a minimal packet that contains exactly one primitive and
 // asserts byte-identical canonical text after one round-trip.
-describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
+describe("toJson / fromJson — PSDL 0.4 primitives round-trip", () => {
   it("Optional container", () => {
     const pkt: Packet = {
       name: "Opt",
@@ -458,7 +458,7 @@ describe("toJson / fromJson — PSML 0.4 primitives round-trip", () => {
   });
 });
 
-describe("toJson / fromJson — PSML 0.4 demo presets round-trip", () => {
+describe("toJson / fromJson — PSDL 0.4 demo presets round-trip", () => {
   for (const key of [
     "http2FrameHeader",
     "tlsExtensionsBlock",

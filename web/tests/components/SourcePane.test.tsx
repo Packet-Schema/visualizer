@@ -44,10 +44,10 @@ vi.mock("@/components/source-editor/SourceCodeMirror", () => ({
 }));
 
 import SourcePane from "@/components/custom-packet-studio/SourcePane";
-import type { EditAction } from "@/lib/psml/edit-reducer";
-import type { PsmlPacket } from "@/lib/psml/types";
+import type { EditAction } from "@/lib/psdl/edit-reducer";
+import type { PsdlPacket } from "@/lib/psdl/types";
 
-const sample: PsmlPacket = {
+const sample: PsdlPacket = {
   name: "Sample",
   rowBits: 8,
   body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
@@ -75,7 +75,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function mount(packet: PsmlPacket, dispatch: (a: EditAction) => void) {
+async function mount(packet: PsdlPacket, dispatch: (a: EditAction) => void) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   let root: Root | null = null;
@@ -103,7 +103,7 @@ describe("SourcePane", () => {
     const { container, cleanup } = await mount(sample, dispatch);
     try {
       const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane");
+        container.querySelector<HTMLTextAreaElement>("#psdl-source-pane");
       expect(textarea).not.toBeNull();
       expect(textarea?.value.startsWith("name:")).toBe(true);
       expect(document.activeElement).toBe(textarea);
@@ -121,7 +121,7 @@ describe("SourcePane", () => {
     const { container, cleanup } = await mount(sample, dispatch);
     try {
       const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+        container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
       const next =
         'name: "Renamed"\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n';
       await act(async () => {
@@ -145,7 +145,7 @@ describe("SourcePane", () => {
     const { container, cleanup } = await mount(sample, dispatch);
     try {
       const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+        container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
       await act(async () => {
         nativeSetTextareaValue(textarea, "{ broken yaml ]]");
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
@@ -182,7 +182,7 @@ describe("SourcePane", () => {
     };
     await renderWith(make());
     const textarea =
-      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+      container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
     await act(async () => {
       nativeSetTextareaValue(
         textarea,
@@ -206,7 +206,7 @@ describe("SourcePane", () => {
     const { container, cleanup } = await mount(sample, dispatch);
     try {
       const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+        container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
       await act(async () => {
         nativeSetTextareaValue(textarea, "");
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
@@ -225,7 +225,7 @@ describe("SourcePane", () => {
     const { container, cleanup } = await mount(sample, dispatch);
     try {
       const textarea =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+        container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
       // dirty にする
       await act(async () => {
         nativeSetTextareaValue(textarea, "name: dirty\nrowBits: 8\nbody: []\n");
@@ -241,7 +241,7 @@ describe("SourcePane", () => {
       });
       // textarea が upstream の YAML に戻り、 dispatch は呼ばれない
       const ta2 =
-        container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+        container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
       expect(ta2.value.startsWith("name:")).toBe(true);
       expect(ta2.value).toContain('"Sample"');
       // debounce の余地を残しても dispatch されないこと
@@ -270,7 +270,7 @@ describe("SourcePane", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    const swapped: PsmlPacket = {
+    const swapped: PsdlPacket = {
       name: "Swapped",
       rowBits: 16,
       body: [{ id: "y", name: "Y", type: { kind: "bits", n: 16 } }],
@@ -282,7 +282,7 @@ describe("SourcePane", () => {
       await Promise.resolve();
     });
     const textarea =
-      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+      container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
     expect(textarea.value).toContain('"Swapped"');
     expect(textarea.value).toContain("rowBits: 16");
     await act(async () => {
@@ -314,7 +314,7 @@ describe("SourcePane", () => {
     expect(dirtyCalls.at(-1)).toBe(false);
 
     const textarea =
-      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+      container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
     // 編集すると即 pending=true (debounce 前なので history には乗らない)
     await act(async () => {
       nativeSetTextareaValue(
@@ -357,7 +357,7 @@ describe("SourcePane", () => {
       await Promise.resolve();
     });
     const textarea =
-      container.querySelector<HTMLTextAreaElement>("#psml-source-pane")!;
+      container.querySelector<HTMLTextAreaElement>("#psdl-source-pane")!;
     await act(async () => {
       nativeSetTextareaValue(textarea, "{ broken yaml ]]");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));

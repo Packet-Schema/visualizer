@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DNS Header
+rowBits: 16
+byteOrder: Network byte order (big-endian, MSB-first). All count fields are 16-bit big-endian.
+description: Domain Name System message header (RFC 1035). 12 bytes; the Flags field encodes QR/Opcode/AA/TC/RD/RA/Z/RCODE.
+body:
+  - id: id
+    name: Identification
+    type: { kind: bits, n: 16 }
+    category: identifier
+    doc: "Random 16-bit ID echoed in the response — lets the resolver match a reply to its outstanding query and helps mitigate spoofing. [RFC 1035, RFC 5452]"
+  - kind: group
+    id: flags_bits
+    name: Flags
+    children:
+      - id: flags_qr
+        name: QR
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Query/Response — 0 = the message is a query from a client, 1 = the message is a server's response.
+      - id: flags_opcode
+        name: Opcode
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Kind of operation: 0=QUERY (the normal lookup), 1=IQUERY (obsolete inverse query), 2=STATUS, 4=NOTIFY (zone change), 5=UPDATE (dynamic DNS)."
+      - id: flags_aa
+        name: AA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Authoritative Answer — set when the responder is authoritative for the queried zone (e.g. an answer direct from ns1.example.com for example.com).
+      - id: flags_tc
+        name: TC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: TrunCation — set when the response was cut off because it didn't fit the transport (typically a 512-byte UDP limit). The client should retry over TCP.
+      - id: flags_rd
+        name: RD
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Recursion Desired — client asks the server to chase the query through the DNS hierarchy on its behalf rather than just returning a referral.
+      - id: flags_ra
+        name: RA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Recursion Available — server advertises whether it supports recursive resolution. Public resolvers like 8.8.8.8 set this; authoritative-only servers do not.
+      - id: flags_z
+        name: Z
+        type: { kind: bits, n: 3 }
+        category: flags
+        doc: "Reserved bits — must be zero in queries and responses. Two of these were later repurposed by DNSSEC as AD (Authentic Data) and CD (Checking Disabled). [RFC 4035]"
+      - id: flags_rcode
+        name: RCODE
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Response Code — 0=NOERROR, 1=FORMERR (bad query), 2=SERVFAIL, 3=NXDOMAIN (name does not exist), 4=NOTIMP, 5=REFUSED."
+  - id: qdcount
+    name: QDCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: Number of question entries that follow the header — usually 1 (DNS supports more in theory but virtually nobody does in practice).
+  - id: ancount
+    name: ANCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: Number of resource records in the Answer section — for an A query, the IP addresses returned for the name.
+  - id: nscount
+    name: NSCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: Number of NS records in the Authority section — points the client at authoritative servers, often used in delegation responses.
+  - id: arcount
+    name: ARCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: Number of records in the Additional section — typically glue (A/AAAA records for the NS hostnames in the Authority section) or an OPT pseudo-RR for EDNS0.

@@ -13,8 +13,8 @@
 // Two panels (DetailPanel and OverridePanel) need the same resolution, so
 // the lookup lives here.
 
-import type { Field, Packet, SubField } from "@/lib/psml/renderer";
-import { parseTlvCellId } from "@/lib/psml/psml-to-renderer/tlv-cell-id";
+import type { Field, Packet, SubField } from "@/lib/psdl/renderer";
+import { parseTlvCellId } from "@/lib/psdl/psdl-to-renderer/tlv-cell-id";
 
 export type Resolution =
   | { kind: "empty" }
@@ -53,7 +53,7 @@ export function resolveSelection(
   // a literal colon (TLV synthetic ids like
   // `options__inst_0:options__inst_0__type`) split on the rightmost
   // separator only — splitting from the left misattributes the parent
-  // half and the editor stops opening (Codex P2). `validatePsmlPacket`
+  // half and the editor stops opening (Codex P2). `validatePsdlPacket`
   // also rejects `:` in user-authored field ids so this only ever runs
   // on renderer-minted shapes, but defense in depth is cheap.
   const colonIdx = selectedFieldId.lastIndexOf(":");

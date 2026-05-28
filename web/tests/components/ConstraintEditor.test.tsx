@@ -10,8 +10,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import ConstraintEditor from "@/components/custom-packet-studio/ConstraintEditor";
-import type { EditAction } from "@/lib/psml/edit-reducer";
-import type { Constraint } from "@/lib/psml/types";
+import type { EditAction } from "@/lib/psdl/edit-reducer";
+import type { Constraint } from "@/lib/psdl/types";
 
 let mounted: { container: HTMLDivElement; root: Root }[] = [];
 

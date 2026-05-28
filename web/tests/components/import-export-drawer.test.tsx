@@ -326,7 +326,7 @@ describe("ImportExportDrawer iframe export", () => {
       ],
     };
     const buildShareUrl = vi.fn(
-      () => "https://packet-view.example/view?psml=encoded&controllers.x=1",
+      () => "https://packet-view.example/view?psdl=encoded&controllers.x=1",
     );
     const { container } = mount(
       <ImportExportDrawer
@@ -356,7 +356,7 @@ describe("ImportExportDrawer iframe export", () => {
       'title="Demo &quot;Packet&quot; &amp; &lt;One&gt; packet diagram"',
     );
     expect(textarea?.value).toContain(
-      "https://packet-view.example/embed?psml=encoded&amp;controllers.x=1",
+      "https://packet-view.example/embed?psdl=encoded&amp;controllers.x=1",
     );
     expect(textarea?.value).toContain('height="280"');
     expect(container.querySelector(".diagram-export-preview")).toBeNull();
