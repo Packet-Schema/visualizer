@@ -407,6 +407,7 @@
     }
 
     .subfield-cell {
+      /* --text-3xs resolves to 10px at this breakpoint (overridden in globals.css) */
       font-size: var(--text-3xs);
       min-height: calc(var(--subfield-height) * 0.85);
       padding: 0 1px;
@@ -471,6 +472,8 @@
     }
 
     .subfield-cell {
+      /* --text-2xs resolves to 8px at this breakpoint (overridden in globals.css);
+         smaller than the 768px value of --text-3xs (10px) as intended */
       font-size: var(--text-2xs);
       min-height: calc(var(--subfield-height) * 0.75);
       border-radius: calc(var(--diagram-cell-radius) * 0.5);

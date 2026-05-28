@@ -233,6 +233,7 @@
     }
 
     .pv-switch-input:checked + .pv-switch-track::after {
+      /* track shrinks 4px, thumb shrinks 2px → net translate decrease = 4-2 = 2px */
       transform: translateX(calc(var(--switch-translate) - 2px));
     }
   }
