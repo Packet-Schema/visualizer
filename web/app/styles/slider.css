@@ -199,7 +199,8 @@
     input.pv-slider::-webkit-slider-thumb {
       width: calc(var(--slider-thumb-size) + 2px);
       height: calc(var(--slider-thumb-size) + 2px);
-      margin-top: -8px;
+      /* (thumb + 2px increment - 2px track) / 2, negated to center on track */
+      margin-top: calc(var(--slider-thumb-size) / -2);
     }
 
     input.pv-slider::-moz-range-thumb {
