@@ -164,7 +164,7 @@ export default function PacketViewer({
   // optgroup.
   const [customPresets, setCustomPresets] = useState<
     Record<string, PsdlPacket>
-  >({});
+  >(() => (initialPsdlPacket ? { [PSDL_INITIAL_KEY]: initialPsdlPacket } : {}));
   // Lowered renderer mirror of the active custom preset, if any.
   const customRenderer: Packet | null = useMemo(() => {
     const cp = customPresets[packetKey];
