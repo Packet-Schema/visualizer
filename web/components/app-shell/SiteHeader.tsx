@@ -21,7 +21,7 @@ export default function SiteHeader() {
             Visual viewer for common network packet headers.
           </p>
         </div>
-        <div className="flex items-center gap-2 justify-self-end">
+        <div className="flex items-center gap-2 ml-auto md:ml-0">
           <ThemeToggle />
         </div>
       </div>
