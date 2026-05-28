@@ -393,7 +393,7 @@
     }
 
     .cell.field-cell {
-      font-size: 11px;
+      font-size: var(--text-2xs);
       padding: calc(var(--diagram-cell-padding-vertical) * 0.8)
         calc(var(--diagram-cell-padding-horizontal) * 0.8);
     }
@@ -405,7 +405,7 @@
     }
 
     .subfield-cell {
-      font-size: 8px;
+      font-size: var(--text-3xs);
       min-height: calc(var(--subfield-height) * 0.85);
       padding: 0 1px;
     }
@@ -418,7 +418,7 @@
     }
 
     .diagram-ruler .ruler-label {
-      font-size: 8px;
+      font-size: var(--text-3xs);
       transform: translateX(-1px);
     }
 
@@ -442,7 +442,7 @@
     }
 
     .cell.field-cell {
-      font-size: 10px;
+      font-size: var(--text-3xs);
       padding: calc(var(--diagram-cell-padding-vertical) * 0.6)
         calc(var(--diagram-cell-padding-horizontal) * 0.6);
       border-radius: 6px;
@@ -451,7 +451,7 @@
     .cell.field-cell .cell-name,
     .cell.field-cell .cell-continuation,
     .cell.field-cell .cell-sublabel {
-      font-size: 9px;
+      font-size: var(--text-3xs);
     }
 
     .cell.field-cell[data-overridable="true"]::after {
@@ -469,7 +469,7 @@
     }
 
     .subfield-cell {
-      font-size: 7px;
+      font-size: var(--text-2xs);
       min-height: calc(var(--subfield-height) * 0.75);
       border-radius: 4px;
     }
@@ -490,7 +490,7 @@
     }
 
     .diagram-ruler .ruler-label {
-      font-size: 7px;
+      font-size: var(--text-2xs);
     }
 
     .hybrid-row {
@@ -499,7 +499,7 @@
     }
 
     .cell.field-cell {
-      font-size: 9px;
+      font-size: var(--text-2xs);
       padding: calc(var(--diagram-cell-padding-vertical) * 0.5)
         calc(var(--diagram-cell-padding-horizontal) * 0.5);
     }
