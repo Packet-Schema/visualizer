@@ -12,22 +12,22 @@ when a schema supports them.
 
 ## Project shape
 
-Packet View is a browser application built around **PSML** (Packet Schema
-Markup Language). PSML is the canonical schema format used by built-in presets,
+Packet View is a browser application built around **PSDL** (Packet Schema
+Definition Language). PSDL is the canonical schema format used by built-in presets,
 imports, exports, and layout resolution.
 
 The repository is organized around a few stable areas:
 
 - `web/` — the Next.js application
-- `data/presets/` — built-in PSML presets
-- `schemas/` — JSON Schema for PSML documents
-- `docs/` — architecture, testing, and PSML authoring references
+- `data/presets/` — built-in PSDL presets
+- `schemas/` — JSON Schema for PSDL documents
+- `docs/` — architecture, testing, and PSDL authoring references
 
 Useful starting points:
 
 - [Architecture](./docs/architecture.md)
-- [PSML specification](./docs/psml-0.4.md)
-- [PSML cheatsheet](./docs/psml-cheatsheet.md)
+- [PSDL specification](./docs/psdl-0.4.md)
+- [PSDL cheatsheet](./docs/psdl-cheatsheet.md)
 - [Adding a preset](./docs/adding-a-preset.md)
 - [Testing](./docs/testing.md)
 
@@ -70,14 +70,14 @@ npm run deploy
 Built-in packet presets live in [`data/presets/`](./data/presets/). The preset
 picker in the app is the source of truth for what is currently bundled.
 
-Packet View uses PSML as its format hub and provides import/export bridges for
-the formats supported by the current application. See the PSML specification
+Packet View uses PSDL as its format hub and provides import/export bridges for
+the formats supported by the current application. See the PSDL specification
 for the up-to-date format notes and limitations.
 
 ### Adding a preset
 
 Preset files are YAML documents under [`data/presets/`](./data/presets/).
-They are validated against [`schemas/psml.schema.json`](./schemas/psml.schema.json)
+They are validated against [`schemas/psdl.schema.json`](./schemas/psdl.schema.json)
 and compiled into the web app during the normal npm workflows.
 
 ```sh

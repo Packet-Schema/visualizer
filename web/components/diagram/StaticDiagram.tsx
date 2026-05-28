@@ -1,4 +1,4 @@
-import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Cell, Packet, ResolvedLayout } from "@/lib/psdl/renderer";
 import {
   rowsFor,
   cellVisual,
@@ -290,7 +290,7 @@ export function StaticDiagram({
                                   LAYOUT.subfieldFontSize * scale,
                                 ),
                                 fontWeight: 600,
-                                color: theme.fieldLabel,
+                                color: theme.subfieldLabel,
                                 padding: `0 ${LAYOUT.subfieldPaddingHorizontal}px`,
                                 position: "relative",
                               }}
@@ -341,6 +341,7 @@ export function StaticDiagram({
                     {isEncryptedBlock && cell.isFirst ? (
                       <div
                         style={{
+                          display: "flex",
                           position: "absolute",
                           top: Math.round(LAYOUT.badgeOffsetY * scale),
                           right: Math.round(LAYOUT.badgeOffsetX * scale),
@@ -357,6 +358,7 @@ export function StaticDiagram({
                     {isEncryptedChild && cell.isFirst ? (
                       <div
                         style={{
+                          display: "flex",
                           position: "absolute",
                           bottom: Math.round(LAYOUT.badgeOffsetYSmall * scale),
                           right: Math.round(LAYOUT.badgeOffsetXSmall * scale),

@@ -1,7 +1,7 @@
-// PSML 0.2 — Augmented Packet Header Diagrams importer
+// PSDL 0.2 — Augmented Packet Header Diagrams importer
 // (draft-mcquistin-augmented-ascii-diagrams).
 //
-// Best-effort parser that produces a PSML Packet on success. Supported
+// Best-effort parser that produces a PSDL Packet on success. Supported
 // constructs:
 //   1. A title line of the form "A/An <Name> is formatted as follows:".
 //   2. A diagram block: a leading bit-position scale (two header lines) and
@@ -14,7 +14,7 @@
 // Variable-length and conditional constructs surface as warnings; this
 // initial implementation models them as fixed 0-bit placeholders.
 //
-// PSML 0.4 primitives (Optional / berLength / peek / per-field byteOrder)
+// PSDL 0.4 primitives (Optional / berLength / peek / per-field byteOrder)
 // cannot be expressed in AAD source text — the format describes a fixed
 // ASCII diagram. The importer therefore never produces them; the exporter
 // pathway is not implemented (AAD is read-only). Callers that need to round-
@@ -23,9 +23,9 @@
 import type {
   CategoryToken,
   Container,
-  Field as PsmlField,
-  Packet as PsmlPacket,
-} from "../psml/types";
+  Field as PsdlField,
+  Packet as PsdlPacket,
+} from "../psdl/types";
 
 import { sanitizeId } from "./common";
 
@@ -39,7 +39,7 @@ type WhereEntry = {
 };
 
 export function fromAad(text: string): {
-  packet: PsmlPacket;
+  packet: PsdlPacket;
   warnings: string[];
 } {
   const warnings: string[] = [];
@@ -90,11 +90,11 @@ export function fromAad(text: string): {
   const whereInfo = parseWhereBlock(lines.slice(i));
   if (whereInfo.unsupported.length) warnings.push(...whereInfo.unsupported);
 
-  const body: Container[] = merged.map((c, idx): PsmlField => {
+  const body: Container[] = merged.map((c, idx): PsdlField => {
     const trimmed = c.label.trim();
     const meta = matchWhereMeta(trimmed, whereInfo.entries);
     const id = makeId(trimmed || `field${idx}`, idx);
-    const f: PsmlField = {
+    const f: PsdlField = {
       id,
       name: meta?.fullName || trimmed || `Field ${idx + 1}`,
       type: { kind: "bits", n: c.bits },
@@ -104,7 +104,7 @@ export function fromAad(text: string): {
     return f;
   });
 
-  const packet: PsmlPacket = {
+  const packet: PsdlPacket = {
     name: title || "Imported Packet",
     rowBits,
     description: `Imported from Augmented ASCII diagram (${body.length} fields, ${sumLeafBits(
@@ -118,13 +118,13 @@ export function fromAad(text: string): {
 function sumLeafBits(body: Container[]): number {
   let n = 0;
   for (const c of body) {
-    // The parser only emits leaf PsmlField nodes with type.kind === "bits".
+    // The parser only emits leaf PsdlField nodes with type.kind === "bits".
     // The Field/`bits` guards here exist for forward compatibility (Switch /
     // Repeat / Group could appear if the importer is extended); both guards
     // currently only match true. Tracked as defensive — coverage ignore.
     /* v8 ignore start */
     if (!("kind" in c) || c.kind === "field") {
-      const t = (c as PsmlField).type;
+      const t = (c as PsdlField).type;
       if (t.kind === "bits") n += t.n;
     }
     /* v8 ignore stop */

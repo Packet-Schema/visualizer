@@ -8,7 +8,7 @@ import type {
   Field,
   Packet,
   SubField,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 import { parseTlvCellId } from "@/components/field-details/tlv-cell-id";
 
 type Props = {
@@ -192,7 +192,7 @@ export default function FieldPopover({
   // visible heading provides the label.
   //
   // `titleId` was hoisted above the early-return so the hook order stays
-  // stable across `resolved === null` frames; PSML ids may carry
+  // stable across `resolved === null` frames; PSDL ids may carry
   // spaces / colons (e.g. nested `flags:df`) that produce invalid HTML
   // id attributes and silently break the `aria-labelledby` link, so we
   // rely on React's `useId` for a DOM-safe, unique value.

@@ -10,7 +10,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import Toolbar from "@/components/custom-packet-studio/Toolbar";
-import type { EditAction } from "@/lib/psml/edit-reducer";
+import type { EditAction } from "@/lib/psdl/edit-reducer";
 import type { StudioView } from "@/components/packet-viewer/ui-state-reducer";
 
 const noopDispatch: (a: EditAction) => void = () => {};

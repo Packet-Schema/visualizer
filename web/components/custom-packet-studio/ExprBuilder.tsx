@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-import type { BinOp, Expr } from "@/lib/psml/types";
+import type { BinOp, Expr } from "@/lib/psdl/types";
 
 type Props = {
   value: Expr;
@@ -36,7 +36,7 @@ function defaultExpr(kind: ExprKind): Expr {
         f: { kind: "lit", value: 0 },
       };
     case "peek":
-      // PSML 0.2 has no "peek" Expr variant in types.ts. We model it visually
+      // PSDL 0.2 has no "peek" Expr variant in types.ts. We model it visually
       // but emit a lit placeholder; consumers that need peek will extend the
       // schema (out of scope for 7B). For now, return a labelled lit so the
       // user can still see a tab without producing invalid Expr.

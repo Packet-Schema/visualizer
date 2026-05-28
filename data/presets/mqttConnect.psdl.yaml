@@ -1,0 +1,162 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MQTT v3.1.1 CONNECT Packet
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). MQTT strings are length-prefixed UTF-8 (2-byte BE length).
+description: MQTT v3.1.1 CONNECT control packet (OASIS standard §3.1) — opens a client-server session. Fixed Header (Type=1, Flags=0) + Variable Header (Protocol Name + Level + Connect Flags + Keep Alive) + Payload (Client Identifier + flag-gated Will Topic / Will Message / User Name / Password). Each length-prefixed string is a 2-byte BE length followed by that many bytes of UTF-8 (or, for Will Message, opaque binary).
+body:
+  - kind: group
+    id: fixedHeaderByte1
+    name: Fixed Header — Byte 1
+    children:
+      - id: controlPacketType
+        name: "Packet Type=1"
+        type: { kind: bits, n: 4 }
+        category: type
+        defaultValue: 1
+        doc: "MQTT Control Packet type — value 1 identifies this as a CONNECT packet. The 14 named types are listed in [MQTT v3.1.1 §2.2.1] (Table 2.1). [MQTT v3.1.1 §3.1.1]"
+      - id: controlPacketFlags
+        name: Flags
+        type: { kind: bits, n: 4 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved flag bits in the first byte. For CONNECT all four bits MUST be 0; a server MUST treat any other value as malformed and close the network connection. [MQTT v3.1.1 §3.1.1 / Table 2.2]"
+  - id: remainingLength
+    name: Remaining Length
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Number of bytes remaining in the packet (Variable Header + Payload). On the wire this is an MQTT-specific variable-length integer of 1 to 4 bytes: the low 7 bits of each byte are value bits and the MSB is a continuation flag (set when another byte follows). Max encodable value is 268,435,455 bytes. This preset models the common 1-byte case for readability; widen via env override for larger payloads. [MQTT v3.1.1 §2.2.3]"
+  - id: protocolNameLength
+    name: Protocol Name Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 4
+    doc: "Two-byte big-endian length of the Protocol Name string that follows. Always 4 in v3.1.1 because the Protocol Name is fixed as 'MQTT'. [MQTT v3.1.1 §3.1.2.1]"
+  - id: protocolName
+    name: "Protocol Name=\"MQTT\""
+    type: { kind: bytes, n: { kind: lit, value: 4 } }
+    category: type
+    doc: "Four-byte UTF-8 string 'MQTT' (0x4D 0x51 0x54 0x54). A server that does not recognise this exact string MUST disconnect. The combination of fixed name + Protocol Level lets servers reject unsupported MQTT versions cheaply. [MQTT v3.1.1 §3.1.2.1]"
+  - id: protocolLevel
+    name: "Protocol Level=4"
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 4
+    doc: "Version of the MQTT protocol. 3 = MQTT 3.1, 4 = MQTT 3.1.1 (this preset), 5 = MQTT 5. A server that does not support the requested level MUST respond with CONNACK return code 0x01 (Unacceptable Protocol Version) and then close the connection. [MQTT v3.1.1 §3.1.2.2]"
+  - kind: group
+    id: connectFlagsBits
+    name: Connect Flags
+    children:
+      - id: cf_userNameFlag
+        name: User Name
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "If 1, a User Name field MUST appear in the payload; if 0, it MUST NOT. [MQTT v3.1.1 §3.1.2.8]"
+      - id: cf_passwordFlag
+        name: Password
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "If 1, a Password field MUST appear in the payload; if 0, it MUST NOT. If User Name Flag is 0 then Password Flag MUST also be 0. [MQTT v3.1.1 §3.1.2.9]"
+      - id: cf_willRetain
+        name: Will Retain
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "If Will Flag = 1 and Will Retain = 1, the server MUST publish the Will Message as a retained message; otherwise it MUST NOT. Ignored (MUST be 0) when Will Flag = 0. [MQTT v3.1.1 §3.1.2.7]"
+      - id: cf_willQos
+        name: Will QoS
+        type: { kind: bits, n: 2 }
+        category: flags
+        doc: "QoS level (0, 1, or 2) the server uses when publishing the Will Message. MUST be 0 when Will Flag = 0; values of 3 are malformed. [MQTT v3.1.1 §3.1.2.6]"
+      - id: cf_willFlag
+        name: Will
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "If 1, the payload carries a Will Topic and Will Message, and the server MUST store them and publish on ungraceful disconnect. If 0, Will Retain / Will QoS MUST also be 0 and no Will Topic / Message appears. [MQTT v3.1.1 §3.1.2.5]"
+      - id: cf_cleanSession
+        name: Clean Session
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "If 1, the server MUST discard any previous session state for this Client Identifier and start a fresh session, and MUST NOT persist state past the network connection. If 0, the server resumes any stored session matching the Client Identifier. [MQTT v3.1.1 §3.1.2.4]"
+      - id: cf_reserved
+        name: Rsvd
+        type: { kind: bits, n: 1 }
+        category: reserved
+        doc: "Reserved — MUST be set to 0. A server MUST treat a CONNECT with the Reserved bit set as malformed and close the network connection. [MQTT v3.1.1 §3.1.2.3]"
+  - id: keepAlive
+    name: Keep Alive
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Maximum interval in seconds between two control packets from the client. The server is permitted to disconnect a client that has not sent any packet (PINGREQ counts) within 1.5× Keep Alive. 0 disables the keep-alive mechanism. [MQTT v3.1.1 §3.1.2.10]"
+  - id: clientIdLength
+    name: Client Identifier Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Two-byte BE length of the Client Identifier UTF-8 string that follows. Servers MUST allow 1-23 bytes of [a-zA-Z0-9]; they MAY allow longer or other characters, and MAY allow length 0 (in which case the server assigns an identifier and Clean Session MUST be 1). [MQTT v3.1.1 §3.1.3.1]"
+  - id: clientId
+    name: Client Identifier
+    type: { kind: bytes, n: { kind: ref, field: mqttClientIdBytes } }
+    category: identifier
+    doc: "UTF-8 string that uniquely identifies the client to the server within its session namespace. The server uses it to associate this network connection with any retained session state. [MQTT v3.1.1 §3.1.3.1]"
+  - kind: optional
+    when: { kind: ref, field: cf_willFlag }
+    field:
+      id: willTopicLength
+      name: Will Topic Length
+      type: { kind: int, bits: 16 }
+      category: length
+      doc: "Two-byte BE length of the Will Topic UTF-8 string. Present only when the Will Flag is 1. [MQTT v3.1.1 §3.1.3.2]"
+  - kind: optional
+    when: { kind: ref, field: cf_willFlag }
+    field:
+      id: willTopic
+      name: Will Topic
+      type: { kind: bytes, n: { kind: ref, field: mqttWillTopicBytes } }
+      category: addressing
+      doc: "UTF-8 topic name the server publishes the Will Message to if the client disconnects ungracefully. MUST NOT contain wildcard characters. Present only when the Will Flag is 1. [MQTT v3.1.1 §3.1.3.2]"
+  - kind: optional
+    when: { kind: ref, field: cf_willFlag }
+    field:
+      id: willMessageLength
+      name: Will Message Length
+      type: { kind: int, bits: 16 }
+      category: length
+      doc: "Two-byte BE length of the Will Message payload. Present only when the Will Flag is 1. [MQTT v3.1.1 §3.1.3.3]"
+  - kind: optional
+    when: { kind: ref, field: cf_willFlag }
+    field:
+      id: willMessage
+      name: Will Message
+      type: { kind: bytes, n: { kind: ref, field: mqttWillMessageBytes } }
+      category: variable
+      doc: "Application-defined Will payload — opaque binary, not restricted to UTF-8. The server publishes this verbatim to the Will Topic on ungraceful disconnect, at Will QoS, with the Will Retain flag. Present only when the Will Flag is 1. [MQTT v3.1.1 §3.1.3.3]"
+  - kind: optional
+    when: { kind: ref, field: cf_userNameFlag }
+    field:
+      id: userNameLength
+      name: User Name Length
+      type: { kind: int, bits: 16 }
+      category: length
+      doc: "Two-byte BE length of the User Name UTF-8 string. Present only when the User Name Flag is 1. [MQTT v3.1.1 §3.1.3.4]"
+  - kind: optional
+    when: { kind: ref, field: cf_userNameFlag }
+    field:
+      id: userName
+      name: User Name
+      type: { kind: bytes, n: { kind: ref, field: mqttUserNameBytes } }
+      category: identifier
+      doc: "UTF-8 user name used for authentication / authorization. Present only when the User Name Flag is 1. [MQTT v3.1.1 §3.1.3.4]"
+  - kind: optional
+    when: { kind: ref, field: cf_passwordFlag }
+    field:
+      id: passwordLength
+      name: Password Length
+      type: { kind: int, bits: 16 }
+      category: length
+      doc: "Two-byte BE length of the Password field that follows. Present only when the Password Flag is 1. [MQTT v3.1.1 §3.1.3.5]"
+  - kind: optional
+    when: { kind: ref, field: cf_passwordFlag }
+    field:
+      id: password
+      name: Password
+      type: { kind: bytes, n: { kind: ref, field: mqttPasswordBytes } }
+      category: variable
+      doc: "Opaque binary password — 0 to 65535 bytes; not restricted to UTF-8. Servers typically tunnel the entire CONNECT over TLS, since Password is transmitted in the clear. Present only when the Password Flag is 1. [MQTT v3.1.1 §3.1.3.5]"

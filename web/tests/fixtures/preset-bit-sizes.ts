@@ -1,11 +1,11 @@
-// Expected totalBits for every PSML preset under its initial state. After
-// Round 6 every preset is a PSML Packet and these numbers are produced by
+// Expected totalBits for every PSDL preset under its initial state. After
+// Round 6 every preset is a PSDL Packet and these numbers are produced by
 // `resolveLayout`; the totals are also the canonical "default" sizes the
 // README documents.
 //
 // `EXPECTED_TOTAL_BITS` covers the original 13 presets that ship with the
-// picker. `EXPECTED_TOTAL_BITS_PSML_ONLY` extends that with the encrypted
-// presets (quicLong, tlsClientHelloFull) added in PSML 0.3 Phase 2C.
+// picker. `EXPECTED_TOTAL_BITS_PSDL_ONLY` extends that with the encrypted
+// presets (quicLong, tlsClientHelloFull) added in PSDL 0.3 Phase 2C.
 
 export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   ipv4: 160,
@@ -61,7 +61,7 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
 };
 
 /**
- * PSML 0.4 demo presets — minimal fixtures exercising one new primitive each.
+ * PSDL 0.4 demo presets — minimal fixtures exercising one new primitive each.
  * Bit totals use the same "all refs default to 0" env that `buildEnv()`
  * synthesises in `layout-parity.test.ts`.
  *
@@ -69,18 +69,18 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
  *   * tlsExtensionsBlock — Repeat count refs default to 0 → no extensions.
  *   * pcieTlpFragment   — 8 + 32 + 16 + 8 = 64 fixed bits.
  */
-export const EXPECTED_TOTAL_BITS_PSML_04: Record<string, number> = {
+export const EXPECTED_TOTAL_BITS_PSDL_04: Record<string, number> = {
   http2FrameHeader: 72,
   tlsExtensionsBlock: 0,
   pcieTlpFragment: 64,
 };
 
 /**
- * PSML-only presets added in Phase 2C. Wire-mode totalBits — the on-the-wire
+ * PSDL-only presets added in Phase 2C. Wire-mode totalBits — the on-the-wire
  * encoding with every Encrypted container collapsed to its `wireBits` (or
  * to the sum of its plaintext bit widths when `wireBits` is absent).
  */
-export const EXPECTED_TOTAL_BITS_PSML_ONLY: Record<string, number> = {
+export const EXPECTED_TOTAL_BITS_PSDL_ONLY: Record<string, number> = {
   quicLong: 320,
   tlsClientHelloFull: 1032,
 };
@@ -97,5 +97,5 @@ export const EXPECTED_TOTAL_BITS_SEMANTIC: Record<string, number> = {
 };
 
 export const PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS);
-export const PSML_ONLY_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSML_ONLY);
-export const PSML_04_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSML_04);
+export const PSDL_ONLY_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSDL_ONLY);
+export const PSDL_04_PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS_PSDL_04);

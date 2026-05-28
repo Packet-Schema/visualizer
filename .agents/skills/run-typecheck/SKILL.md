@@ -42,7 +42,7 @@ npm exec tsc -- --noEmit
 ## 補足
 
 - 依存関係は `web/package-lock.json` に従い、Node.js 関連の実行は `npm` 前提で統一する。
-- `web/lib/psml/presets.generated.ts` は gitignore 対象の生成物なので、クリーン環境では型チェック前に生成が必要になる。
+- `web/lib/psdl/presets.generated.ts` は gitignore 対象の生成物なので、クリーン環境では型チェック前に生成が必要になる。
 - TypeScript は strict mode 前提で扱い、型エラー回避のために型安全性を下げる変更は避ける。
 - 将来的に型チェック専用スクリプトが追加されたら、そのスクリプトを優先して使う。
 - `npm run format` は `format:check` が失敗した場合に実行する想定で、整形が不要なら省略してよい。既存差分を広く書き換えそうな場合は、整形未実施の理由と型チェック結果を分けて共有する。

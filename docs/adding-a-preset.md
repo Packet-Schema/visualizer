@@ -1,6 +1,6 @@
 # preset を追加する
 
-組み込み preset は `data/presets/*.psml.yaml` に YAML として置くだけで、
+組み込み preset は `data/presets/*.psdl.yaml` に YAML として置くだけで、
 TypeScript の編集なしに登録されます。本書は最短手順 + 注意点をまとめたものです。
 
 関連: 機能要望は [issue #91](https://github.com/HackU-5/packet-view/issues/91)
@@ -10,11 +10,11 @@ TypeScript の編集なしに登録されます。本書は最短手順 + 注意
 
 ### 1. YAML ファイルを作る
 
-`data/presets/<key>.psml.yaml` を作成し、先頭に schema 関連付けコメントを入れます。
+`data/presets/<key>.psdl.yaml` を作成し、先頭に schema 関連付けコメントを入れます。
 `<key>` は camelCase の英数字 (例: `tcp`, `quicShort`, `http2FrameHeader`)。
 
 ```yaml
-# yaml-language-server: $schema=../../schemas/psml.schema.json
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
 name: My Protocol Header
 rowBits: 32
 byteOrder: BE
@@ -24,13 +24,13 @@ body:
   # ... フィールド定義 ...
 ```
 
-### 2. PSML 仕様に従って `body` を書く
+### 2. PSDL 仕様に従って `body` を書く
 
-- 1 ページ要約: [`psml-cheatsheet.md`](./psml-cheatsheet.md)
-- 完全仕様: [`psml-0.4.md`](./psml-0.4.md)
+- 1 ページ要約: [`psdl-cheatsheet.md`](./psdl-cheatsheet.md)
+- 完全仕様: [`psdl-0.4.md`](./psdl-0.4.md)
 
-困ったら既存 preset (`data/presets/udp.psml.yaml` が最小、`tcp.psml.yaml` /
-`ipv4.psml.yaml` が options 付きの代表例) を参考にしてください。
+困ったら既存 preset (`data/presets/udp.psdl.yaml` が最小、`tcp.psdl.yaml` /
+`ipv4.psdl.yaml` が options 付きの代表例) を参考にしてください。
 
 ### 3. `PRESET_GROUPS` に追加
 
@@ -44,7 +44,7 @@ body:
 
 ### 5. layout-parity の網羅確認
 
-`web/tests/psml/layout-parity.test.ts` を一読し、key が
+`web/tests/psdl/layout-parity.test.ts` を一読し、key が
 `PRESET_KEYS` 経由で網羅されているか確認してください。
 通常はテスト側の編集は不要です。
 
@@ -69,7 +69,7 @@ YAML が schema 違反だと build:presets が
 ## YAML サンプル (架空のミニプロトコル)
 
 ```yaml
-# yaml-language-server: $schema=../../schemas/psml.schema.json
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
 name: Mini Frame
 rowBits: 32
 byteOrder: BE
