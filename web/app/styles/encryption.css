@@ -15,7 +15,9 @@
 
   .cell.field-cell[data-encrypted="true"] {
     /* Heavier stripe than the variable-length pattern so the two are
-     visually distinguishable when both appear in the same packet. */
+     visually distinguishable when both appear in the same packet.
+     Pattern parameters (angle, gap, line width) must stay in sync with
+     ENCRYPTED_STRIPE in web/lib/theme.ts (used by the Satori renderer). */
     background-image: repeating-linear-gradient(
       135deg,
       transparent 0px,

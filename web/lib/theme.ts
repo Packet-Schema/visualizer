@@ -118,6 +118,23 @@ export const DIAGRAM_OPACITY = {
 } as const;
 
 /**
+ * Encrypted-field diagonal stripe pattern parameters.
+ * Must stay in sync with encryption.css (.cell.field-cell[data-encrypted="true"]).
+ */
+export const ENCRYPTED_STRIPE = {
+  /** Angle of the repeating stripe. */
+  angleDeg: 135,
+  /** Width of the transparent gap between stripes (px). */
+  gapPx: 5,
+  /** Width of the colored stripe line (px). */
+  linePx: 1,
+  /** Stripe color opacity for light mode. */
+  opacityLight: 0.3,
+  /** Stripe color opacity for dark mode (higher contrast needed on dark bg). */
+  opacityDark: 0.5,
+} as const;
+
+/**
  * UI theme colors: used by buttons, text, backgrounds, borders, etc.
  * These colors are exposed to CSS and Tailwind via the @theme block.
  */

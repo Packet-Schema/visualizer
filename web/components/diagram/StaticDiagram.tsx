@@ -6,7 +6,7 @@ import {
   rowBandColor,
   isFieldOverridable,
 } from "@/lib/diagram-export";
-import { LAYOUT } from "@/lib/theme";
+import { LAYOUT, ENCRYPTED_STRIPE } from "@/lib/theme";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 import { LockIcon } from "@/components/diagram/diagram-badges";
 
@@ -206,7 +206,7 @@ export function StaticDiagram({
                       overflow: "hidden",
                       minWidth: 0,
                       background: isDashed
-                        ? `repeating-linear-gradient(135deg, transparent 0px, transparent 5px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, 0.3) 5px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, 0.3) 6px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
+                        ? `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, ${ENCRYPTED_STRIPE.opacityLight}) ${ENCRYPTED_STRIPE.gapPx}px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, ${ENCRYPTED_STRIPE.opacityLight}) ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
                         : `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
                     }}
                   >
