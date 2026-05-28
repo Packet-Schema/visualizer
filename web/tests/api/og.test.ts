@@ -110,17 +110,14 @@ describe("OG API endpoint", () => {
 
     const presetKeys = Object.keys(PRESETS).filter((k) => k !== "ipv4");
 
-    it.each(presetKeys)(
-      "preset=%s differs from default",
-      async (presetKey) => {
-        const res = await GET(
-          new NextRequest(`http://localhost/api/og?preset=${presetKey}`),
-        );
-        expect(res.status).toBe(200);
-        const buf = await res.arrayBuffer();
-        expect(Buffer.from(buf).equals(Buffer.from(defaultBuf))).toBe(false);
-      },
-    );
+    it.each(presetKeys)("preset=%s differs from default", async (presetKey) => {
+      const res = await GET(
+        new NextRequest(`http://localhost/api/og?preset=${presetKey}`),
+      );
+      expect(res.status).toBe(200);
+      const buf = await res.arrayBuffer();
+      expect(Buffer.from(buf).equals(Buffer.from(defaultBuf))).toBe(false);
+    });
 
     const controllerCases: Array<[string, string]> = [
       ["ipv4 with c1=50", "preset=ipv4&c1=50"],
