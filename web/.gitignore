@@ -37,3 +37,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 lib/og-font.ts
+
+# generated favicon files
+/app/favicon.ico
+/app/apple-icon.png
+/app/icon.png
