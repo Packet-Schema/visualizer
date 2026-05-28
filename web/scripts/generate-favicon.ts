@@ -34,8 +34,11 @@ async function generateFavicon() {
     .png()
     .toFile(resolve(appDir, "apple-icon.png"));
 
-  // Copy icon.png (512x512) to app directory for PWA
-  await fs.copyFile(sourceIcon, resolve(appDir, "icon.png"));
+  // Generate icon.png (512x512) for PWA
+  await sharp(sourceIcon)
+    .resize(512, 512, { fit: "cover" })
+    .png()
+    .toFile(resolve(appDir, "icon.png"));
 
   console.log("✓ Favicon files generated successfully");
   console.log("  - app/favicon.ico (16, 32, 48px)");
