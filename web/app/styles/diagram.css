@@ -375,7 +375,9 @@
     outline-offset: 1px;
   }
 
-  /* ---- mobile responsiveness ---- */
+  /* ---- mobile responsiveness ----
+     Scale factors: 768px→0.85, 640px→0.75, 480px→0.65 (each step ~85% of previous)
+     to keep diagram readable without horizontal scroll on small viewports. */
 
   @media (max-width: 768px) {
     .diagram-ruler {

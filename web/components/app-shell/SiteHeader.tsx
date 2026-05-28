@@ -15,7 +15,7 @@ export default function SiteHeader() {
             Packet Visualizer
           </h1>
           <p
-            className="m-0 text-xs truncate min-w-0 md:block"
+            className="m-0 text-xs truncate min-w-0"
             style={{ color: "var(--header-fg-muted)" }}
           >
             Visual viewer for common network packet headers.
