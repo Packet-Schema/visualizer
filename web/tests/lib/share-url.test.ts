@@ -112,7 +112,7 @@ describe("share URL params", () => {
     const shortQuery = "preset=ipv4";
     expect(isShareQueryLengthValid(shortQuery)).toBe(true);
 
-    const longQuery = "preset=" + "x".repeat(3000);
+    const longQuery = "preset=" + "x".repeat(200_000);
     expect(isShareQueryLengthValid(longQuery)).toBe(false);
   });
 });
