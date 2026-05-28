@@ -89,7 +89,7 @@ export default function PacketToolbar({
     onDeleteCustomPreset,
   } = actions;
   return (
-    <div className="mb-2 flex flex-col sm:flex-wrap items-center gap-2 sm:gap-3 rounded-[10px] border border-border bg-bg-elevated px-3 sm:px-3.5 py-2 sm:py-2.5 shadow-[0_1px_2px_rgba(15,22,50,0.05)]">
+    <div className="mb-2 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 rounded-[10px] border border-border bg-bg-elevated px-3 sm:px-3.5 py-2 sm:py-2.5 shadow-[0_1px_2px_rgba(15,22,50,0.05)]">
       <PresetPicker
         value={packetKey}
         onChange={onPacketChange}
