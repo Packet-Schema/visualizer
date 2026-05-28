@@ -205,9 +205,9 @@ export function StaticDiagram({
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                       overflow: "hidden",
                       minWidth: 0,
-                      opacity: isDashed
-                        ? ENCRYPTED_STRIPE.cellOpacity
-                        : undefined,
+                      ...(isDashed
+                        ? { opacity: ENCRYPTED_STRIPE.cellOpacity }
+                        : {}),
                       background: isDashed
                         ? `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
                         : `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
