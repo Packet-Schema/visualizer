@@ -174,7 +174,10 @@ export async function GET(request: NextRequest) {
     const availableW = OG_WIDTH - OG_MARGIN * 2;
     const availableH = OG_HEIGHT - OG_MARGIN * 2;
 
-    return new ImageResponse(
+    // Force Satori to render synchronously inside this try/catch so any
+    // JSX layout error (e.g. "display: flex" constraint) is caught here
+    // rather than escaping as an unhandled "failed to pipe response" 500.
+    const imgResponse = new ImageResponse(
       <div
         style={{
           width: OG_WIDTH,
@@ -205,6 +208,8 @@ export async function GET(request: NextRequest) {
       </div>,
       createOGImageResponseOptions(),
     );
+    const buffer = await imgResponse.arrayBuffer();
+    return new Response(buffer, { headers: OG_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("OGP generation failed:", message);

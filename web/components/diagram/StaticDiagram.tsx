@@ -341,6 +341,7 @@ export function StaticDiagram({
                     {isEncryptedBlock && cell.isFirst ? (
                       <div
                         style={{
+                          display: "flex",
                           position: "absolute",
                           top: Math.round(LAYOUT.badgeOffsetY * scale),
                           right: Math.round(LAYOUT.badgeOffsetX * scale),
@@ -357,6 +358,7 @@ export function StaticDiagram({
                     {isEncryptedChild && cell.isFirst ? (
                       <div
                         style={{
+                          display: "flex",
                           position: "absolute",
                           bottom: Math.round(LAYOUT.badgeOffsetYSmall * scale),
                           right: Math.round(LAYOUT.badgeOffsetXSmall * scale),

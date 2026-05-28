@@ -116,16 +116,25 @@ const TLV_LENGTH_SYNC: Array<{
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
 
+// Synthetic key used during SSR / pre-hydration when the URL carries a
+// PSDL-encoded custom packet. The hydration effect replaces it with the
+// canonical `custom:<name>` key once the packet is persisted to localStorage.
+const PSDL_INITIAL_KEY = "__psdl_initial__";
+
 type PacketViewerProps = {
   initialPacketKey?: string;
   initialControllers?: ControllerState;
+  initialPsdlPacket?: PsdlPacket;
 };
 
 export default function PacketViewer({
   initialPacketKey = DEFAULT_PACKET_KEY,
   initialControllers,
+  initialPsdlPacket,
 }: PacketViewerProps) {
-  const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
+  const [packetKey, setPacketKey] = useState<string>(
+    initialPsdlPacket ? PSDL_INITIAL_KEY : initialPacketKey,
+  );
   // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
   // エラー中のテキストは studio reducer の history に乗らないので、 Discard
   // 確認をこのフラグでも引っ掛ける (Codex P2)。
@@ -133,7 +142,12 @@ export default function PacketViewer({
   // Imported packets are kept in the renderer shape so the editors can mutate
   // their TLV/Chain/subfield state directly. Built-in presets live in PSDL
   // and are lowered to the renderer shape on demand.
-  const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
+  const [importedPackets, setImportedPackets] = useState<PacketRegistry>(() => {
+    if (!initialPsdlPacket) return {} as PacketRegistry;
+    return {
+      [PSDL_INITIAL_KEY]: psdlToRenderer(initialPsdlPacket),
+    } as PacketRegistry;
+  });
   // The renderer-shape mirror of every built-in PSDL preset. Lowered once on
   // mount; TLV/Chain edits replace the relevant packet entry immutably via
   // `updatePacketField` (the format hub re-lifts back to PSDL at export time).
@@ -165,6 +179,10 @@ export default function PacketViewer({
     renderedPresets[DEFAULT_PACKET_KEY];
 
   const [controllers, setControllers] = useState<ControllerState>(() => {
+    if (initialPsdlPacket) {
+      const rendered = psdlToRenderer(initialPsdlPacket);
+      return { ...initialState(rendered), ...(initialControllers ?? {}) };
+    }
     const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
     return initialControllers ?? initialState(psdlToRenderer(packet));
   });
@@ -174,7 +192,9 @@ export default function PacketViewer({
   // unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY],
+    initialPsdlPacket ??
+      PRESETS[initialPacketKey] ??
+      PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
@@ -236,6 +256,15 @@ export default function PacketViewer({
       setControllers({
         ...initialState(psdlToRenderer(parsed.packet)),
         ...parsed.controllers,
+      });
+      // Remove the SSR placeholder now that the packet has been promoted to
+      // custom:<name>. Without this, the picker shows the same packet twice —
+      // once under "My presets" and once under "Imported".
+      setImportedPackets((prev) => {
+        if (!(PSDL_INITIAL_KEY in prev)) return prev;
+        const next = { ...prev };
+        delete next[PSDL_INITIAL_KEY];
+        return next;
       });
     } else if (parsed.kind === "preset") {
       setCustomPresets(stored);
@@ -980,20 +1009,42 @@ export default function PacketViewer({
 
   useEffect(() => {
     if (!urlHydrated) return;
-    const title = packet.name
-      ? `${packet.name} | Packet Visualizer`
+    const title = exportPacket.name
+      ? `${exportPacket.name} | Packet Visualizer`
       : "Packet Visualizer";
+    const description =
+      exportPacket.description ??
+      "Visual viewer for common network packet headers.";
     let id2: number | null = null;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
         document.title = title;
+        setMetaContent("name", "description", description);
+        setMetaContent("property", "og:title", title);
+        setMetaContent("property", "og:description", description);
+        setMetaContent("name", "twitter:title", title);
+        setMetaContent("name", "twitter:description", description);
+        // og:image and twitter:image point to /api/og with the current share
+        // query, which already reflects the live packet state via the URL
+        // effect above — derive from window.location so we stay in sync.
+        if (typeof window !== "undefined") {
+          const shareQuery = window.location.search;
+          const ogImageUrl = `${window.location.origin}/api/og${shareQuery}`;
+          setMetaContent("property", "og:image", ogImageUrl);
+          setMetaContent("name", "twitter:image", ogImageUrl);
+        }
       });
     });
     return () => {
       cancelAnimationFrame(id1);
       if (id2 !== null) cancelAnimationFrame(id2);
     };
-  }, [urlHydrated, packet.name]);
+  }, [
+    urlHydrated,
+    exportPacket.name,
+    exportPacket.description,
+    buildCurrentShareUrl,
+  ]);
 
   return (
     <>
@@ -1256,4 +1307,15 @@ function stableStringify(value: unknown): string {
 
 function samePsdlPacket(a: PsdlPacket, b: PsdlPacket): boolean {
   return stableStringify(a) === stableStringify(b);
+}
+
+function setMetaContent(
+  attrName: string,
+  attrValue: string,
+  content: string,
+): void {
+  const el = document.querySelector<HTMLMetaElement>(
+    `meta[${attrName}="${attrValue}"]`,
+  );
+  if (el) el.content = content;
 }

@@ -10,9 +10,12 @@ import type { Packet as PsdlPacket, PacketEnv } from "./psdl/types";
 
 export const CONTROLLER_PARAM_PREFIX = "controllers.";
 export const SHARE_URL_WARN_BYTES = 2048;
-// Maximum URL length to ensure compatibility across browsers and social media platforms.
-// Exceeding this limit may cause truncation or rendering issues when sharing links.
-export const SHARE_URL_MAX_LENGTH = 2048;
+// Hard ceiling to guard against pathologically large payloads (DoS).
+// Browsers and CDNs typically support up to ~64 KB in query strings, so
+// 100 000 bytes gives room for complex PSDL packets while still bounding
+// server-side work. The WARN threshold above is intentionally lower and
+// is used only to surface a UI warning when copying a share URL.
+export const SHARE_URL_MAX_LENGTH = 100_000;
 export const SHARE_PARAM_KEYS = ["preset", "psdl"] as const;
 
 export type ParsedShareParams =
