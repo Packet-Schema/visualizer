@@ -64,6 +64,12 @@
   --text-sm-tight--line-height: 16px;
   --diagram-cell-radius: 8px;
   --legend-swatch-size: 10px;
+  --slider-height: 22px;
+  --slider-thumb-size: 16px;
+  --switch-track-width: 32px;
+  --switch-track-height: 18px;
+  --switch-thumb-size: 12px;
+  --switch-translate: 14px;
 }
 
 /* ---- base ---- */
@@ -131,9 +137,7 @@ code {
 @import "./styles/theme-toggle.css";
 @import "./styles/embed.css";
 
-/* ==========================================================================
-   Mobile responsive typography and spacing
-   ========================================================================== */
+/* ---- Mobile responsive typography ---- */
 
 @media (max-width: 768px) {
   :root {

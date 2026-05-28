@@ -107,7 +107,7 @@ export default function PacketToolbar({
         <div
           role="group"
           aria-label="Diagram display options"
-          className="ml-0 sm:ml-1 flex flex-wrap items-center gap-1 sm:gap-1.5 border-0 sm:border-l border-border pl-0 sm:pl-2"
+          className="ml-0 sm:ml-1 flex flex-wrap items-center gap-1 sm:gap-1.5 pt-1 sm:pt-0 sm:border-l border-border pl-0 sm:pl-2"
         >
           <ToolbarSwitch
             label="Hex view"
