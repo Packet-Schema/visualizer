@@ -524,14 +524,40 @@ export default function PacketViewer({
   useEffect(() => {
     if (!editMode || !urlHydrated) return;
     for (const [key, preset] of Object.entries(PRESETS)) {
-      if (samePsdlPacket(preset, studioState.packet)) {
+      // Canonicalization only matters when switching TO a different preset.
+      // If packetKey is already `key`, all state is already correct and we
+      // must not call setRenderedPresets/setControllers — writing new object
+      // references every render would cause an infinite re-render loop.
+      if (key === packetKey) continue;
+      if (samePsdlPacket(preset, mergedStudioPacket)) {
+        const presetRenderer = psdlToRenderer(preset);
+        const presetDefaults = initialState(presetRenderer);
+        const freeRepeatKeys = new Set(
+          (presetRenderer.freeRepeats ?? []).map((r) => r.countKey),
+        );
         setPacketKey(key);
-        setControllers(initialState(psdlToRenderer(preset)));
+        // Reset the renderer mirror for the target preset to its canonical
+        // state so diagram/detail panels don't rebind to stale TLV/chain
+        // edits from an earlier edit of the same built-in key.
+        setRenderedPresets((prev) => ({ ...prev, [key]: presetRenderer }));
+        // Preserve controller values that belong to the target preset.
+        // Keys not in the preset's renderer (e.g. fields from a different
+        // preset that the studio packet was edited from) are dropped so
+        // they don't pollute the canonical URL. freeRepeats countKeys are
+        // included because initialState() does not seed them. Start from
+        // presetDefaults so new-preset-specific keys are always seeded.
+        setControllers((prev) => {
+          const next = { ...presetDefaults } as typeof prev;
+          for (const [k, v] of Object.entries(prev)) {
+            if (k in presetDefaults || freeRepeatKeys.has(k)) next[k] = v;
+          }
+          return next;
+        });
         break;
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, studioState.packet, urlHydrated]);
+  }, [editMode, mergedStudioPacket, urlHydrated]);
 
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
   // key namespace keeps user-saved presets separate from built-ins and
@@ -752,9 +778,12 @@ export default function PacketViewer({
     // In edit mode, only force psdl once the studio packet actually differs
     // from the base preset — opening the editor on a built-in preset with no
     // changes should keep the clean preset URL.
+    // Use mergedStudioPacket so diagram-driven edits (TLV/chain/byteOrder on
+    // the renderer mirror) are included; studioState.packet alone only captures
+    // form edits and would leave editHasDiff=false after diagram-only changes.
     const editHasDiff =
       editMode &&
-      (!builtInPsdl || !samePsdlPacket(studioState.packet, builtInPsdl));
+      (!builtInPsdl || !samePsdlPacket(mergedStudioPacket, builtInPsdl));
 
     return buildShareUrl({
       baseUrl: window.location.href,
@@ -770,7 +799,6 @@ export default function PacketViewer({
     customPresets,
     editMode,
     mergedStudioPacket,
-    studioState.packet,
     packet,
     packetKey,
     renderedPresets,
