@@ -40,14 +40,14 @@ export default function PresetPicker({
     (onExportCustomPresets || onImportCustomPresets) !== undefined;
 
   return (
-    <label className="flex items-center gap-2 text-sm font-semibold">
-      <span>Preset:</span>
+    <label className="flex flex-wrap sm:flex-nowrap items-center gap-1 sm:gap-2 text-xs sm:text-sm font-semibold min-w-0">
+      <span className="whitespace-nowrap">Preset:</span>
       <select
         suppressHydrationWarning
         data-testid="preset-picker"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="text-sm px-2.5 py-1.5 rounded-md border"
+        className="text-xs sm:text-sm px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md border min-w-0 flex-shrink-0"
         style={{
           borderColor: "var(--border-strong)",
           background: "var(--bg-elevated)",
