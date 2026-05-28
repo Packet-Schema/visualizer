@@ -77,16 +77,19 @@ export default async function Page({ searchParams }: Props) {
 
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
-  const initialControllers = mergeInitialControllers(
-    initialPacketKey,
-    parsed.controllers,
-  );
+  const initialPsdlPacket = parsed.kind === "psdl" ? parsed.packet : undefined;
+  // For PSDL, pass raw controllers so PacketViewer can merge them with the
+  // packet's own defaults. For preset/none, merge server-side as before.
+  const initialControllers = initialPsdlPacket
+    ? parsed.controllers
+    : mergeInitialControllers(initialPacketKey, parsed.controllers);
 
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
       <PacketViewer
         initialPacketKey={initialPacketKey}
+        initialPsdlPacket={initialPsdlPacket}
         initialControllers={initialControllers}
       />
     </div>

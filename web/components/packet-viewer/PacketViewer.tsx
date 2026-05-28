@@ -116,16 +116,25 @@ const TLV_LENGTH_SYNC: Array<{
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
 
+// Synthetic key used during SSR / pre-hydration when the URL carries a
+// PSDL-encoded custom packet. The hydration effect replaces it with the
+// canonical `custom:<name>` key once the packet is persisted to localStorage.
+const PSDL_INITIAL_KEY = "__psdl_initial__";
+
 type PacketViewerProps = {
   initialPacketKey?: string;
   initialControllers?: ControllerState;
+  initialPsdlPacket?: PsdlPacket;
 };
 
 export default function PacketViewer({
   initialPacketKey = DEFAULT_PACKET_KEY,
   initialControllers,
+  initialPsdlPacket,
 }: PacketViewerProps) {
-  const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
+  const [packetKey, setPacketKey] = useState<string>(
+    initialPsdlPacket ? PSDL_INITIAL_KEY : initialPacketKey,
+  );
   // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
   // エラー中のテキストは studio reducer の history に乗らないので、 Discard
   // 確認をこのフラグでも引っ掛ける (Codex P2)。
@@ -133,7 +142,12 @@ export default function PacketViewer({
   // Imported packets are kept in the renderer shape so the editors can mutate
   // their TLV/Chain/subfield state directly. Built-in presets live in PSDL
   // and are lowered to the renderer shape on demand.
-  const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
+  const [importedPackets, setImportedPackets] = useState<PacketRegistry>(() => {
+    if (!initialPsdlPacket) return {} as PacketRegistry;
+    return {
+      [PSDL_INITIAL_KEY]: psdlToRenderer(initialPsdlPacket),
+    } as PacketRegistry;
+  });
   // The renderer-shape mirror of every built-in PSDL preset. Lowered once on
   // mount; TLV/Chain edits replace the relevant packet entry immutably via
   // `updatePacketField` (the format hub re-lifts back to PSDL at export time).
@@ -150,7 +164,11 @@ export default function PacketViewer({
   // optgroup.
   const [customPresets, setCustomPresets] = useState<
     Record<string, PsdlPacket>
-  >({});
+  >(() =>
+    initialPsdlPacket
+      ? { [PSDL_INITIAL_KEY]: initialPsdlPacket }
+      : ({} as Record<string, PsdlPacket>),
+  );
   // Lowered renderer mirror of the active custom preset, if any.
   const customRenderer: Packet | null = useMemo(() => {
     const cp = customPresets[packetKey];
@@ -165,6 +183,10 @@ export default function PacketViewer({
     renderedPresets[DEFAULT_PACKET_KEY];
 
   const [controllers, setControllers] = useState<ControllerState>(() => {
+    if (initialPsdlPacket) {
+      const rendered = psdlToRenderer(initialPsdlPacket);
+      return { ...initialState(rendered), ...(initialControllers ?? {}) };
+    }
     const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
     return initialControllers ?? initialState(psdlToRenderer(packet));
   });
@@ -174,7 +196,9 @@ export default function PacketViewer({
   // unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY],
+    initialPsdlPacket ??
+      PRESETS[initialPacketKey] ??
+      PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
@@ -236,6 +260,15 @@ export default function PacketViewer({
       setControllers({
         ...initialState(psdlToRenderer(parsed.packet)),
         ...parsed.controllers,
+      });
+      // Remove the SSR placeholder now that the packet has been promoted to
+      // custom:<name>. Without this, the picker shows the same packet twice —
+      // once under "My presets" and once under "Imported".
+      setImportedPackets((prev) => {
+        if (!(PSDL_INITIAL_KEY in prev)) return prev;
+        const next = { ...prev };
+        delete next[PSDL_INITIAL_KEY];
+        return next;
       });
     } else if (parsed.kind === "preset") {
       setCustomPresets(stored);
@@ -980,8 +1013,8 @@ export default function PacketViewer({
 
   useEffect(() => {
     if (!urlHydrated) return;
-    const title = packet.name
-      ? `${packet.name} | Packet Visualizer`
+    const title = exportPacket.name
+      ? `${exportPacket.name} | Packet Visualizer`
       : "Packet Visualizer";
     let id2: number | null = null;
     const id1 = requestAnimationFrame(() => {
@@ -993,7 +1026,7 @@ export default function PacketViewer({
       cancelAnimationFrame(id1);
       if (id2 !== null) cancelAnimationFrame(id2);
     };
-  }, [urlHydrated, packet.name]);
+  }, [urlHydrated, exportPacket.name]);
 
   return (
     <>
