@@ -47,7 +47,7 @@ export default function PresetPicker({
         data-testid="preset-picker"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="text-xs sm:text-sm px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md border flex-shrink-0"
+        className="text-xs sm:text-sm px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md border min-w-0"
         style={{
           borderColor: "var(--border-strong)",
           background: "var(--bg-elevated)",
