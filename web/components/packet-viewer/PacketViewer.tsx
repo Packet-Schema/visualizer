@@ -518,6 +518,21 @@ export default function PacketViewer({
     [studioState.packet, packet],
   );
 
+  // When the edit screen is open, continuously check whether the studio
+  // packet matches a built-in preset exactly. If it does, switch packetKey
+  // so the URL stays canonical — but keep edit mode open.
+  useEffect(() => {
+    if (!editMode || !urlHydrated) return;
+    for (const [key, preset] of Object.entries(PRESETS)) {
+      if (samePsdlPacket(preset, studioState.packet)) {
+        setPacketKey(key);
+        setControllers(initialState(psdlToRenderer(preset)));
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, studioState.packet, urlHydrated]);
+
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
   // key namespace keeps user-saved presets separate from built-ins and
   // imports so the picker can group them cleanly.
@@ -734,6 +749,13 @@ export default function PacketViewer({
       ? initialState(psdlToRenderer(builtInPsdl))
       : undefined;
 
+    // In edit mode, only force psdl once the studio packet actually differs
+    // from the base preset — opening the editor on a built-in preset with no
+    // changes should keep the clean preset URL.
+    const editHasDiff =
+      editMode &&
+      (!builtInPsdl || !samePsdlPacket(studioState.packet, builtInPsdl));
+
     return buildShareUrl({
       baseUrl: window.location.href,
       packetKey,
@@ -741,13 +763,14 @@ export default function PacketViewer({
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultControllers,
-      forcePsdl: editMode || !builtInPsdl,
+      forcePsdl: editHasDiff || !builtInPsdl,
     });
   }, [
     controllers,
     customPresets,
     editMode,
     mergedStudioPacket,
+    studioState.packet,
     packet,
     packetKey,
     renderedPresets,

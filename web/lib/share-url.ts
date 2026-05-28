@@ -64,45 +64,34 @@ export function parseShareParams(
 ): ParsedShareParams {
   const params = typeof input === "string" ? new URLSearchParams(input) : input;
   const controllers = parseControllers(params);
-  const psdl = params.get("psdl");
 
-  if (psdl) {
+  // 複数の psdl 値がある場合は最初の有効なものを使う。
+  // すべて不正だった場合は preset へフォールバックし、
+  // preset もなければ最初のエラーメッセージを返す。
+  let psdlError: string | undefined;
+  for (const psdl of params.getAll("psdl")) {
     try {
       return { kind: "psdl", ...decodePsdlParam(psdl) };
     } catch (err) {
-      // `decodePsdlParam` already throws a curated user-facing message
-      // ("Invalid shared link — …"); wrapping it again here produced
-      // the duplicated phrasing "Invalid shared link: Invalid shared
-      // link — …" the user saw in the toast (Copilot review).
-      // Pass the inner message through verbatim. Errors from downstream
-      // codecs (`fromJson` / `validatePsdlPacket`) are short enough to
-      // be informative on their own — surfacing them as-is is the
-      // closest we can get to actionable feedback without inventing
-      // ad-hoc copy on every adapter failure.
-      //
-      // Normalise non-`Error` throws (a third-party codec could `throw
-      // "string"` and we'd otherwise surface `undefined` as the toast
-      // body), and provide a generic fallback when the stringified
-      // value is empty (Copilot review).
-      const raw = err instanceof Error ? err.message : String(err);
-      return {
-        kind: "none",
-        controllers,
-        error: raw || "Invalid shared link.",
-      };
+      if (psdlError === undefined) {
+        const raw = err instanceof Error ? err.message : String(err);
+        psdlError = raw || "Invalid shared link.";
+      }
     }
   }
 
-  const preset = params.get("preset");
-  if (preset) {
-    const known = new Set(builtInKeys);
-    if (known.has(preset)) {
-      return { kind: "preset", presetKey: preset, controllers };
-    }
+  // 複数の preset 値がある場合は最初の有効なものを使う。
+  const known = new Set(builtInKeys);
+  const presets = params.getAll("preset");
+  const validPreset = presets.find((p) => known.has(p));
+  if (validPreset) {
+    return { kind: "preset", presetKey: validPreset, controllers };
+  }
+  if (presets.length > 0) {
     return {
       kind: "none",
       controllers,
-      error: `Unknown preset in share URL: ${preset}`,
+      error: `Unknown preset in share URL: ${presets[0]}`,
     };
   }
 
@@ -113,7 +102,7 @@ export function parseShareParams(
     return { kind: "preset", presetKey: "ipv4", controllers };
   }
 
-  return { kind: "none", controllers };
+  return { kind: "none", controllers, error: psdlError };
 }
 
 export function buildShareUrl({
@@ -196,6 +185,50 @@ export function isShareQueryLengthValid(shareQuery: string): boolean {
   return (
     new URLSearchParams(shareQuery).toString().length <= SHARE_URL_MAX_LENGTH
   );
+}
+
+/**
+ * Normalize a raw URL search string:
+ *   1. Strip params that are not `preset`, `psdl`, or `controllers.*`
+ *   2. If `psdl` is present but fails to decode, drop it (invalid payload)
+ *   3. If both `preset` and a valid `psdl` are present, drop `preset` (psdl wins)
+ *   4. Deduplicate repeated keys — keep only the first occurrence
+ *
+ * Returns a URLSearchParams-style string (no leading `?`).
+ */
+export function normalizeShareQuery(search: string): string {
+  const params = new URLSearchParams(search);
+  const out = new URLSearchParams();
+  const seen = new Set<string>();
+
+  // 有効な psdl が1つでもあれば preset は不要。複数ある場合は全値を確認する。
+  const psdlValid = params.getAll("psdl").some(isPsdlValueValid);
+
+  for (const [key, value] of params) {
+    const isPreset = key === "preset";
+    const isPsdl = key === "psdl";
+    const isController = key.startsWith(CONTROLLER_PARAM_PREFIX);
+    if (!isPreset && !isPsdl && !isController) continue;
+    // Drop invalid psdl values entirely.
+    if (isPsdl && !isPsdlValueValid(value)) continue;
+    // When a valid psdl is present, preset is redundant — drop it.
+    if (isPreset && psdlValid) continue;
+    // Keep only the first occurrence of each key.
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.set(key, value);
+  }
+
+  return out.toString();
+}
+
+function isPsdlValueValid(value: string): boolean {
+  try {
+    decodePsdlParam(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {

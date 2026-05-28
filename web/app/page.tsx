@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import SiteHeader from "@/components/app-shell/SiteHeader";
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
@@ -8,6 +9,7 @@ import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
   parseShareParams,
   buildShareQueryFromParams,
+  normalizeShareQuery,
   isShareQueryLengthValid,
 } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psdl/renderer";
@@ -72,6 +74,18 @@ export async function generateMetadata({
 
 export default async function Page({ searchParams }: Props) {
   const params = await searchParams;
+
+  // クエリが汚れていれば正規化済みURLへ302リダイレクト。
+  // buildShareQueryFromParams は既知キーのみ抽出するので、不明パラメーターの
+  // 有無を判定するために全パラメーターを含む rawQuery と比較する。
+  const rawQuery = buildRawQuery(params);
+  if (rawQuery && isShareQueryLengthValid(rawQuery)) {
+    const normalizedQuery = normalizeShareQuery(rawQuery);
+    if (normalizedQuery !== rawQuery) {
+      redirect(normalizedQuery ? `/?${normalizedQuery}` : "/");
+    }
+  }
+
   const shareQuery = buildShareQueryFromParams(params);
   const parsed = parseShareParamsOrFallback(shareQuery);
 
@@ -94,6 +108,20 @@ export default async function Page({ searchParams }: Props) {
       />
     </div>
   );
+}
+
+function buildRawQuery(
+  params: Record<string, string | string[] | undefined>,
+): string {
+  const out = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const v of value) out.append(key, v);
+    } else if (typeof value === "string") {
+      out.append(key, value);
+    }
+  }
+  return out.toString();
 }
 
 function mergeInitialControllers(

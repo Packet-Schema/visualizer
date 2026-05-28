@@ -6,6 +6,7 @@ import {
   decodePsdlParam,
   encodePsdlParam,
   isShareQueryLengthValid,
+  normalizeShareQuery,
   parseShareParams,
 } from "@/lib/share-url";
 import { PRESETS } from "@/lib/psdl/presets";
@@ -59,11 +60,40 @@ describe("share URL params", () => {
     expect(decoded.controllers).toEqual({ customLen: 12 });
   });
 
-  it("treats invalid psdl and unknown preset values defensively", () => {
-    const badPsdl = parseShareParams("?psdl=not-valid", BUILT_INS);
-    if (badPsdl.kind !== "none") throw new Error("expected kind=none");
-    expect(badPsdl.error).toMatch(/Invalid shared link/);
+  it("returns error when psdl is invalid and no preset is present", () => {
+    const result = parseShareParams("?psdl=not-valid", BUILT_INS);
+    if (result.kind !== "none") throw new Error("expected kind=none");
+    expect(result.error).toMatch(/Invalid shared link/);
+  });
 
+  it("falls back to preset when psdl is invalid", () => {
+    const result = parseShareParams("?psdl=not-valid&preset=ipv4", BUILT_INS);
+    expect(result.kind).toBe("preset");
+    if (result.kind !== "preset") throw new Error("expected kind=preset");
+    expect(result.presetKey).toBe("ipv4");
+  });
+
+  it("uses first valid psdl when multiple are present", () => {
+    const encoded = encodePsdlParam({
+      name: "T",
+      rowBits: 8,
+      body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+    });
+    const result = parseShareParams(
+      `?psdl=not-valid&psdl=${encoded}`,
+      BUILT_INS,
+    );
+    expect(result.kind).toBe("psdl");
+  });
+
+  it("uses first valid preset when multiple are present", () => {
+    const result = parseShareParams("?preset=nope&preset=ipv4", BUILT_INS);
+    expect(result.kind).toBe("preset");
+    if (result.kind !== "preset") throw new Error("expected kind=preset");
+    expect(result.presetKey).toBe("ipv4");
+  });
+
+  it("returns error for unknown preset value", () => {
     const unknownPreset = parseShareParams("?preset=nope", BUILT_INS);
     if (unknownPreset.kind !== "none") throw new Error("expected kind=none");
     expect(unknownPreset.error).toMatch(/Unknown preset/);
@@ -114,5 +144,67 @@ describe("share URL params", () => {
 
     const longQuery = "preset=" + "x".repeat(200_000);
     expect(isShareQueryLengthValid(longQuery)).toBe(false);
+  });
+});
+
+// normalizeShareQuery はサーバー側（page.tsx）で 302 リダイレクトの要否判定に使う。
+// 空クエリ（`/` だけのアクセス）は page.tsx 側で呼び出しをスキップするため、
+// リダイレクトは発生しない。クライアント側での `/` → `?preset=ipv4` の書き換えは
+// PacketViewer の useEffect が担う。
+describe("normalizeShareQuery", () => {
+  it("空クエリはそのまま空文字を返す（/ だけのアクセスはリダイレクト対象外）", () => {
+    expect(normalizeShareQuery("")).toBe("");
+    expect(normalizeShareQuery("?")).toBe("");
+  });
+
+  it("不明なパラメーターを除去する", () => {
+    const q = normalizeShareQuery("?preset=ipv4&foo=bar&baz=1");
+    expect(new URLSearchParams(q).get("preset")).toBe("ipv4");
+    expect(new URLSearchParams(q).has("foo")).toBe(false);
+    expect(new URLSearchParams(q).has("baz")).toBe(false);
+  });
+
+  it("不正な psdl を除去する", () => {
+    const q = normalizeShareQuery("?psdl=THIS_IS_GARBAGE");
+    expect(new URLSearchParams(q).has("psdl")).toBe(false);
+  });
+
+  it("psdl が不正なとき preset を残す", () => {
+    const q = normalizeShareQuery("?preset=ipv4&psdl=THIS_IS_GARBAGE");
+    const params = new URLSearchParams(q);
+    expect(params.has("psdl")).toBe(false);
+    expect(params.get("preset")).toBe("ipv4");
+  });
+
+  it("有効な psdl があるとき preset を除去する", () => {
+    const encoded = encodePsdlParam({
+      name: "T",
+      rowBits: 8,
+      body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+    });
+    const q = normalizeShareQuery(`?preset=ipv4&psdl=${encoded}`);
+    expect(new URLSearchParams(q).has("preset")).toBe(false);
+    expect(new URLSearchParams(q).has("psdl")).toBe(true);
+  });
+
+  it("重複した preset は最初の1つだけ残す", () => {
+    const q = normalizeShareQuery("?preset=ipv4&preset=tcp");
+    const params = new URLSearchParams(q);
+    expect(params.getAll("preset")).toEqual(["ipv4"]);
+  });
+
+  it("重複した controller キーは最初の1つだけ残す", () => {
+    const q = normalizeShareQuery(
+      "?preset=ipv4&controllers.ihl=5&controllers.ihl=10",
+    );
+    const params = new URLSearchParams(q);
+    expect(params.getAll("controllers.ihl")).toEqual(["5"]);
+  });
+
+  it("有効な controller パラメーターはそのまま保持する", () => {
+    const q = normalizeShareQuery("?preset=tcp&controllers.dataOffset=7");
+    const params = new URLSearchParams(q);
+    expect(params.get("preset")).toBe("tcp");
+    expect(params.get("controllers.dataOffset")).toBe("7");
   });
 });
