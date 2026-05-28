@@ -129,6 +129,35 @@ code {
 @import "./styles/theme-toggle.css";
 @import "./styles/embed.css";
 /* ==========================================================================
+   Mobile responsive typography and spacing
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  :root {
+    --text-2xs: 9px;
+    --text-3xs: 10px;
+    --text-sm-tight: 12px;
+  }
+
+  body {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --text-2xs: 8px;
+    --text-3xs: 9px;
+    --text-sm-tight: 11px;
+  }
+
+  body {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+}
+
+/* ==========================================================================
    Reduced motion
    ========================================================================== */
 

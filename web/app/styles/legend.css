@@ -23,4 +23,27 @@
     background: var(--bg-subtle);
     outline: none;
   }
+
+  @media (max-width: 768px) {
+    .legend-swatch {
+      width: 8px;
+      height: 8px;
+    }
+
+    .legend-item {
+      font-size: 12px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .legend-swatch {
+      width: 7px;
+      height: 7px;
+    }
+
+    .legend-item {
+      font-size: 11px;
+      padding: 1px 1px;
+    }
+  }
 }

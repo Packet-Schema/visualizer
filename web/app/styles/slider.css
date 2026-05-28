@@ -189,4 +189,50 @@
       transform: translate(-50%, 0) scale(1);
     }
   }
+
+  /* ---- mobile optimization ---- */
+  @media (max-width: 768px) {
+    input.pv-slider {
+      height: 26px;
+    }
+
+    input.pv-slider::-webkit-slider-thumb {
+      width: 18px;
+      height: 18px;
+      margin-top: -8px;
+    }
+
+    input.pv-slider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+    }
+
+    .slider-tooltip {
+      font-size: 10px;
+      padding: 2px 5px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .pv-toolbar-switch {
+      height: 28px;
+      padding: 0 8px;
+      font-size: 13px;
+      gap: 6px;
+    }
+
+    .pv-switch-track {
+      width: 28px;
+      height: 16px;
+    }
+
+    .pv-switch-track::after {
+      width: 10px;
+      height: 10px;
+    }
+
+    .pv-switch-input:checked + .pv-switch-track::after {
+      transform: translateX(12px);
+    }
+  }
 }

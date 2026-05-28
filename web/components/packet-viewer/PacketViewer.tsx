@@ -997,7 +997,7 @@ export default function PacketViewer({
 
   return (
     <>
-      <main className="max-w-[1200px] mx-auto px-6 py-3 pb-10 w-full flex-1">
+      <main className="max-w-[1200px] mx-auto px-3 sm:px-6 py-2 sm:py-3 pb-6 sm:pb-10 w-full flex-1">
         <PacketToolbar
           packetKey={packetKey}
           importedPackets={importedPackets}
@@ -1033,22 +1033,22 @@ export default function PacketViewer({
         />
 
         {packet.description ? (
-          <p className="text-sm-tight mx-0.5 mt-2 mb-1 text-fg-muted">
+          <p className="text-xs sm:text-sm-tight mx-0.5 mt-1.5 sm:mt-2 mb-1 text-fg-muted">
             {packet.description}
           </p>
         ) : null}
-        <p className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5 text-fg-faint">
+        <p className="text-xs mx-0.5 mb-2 sm:mb-3 italic flex items-center gap-1.5 text-fg-faint">
           <span className="not-italic font-bold text-accent" aria-hidden="true">
             ↦
           </span>
           {packet.byteOrder || DEFAULT_BYTE_ORDER}
         </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_max-content] gap-3 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_max-content] gap-2 sm:gap-3 items-start">
           <div
             id="diagram"
             ref={diagramRef}
-            className="diagram-shell rounded-[10px] border p-3.5 overflow-x-auto"
+            className="diagram-shell rounded-lg sm:rounded-[10px] border p-2 sm:p-3.5 overflow-x-auto"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
@@ -1091,16 +1091,16 @@ export default function PacketViewer({
           />
         ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-4 mt-2 sm:mt-4">
           <section
-            className="rounded-[10px] border px-4 py-3.5"
+            className="rounded-lg sm:rounded-[10px] border px-3 sm:px-4 py-2.5 sm:py-3.5"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
           >
-            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
+            <h2 className="text-xs m-0 mb-2 sm:mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Field detail
             </h2>
             <DetailPanel
@@ -1111,14 +1111,14 @@ export default function PacketViewer({
           </section>
 
           <section
-            className="rounded-[10px] border px-4 py-3.5"
+            className="rounded-lg sm:rounded-[10px] border px-3 sm:px-4 py-2.5 sm:py-3.5"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
               boxShadow: "0 1px 2px rgba(15,22,50,0.05)",
             }}
           >
-            <h2 className="text-xs m-0 mb-3 uppercase tracking-wider font-bold text-fg-muted">
+            <h2 className="text-xs m-0 mb-2 sm:mb-3 uppercase tracking-wider font-bold text-fg-muted">
               Override
             </h2>
             <OverridePanel
