@@ -350,6 +350,7 @@ export function StaticDiagram({
                           position: "absolute",
                           top: Math.round(LAYOUT.badgeOffsetY * scale),
                           right: Math.round(LAYOUT.badgeOffsetX * scale),
+                          opacity: LAYOUT.badgeOpacityBlock,
                           zIndex: 2,
                         }}
                       >
@@ -367,6 +368,7 @@ export function StaticDiagram({
                           position: "absolute",
                           bottom: Math.round(LAYOUT.badgeOffsetYSmall * scale),
                           right: Math.round(LAYOUT.badgeOffsetXSmall * scale),
+                          opacity: LAYOUT.badgeOpacityChild,
                           zIndex: 2,
                         }}
                       >

@@ -60,12 +60,15 @@ export const LAYOUT = {
   strokeWidthCell: 1,
   strokeWidthBadge: 1.6,
   // Lock badge (encryption icon) dimensions
+  // Offset values match .field-lock-icon--block / --child in encryption.css
   badgeSizeLarge: 14,
   badgeSizeSmall: 10,
-  badgeOffsetX: 20,
+  badgeOffsetX: 6,
   badgeOffsetY: 6,
-  badgeOffsetXSmall: 14,
-  badgeOffsetYSmall: 14,
+  badgeOffsetXSmall: 4,
+  badgeOffsetYSmall: 4,
+  badgeOpacityBlock: 0.85,
+  badgeOpacityChild: 0.7,
   // Badge SVG constants (16x16 viewBox)
   badgeSvgViewBox: 16,
   badgeSvgRectX: 3,
