@@ -92,4 +92,28 @@ describe("OG API endpoint", () => {
     // If Satori encounters unsupported colors or CSS, it returns 500
     await testOGImageGeneration("/api/og?preset=ipv4");
   });
+
+  it("encrypted preset produces a different OG image than the default (/) image", async () => {
+    // Regression guard: ensures encrypted-field decorations (diagonal stripes,
+    // opacity) are actually rendered in the Satori output.
+    // If the stripe/opacity logic silently degrades, both images will be
+    // pixel-identical and this test will fail.
+    const defaultReq = new NextRequest("http://localhost/api/og");
+    const defaultRes = await GET(defaultReq);
+    const defaultBuf = await defaultRes.arrayBuffer();
+
+    const encryptedReq = new NextRequest(
+      "http://localhost/api/og?preset=quicShort",
+    );
+    const encryptedRes = await GET(encryptedReq);
+    const encryptedBuf = await encryptedRes.arrayBuffer();
+
+    expect(defaultRes.status).toBe(200);
+    expect(encryptedRes.status).toBe(200);
+
+    // The two images must differ — encrypted fields add stripes and opacity.
+    expect(Buffer.from(encryptedBuf).equals(Buffer.from(defaultBuf))).toBe(
+      false,
+    );
+  });
 });
