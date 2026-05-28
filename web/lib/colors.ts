@@ -54,6 +54,7 @@ export type DiagramTheme = {
   markerAccent: string;
   markerAccentSoft: string;
   subfieldBackground: string;
+  subfieldLabel: string;
   fieldFillOpacity: number;
   rulerMinorOpacity: number;
   subfieldBackgroundOpacity: number;
@@ -75,6 +76,7 @@ export function createExportTheme(theme: DiagramTheme): DiagramTheme {
     markerAccent: oklchToRgb(theme.markerAccent),
     markerAccentSoft: oklchToRgb(theme.markerAccentSoft),
     subfieldBackground: oklchToRgb(theme.subfieldBackground),
+    subfieldLabel: oklchToRgb(theme.subfieldLabel),
     fieldFillOpacity: theme.fieldFillOpacity,
     rulerMinorOpacity: theme.rulerMinorOpacity,
     subfieldBackgroundOpacity: theme.subfieldBackgroundOpacity,
