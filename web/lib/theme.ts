@@ -119,7 +119,10 @@ export const DIAGRAM_OPACITY = {
 
 /**
  * Encrypted-field diagonal stripe pattern parameters.
- * Must stay in sync with encryption.css (.cell.field-cell[data-encrypted="true"]).
+ * Structural values (angle, size) live here; the stripe color lives in
+ * LIGHT_DIAGRAM_THEME / DARK_DIAGRAM_THEME as `encryptedStripe` so that
+ * oklchToRgb can derive the hex value used by the Satori renderer, while
+ * generateThemeCssVariables() injects --encrypted-stripe for the CSS renderer.
  */
 export const ENCRYPTED_STRIPE = {
   /** Angle of the repeating stripe. */
@@ -128,10 +131,6 @@ export const ENCRYPTED_STRIPE = {
   gapPx: 5,
   /** Width of the colored stripe line (px). */
   linePx: 1,
-  /** Stripe color opacity for light mode. */
-  opacityLight: 0.3,
-  /** Stripe color opacity for dark mode (higher contrast needed on dark bg). */
-  opacityDark: 0.5,
 } as const;
 
 /**
@@ -269,6 +268,7 @@ export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
   markerAccentSoft: "oklch(78% 0.18 330 / 0.55)",
   subfieldBackground: "oklch(99.5% 0.005 260)",
   subfieldLabel: "oklch(22% 0.02 270)",
+  encryptedStripe: "oklch(46% 0.02 270 / 0.35)",
   fieldFillOpacity: 0.78,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
@@ -293,6 +293,7 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   markerAccentSoft: "oklch(85% 0.18 330 / 0.55)",
   subfieldBackground: "oklch(22% 0.028 270)",
   subfieldLabel: "oklch(96% 0.012 270)",
+  encryptedStripe: "oklch(72% 0.02 270 / 0.55)",
   fieldFillOpacity: 0.85,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,

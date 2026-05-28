@@ -20,6 +20,7 @@ const mockTheme: DiagramExportTheme = {
   markerAccentSoft: "#e8b4c8",
   subfieldBackground: "#fafbfc",
   subfieldLabel: "#222222",
+  encryptedStripe: "#71717A59",
   fieldFillOpacity: 0.78,
   rulerMinorOpacity: 0.55,
   subfieldBackgroundOpacity: 0.52,

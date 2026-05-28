@@ -206,7 +206,7 @@ export function StaticDiagram({
                       overflow: "hidden",
                       minWidth: 0,
                       background: isDashed
-                        ? `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, ${ENCRYPTED_STRIPE.opacityLight}) ${ENCRYPTED_STRIPE.gapPx}px, rgba(${hexToRgb(theme.fieldLabel).join(", ")}, ${ENCRYPTED_STRIPE.opacityLight}) ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
+                        ? `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
                         : `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
                     }}
                   >
