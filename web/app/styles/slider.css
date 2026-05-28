@@ -92,7 +92,7 @@
     .pv-toolbar-switch {
       height: 28px;
       padding: 0 8px;
-      font-size: 13px;
+      font-size: var(--text-sm-tight);
       gap: 6px;
     }
 
@@ -231,7 +231,7 @@
     }
 
     .slider-tooltip {
-      font-size: 10px;
+      font-size: var(--text-2xs);
       padding: 2px 5px;
     }
   }
