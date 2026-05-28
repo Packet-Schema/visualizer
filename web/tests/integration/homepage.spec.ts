@@ -192,45 +192,59 @@ test.describe("Homepage and Meta Tags", () => {
   });
 
   test.describe("URL normalization — 302 redirect", () => {
-    test("strips unknown params", async ({ page }) => {
-      await page.goto("/?preset=ipv4&unknown=foo");
-      await page.waitForLoadState("networkidle");
-      expect(new URL(page.url()).searchParams.has("unknown")).toBe(false);
-      expect(new URL(page.url()).searchParams.get("preset")).toBe("ipv4");
-    });
-
     test("/ alone is not redirected", async ({ request }) => {
       const response = await request.get("/");
       expect(response.status()).toBe(200);
     });
 
-    test("drops invalid psdl and keeps preset", async ({ page }) => {
-      await page.goto("/?psdl=GARBAGE&preset=ipv4");
-      await page.waitForLoadState("networkidle");
-      const params = new URL(page.url()).searchParams;
+    test("strips unknown params — redirects to clean URL", async ({
+      request,
+    }) => {
+      const response = await request.get("/?preset=ipv4&unknown=foo", {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(307);
+      const location = response.headers()["location"];
+      const params = new URL(location, "http://localhost").searchParams;
+      expect(params.has("unknown")).toBe(false);
+      expect(params.get("preset")).toBe("ipv4");
+    });
+
+    test("drops invalid psdl and keeps preset — redirects", async ({
+      request,
+    }) => {
+      const response = await request.get("/?psdl=GARBAGE&preset=ipv4", {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(307);
+      const location = response.headers()["location"];
+      const params = new URL(location, "http://localhost").searchParams;
       expect(params.has("psdl")).toBe(false);
       expect(params.get("preset")).toBe("ipv4");
     });
 
-    test("drops preset when valid psdl is present", async ({ page }) => {
-      // Use the known-good PSDL fixture from the PSDL tests
+    test("drops preset when valid psdl is present — redirects", async ({
+      request,
+    }) => {
       const PSDL_CUSTOM_UDP =
         "N4KABGBEBmD2BOBbAhgF0gLigBwM4BMAbSAGnCgDcBTeXAS1gDtMoAGAOgCZTzJHlEVFpADCAV1ypYiMAFUAIgAUeESPFgB3AEJ1UuFgGZOZVfiq4AxvDrZUDZlkgBBMBYlSZCxQFpCdANZUYNjIFoGoYHDwYKjmdowA5uwqUABGsPgAniwA2uQQoBBFUHT4wrjwFinFfAJCjgDKsGKVQYoI6CbFUKiZ2PVghd2q-nSMZY6puvpdw3wsAIwAbPlFAL6rGxAAuiBrQA";
-      await page.goto(`/?preset=ipv4&psdl=${PSDL_CUSTOM_UDP}`);
-      await page.waitForLoadState("networkidle");
-      const params = new URL(page.url()).searchParams;
+      const response = await request.get(
+        `/?preset=ipv4&psdl=${PSDL_CUSTOM_UDP}`,
+        { maxRedirects: 0 },
+      );
+      expect(response.status()).toBe(307);
+      const location = response.headers()["location"];
+      const params = new URL(location, "http://localhost").searchParams;
       expect(params.has("preset")).toBe(false);
       expect(params.has("psdl")).toBe(true);
     });
 
-    test("deduplicates repeated preset, keeping first valid", async ({
-      page,
-    }) => {
-      await page.goto("/?preset=nope&preset=ipv4");
-      await page.waitForLoadState("networkidle");
-      const params = new URL(page.url()).searchParams;
-      expect(params.getAll("preset").length).toBe(1);
-      expect(params.get("preset")).toBe("ipv4");
+    test("unknown-only params — redirects to /", async ({ request }) => {
+      const response = await request.get("/?foo=1&bar=2", {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(307);
+      expect(response.headers()["location"]).toBe("/");
     });
   });
 
