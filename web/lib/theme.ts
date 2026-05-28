@@ -100,8 +100,8 @@ export const LAYOUT = {
   cellMarkerRadius: 2,
   cellMarkerMarginBottom: 3,
   // Header protected badge dimensions
-  headerProtectedMarginBottom: 6,
-  headerProtectedMarginRight: 28,
+  headerProtectedMarginBottom: 4,
+  headerProtectedMarginRight: 18,
   headerProtectedFontSize: 9,
   // Subfield padding
   subfieldPaddingHorizontal: 2,
