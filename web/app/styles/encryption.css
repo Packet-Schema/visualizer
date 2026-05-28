@@ -16,24 +16,25 @@
   .cell.field-cell[data-encrypted="true"] {
     /* Heavier stripe than the variable-length pattern so the two are
      visually distinguishable when both appear in the same packet.
-     Pattern parameters (angle, gap, line width) are defined in ENCRYPTED_STRIPE
-     in web/lib/theme.ts. The stripe color --encrypted-stripe is generated from
-     LIGHT/DARK_DIAGRAM_THEME.encryptedStripe via generateThemeCssVariables(),
-     keeping the same source of truth for both CSS and Satori renderers. */
+     All parameters come from ENCRYPTED_STRIPE / DiagramTheme in theme.ts via
+     generateLayoutCssVariables() and generateThemeCssVariables().
+     Note: the angle (135deg) cannot be expressed as a CSS variable because
+     CSS does not support var() inside the Xdeg angle syntax. */
     background-image: repeating-linear-gradient(
       135deg,
       transparent 0px,
-      transparent 5px,
-      var(--encrypted-stripe) 5px,
-      var(--encrypted-stripe) 6px
+      transparent var(--encrypted-stripe-gap),
+      var(--encrypted-stripe) var(--encrypted-stripe-gap),
+      var(--encrypted-stripe)
+        calc(var(--encrypted-stripe-gap) + var(--encrypted-stripe-line))
     );
-    opacity: 0.65;
+    opacity: var(--encrypted-stripe-cell-opacity);
   }
 
   .cell.field-cell[data-encrypted="true"]:hover,
   .cell.field-cell[data-encrypted="true"]:focus-visible {
     /* Lift opacity slightly on interaction so the label reads cleanly. */
-    opacity: 0.85;
+    opacity: var(--encrypted-stripe-cell-opacity-hover);
   }
 
   .cell.field-cell[data-encrypted-child="true"] {
@@ -50,26 +51,26 @@
     position: absolute;
     pointer-events: none;
     color: var(--accent);
-    opacity: 0.85;
+    opacity: var(--badge-opacity-block);
   }
 
   .field-lock-icon--block {
-    top: 6px;
-    right: 6px;
+    top: var(--badge-offset-y);
+    right: var(--badge-offset-x);
   }
 
   .field-lock-icon--child {
-    bottom: 4px;
-    right: 4px;
-    opacity: 0.7;
+    bottom: var(--badge-offset-y-small);
+    right: var(--badge-offset-x-small);
+    opacity: var(--badge-opacity-child);
   }
 
   .field-hp-badge {
     position: absolute;
-    bottom: 4px;
-    right: 18px;
+    bottom: var(--hp-badge-bottom);
+    right: var(--hp-badge-right);
     font-family: var(--font-mono, ui-monospace), monospace;
-    font-size: 9px;
+    font-size: var(--hp-badge-font-size);
     font-weight: 700;
     letter-spacing: 0.04em;
     color: var(--accent);

@@ -128,14 +128,16 @@ export const DIAGRAM_OPACITY = {
  * generateThemeCssVariables() injects --encrypted-stripe for the CSS renderer.
  */
 export const ENCRYPTED_STRIPE = {
-  /** Angle of the repeating stripe. */
+  /** Angle of the repeating stripe (deg). CSS cannot interpolate this via var(). */
   angleDeg: 135,
   /** Width of the transparent gap between stripes (px). */
   gapPx: 5,
   /** Width of the colored stripe line (px). */
   linePx: 1,
-  /** Cell opacity for encrypted blocks — matches `opacity: 0.65` in encryption.css. */
+  /** Cell opacity for encrypted blocks — matches `opacity` in encryption.css. */
   cellOpacity: 0.65,
+  /** Cell opacity on hover/focus — slightly lifted for readability. */
+  cellOpacityHover: 0.85,
 } as const;
 
 /**
