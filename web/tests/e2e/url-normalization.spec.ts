@@ -28,7 +28,9 @@ test.describe("URL normalization — final URL after redirect + hydration", () =
     expect(params.has("psdl")).toBe(true);
   });
 
-  test("deduplicates repeated preset, keeping first valid", async ({ page }) => {
+  test("deduplicates repeated preset, keeping first valid", async ({
+    page,
+  }) => {
     await page.goto("/?preset=nope&preset=ipv4");
     await page.waitForLoadState("networkidle");
     const params = new URL(page.url()).searchParams;
