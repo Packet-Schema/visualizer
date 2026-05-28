@@ -1012,39 +1012,17 @@ export default function PacketViewer({
     const title = exportPacket.name
       ? `${exportPacket.name} | Packet Visualizer`
       : "Packet Visualizer";
-    const description =
-      exportPacket.description ??
-      "Visual viewer for common network packet headers.";
     let id2: number | null = null;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
         document.title = title;
-        setMetaContent("name", "description", description);
-        setMetaContent("property", "og:title", title);
-        setMetaContent("property", "og:description", description);
-        setMetaContent("name", "twitter:title", title);
-        setMetaContent("name", "twitter:description", description);
-        // og:image and twitter:image point to /api/og with the current share
-        // query, which already reflects the live packet state via the URL
-        // effect above — derive from window.location so we stay in sync.
-        if (typeof window !== "undefined") {
-          const shareQuery = window.location.search;
-          const ogImageUrl = `${window.location.origin}/api/og${shareQuery}`;
-          setMetaContent("property", "og:image", ogImageUrl);
-          setMetaContent("name", "twitter:image", ogImageUrl);
-        }
       });
     });
     return () => {
       cancelAnimationFrame(id1);
       if (id2 !== null) cancelAnimationFrame(id2);
     };
-  }, [
-    urlHydrated,
-    exportPacket.name,
-    exportPacket.description,
-    buildCurrentShareUrl,
-  ]);
+  }, [urlHydrated, exportPacket.name]);
 
   return (
     <>
@@ -1307,15 +1285,4 @@ function stableStringify(value: unknown): string {
 
 function samePsdlPacket(a: PsdlPacket, b: PsdlPacket): boolean {
   return stableStringify(a) === stableStringify(b);
-}
-
-function setMetaContent(
-  attrName: string,
-  attrValue: string,
-  content: string,
-): void {
-  const el = document.querySelector<HTMLMetaElement>(
-    `meta[${attrName}="${attrValue}"]`,
-  );
-  if (el) el.content = content;
 }
