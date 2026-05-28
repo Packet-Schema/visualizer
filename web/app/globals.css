@@ -62,6 +62,8 @@
   --text-3xs--line-height: 14px;
   --text-sm-tight: 13px;
   --text-sm-tight--line-height: 16px;
+  --diagram-cell-radius: 8px;
+  --legend-swatch-size: 10px;
 }
 
 /* ---- base ---- */

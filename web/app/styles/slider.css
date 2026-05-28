@@ -88,29 +88,6 @@
     opacity: 0.6;
   }
 
-  @media (max-width: 640px) {
-    .pv-toolbar-switch {
-      height: 28px;
-      padding: 0 8px;
-      font-size: var(--text-sm-tight);
-      gap: 6px;
-    }
-
-    .pv-switch-track {
-      width: 28px;
-      height: 16px;
-    }
-
-    .pv-switch-track::after {
-      width: 10px;
-      height: 10px;
-    }
-
-    .pv-switch-input:checked + .pv-switch-track::after {
-      transform: translateX(12px);
-    }
-  }
-
   /* ---- Custom range slider ---- */
 
   .pv-slider-wrap {
@@ -233,6 +210,29 @@
     .slider-tooltip {
       font-size: var(--text-2xs);
       padding: 2px 5px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .pv-toolbar-switch {
+      height: 28px;
+      padding: 0 8px;
+      font-size: var(--text-sm-tight);
+      gap: 6px;
+    }
+
+    .pv-switch-track {
+      width: 28px;
+      height: 16px;
+    }
+
+    .pv-switch-track::after {
+      width: 10px;
+      height: 10px;
+    }
+
+    .pv-switch-input:checked + .pv-switch-track::after {
+      transform: translateX(12px);
     }
   }
 }

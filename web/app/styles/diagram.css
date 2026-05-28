@@ -440,14 +440,14 @@
       min-height: calc(var(--diagram-row-height) * 0.75);
       padding: calc(var(--diagram-row-padding-vertical) * 0.6) 0;
       gap: calc(var(--row-gap-2) * 0.75);
-      border-radius: calc(var(--diagram-cell-radius, 8px) * 0.75);
+      border-radius: calc(var(--diagram-cell-radius) * 0.75);
     }
 
     .cell.field-cell {
       font-size: var(--text-3xs);
       padding: calc(var(--diagram-cell-padding-vertical) * 0.6)
         calc(var(--diagram-cell-padding-horizontal) * 0.6);
-      border-radius: calc(var(--diagram-cell-radius, 8px) * 0.75);
+      border-radius: calc(var(--diagram-cell-radius) * 0.75);
     }
 
     .cell.field-cell .cell-name,
@@ -473,7 +473,7 @@
     .subfield-cell {
       font-size: var(--text-2xs);
       min-height: calc(var(--subfield-height) * 0.75);
-      border-radius: calc(var(--diagram-cell-radius, 8px) * 0.5);
+      border-radius: calc(var(--diagram-cell-radius) * 0.5);
     }
 
     .cell.field-cell.has-subfields .cell-body {
