@@ -504,6 +504,7 @@
       font-size: var(--text-2xs);
       padding: calc(var(--diagram-cell-padding-vertical) * 0.5)
         calc(var(--diagram-cell-padding-horizontal) * 0.5);
+      border-radius: calc(var(--diagram-cell-radius) * 0.5);
     }
 
     .cell.field-cell .cell-body {

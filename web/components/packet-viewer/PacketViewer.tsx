@@ -1048,7 +1048,7 @@ export default function PacketViewer({
           <div
             id="diagram"
             ref={diagramRef}
-            className="diagram-shell rounded-lg sm:rounded-[10px] border p-2 sm:p-3.5 overflow-x-auto"
+            className="diagram-shell rounded-[10px] border p-2 sm:p-3.5 overflow-x-auto"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
@@ -1093,7 +1093,7 @@ export default function PacketViewer({
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-4 mt-2 sm:mt-4">
           <section
-            className="rounded-lg sm:rounded-[10px] border px-3 sm:px-4 py-2.5 sm:py-3.5"
+            className="rounded-[10px] border px-3 sm:px-4 py-2.5 sm:py-3.5"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
@@ -1111,7 +1111,7 @@ export default function PacketViewer({
           </section>
 
           <section
-            className="rounded-lg sm:rounded-[10px] border px-3 sm:px-4 py-2.5 sm:py-3.5"
+            className="rounded-[10px] border px-3 sm:px-4 py-2.5 sm:py-3.5"
             style={{
               background: "var(--bg-elevated)",
               borderColor: "var(--border)",
