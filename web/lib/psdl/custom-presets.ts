@@ -4,7 +4,7 @@
 // built-in PRESETS map without colliding with baseline/manual entries.
 //
 // Storage format (v1):
-//   key:   `packet-view-custom-presets-v1`
+//   key:   `packet-schema-visualizer-custom-presets-v1`
 //   value: JSON.stringify({ "custom:<name>": PsdlPacket, ... })
 //
 // All read paths are defensive: a missing storage, missing key, or corrupt
@@ -14,7 +14,7 @@
 import type { PsdlPacket } from "./types";
 import { validatePsdlPacket } from "./validate";
 
-export const STORAGE_KEY = "packet-view-custom-presets-v1";
+export const STORAGE_KEY = "packet-schema-visualizer-custom-presets-v1";
 
 type PresetMap = Record<string, PsdlPacket>;
 

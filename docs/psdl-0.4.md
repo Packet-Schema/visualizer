@@ -4,7 +4,7 @@ PSDL is a small declarative schema for describing the bit-level layout of
 network protocol headers. A PSDL packet is a tree of typed fields and
 composition primitives; expressions are evaluated against a per-packet
 environment to drive variable-length structures and bidirectional
-constraints. PSDL is the canonical wire format for Packet View — every
+constraints. PSDL is the canonical wire format for Packet Schema Visualizer — every
 import / export format converts to or from PSDL, and the renderer consumes
 PSDL via a thin runtime adapter.
 
@@ -801,7 +801,7 @@ recompute the other". When IHL goes from 5 → 6, the solver writes
 `headerBytes` to 28, the solver inverts the multiplication and writes
 `IHL = 7`. The `* 4` is the only operator the inverter needs to peel —
 the constraint solver only handles one operator at a time, which is
-sufficient for every preset Packet View ships.
+sufficient for every preset Packet Schema Visualizer ships.
 
 > IPv4 is intentionally a 0.2-only example — it uses none of 0.3's new
 > primitives. The wire layout _is_ the semantic layout, so `viewMode`
@@ -995,7 +995,7 @@ the file: `# psdl-only: ...` lines tag dropped `category` tokens, dropped
 `switch-on type`, and (new in 0.3) `Encrypted` containers and `Varint`
 fields. Round-trip through `fromKsy(toKsy(p))` is not structurally
 identical and is not the goal — the exporter exists so users can take a
-Packet View definition into the Kaitai compiler (`ksc`) without
+Packet Schema Visualizer definition into the Kaitai compiler (`ksc`) without
 rebuilding it by hand.
 
 ## Adding a preset (YAML authoring)
@@ -1136,4 +1136,4 @@ affordance based on the structure alone.
 - Generating parser code (that's Kaitai's job; we don't try to replace
   `ksc`).
 - Surface syntax change — Typst dict literals continue to be the
-  on-disk authoring format for Packet View's preset library.
+  on-disk authoring format for Packet Schema Visualizer's preset library.

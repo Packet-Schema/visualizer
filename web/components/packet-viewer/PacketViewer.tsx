@@ -286,7 +286,9 @@ export default function PacketViewer({
         });
       }
       if (parsed.error) {
-        console.warn(`Packet View ignored share URL: ${parsed.error}`);
+        console.warn(
+          `Packet Schema Visualizer ignored share URL: ${parsed.error}`,
+        );
       }
     }
     setUrlHydrated(true);
@@ -762,7 +764,7 @@ export default function PacketViewer({
       }
     } catch (err) {
       console.warn(
-        `Packet View could not update the share URL: ${(err as Error).message}`,
+        `Packet Schema Visualizer could not update the share URL: ${(err as Error).message}`,
       );
     }
   }, [buildCurrentShareUrl, urlHydrated]);
@@ -777,7 +779,7 @@ export default function PacketViewer({
       const bytes = shareUrlByteLength(url);
       if (bytes > SHARE_URL_WARN_BYTES) {
         console.warn(
-          `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
+          `Packet Schema Visualizer share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
       // Try the async Clipboard API first, then fall through to the
@@ -863,8 +865,8 @@ export default function PacketViewer({
   const tourSteps: TourStep[] = useMemo(
     () => [
       {
-        title: "Welcome to Packet View",
-        body: "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
+        title: "Welcome to Packet Schema Visualizer",
+        body: "Packet Schema Visualizer teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
       },
       {
         title: "The bit ruler",
@@ -1014,8 +1016,8 @@ export default function PacketViewer({
   useEffect(() => {
     if (!urlHydrated) return;
     const title = exportPacket.name
-      ? `${exportPacket.name} | Packet Visualizer`
-      : "Packet Visualizer";
+      ? `${exportPacket.name} | Packet Schema Visualizer`
+      : "Packet Schema Visualizer";
     let id2: number | null = null;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {

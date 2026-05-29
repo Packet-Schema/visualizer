@@ -1,6 +1,6 @@
 // Format adapter registry.
 //
-// Each entry plugs an external packet representation into Packet View through
+// Each entry plugs an external packet representation into Packet Schema Visualizer through
 // a uniform shape. The ImportExportDrawer iterates the registry to populate
 // its format picker and dispatch import/export, so adding a new format is
 // just adding one entry here (and writing the codec module it points at).
