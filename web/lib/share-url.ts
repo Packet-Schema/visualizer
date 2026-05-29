@@ -80,7 +80,12 @@ export function parseShareParams(
   let psdlError: string | undefined;
   for (const psdl of params.getAll("psdl")) {
     try {
-      return { kind: "psdl", ...decodePsdlParam(psdl) };
+      const decoded = decodePsdlParam(psdl);
+      return {
+        kind: "psdl",
+        ...decoded,
+        controllers: { ...decoded.controllers, ...controllers },
+      };
     } catch (err) {
       if (psdlError === undefined) {
         const raw = err instanceof Error ? err.message : String(err);

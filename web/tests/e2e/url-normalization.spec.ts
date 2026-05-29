@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const PSDL_CUSTOM_UDP =
-  "N4KABGBEBmD2BOBbAhgF0gLigBwM4BMAbSAGnCgDcBTeXAS1gDtMoAGAOgCZTzJHlEVFpADCAV1ypYiMAFUAIgAUeESPFgB3AEJ1UuFgGZOZVfiq4AxvDrZUDZlkgBBMBYlSZCxQFpCdANZUYNjIFoGoYHDwYKjmdowA5uwqUABGsPgAniwA2uQQoBBFUHT4wrjwFinFfAJCjgDKsGKVQYoI6CbFUKiZ2PVghd2q-nSMZY6puvpdw3wsAIwAbPlFAL6rGxAAuiBrQA";
+  "N4IgRg9gJgniBcBtUBLKCQGcBOBjEANCAHYCGAtgKYYDKEArnpQAQAKE2ALoSJzAA7V4oANYpi6eOBSdMPYggCMANgC-qgLpEolTLmwp-nFBAVSAgs1z1MnCOWYBVACKsAtABsUIlv1K4fTmYAMw5mTl1jYgBzADoeUOxyUm4pfkwoD3kKIRAAYRs7BxdWHmwIAHcAIRk5eABmACYiADdKbEwTMxAABljGkFUgAA";
 
 test.describe("URL normalization — final URL after redirect + hydration", () => {
   test("strips unknown params", async ({ page }) => {
