@@ -81,7 +81,7 @@ export default async function Page({ searchParams }: Props) {
   // buildShareQueryFromParams は既知キーのみ抽出するので、不明パラメーターの
   // 有無を判定するために全パラメーターを含む rawQuery と比較する。
   const rawQuery = buildRawQuery(params);
-  if (rawQuery && isShareQueryLengthValid(rawQuery)) {
+  if (isShareQueryLengthValid(rawQuery)) {
     const normalizedQuery = normalizeShareQuery(rawQuery, Object.keys(PRESETS));
     if (normalizedQuery !== rawQuery) {
       redirect(normalizedQuery ? `/?${normalizedQuery}` : "/");

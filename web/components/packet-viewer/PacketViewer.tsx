@@ -557,8 +557,7 @@ export default function PacketViewer({
         break;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, mergedStudioPacket, urlHydrated]);
+  }, [editMode, mergedStudioPacket, packetKey, urlHydrated]);
 
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
   // key namespace keeps user-saved presets separate from built-ins and
