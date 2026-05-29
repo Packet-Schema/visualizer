@@ -35,10 +35,14 @@ export async function generateMetadata({
   const parsed = parseShareParamsOrFallback(shareQuery);
 
   const isValidLength = isShareQueryLengthValid(shareQuery);
-  const imageUrl = new URL(
-    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og",
-    await getRequestOrigin(),
-  ).toString();
+  const buildId = process.env.BUILD_ID ?? "";
+  const cacheBust = buildId ? `v=${buildId}` : "";
+  const ogBase =
+    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og";
+  const ogWithBust = cacheBust
+    ? `${ogBase}${ogBase.includes("?") ? "&" : "?"}${cacheBust}`
+    : ogBase;
+  const imageUrl = new URL(ogWithBust, await getRequestOrigin()).toString();
 
   const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psdl";
   const packet = hasExplicitParams
