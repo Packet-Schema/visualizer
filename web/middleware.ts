@@ -3,9 +3,6 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest): NextResponse | undefined {
   const { pathname } = request.nextUrl;
-  // Redirect paths that lack a trailing slash (e.g. example.com or /embed) to
-  // the canonical form with a slash. Paths with a file extension (e.g. /og.png)
-  // are excluded because static assets must not have a trailing slash appended.
   const hasExtension = /\.[^/]+$/.test(pathname);
   if (!pathname.endsWith("/") && !hasExtension) {
     const url = request.nextUrl.clone();
