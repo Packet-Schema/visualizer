@@ -292,8 +292,6 @@ const CSS_PROPERTY_MAP: Partial<Record<keyof typeof LAYOUT, string>> = {
   badgeOffsetY: "--badge-offset-y",
   badgeOffsetXSmall: "--badge-offset-x-small",
   badgeOffsetYSmall: "--badge-offset-y-small",
-  badgeOpacityBlock: "--badge-opacity-block",
-  badgeOpacityChild: "--badge-opacity-child",
   badgeSvgViewBox: "--badge-svg-viewbox",
   badgeSvgRectX: "--badge-svg-rect-x",
   badgeSvgRectY: "--badge-svg-rect-y",
@@ -328,6 +326,8 @@ export function generateLayoutCssVariables(): string {
     `--encrypted-stripe-line: ${ENCRYPTED_STRIPE.linePx}px`,
     `--encrypted-stripe-cell-opacity: ${ENCRYPTED_STRIPE.cellOpacity}`,
     `--encrypted-stripe-cell-opacity-hover: ${ENCRYPTED_STRIPE.cellOpacityHover}`,
+    `--badge-opacity-block: ${LAYOUT.badgeOpacityBlock}`,
+    `--badge-opacity-child: ${LAYOUT.badgeOpacityChild}`,
   ].join(";");
 
   return `:root { ${layoutRules}${stripeRules}; }`;

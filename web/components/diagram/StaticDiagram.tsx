@@ -208,9 +208,14 @@ export function StaticDiagram({
                       ...(isDashed
                         ? { opacity: ENCRYPTED_STRIPE.cellOpacity }
                         : {}),
-                      background: isDashed
-                        ? `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px), rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`
-                        : `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                      ...(isDashed
+                        ? {
+                            backgroundImage: `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px)`,
+                            backgroundColor: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                          }
+                        : {
+                            backgroundColor: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                          }),
                     }}
                   >
                     <div
