@@ -40,6 +40,13 @@ function oklchToRgb(oklch: string): string {
   return `#${toHex(R)}${toHex(G)}${toHex(B)}`;
 }
 
+export function convertOklchInString(value: string): string {
+  return value.replace(
+    /oklch\([\d.]+%\s+[\d.]+\s+[\d.]+(?:\s*\/\s*[\d.]+)?\)/g,
+    oklchToRgb,
+  );
+}
+
 export type DiagramTheme = {
   background: string;
   rowEven: string;
