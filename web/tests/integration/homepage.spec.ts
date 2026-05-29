@@ -198,7 +198,7 @@ test.describe("Homepage and Meta Tags", () => {
     });
   });
 
-  test.describe("URL normalization — 302 redirect", () => {
+  test.describe("URL normalization — 307 redirect", () => {
     test("/ alone is not redirected", async ({ request }) => {
       const response = await request.get("/");
       expect(response.status()).toBe(200);

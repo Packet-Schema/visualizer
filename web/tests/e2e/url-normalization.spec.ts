@@ -6,7 +6,7 @@ const PSDL_CUSTOM_UDP =
 test.describe("URL normalization — final URL after redirect + hydration", () => {
   test("strips unknown params", async ({ page }) => {
     await page.goto("/?preset=ipv4&unknown=foo");
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL((url) => !url.searchParams.has("unknown"));
     const params = new URL(page.url()).searchParams;
     expect(params.has("unknown")).toBe(false);
     expect(params.get("preset")).toBe("ipv4");
@@ -14,7 +14,7 @@ test.describe("URL normalization — final URL after redirect + hydration", () =
 
   test("drops invalid psdl and keeps preset", async ({ page }) => {
     await page.goto("/?psdl=GARBAGE&preset=ipv4");
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL((url) => !url.searchParams.has("psdl"));
     const params = new URL(page.url()).searchParams;
     expect(params.has("psdl")).toBe(false);
     expect(params.get("preset")).toBe("ipv4");
@@ -22,7 +22,7 @@ test.describe("URL normalization — final URL after redirect + hydration", () =
 
   test("drops preset when valid psdl is present", async ({ page }) => {
     await page.goto(`/?preset=ipv4&psdl=${PSDL_CUSTOM_UDP}`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL((url) => !url.searchParams.has("preset"));
     const params = new URL(page.url()).searchParams;
     expect(params.has("preset")).toBe(false);
     expect(params.has("psdl")).toBe(true);
@@ -32,7 +32,9 @@ test.describe("URL normalization — final URL after redirect + hydration", () =
     page,
   }) => {
     await page.goto("/?preset=nope&preset=ipv4");
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL(
+      (url) => url.searchParams.getAll("preset").length === 1,
+    );
     const params = new URL(page.url()).searchParams;
     expect(params.getAll("preset").length).toBe(1);
     expect(params.get("preset")).toBe("ipv4");

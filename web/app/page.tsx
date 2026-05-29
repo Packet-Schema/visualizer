@@ -80,6 +80,8 @@ export default async function Page({ searchParams }: Props) {
   // クエリ正規化（不明パラメーター除去・重複排除・無効 psdl 除去）と
   // psdl→preset 正規化を一括で行い、変化があれば1回だけリダイレクト。
   const rawQuery = buildRawQuery(params);
+  // Skip normalization for URLs that exceed the share URL length limit — they
+  // will be handled downstream with an error message instead of a redirect.
   if (isShareQueryLengthValid(rawQuery)) {
     let normalizedQuery = normalizeShareQuery(rawQuery, Object.keys(PRESETS));
     // 正規化後の psdl がプリセットと一致するなら ?preset=<key> に変換。

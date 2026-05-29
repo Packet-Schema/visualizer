@@ -209,6 +209,10 @@ export function isShareQueryLengthValid(shareQuery: string): boolean {
  *   4. Deduplicate repeated keys — keep only the first occurrence
  *
  * Returns a URLSearchParams-style string (no leading `?`).
+ *
+ * NOTE: When `builtInKeys` is empty (the default), all `preset` values are
+ * treated as unknown and stripped. Always pass the live preset key list when
+ * calling from page-level code.
  */
 export function normalizeShareQuery(
   search: string,
@@ -220,7 +224,9 @@ export function normalizeShareQuery(
   const known = new Set(builtInKeys);
 
   // 有効な psdl が1つでもあれば preset は不要。複数ある場合は全値を確認する。
-  const psdlValid = params.getAll("psdl").some(isPsdlValueValid);
+  const psdlValid = params
+    .getAll("psdl")
+    .some((v) => tryCanonicalizeAndEncodePsdl(v) !== null);
 
   // preset の重複排除: 最初の有効値を採用する。
   // 先頭が無効な preset の場合に有効な後続 preset を失わないよう、
@@ -257,12 +263,13 @@ export function normalizeShareQuery(
     }
 
     if (!isPreset && !isPsdl) continue;
-    // Drop invalid psdl values entirely.
-    if (isPsdl && !isPsdlValueValid(value)) continue;
-    // Canonicalize psdl: decode→re-encode to normalize key order.
+    // Decode psdl once: invalid values are dropped, valid ones are re-encoded
+    // with stable key order. A single decode avoids calling decodePsdlParam
+    // twice (once to validate, once to canonicalize).
     if (isPsdl) {
       if (seen.has(key)) continue;
-      const canonical = canonicalizePsdlValue(value);
+      const canonical = tryCanonicalizeAndEncodePsdl(value);
+      if (canonical === null) continue;
       out.set(key, canonical);
       seen.add(key);
       continue;
@@ -300,22 +307,17 @@ export function findPresetKeyForPacket(
   return null;
 }
 
-/** decode→re-encode で psdl 値のキー順を正規化する。無効な値は呼び出し前に除去済み前提。 */
-function canonicalizePsdlValue(value: string): string {
+/**
+ * Decode a raw psdl param value and re-encode it with stable key order.
+ * Returns null if the value is invalid (decode failed).
+ * Combining validation and canonicalization avoids calling decodePsdlParam twice.
+ */
+function tryCanonicalizeAndEncodePsdl(value: string): string | null {
   try {
     const { packet, controllers } = decodePsdlParam(value);
     return encodePsdlParam(packet, controllers);
   } catch {
-    return value;
-  }
-}
-
-function isPsdlValueValid(value: string): boolean {
-  try {
-    decodePsdlParam(value);
-    return true;
-  } catch {
-    return false;
+    return null;
   }
 }
 
