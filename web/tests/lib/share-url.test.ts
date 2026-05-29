@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildShareUrl,
   buildShareQueryFromParams,
-  decodePsmlParam,
-  encodePsmlParam,
+  decodePsdlParam,
+  encodePsdlParam,
   isShareQueryLengthValid,
   parseShareParams,
 } from "@/lib/share-url";
-import { PRESETS } from "@/lib/psml/presets";
-import type { Packet } from "@/lib/psml/types";
+import { PRESETS } from "@/lib/psdl/presets";
+import type { Packet } from "@/lib/psdl/types";
 
 const BUILT_INS = Object.keys(PRESETS);
 
@@ -46,23 +46,24 @@ describe("share URL params", () => {
     expect(url).toBe("https://example.test/view?preset=tcp");
   });
 
-  it("round-trips custom PSML through an encoded payload", () => {
-    const encoded = encodePsmlParam(packet("Custom Packet"), {
+  it("round-trips custom PSDL through an encoded payload", () => {
+    const encoded = encodePsdlParam(packet("Custom Packet"), {
       customLen: 12,
     });
-    expect(encoded).toMatch(/^[A-Za-z0-9+$-]+$/);
+    expect(encoded).toMatch(/^[A-Za-z0-9\-_]+$/);
+    expect(encoded).not.toContain("+");
     expect(encoded).not.toContain("/");
     expect(encoded).not.toContain("=");
 
-    const decoded = decodePsmlParam(encoded);
+    const decoded = decodePsdlParam(encoded);
     expect(decoded.packet.name).toBe("Custom Packet");
     expect(decoded.controllers).toEqual({ customLen: 12 });
   });
 
-  it("treats invalid psml and unknown preset values defensively", () => {
-    const badPsml = parseShareParams("?psml=not-valid", BUILT_INS);
-    if (badPsml.kind !== "none") throw new Error("expected kind=none");
-    expect(badPsml.error).toMatch(/Invalid shared link/);
+  it("treats invalid psdl and unknown preset values defensively", () => {
+    const badPsdl = parseShareParams("?psdl=not-valid", BUILT_INS);
+    if (badPsdl.kind !== "none") throw new Error("expected kind=none");
+    expect(badPsdl.error).toMatch(/Invalid shared link/);
 
     const unknownPreset = parseShareParams("?preset=nope", BUILT_INS);
     if (unknownPreset.kind !== "none") throw new Error("expected kind=none");
@@ -87,7 +88,7 @@ describe("share URL params", () => {
     const params = {
       preset: "tcp",
       "controllers.dataOffset": "5",
-      psml: undefined,
+      psdl: undefined,
       other: "ignored",
     };
 
@@ -95,7 +96,7 @@ describe("share URL params", () => {
     expect(query).toContain("preset=tcp");
     expect(query).toContain("controllers.dataOffset=5");
     expect(query).not.toContain("other");
-    expect(query).not.toContain("psml");
+    expect(query).not.toContain("psdl");
   });
 
   it("handles array values in share query params", () => {
@@ -112,7 +113,7 @@ describe("share URL params", () => {
     const shortQuery = "preset=ipv4";
     expect(isShareQueryLengthValid(shortQuery)).toBe(true);
 
-    const longQuery = "preset=" + "x".repeat(3000);
+    const longQuery = "preset=" + "x".repeat(200_000);
     expect(isShareQueryLengthValid(longQuery)).toBe(false);
   });
 });

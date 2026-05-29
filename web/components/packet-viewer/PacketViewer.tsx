@@ -9,32 +9,32 @@ import {
   useState,
 } from "react";
 
-import { PRESETS } from "@/lib/psml/presets";
-import { resolveLayout } from "@/lib/psml/layout";
-import { initialEnv } from "@/lib/psml/normalize";
-import { collectPsmlRefs } from "@/lib/psml/collect-refs";
-import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
+import { PRESETS } from "@/lib/psdl/presets";
+import { resolveLayout } from "@/lib/psdl/layout";
+import { initialEnv } from "@/lib/psdl/normalize";
+import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
 import {
   initialState,
   packetCategories,
   syncChainControllers,
   syncTlvControllers,
-} from "@/lib/psml/renderer-helpers";
+} from "@/lib/psdl/renderer-helpers";
 import {
   applyTlvInstances,
-  mergeInstancesIntoPsml,
-  psmlToRenderer,
-  rendererToPsml,
-} from "@/lib/psml/psml-to-renderer";
-import type { TlvSlotBytes } from "@/lib/psml/psml-to-renderer/apply-tlv";
-import { updatePacketField } from "@/lib/psml/packet-update";
+  mergeInstancesIntoPsdl,
+  psdlToRenderer,
+  rendererToPsdl,
+} from "@/lib/psdl/psdl-to-renderer";
+import type { TlvSlotBytes } from "@/lib/psdl/psdl-to-renderer/apply-tlv";
+import { updatePacketField } from "@/lib/psdl/packet-update";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
-import { editReducer, makeInitialState } from "@/lib/psml/edit-reducer";
+import { editReducer, makeInitialState } from "@/lib/psdl/edit-reducer";
 import {
   loadCustomPresets,
   saveCustomPreset,
   deleteCustomPreset,
-} from "@/lib/psml/custom-presets";
+} from "@/lib/psdl/custom-presets";
 import {
   buildMyPresetsBundle,
   downloadBlob,
@@ -56,8 +56,8 @@ import type {
   PacketRegistry,
   SubField,
   TlvInstance,
-} from "@/lib/psml/renderer";
-import type { PsmlPacket } from "@/lib/psml/types";
+} from "@/lib/psdl/renderer";
+import type { PsdlPacket } from "@/lib/psdl/types";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
@@ -116,31 +116,45 @@ const TLV_LENGTH_SYNC: Array<{
 // we rely on the inline DetailPanel only.
 const POPOVER_MIN_WIDTH = 900;
 
+// Synthetic key used during SSR / pre-hydration when the URL carries a
+// PSDL-encoded custom packet. The hydration effect replaces it with the
+// canonical `custom:<name>` key once the packet is persisted to localStorage.
+const PSDL_INITIAL_KEY = "__psdl_initial__";
+
 type PacketViewerProps = {
   initialPacketKey?: string;
   initialControllers?: ControllerState;
+  initialPsdlPacket?: PsdlPacket;
 };
 
 export default function PacketViewer({
   initialPacketKey = DEFAULT_PACKET_KEY,
   initialControllers,
+  initialPsdlPacket,
 }: PacketViewerProps) {
-  const [packetKey, setPacketKey] = useState<string>(initialPacketKey);
+  const [packetKey, setPacketKey] = useState<string>(
+    initialPsdlPacket ? PSDL_INITIAL_KEY : initialPacketKey,
+  );
   // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
   // エラー中のテキストは studio reducer の history に乗らないので、 Discard
   // 確認をこのフラグでも引っ掛ける (Codex P2)。
   const [sourceDirty, setSourceDirty] = useState(false);
   // Imported packets are kept in the renderer shape so the editors can mutate
-  // their TLV/Chain/subfield state directly. Built-in presets live in PSML
+  // their TLV/Chain/subfield state directly. Built-in presets live in PSDL
   // and are lowered to the renderer shape on demand.
-  const [importedPackets, setImportedPackets] = useState<PacketRegistry>({});
-  // The renderer-shape mirror of every built-in PSML preset. Lowered once on
+  const [importedPackets, setImportedPackets] = useState<PacketRegistry>(() => {
+    if (!initialPsdlPacket) return {} as PacketRegistry;
+    return {
+      [PSDL_INITIAL_KEY]: psdlToRenderer(initialPsdlPacket),
+    } as PacketRegistry;
+  });
+  // The renderer-shape mirror of every built-in PSDL preset. Lowered once on
   // mount; TLV/Chain edits replace the relevant packet entry immutably via
-  // `updatePacketField` (the format hub re-lifts back to PSML at export time).
+  // `updatePacketField` (the format hub re-lifts back to PSDL at export time).
   const [renderedPresets, setRenderedPresets] = useState<PacketRegistry>(() => {
     const out: PacketRegistry = {};
     for (const [k, v] of Object.entries(PRESETS)) {
-      out[k] = psmlToRenderer(v);
+      out[k] = psdlToRenderer(v);
     }
     return out;
   });
@@ -149,12 +163,16 @@ export default function PacketViewer({
   // Keyed `custom:<name>`; PresetPicker renders these under a 'My presets'
   // optgroup.
   const [customPresets, setCustomPresets] = useState<
-    Record<string, PsmlPacket>
-  >({});
+    Record<string, PsdlPacket>
+  >(() =>
+    initialPsdlPacket
+      ? { [PSDL_INITIAL_KEY]: initialPsdlPacket }
+      : ({} as Record<string, PsdlPacket>),
+  );
   // Lowered renderer mirror of the active custom preset, if any.
   const customRenderer: Packet | null = useMemo(() => {
     const cp = customPresets[packetKey];
-    return cp ? psmlToRenderer(cp) : null;
+    return cp ? psdlToRenderer(cp) : null;
   }, [customPresets, packetKey]);
 
   // Renderer mirror — the shape the UI editors / detail panels consume.
@@ -165,8 +183,12 @@ export default function PacketViewer({
     renderedPresets[DEFAULT_PACKET_KEY];
 
   const [controllers, setControllers] = useState<ControllerState>(() => {
+    if (initialPsdlPacket) {
+      const rendered = psdlToRenderer(initialPsdlPacket);
+      return { ...initialState(rendered), ...(initialControllers ?? {}) };
+    }
     const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
-    return initialControllers ?? initialState(psmlToRenderer(packet));
+    return initialControllers ?? initialState(psdlToRenderer(packet));
   });
 
   // Custom Packet Studio reducer. Seeded from the default preset; we
@@ -174,7 +196,9 @@ export default function PacketViewer({
   // unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY],
+    initialPsdlPacket ??
+      PRESETS[initialPacketKey] ??
+      PRESETS[DEFAULT_PACKET_KEY],
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
@@ -195,11 +219,11 @@ export default function PacketViewer({
     shareStatus,
   } = ui;
   // Export must follow the same source of truth as the live diagram. While the
-  // studio is open, layout is derived from in-progress PSML edits rather than
+  // studio is open, layout is derived from in-progress PSDL edits rather than
   // the last selected preset/import, so lower that edited packet for consumers
   // that still need renderer metadata such as `name` and `rowBits`.
   const exportPacket = useMemo(
-    () => (editMode ? psmlToRenderer(studioState.packet) : packet),
+    () => (editMode ? psdlToRenderer(studioState.packet) : packet),
     [editMode, packet, studioState.packet],
   );
   const isWideViewport = useIsWideViewport(POPOVER_MIN_WIDTH);
@@ -229,13 +253,22 @@ export default function PacketViewer({
       window.location.search,
       BUILT_IN_PRESET_KEYS,
     );
-    if (parsed.kind === "psml") {
+    if (parsed.kind === "psdl") {
       const { key, presets } = persistSharedCustomPreset(parsed.packet, stored);
       setCustomPresets(presets);
       setPacketKey(key);
       setControllers({
-        ...initialState(psmlToRenderer(parsed.packet)),
+        ...initialState(psdlToRenderer(parsed.packet)),
         ...parsed.controllers,
+      });
+      // Remove the SSR placeholder now that the packet has been promoted to
+      // custom:<name>. Without this, the picker shows the same packet twice —
+      // once under "My presets" and once under "Imported".
+      setImportedPackets((prev) => {
+        if (!(PSDL_INITIAL_KEY in prev)) return prev;
+        const next = { ...prev };
+        delete next[PSDL_INITIAL_KEY];
+        return next;
       });
     } else if (parsed.kind === "preset") {
       setCustomPresets(stored);
@@ -253,7 +286,9 @@ export default function PacketViewer({
         });
       }
       if (parsed.error) {
-        console.warn(`Packet View ignored share URL: ${parsed.error}`);
+        console.warn(
+          `Packet Schema Visualizer ignored share URL: ${parsed.error}`,
+        );
       }
     }
     setUrlHydrated(true);
@@ -261,30 +296,30 @@ export default function PacketViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The active PSML packet for the studio reducer. Prefers built-in PSML,
+  // The active PSDL packet for the studio reducer. Prefers built-in PSDL,
   // then a custom preset, then a lifted version of the imported renderer
   // packet (lossy but acceptable as a starting point for editing).
-  const activePsmlPacket: PsmlPacket = useMemo(() => {
+  const activePsdlPacket: PsdlPacket = useMemo(() => {
     return (
       PRESETS[packetKey] ??
       customPresets[packetKey] ??
       (importedPackets[packetKey]
-        ? rendererToPsml(importedPackets[packetKey])
+        ? rendererToPsdl(importedPackets[packetKey])
         : PRESETS[DEFAULT_PACKET_KEY])
     );
   }, [packetKey, customPresets, importedPackets]);
 
-  // Re-seed the studio reducer in-place when the active PSML packet swaps
+  // Re-seed the studio reducer in-place when the active PSDL packet swaps
   // (preset change, custom preset selection, import). Detecting the change
   // during render and dispatching synchronously is the React-recommended
   // alternative to a useEffect — it keeps `studioState.packet` aligned with
-  // `activePsmlPacket` on the same render that observed the change, avoiding
+  // `activePsdlPacket` on the same render that observed the change, avoiding
   // a flash of stale state.
   // See: https://react.dev/learn/you-might-not-need-an-effect
-  const lastReducerPacketRef = useRef(activePsmlPacket);
-  if (lastReducerPacketRef.current !== activePsmlPacket) {
-    lastReducerPacketRef.current = activePsmlPacket;
-    dispatch({ type: "replace-packet", packet: activePsmlPacket });
+  const lastReducerPacketRef = useRef(activePsdlPacket);
+  if (lastReducerPacketRef.current !== activePsdlPacket) {
+    lastReducerPacketRef.current = activePsdlPacket;
+    dispatch({ type: "replace-packet", packet: activePsdlPacket });
   }
 
   useUndoRedoShortcuts({
@@ -323,10 +358,10 @@ export default function PacketViewer({
       const next =
         renderedPresets[nextKey] ??
         importedPackets[nextKey] ??
-        (customPreset ? psmlToRenderer(customPreset) : null);
+        (customPreset ? psdlToRenderer(customPreset) : null);
       if (next) setControllers(initialState(next));
       // `preset-switched` resets selection, popover anchor, edit mode, and
-      // the json pane in one shot. Otherwise `targetPsml` would briefly
+      // the json pane in one shot. Otherwise `targetPsdl` would briefly
       // fall back to `studioState.packet` (still pointing at the previous
       // preset) and the diagram would render mixed cells.
       uiDispatch({ type: "preset-switched" });
@@ -396,21 +431,21 @@ export default function PacketViewer({
       } else if (importedPackets[packetKey]) {
         setImportedPackets((prev) => ({ ...prev, [packetKey]: nextPacket }));
       } else {
-        // Custom preset edits: keep the source PSML untouched and
+        // Custom preset edits: keep the source PSDL untouched and
         // persist the renderer-shape edit in `renderedPresets` instead.
         //
-        // The earlier approach (`setCustomPresets ← rendererToPsml(...)`,
+        // The earlier approach (`setCustomPresets ← rendererToPsdl(...)`,
         // even with constraints merged back) bakes the renderer model's
         // lossy collapse of Encrypted / Switch / Optional containers
-        // into the source PSML on every TLV / Chain edit (Codex P1).
+        // into the source PSDL on every TLV / Chain edit (Codex P1).
         // The renderer mirror lookup at the top of this component
         // already falls back to `renderedPresets[packetKey]` ??
         // `customRenderer` (which re-derives from customPresets), so
         // writing the edit to `renderedPresets[packetKey]` lets the UI
-        // pick up the change immediately while the canonical PSML
+        // pick up the change immediately while the canonical PSDL
         // stays intact. A preset switch + return re-derives the
         // renderer view from the source; only an explicit
-        // "Save as preset" should rebuild the persisted PSML.
+        // "Save as preset" should rebuild the persisted PSDL.
         setRenderedPresets((prev) => ({ ...prev, [packetKey]: nextPacket }));
       }
     },
@@ -476,12 +511,12 @@ export default function PacketViewer({
 
   // Memoise the studio-packet-with-mirror-state merge so it isn't
   // recomputed on every render. Without the memo, every controller drag
-  // walks the whole PSML body and JsonPane re-stringifies its 200+ leaves
+  // walks the whole PSDL body and JsonPane re-stringifies its 200+ leaves
   // (sub-agent Round 7 MEDIUM). Save-As and share both reuse this value.
   // Declared above `handleSaveAsPreset` / `buildCurrentShareUrl` so those
   // callbacks can reference it in their dep arrays without a TDZ.
-  const mergedStudioPacket: PsmlPacket = useMemo(
-    () => mergeInstancesIntoPsml(studioState.packet, packet),
+  const mergedStudioPacket: PsdlPacket = useMemo(
+    () => mergeInstancesIntoPsdl(studioState.packet, packet),
     [studioState.packet, packet],
   );
 
@@ -497,7 +532,7 @@ export default function PacketViewer({
       // the studio packet before persistence — without this, diagram-
       // driven edits (which only land on the mirror) silently drop on
       // save (sub-agent CRITICAL).
-      const packetToSave: PsmlPacket = {
+      const packetToSave: PsdlPacket = {
         ...mergedStudioPacket,
         name: normalizedName,
       };
@@ -507,7 +542,7 @@ export default function PacketViewer({
       // edit path writes renderer packets into `renderedPresets[key]`
       // for session-only persistence; without this evict, saving over
       // an existing `custom:<name>` keeps the old renderer ahead of
-      // the freshly persisted PSML in `packet`'s resolution order and
+      // the freshly persisted PSDL in `packet`'s resolution order and
       // the UI shows stale data (Codex P2). The next render will
       // re-derive from `customPresets[key]` → `customRenderer`.
       setRenderedPresets((prev) => {
@@ -517,7 +552,7 @@ export default function PacketViewer({
         return next;
       });
       setPacketKey(key);
-      setControllers(initialState(psmlToRenderer(packetToSave)));
+      setControllers(initialState(psdlToRenderer(packetToSave)));
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-save-dialog" });
       // set-edit-mode false で studioView が "form" にリセットされる
@@ -545,16 +580,16 @@ export default function PacketViewer({
     ) {
       return;
     }
-    dispatch({ type: "replace-packet", packet: activePsmlPacket });
+    dispatch({ type: "replace-packet", packet: activePsdlPacket });
     // Also evict the renderer mirror back to its source-of-truth shape.
     // Without this, diagram-driven edits (TLV / chain instances,
     // byteOrder, controllers) survive on the mirror past the discard,
     // so re-entering editMode still shows the records and a follow-up
-    // Save-As resurrects them via `mergeInstancesIntoPsml` (sub-agent
-    // CRITICAL C2). Rebuilding from `activePsmlPacket` is cheap and
+    // Save-As resurrects them via `mergeInstancesIntoPsdl` (sub-agent
+    // CRITICAL C2). Rebuilding from `activePsdlPacket` is cheap and
     // makes "discard" actually mean discard.
-    replaceActivePacket(psmlToRenderer(activePsmlPacket));
-    setControllers(initialState(psmlToRenderer(activePsmlPacket)));
+    replaceActivePacket(psdlToRenderer(activePsdlPacket));
+    setControllers(initialState(psdlToRenderer(activePsdlPacket)));
     uiDispatch({ type: "clear-selection" });
     // set-edit-mode false で studioView も "form" に戻る (ui-state-reducer)。
     uiDispatch({ type: "set-edit-mode", editing: false });
@@ -571,7 +606,7 @@ export default function PacketViewer({
       });
     }
   }, [
-    activePsmlPacket,
+    activePsdlPacket,
     replaceActivePacket,
     studioState.history.length,
     sourceDirty,
@@ -617,7 +652,7 @@ export default function PacketViewer({
           if (!pkt || typeof pkt !== "object") continue;
           const key = uniqueKey(rawKey, existing);
           existing.add(key);
-          saveCustomPreset(key, pkt as PsmlPacket);
+          saveCustomPreset(key, pkt as PsdlPacket);
           imported++;
         }
         setCustomPresets(loadCustomPresets());
@@ -663,28 +698,28 @@ export default function PacketViewer({
 
   const buildCurrentShareUrl = useCallback(() => {
     if (typeof window === "undefined") return "";
-    const builtInPsml = PRESETS[packetKey];
-    const customSource = builtInPsml ? undefined : customPresets[packetKey];
+    const builtInPsdl = PRESETS[packetKey];
+    const customSource = builtInPsdl ? undefined : customPresets[packetKey];
     // Custom preset edits live in `renderedPresets` (see
-    // `replaceActivePacket` custom arm) and the source PSML in
+    // `replaceActivePacket` custom arm) and the source PSDL in
     // `customPresets[packetKey]` stays untouched. Decide which one to
     // share based on whether the user has actually edited:
     //
     //  - editMode → always share the studio state (the user's draft).
-    //  - built-in → share the built-in PSML (preset key + controllers
-    //    are enough, but emitting the PSML preserves any constraints
+    //  - built-in → share the built-in PSDL (preset key + controllers
+    //    are enough, but emitting the PSDL preserves any constraints
     //    we want the recipient to see).
-    //  - custom + no renderer override → share the source PSML so its
+    //  - custom + no renderer override → share the source PSDL so its
     //    `constraints` / Encrypted / Switch / Optional containers
-    //    survive (rendererToPsml would strip them — Codex P1).
+    //    survive (rendererToPsdl would strip them — Codex P1).
     //  - custom + renderer override → lift the renderer packet back to
-    //    PSML so the recipient sees the TLV / Chain edits actually
+    //    PSDL so the recipient sees the TLV / Chain edits actually
     //    visible on screen (lossy for non-renderer constructs but
     //    necessary; matching screen-state is the priority once the
     //    user has touched the editor).
-    //  - imported → no source PSML available, lift from renderer.
+    //  - imported → no source PSDL available, lift from renderer.
     const hasCustomRendererOverride =
-      !builtInPsml && renderedPresets[packetKey] !== undefined;
+      !builtInPsdl && renderedPresets[packetKey] !== undefined;
     const sharePacket = editMode
       ? // In editMode the diagram draws from studioState.packet but TLV /
         // chain edits only land on the renderer mirror — without the
@@ -692,13 +727,13 @@ export default function PacketViewer({
         // added through the diagram (sub-agent CRITICAL #2). Re-uses the
         // memo so we don't walk the body twice per share click.
         mergedStudioPacket
-      : builtInPsml
-        ? builtInPsml
+      : builtInPsdl
+        ? builtInPsdl
         : hasCustomRendererOverride
-          ? rendererToPsml(packet)
-          : (customSource ?? rendererToPsml(packet));
-    const defaultControllers = builtInPsml
-      ? initialState(psmlToRenderer(builtInPsml))
+          ? rendererToPsdl(packet)
+          : (customSource ?? rendererToPsdl(packet));
+    const defaultControllers = builtInPsdl
+      ? initialState(psdlToRenderer(builtInPsdl))
       : undefined;
 
     return buildShareUrl({
@@ -708,7 +743,7 @@ export default function PacketViewer({
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultControllers,
-      forcePsml: editMode || !builtInPsml,
+      forcePsdl: editMode || !builtInPsdl,
     });
   }, [
     controllers,
@@ -729,7 +764,7 @@ export default function PacketViewer({
       }
     } catch (err) {
       console.warn(
-        `Packet View could not update the share URL: ${(err as Error).message}`,
+        `Packet Schema Visualizer could not update the share URL: ${(err as Error).message}`,
       );
     }
   }, [buildCurrentShareUrl, urlHydrated]);
@@ -744,7 +779,7 @@ export default function PacketViewer({
       const bytes = shareUrlByteLength(url);
       if (bytes > SHARE_URL_WARN_BYTES) {
         console.warn(
-          `Packet View share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
+          `Packet Schema Visualizer share URL is ${bytes} bytes, exceeding ${SHARE_URL_WARN_BYTES}; copied anyway.`,
         );
       }
       // Try the async Clipboard API first, then fall through to the
@@ -830,8 +865,8 @@ export default function PacketViewer({
   const tourSteps: TourStep[] = useMemo(
     () => [
       {
-        title: "Welcome to Packet View",
-        body: "Packet View teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
+        title: "Welcome to Packet Schema Visualizer",
+        body: "Packet Schema Visualizer teaches network protocols visually. Pick a packet, click any field, and tweak sliders to see how the bytes line up.",
       },
       {
         title: "The bit ruler",
@@ -867,13 +902,13 @@ export default function PacketViewer({
   // leaves a stale `ihl` in the env, and the IPv6 diagram is laid out as
   // if IHL were still active. We need `packet`-and-`controllers` to stay
   // in lockstep, so the synchronous value is the only safe choice.
-  // The PSML packet feeding `resolveLayout` — depends only on the active
+  // The PSDL packet feeding `resolveLayout` — depends only on the active
   // entry, never on the whole `customPresets` map. Pulling this out lets
-  // `psmlRefs` (an AST walk) re-run only when the body actually changes,
+  // `psdlRefs` (an AST walk) re-run only when the body actually changes,
   // not every time another preset is edited.
   // Memoise the slot-byte vector against only the controllers TLV_LENGTH_SYNC
   // reads, so unrelated slider drags (TTL, Source Address, …) don't invalidate
-  // `targetPsml` and re-walk the whole PSML body.
+  // `targetPsdl` and re-walk the whole PSDL body.
   const tlvSlotBytes: TlvSlotBytes = useMemo(() => {
     const slotBytes: TlvSlotBytes = {};
     for (const rule of TLV_LENGTH_SYNC) {
@@ -902,17 +937,17 @@ export default function PacketViewer({
 
   // Narrow the `customPresets` dependency to only the active key —
   // editing another preset in the same map shouldn't re-walk the active
-  // packet's PSML (sub-agent Round 7 MEDIUM). React's strict-equality
+  // packet's PSDL (sub-agent Round 7 MEDIUM). React's strict-equality
   // useMemo dep check is satisfied by the same object reference, so
   // structuring as a hoisted memo keeps the original semantics.
   const activeCustomPreset = customPresets[packetKey];
-  const targetPsml: PsmlPacket = useMemo(() => {
+  const targetPsdl: PsdlPacket = useMemo(() => {
     // editMode (Custom Packet Studio が開いている) なら studio reducer
     // の packet が真値。 GUI / source どちらのビューで編集していても
     // 同じ reducer を経由するので、 上の diagram は常にここを映す。
     const base = editMode
       ? studioState.packet
-      : (PRESETS[packetKey] ?? activeCustomPreset ?? rendererToPsml(packet));
+      : (PRESETS[packetKey] ?? activeCustomPreset ?? rendererToPsdl(packet));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
@@ -929,15 +964,15 @@ export default function PacketViewer({
   ]);
 
   // Set of ref-names that the active packet expects in `env`. Cached against
-  // `targetPsml` so slider drag (which mutates `controllers` every frame but
+  // `targetPsdl` so slider drag (which mutates `controllers` every frame but
   // leaves the body untouched) does not re-walk the AST 60×/sec.
-  const psmlRefs = useMemo(() => collectPsmlRefs(targetPsml), [targetPsml]);
+  const psdlRefs = useMemo(() => collectPsdlRefs(targetPsdl), [targetPsdl]);
 
   const layout = useMemo(() => {
-    // Every preset is PSML now — route the diagram through resolveLayout so
+    // Every preset is PSDL now — route the diagram through resolveLayout so
     // Encrypted-container decoration and viewMode toggling are uniform.
     // For imported packets the renderer mirror is the source of truth and we
-    // lift it back to PSML on demand (lossy for variable-length payloads
+    // lift it back to PSDL on demand (lossy for variable-length payloads
     // without TLV metadata, which is acceptable for layout purposes).
     const env = new Map(
       Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
@@ -950,7 +985,7 @@ export default function PacketViewer({
     // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
     // 既存 preset の variable-length field が zero-length に描かれる
     // regression を起こす (Codex P1 指摘)。
-    const packetDefaults = initialEnv(targetPsml);
+    const packetDefaults = initialEnv(targetPsdl);
     for (const [k, v] of packetDefaults) {
       if (!env.has(k)) env.set(k, v);
     }
@@ -960,11 +995,11 @@ export default function PacketViewer({
     // MissingRefError で throw → React render が落ちて "Application error"
     // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
     // と命名が一致しない ref をまとめて吸収する。
-    for (const r of psmlRefs) {
+    for (const r of psdlRefs) {
       if (!env.has(r)) env.set(r, 0);
     }
-    return resolveLayout(targetPsml, { env, viewMode });
-  }, [targetPsml, psmlRefs, controllers, viewMode]);
+    return resolveLayout(targetPsdl, { env, viewMode });
+  }, [targetPsdl, psdlRefs, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
@@ -980,9 +1015,9 @@ export default function PacketViewer({
 
   useEffect(() => {
     if (!urlHydrated) return;
-    const title = packet.name
-      ? `${packet.name} | Packet Visualizer`
-      : "Packet Visualizer";
+    const title = exportPacket.name
+      ? `${exportPacket.name} | Packet Schema Visualizer`
+      : "Packet Schema Visualizer";
     let id2: number | null = null;
     const id1 = requestAnimationFrame(() => {
       id2 = requestAnimationFrame(() => {
@@ -993,7 +1028,7 @@ export default function PacketViewer({
       cancelAnimationFrame(id1);
       if (id2 !== null) cancelAnimationFrame(id2);
     };
-  }, [urlHydrated, packet.name]);
+  }, [urlHydrated, exportPacket.name]);
 
   return (
     <>
@@ -1178,22 +1213,22 @@ export default function PacketViewer({
 PacketViewer.displayName = "PacketViewer";
 
 function persistSharedCustomPreset(
-  packet: PsmlPacket,
-  stored: Record<string, PsmlPacket>,
-): { key: string; presets: Record<string, PsmlPacket> } {
-  const normalizedPacket: PsmlPacket = {
+  packet: PsdlPacket,
+  stored: Record<string, PsdlPacket>,
+): { key: string; presets: Record<string, PsdlPacket> } {
+  const normalizedPacket: PsdlPacket = {
     ...packet,
     name: normalizeCustomPresetName(packet.name),
   };
   const desired = `custom:${normalizedPacket.name}`;
 
   for (const [key, candidate] of Object.entries(stored)) {
-    const normalizedStoredPacket: PsmlPacket = {
+    const normalizedStoredPacket: PsdlPacket = {
       ...candidate,
       name: normalizeCustomPresetName(candidate.name),
     };
-    if (samePsmlPacket(normalizedStoredPacket, normalizedPacket)) {
-      if (!samePsmlPacket(candidate, normalizedStoredPacket)) {
+    if (samePsdlPacket(normalizedStoredPacket, normalizedPacket)) {
+      if (!samePsdlPacket(candidate, normalizedStoredPacket)) {
         saveCustomPreset(key, normalizedStoredPacket);
         const presets = loadCustomPresets();
         return {
@@ -1226,10 +1261,10 @@ function normalizeCustomPresetName(name: string): string {
 /**
  * Stable JSON comparison without the `safe-stable-stringify` dep — equality
  * only needs key-order independence (the studio reducer deep-clones via
- * `structuredClone`, which preserves key insertion order, but PSML packets
+ * `structuredClone`, which preserves key insertion order, but PSDL packets
  * from disparate sources may iterate differently). `JSON.stringify`'s
  * second-arg array form sorts keys at every depth in one pass and is enough
- * for our shallow-name PsmlPacket shape.
+ * for our shallow-name PsdlPacket shape.
  */
 function stableStringify(value: unknown): string {
   const keys = new Set<string>();
@@ -1239,7 +1274,7 @@ function stableStringify(value: unknown): string {
   // and val === value, which we skip; every subsequent empty-string key
   // is a legitimate object property (e.g. `switch.cases[""]`, which
   // `validateSwitch` doesn't forbid) and must enter the Set, otherwise
-  // `samePsmlPacket` would treat two packets that differ only inside an
+  // `samePsdlPacket` would treat two packets that differ only inside an
   // empty-keyed sub-object as identical and `persistSharedCustomPreset`
   // would silently dedupe them away (Codex P2).
   let seenRoot = false;
@@ -1254,6 +1289,6 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value, Array.from(keys).sort());
 }
 
-function samePsmlPacket(a: PsmlPacket, b: PsmlPacket): boolean {
+function samePsdlPacket(a: PsdlPacket, b: PsdlPacket): boolean {
   return stableStringify(a) === stableStringify(b);
 }

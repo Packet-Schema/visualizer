@@ -2,8 +2,8 @@
 // (Group / Repeat / Switch / Encrypted) lives in its own sub-file under
 // ./container-row/ so this dispatcher only has to pick the right one.
 
-import type { ContainerPatch, EditAction, Path } from "@/lib/psml/edit-reducer";
-import type { Container } from "@/lib/psml/types";
+import type { ContainerPatch, EditAction, Path } from "@/lib/psdl/edit-reducer";
+import type { Container } from "@/lib/psdl/types";
 
 import { EncryptedEditor } from "./container-row/EncryptedEditor";
 import { GroupEditor } from "./container-row/GroupEditor";

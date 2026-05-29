@@ -1,6 +1,6 @@
 {
   "yaml.schemas": {
-    "./schemas/psml.schema.json": "data/presets/*.psml.yaml"
+    "./schemas/psdl.schema.json": "data/presets/*.psdl.yaml"
   },
   "eslint.workingDirectories": [
     { "directory": "web", "changeProcessCWD": true }
@@ -9,6 +9,6 @@
     "source.fixAll.eslint": "explicit"
   },
   "files.associations": {
-    "*.psml.yaml": "yaml"
+    "*.psdl.yaml": "yaml"
   }
 }

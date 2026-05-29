@@ -13,7 +13,7 @@ import type {
   ChainCatalogEntry,
   ChainInstance,
   Field,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 
 let mounted: { container: HTMLDivElement; root: Root }[] = [];
 

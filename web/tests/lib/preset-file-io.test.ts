@@ -17,7 +17,7 @@ import {
   uniqueKey,
   type FormatKey,
 } from "../../lib/preset-file-io";
-import type { PsmlPacket } from "../../lib/psml/types";
+import type { PsdlPacket } from "../../lib/psdl/types";
 
 describe("slugify", () => {
   it("converts ASCII names to kebab-case", () => {
@@ -57,12 +57,12 @@ describe("formatToExtension / extToFormat", () => {
     }
   });
   it("returns expected extensions", () => {
-    expect(formatToExtension("json")).toBe("psml.json");
+    expect(formatToExtension("json")).toBe("psdl.json");
     expect(formatToExtension("rfc-ascii")).toBe("txt");
     expect(formatToExtension("aug-ascii")).toBe("aad");
     expect(formatToExtension("ksy")).toBe("ksy");
   });
-  it("treats bare .json as PSML JSON", () => {
+  it("treats bare .json as PSDL JSON", () => {
     expect(extToFormat("foo.json")).toBe("json");
   });
   it("returns null for unknown / invalid input", () => {
@@ -71,7 +71,7 @@ describe("formatToExtension / extToFormat", () => {
     expect(extToFormat(undefined as unknown as string)).toBeNull();
   });
   it("is case-insensitive", () => {
-    expect(extToFormat("PKT.PSML.JSON")).toBe("json");
+    expect(extToFormat("PKT.PSDL.JSON")).toBe("json");
     expect(extToFormat("PKT.AAD")).toBe("aug-ascii");
     expect(extToFormat("PKT.KSY")).toBe("ksy");
     expect(extToFormat("PKT.TXT")).toBe("rfc-ascii");
@@ -140,7 +140,7 @@ describe("readFileAsText", () => {
 });
 
 describe("buildMyPresetsBundle / isMyPresetsBundle", () => {
-  const samplePacket: PsmlPacket = {
+  const samplePacket: PsdlPacket = {
     name: "Demo",
     rowBits: 32,
     body: [{ id: "a", name: "A", type: { kind: "int", bits: 8 } }],

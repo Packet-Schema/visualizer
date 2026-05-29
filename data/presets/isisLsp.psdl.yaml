@@ -1,0 +1,236 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IS-IS Level-1/2 LSP PDU
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). IS-IS rides directly over the data link (typically Ethernet with LSAP 0xFE-FE), not over IP, so there is no surrounding network header in this preset.
+description: IS-IS Link State PDU (ISO 10589 §9.8, mirrored by RFC 1142). Carries one router's link-state advertisement — a 27-byte fixed header followed by a chain of Type/Length/Value records. PDU Type encodes Level-1 LSP = 18 or Level-2 LSP = 20. The Variable Length Fields catalogue below covers the most common TLVs; unknown types fall through to a generic opaque record.
+
+_isis_tlv_variants: &isis_tlv_variants
+  "1":
+    id: areaAddresses
+    name: TLV 1 — Area Addresses
+    fields:
+      - { id: tlvType, name: "Type=1", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: areaAddressesValue
+        name: Area Address List
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: addressing
+        doc: One or more variable-length area addresses, each prefixed by its own 1-octet length. An L1 router advertises every area it belongs to; the L2 sub-domain compares these to detect inter-area links. [ISO 10589 §9.8 / TLV 1]
+  "10":
+    id: authenticationInformation
+    name: TLV 10 — Authentication Information
+    fields:
+      - { id: tlvType, name: "Type=10", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: authValue
+        name: Authentication Value
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: identifier
+        doc: First octet is the Authentication Type (1 = cleartext password, 54 = HMAC-MD5, 3 = generic cryptographic per RFC 5310); the remainder carries the credential. The entire LSP body is covered by the authenticator for HMAC modes. [ISO 10589 §9.8 / RFC 5304 / RFC 5310]
+  "22":
+    id: extendedIsReachability
+    name: TLV 22 — Extended IS Reachability
+    fields:
+      - { id: tlvType, name: "Type=22", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: extIsReachValue
+        name: Neighbor Entries
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: variable
+        doc: Sequence of 11-byte fixed entries (System ID 7 + 3-byte wide metric + 1-byte sub-TLV length) optionally followed by sub-TLVs (link bandwidth, admin groups, SRLGs, etc.). Supersedes legacy TLV 2 for traffic engineering. [RFC 5305 §3]
+  "129":
+    id: protocolsSupported
+    name: TLV 129 — Protocols Supported
+    fields:
+      - { id: tlvType, name: "Type=129", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: nlpidList
+        name: NLPID List
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: type
+        doc: One octet per supported Network Layer Protocol — 0xCC = IPv4, 0x8E = IPv6, 0x81 = CLNP. Used during adjacency formation so neighbors only advertise reachability for protocol families both sides understand. [RFC 1195 §4.2]
+  "132":
+    id: ipInterfaceAddress
+    name: TLV 132 — IP Interface Address
+    fields:
+      - { id: tlvType, name: "Type=132", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: ipInterfaceAddresses
+        name: IPv4 Addresses
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: addressing
+        doc: Zero or more 4-byte IPv4 addresses assigned to the originating router's interfaces. Length is always a multiple of 4. [RFC 1195 §4.2]
+  "137":
+    id: dynamicHostname
+    name: TLV 137 — Dynamic Hostname
+    fields:
+      - { id: tlvType, name: "Type=137", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: hostnameValue
+        name: Hostname
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: identifier
+        doc: Symbolic name of the originating router, in 7-bit ASCII (no terminating NUL). Lets operators see hostnames instead of raw System IDs in `show isis database`. [RFC 5301]
+
+body:
+  - id: protocolDiscriminator
+    name: Intradomain Routing Protocol Discriminator
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 0x83
+    doc: Always 0x83 for IS-IS — distinguishes the PDU from other ISO 9542 / OSI network layer payloads on the data link. [ISO 10589 §9.5.1]
+  - id: lengthIndicator
+    name: Length Indicator
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 27
+    doc: Length of the fixed header in octets (27 for an LSP PDU). Lets a receiver locate the start of the Variable Length Fields without parsing the rest of the header. [ISO 10589 §9.5.1]
+  - id: versionProtocolIdExtension
+    name: Version / Protocol ID Extension
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 1
+    doc: Protocol ID extension. Always 1 for this version of the IS-IS protocol family. [ISO 10589 §9.5.1]
+  - id: idLength
+    name: ID Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: Length in octets of the System ID portion of NSAP addresses used in this routing domain. 0 means "use the default of 6"; other values 1..8 are explicit. All routers in a domain must agree. [ISO 10589 §9.5.1]
+  - kind: group
+    id: pduTypeByte
+    name: PDU Type
+    children:
+      - id: pduType_reserved
+        name: Rsvd
+        type: { kind: bits, n: 3 }
+        category: reserved
+        doc: Reserved; transmitted as zero, ignored on receipt. [ISO 10589 §9.5.1]
+      - id: pduType
+        name: PDU Type
+        type: { kind: bits, n: 5 }
+        category: type
+        defaultValue: 18
+        doc: 5-bit PDU type code. 15 = L1 LAN Hello, 16 = L2 LAN Hello, 17 = Point-to-Point Hello, 18 = L1 LSP, 20 = L2 LSP, 24 = L1 CSNP, 25 = L2 CSNP, 26 = L1 PSNP, 27 = L2 PSNP. [ISO 10589 §9.5.1]
+  - id: version2
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 1
+    doc: IS-IS protocol version. Always 1. (Yes, IS-IS carries the version number twice — the earlier byte is the Protocol ID Extension; this is the protocol Version proper.) [ISO 10589 §9.5.1]
+  - id: reserved
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: Reserved; transmitted as zero, ignored on receipt. [ISO 10589 §9.5.1]
+  - id: maximumAreaAddresses
+    name: Maximum Area Addresses
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: Maximum number of area addresses permitted in this routing domain. 0 means "use the default of 3". All routers in a domain must agree. [ISO 10589 §9.5.1]
+  - id: pduLength
+    name: PDU Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length of the LSP in octets, including the fixed header and all TLVs. Bounded above by the link MTU minus the LSAP overhead. [ISO 10589 §9.8]
+  - id: remainingLifetime
+    name: Remaining Lifetime
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 1200
+    doc: Seconds remaining before this LSP must be regenerated by its originator (max 65535, default 1200 = 20 min). Receivers decrement this once per second; when it reaches zero the LSP is purged from the database. [ISO 10589 §9.8]
+  - kind: group
+    id: lspId
+    name: LSP ID
+    children:
+      - id: lspId_systemId
+        name: System ID
+        type: { kind: bits, n: 48 }
+        category: identifier
+        doc: 6-byte (when ID Length = 0 / 6) identifier of the originating router. Conventionally formed from one of the router's MAC addresses. [ISO 10589 §9.8]
+      - id: lspId_pseudonode
+        name: Pseudonode ID
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: Non-zero on the LSP that the Designated IS originates on behalf of the LAN (the "pseudonode" representing the segment); zero on a router's own LSPs. [ISO 10589 §9.8]
+      - id: lspId_number
+        name: LSP Number
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: Fragment number when one router's link-state data is too large for a single LSP and is split across several. LSP 0 carries TLVs that must be present in the first fragment (Area Addresses, IS Neighbors, etc.). [ISO 10589 §9.8]
+  - id: sequenceNumber
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    defaultValue: 1
+    doc: Monotonically increasing version number assigned by the originating router each time it regenerates this LSP. A newer Sequence Number unconditionally supersedes an older one for the same LSP ID. [ISO 10589 §9.8]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: ISO 8473 Fletcher checksum (a.k.a. Fletcher-16) computed over every octet from Source ID onwards. Remaining Lifetime is excluded so that intermediate routers can decrement it in transit without rewriting the checksum. [ISO 10589 §7.3.11]
+  - kind: group
+    id: typeAttributes
+    name: P/ATT/OL/IS Type
+    children:
+      - id: attr_p
+        name: P
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Partition repair capability. Originally signalled willingness to repair area partitions; rarely used today. [ISO 10589 §9.8]
+      - id: attr_att_delay
+        name: ATT(delay)
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: ATT bit for the delay metric. Set in an L1 LSP by an L1L2 router to indicate that it is attached to the L2 backbone via this metric, prompting L1-only routers to install a default route. [ISO 10589 §9.8]
+      - id: attr_att_expense
+        name: ATT(expense)
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: ATT bit for the expense metric. [ISO 10589 §9.8]
+      - id: attr_att_error
+        name: ATT(error)
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: ATT bit for the error metric. [ISO 10589 §9.8]
+      - id: attr_att_default
+        name: ATT(default)
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: ATT bit for the default metric. In practice only this bit is in widespread use — the other three TOS-style metrics from the original ISO design were never deployed at scale. [ISO 10589 §9.8]
+      - id: attr_ol
+        name: OL
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Overload bit. When set, other routers SHOULD avoid using this router for transit traffic. Used during boot to signal that the database is not yet synchronised, and at shutdown for graceful drain. [ISO 10589 §7.2.8.1 / RFC 3787]
+      - id: attr_isType
+        name: IS Type
+        type: { kind: bits, n: 2 }
+        category: type
+        defaultValue: 1
+        doc: Type of the originating IS. 0 = unused, 1 = Level-1 only, 2 = unused, 3 = Level-1/2 router. [ISO 10589 §9.8]
+  - kind: repeat
+    id: tlvs
+    name: Variable Length Fields (TLVs)
+    category: variable
+    doc: Chain of Type / Length / Value records carrying the link-state advertisement payload. Catalogued cases below; unknown types fall through to a generic opaque record. [ISO 10589 §9.8 + RFC 1195 / 5301 / 5305 / 5310]
+    element:
+      id: tlvRecord
+      fields:
+        - kind: switch
+          id: byType
+          on: { kind: ref, field: tlvType }
+          cases: *isis_tlv_variants
+          default:
+            id: unknownTlv
+            name: Unknown TLV
+            fields:
+              - { id: tlvType, name: Type, type: { kind: int, bits: 8 }, category: type }
+              - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+              - id: tlvValue
+                name: Value
+                type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+                category: variable
+                doc: Opaque payload of an IS-IS TLV whose type is not catalogued in this preset. Common unmodelled types include 128 (IP Internal Reachability), 130 (IP External Reachability), 135 (Extended IP Reachability, RFC 5305), 232 (IPv6 Interface Address, RFC 5308), 236 (IPv6 Reachability), and 242 (IS-IS Capability, RFC 4971).
+    count: { kind: ref, field: tlvs_count }

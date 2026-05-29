@@ -20,9 +20,9 @@ description: packet-view リポジトリで変更後の検証方針を決めた�
 
 ## preset 関連
 
-`data/presets/*.psml.yaml`、`schemas/psml.schema.json`、`web/scripts/build-presets.ts` を変更した場合は、`web` 側の整形対象について `run-format` の手順で整形状態を確認します。必要な整形を確定してから `run-build-presets` を使って生成物を更新します。
+`data/presets/*.psdl.yaml`、`schemas/psdl.schema.json`、`web/scripts/build-presets.ts` を変更した場合は、`web` 側の整形対象について `run-format` の手順で整形状態を確認します。必要な整形を確定してから `run-build-presets` を使って生成物を更新します。
 
-`data/presets/*.psml.yaml` や `schemas/psml.schema.json` は `run-format` の整形確認対象外なので、内容確認や schema 検証、preset 生成結果で妥当性を確認します。
+`data/presets/*.psdl.yaml` や `schemas/psdl.schema.json` は `run-format` の整形確認対象外なので、内容確認や schema 検証、preset 生成結果で妥当性を確認します。
 
 生成後は少なくとも `run-test` で整合性を確認し、必要に応じて `run-lint` や `run-typecheck` も実行します。
 生成物更新後に追加の書き換えが発生した場合は、改めて整形状態を確認してから後続の検証に進みます。

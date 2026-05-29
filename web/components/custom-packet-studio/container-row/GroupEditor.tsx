@@ -1,4 +1,4 @@
-import type { Group } from "@/lib/psml/types";
+import type { Group } from "@/lib/psdl/types";
 
 import { Frame, inputStyle, type Patch } from "./shared";
 

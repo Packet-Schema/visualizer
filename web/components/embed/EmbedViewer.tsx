@@ -19,28 +19,28 @@ import {
   type EmbedTheme,
 } from "@/lib/embed-url";
 import { THEME_STORAGE_KEY } from "@/lib/constants";
-import { resolveLayout } from "@/lib/psml/layout";
-import { initialEnv } from "@/lib/psml/normalize";
-import { collectPsmlRefs } from "@/lib/psml/collect-refs";
-import { PRESETS } from "@/lib/psml/presets";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
-import { initialState } from "@/lib/psml/renderer-helpers";
-import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
+import { resolveLayout } from "@/lib/psdl/layout";
+import { initialEnv } from "@/lib/psdl/normalize";
+import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { PRESETS } from "@/lib/psdl/presets";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
+import { initialState } from "@/lib/psdl/renderer-helpers";
+import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
 import { parseShareParams } from "@/lib/share-url";
 import type {
   ControllerState,
   Field,
   Packet,
   SubField,
-} from "@/lib/psml/renderer";
-import type { Packet as PsmlPacket } from "@/lib/psml/types";
+} from "@/lib/psdl/renderer";
+import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
 
 type EmbedState = {
   packet: Packet;
-  psml: PsmlPacket;
+  psdl: PsdlPacket;
   controllers: ControllerState;
   error: string | null;
   theme: EmbedTheme | null;
@@ -66,8 +66,8 @@ export default function EmbedViewer() {
   useEmbedSizeReporter(rootRef);
 
   const refs = useMemo(
-    () => collectPsmlRefs(embedState.psml),
-    [embedState.psml],
+    () => collectPsdlRefs(embedState.psdl),
+    [embedState.psdl],
   );
   const layout = useMemo(() => {
     const env = new Map(
@@ -77,7 +77,7 @@ export default function EmbedViewer() {
     );
     setupDerivedCounts(env);
 
-    const packetDefaults = initialEnv(embedState.psml);
+    const packetDefaults = initialEnv(embedState.psdl);
     for (const [k, v] of packetDefaults) {
       if (!env.has(k)) env.set(k, v);
     }
@@ -86,8 +86,8 @@ export default function EmbedViewer() {
       if (!env.has(ref)) env.set(ref, 0);
     }
 
-    return resolveLayout(embedState.psml, { env, viewMode: "wire" });
-  }, [embedState.psml, embedState.controllers, refs]);
+    return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
+  }, [embedState.psdl, embedState.controllers, refs]);
 
   const handleFieldClick = useCallback((field: Field) => {
     setSelectedFieldId(field.id);
@@ -133,11 +133,11 @@ function readEmbedState(search: string): EmbedState {
   try {
     const parsed = parseShareParams(search, BUILT_IN_PRESET_KEYS);
     const theme = parseEmbedThemeParam(search);
-    if (parsed.kind === "psml") {
-      const packet = psmlToRenderer(parsed.packet);
+    if (parsed.kind === "psdl") {
+      const packet = psdlToRenderer(parsed.packet);
       return {
         packet,
-        psml: parsed.packet,
+        psdl: parsed.packet,
         controllers: { ...initialState(packet), ...parsed.controllers },
         error: null,
         theme,
@@ -167,11 +167,11 @@ function makePresetState(
   error: string | null,
   theme: EmbedTheme | null,
 ): EmbedState {
-  const psml = PRESETS[presetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
-  const packet = psmlToRenderer(psml);
+  const psdl = PRESETS[presetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+  const packet = psdlToRenderer(psdl);
   return {
     packet,
-    psml,
+    psdl,
     controllers: { ...initialState(packet), ...controllers },
     error,
     theme,

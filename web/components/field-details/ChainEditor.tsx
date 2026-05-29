@@ -10,7 +10,7 @@ import type {
   ChainCatalogEntry,
   ChainInstance,
   Field,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 
 const FINAL_PROTOS: Array<{ v: number; name: string }> = [
   { v: 6, name: "TCP" },

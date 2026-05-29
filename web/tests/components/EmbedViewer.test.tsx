@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EmbedViewer from "@/components/embed/EmbedViewer";
 import { THEME_STORAGE_KEY } from "@/lib/constants";
 import { EMBED_SIZE_MESSAGE_TYPE } from "@/lib/embed-url";
-import { encodePsmlParam } from "@/lib/share-url";
-import type { Packet as PsmlPacket } from "@/lib/psml/types";
+import { encodePsdlParam } from "@/lib/share-url";
+import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 (
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -114,10 +114,10 @@ describe("EmbedViewer", () => {
     }
   });
 
-  it("renders an encoded PSML payload", async () => {
+  it("renders an encoded PSDL payload", async () => {
     const shared = mkPacket("Embedded Packet", "embedded-field");
     const { container, cleanup } = await mountEmbedViewer(
-      `/embed?psml=${encodePsmlParam(shared, {})}`,
+      `/embed?psdl=${encodePsdlParam(shared, {})}`,
     );
     try {
       expect(
@@ -129,7 +129,7 @@ describe("EmbedViewer", () => {
   });
 
   it("shows a compact error for an invalid shared payload", async () => {
-    const { container, cleanup } = await mountEmbedViewer("/embed?psml=bad");
+    const { container, cleanup } = await mountEmbedViewer("/embed?psdl=bad");
     try {
       expect(container.querySelector('[role="alert"]')?.textContent).toMatch(
         /Invalid shared link/,
@@ -236,7 +236,7 @@ async function mountEmbedViewer(path: string): Promise<{
   };
 }
 
-function mkPacket(name: string, fieldId: string): PsmlPacket {
+function mkPacket(name: string, fieldId: string): PsdlPacket {
   return {
     name,
     rowBits: 8,

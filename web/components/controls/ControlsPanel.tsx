@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import type { ControllerState, Packet } from "@/lib/psml/renderer";
+import type { ControllerState, Packet } from "@/lib/psdl/renderer";
 import SliderTooltip from "./SliderTooltip";
 
 type Props = {

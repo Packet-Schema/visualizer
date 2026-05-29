@@ -22,10 +22,10 @@ import {
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
-import { lintSource } from "@/lib/psml/source-format";
+import { lintSource } from "@/lib/psdl/source-format";
 
 /**
- * PSML (YAML) 用の構文ハイライトスタイル。 既存テーマ (CSS 変数) と
+ * PSDL (YAML) 用の構文ハイライトスタイル。 既存テーマ (CSS 変数) と
  * 噛み合わせるため `var(--category-*)` 系のトークンを直接当てている。
  * `@lezer/highlight` の tag は lang-yaml が emit するものに対応:
  *   - propertyName: マッピングのキー (`name:`, `body:` 等)
@@ -35,7 +35,7 @@ import { lintSource } from "@/lib/psml/source-format";
  *   - comment: コメント
  *   - punctuation: `:` / `-` / `,` / `[` / `]` / `{` / `}`
  */
-const psmlYamlHighlight = HighlightStyle.define([
+const psdlYamlHighlight = HighlightStyle.define([
   {
     tag: [t.propertyName, t.tagName],
     color: "var(--accent, oklch(56% 0.16 250))",
@@ -72,10 +72,10 @@ type Props = {
 };
 
 /**
- * CodeMirror 6 で組んだ PSML (YAML) エディタ。
+ * CodeMirror 6 で組んだ PSDL (YAML) エディタ。
  *
  * - `@codemirror/lang-yaml` で構文ハイライト + bracket matching + indent。
- * - `@codemirror/lint` 経由で `lintSource` を走らせ、 YAML syntax / PSML
+ * - `@codemirror/lint` 経由で `lintSource` を走らせ、 YAML syntax / PSDL
  *   schema / structural エラーをリアルタイム下線 + gutter マーカーで表示。
  * - controlled 風 API: 親が `value` を変えたら editor の doc を replace
  *   する。 ただし editor 内部で発生した変更 (= ユーザー入力) は onChange
@@ -119,7 +119,7 @@ export default function SourceCodeMirror({
           // 構文ハイライト — yaml() は parser だけを供給するので、 token
           // を色に紐づける HighlightStyle を `syntaxHighlighting` で組み
           // 込まないと真っ黒のまま (Round 4 修正点)。
-          syntaxHighlighting(psmlYamlHighlight),
+          syntaxHighlighting(psdlYamlHighlight),
           lintGutter(),
           linter((view) => buildDiagnostics(view.state.doc.toString())),
           keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -207,7 +207,7 @@ function buildDiagnostics(text: string): Diagnostic[] {
       to,
       severity: "error",
       message: issue.message,
-      source: "PSML",
+      source: "PSDL",
     };
   });
 }

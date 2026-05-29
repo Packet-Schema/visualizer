@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
-import type { Packet, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Packet, ResolvedLayout } from "@/lib/psdl/renderer";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 
 const mockTheme: DiagramExportTheme = {
@@ -20,6 +20,7 @@ const mockTheme: DiagramExportTheme = {
   markerAccentSoft: "#e8b4c8",
   subfieldBackground: "#fafbfc",
   subfieldLabel: "#222222",
+  encryptedStripe: "#71717A59",
   fieldFillOpacity: 0.78,
   rulerMinorOpacity: 0.55,
   subfieldBackgroundOpacity: 0.52,

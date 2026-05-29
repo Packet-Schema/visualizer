@@ -27,12 +27,12 @@ import {
   readFileAsText,
   slugify,
 } from "@/lib/preset-file-io";
-import { psmlToRenderer, rendererToPsml } from "@/lib/psml/psml-to-renderer";
+import { psdlToRenderer, rendererToPsdl } from "@/lib/psdl/psdl-to-renderer";
 import type {
   ControllerState,
   Packet,
   ResolvedLayout,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 
 import { useFocusTrap } from "@/components/common/hooks/useFocusTrap";
 import { useDropzone } from "./hooks/useDropzone";
@@ -166,9 +166,9 @@ export default function ImportExportDrawer({
         setStatus(null);
         return;
       }
-      // Lower the runtime packet to PSML for the format hub. controllers is a
-      // plain object keyed by controller id; PSML's PacketEnv is a Map.
-      const psml = rendererToPsml(packet);
+      // Lower the runtime packet to PSDL for the format hub. controllers is a
+      // plain object keyed by controller id; PSDL's PacketEnv is a Map.
+      const psdl = rendererToPsdl(packet);
       const env = new Map<string, number>(Object.entries(controllers));
       const adapter = getFormat(format);
       if (!adapter.render) {
@@ -176,7 +176,7 @@ export default function ImportExportDrawer({
           `Export to "${adapter.label}" is not supported. Try another format.`,
         );
       }
-      setText(adapter.render(psml, env));
+      setText(adapter.render(psdl, env));
       setStatus(null);
     } catch (e) {
       setStatus({
@@ -204,22 +204,22 @@ export default function ImportExportDrawer({
           `Import from "${adapter.label}" is not supported. Try another format.`,
         );
       }
-      const { packet: psml, env, warnings } = adapter.parse(text);
-      const runtime = psmlToRenderer(psml);
+      const { packet: psdl, env, warnings } = adapter.parse(text);
+      const runtime = psdlToRenderer(psdl);
       const controllers: ControllerState = {};
       if (env) for (const [k, v] of env) controllers[k] = v;
       onImport(runtime, controllers);
       if (warnings && warnings.length) {
         const prefix =
           format === "ksy"
-            ? `Imported "${psml.name}" with ${warnings.length} warning(s)`
+            ? `Imported "${psdl.name}" with ${warnings.length} warning(s)`
             : "Imported with warnings";
         setStatus({
           msg: `${prefix}: ${warnings.join("; ")}`,
           kind: "warn",
         });
       } else {
-        setStatus({ msg: `Imported "${psml.name}".`, kind: "ok" });
+        setStatus({ msg: `Imported "${psdl.name}".`, kind: "ok" });
       }
     } catch (e) {
       setStatus({
@@ -727,7 +727,7 @@ function DrawerInner({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".json,.psml.json,.txt,.ksy,.aad"
+              accept=".json,.psdl.json,.txt,.ksy,.aad"
               onChange={onFileInputChange}
               className="hidden"
               aria-hidden="true"
