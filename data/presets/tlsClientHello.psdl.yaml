@@ -135,7 +135,7 @@ body:
                   type:
                     kind: bits
                     n: 96
-                  doc: The fully-qualified DNS host name being requested, as a byte string (no trailing dot, not length-prefixed internally). [RFC 6066 §3]
+                  doc: The fully-qualified DNS host name being requested, as a byte string (no trailing dot); its length is given by the preceding Name Len field. The real SNI host_name is variable-length, but this preset draws it as a fixed-size placeholder. [RFC 6066 §3]
             "10":
               id: extensions_kind_10
               name: supported_groups

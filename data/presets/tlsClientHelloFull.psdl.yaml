@@ -39,7 +39,7 @@ body:
       kind: bits
       n: 8
     category: length
-    doc: Length in bytes of the legacy_session_id that follows (0-32). [RFC 8446 §4.1.2]
+    doc: Length in bytes of the legacy_session_id that follows (0-32). This preset renders session_id as a fixed 32-byte placeholder, so this length does not resize the diagram. [RFC 8446 §4.1.2]
   - id: sessionId
     name: session_id
     type:
