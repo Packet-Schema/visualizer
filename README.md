@@ -1,18 +1,19 @@
-# Packet View
+# Packet Schema Visualizer
 
 [![tests](https://github.com/HackU-5/packet-view/actions/workflows/test.yml/badge.svg)](https://github.com/HackU-5/packet-view/actions/workflows/test.yml)
 
 Interactive packet diagrams for teaching, learning, and authoring network
 protocols.
 
-Packet View renders packet schemas as live, clickable diagrams in the browser.
+Packet Schema Visualizer renders packet schemas as live, clickable diagrams in
+the browser.
 You can inspect individual fields, explore variable-length layouts, import or
 export packet definitions, and switch between wire-level and semantic views
 when a schema supports them.
 
 ## Project shape
 
-Packet View is a browser application built around **PSDL** (Packet Schema
+Packet Schema Visualizer is a browser application built around **PSDL** (Packet Schema
 Definition Language). PSDL is the canonical schema format used by built-in presets,
 imports, exports, and layout resolution.
 
@@ -70,7 +71,7 @@ npm run deploy
 Built-in packet presets live in [`data/presets/`](./data/presets/). The preset
 picker in the app is the source of truth for what is currently bundled.
 
-Packet View uses PSDL as its format hub and provides import/export bridges for
+Packet Schema Visualizer uses PSDL as its format hub and provides import/export bridges for
 the formats supported by the current application. See the PSDL specification
 for the up-to-date format notes and limitations.
 

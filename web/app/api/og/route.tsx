@@ -91,6 +91,7 @@ function renderFallbackImage() {
         }}
       >
         <div>Packet</div>
+        <div>Schema</div>
         <div>Visualizer</div>
       </div>
     </div>,

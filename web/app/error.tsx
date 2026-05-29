@@ -18,8 +18,8 @@ export default function GlobalError({
       <div className="max-w-md text-center space-y-3">
         <h1 className="text-xl font-semibold">Something went wrong.</h1>
         <p className="text-sm text-fg-muted">
-          Packet View hit an unexpected error while rendering. Try again, or
-          refresh the page if the problem persists.
+          Packet Schema Visualizer hit an unexpected error while rendering. Try
+          again, or refresh the page if the problem persists.
         </p>
         <button
           type="button"
