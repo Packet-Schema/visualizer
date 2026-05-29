@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   Packet View — 2026 visual layer.
+   Packet Schema Visualizer — 2026 visual layer.
 
    Wave B2 rewrites the palette in OKLCH (perceptually uniform lightness so
-   light/dark variants stay in balance), swaps the body font to Geist via
+   light/dark variants stay in balance), swaps the body font to LINE Seed JP via
    next/font, and gives the diagram a hybrid HTML-grid renderer. The legacy
    SVG-only styles have been replaced; what remains is HTML / CSS Grid for the
    field cells, plus a thin CSS ruler.

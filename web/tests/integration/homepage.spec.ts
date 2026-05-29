@@ -101,7 +101,7 @@ test.describe("Homepage and Meta Tags", () => {
 
       expect(html).toContain("<title>");
       expect(html).toContain("IPv4");
-      expect(html).toContain("Packet Visualizer");
+      expect(html).toContain("Packet Schema Visualizer");
     });
 
     test("includes OGP meta tags with preset info when accessing with preset", async ({
@@ -164,7 +164,7 @@ test.describe("Homepage and Meta Tags", () => {
 
       expect(html).toContain('property="og:title"');
       expect(html).toContain("Custom UDP");
-      expect(html).toContain("Packet Visualizer");
+      expect(html).toContain("Packet Schema Visualizer");
     });
 
     test("includes correct og:description with custom packet description", async ({
