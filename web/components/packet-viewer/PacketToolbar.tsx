@@ -60,7 +60,7 @@ function ToolbarSwitch({
         className="pv-switch-input"
       />
       <span className="pv-switch-track" aria-hidden="true" />
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="whitespace-nowrap font-bold">{label}</span>
     </label>
   );
 }
@@ -89,7 +89,7 @@ export default function PacketToolbar({
     onDeleteCustomPreset,
   } = actions;
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-3 rounded-[10px] border border-border bg-bg-elevated px-3.5 py-2.5 shadow-[0_1px_2px_rgba(15,22,50,0.05)]">
+    <div className="mb-2 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 rounded-[10px] border border-border bg-bg-elevated px-3 sm:px-3.5 py-2 sm:py-2.5 shadow-[0_1px_2px_rgba(15,22,50,0.05)]">
       <PresetPicker
         value={packetKey}
         onChange={onPacketChange}
@@ -98,7 +98,7 @@ export default function PacketToolbar({
         onExportCustomPresets={onExportCustomPresets}
         onImportCustomPresets={onImportCustomPresets}
       />
-      <div className="flex flex-wrap items-center gap-1.5 ml-2">
+      <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 ml-0 sm:ml-2">
         <ToolbarButton onClick={onOpenImport}>Import</ToolbarButton>
         <ToolbarButton onClick={onOpenExport}>Export</ToolbarButton>
         <ToolbarButton onClick={onShare} ariaLabel="Copy share URL">
@@ -107,7 +107,7 @@ export default function PacketToolbar({
         <div
           role="group"
           aria-label="Diagram display options"
-          className="ml-1 flex flex-wrap items-center gap-1.5 border-l border-border pl-2"
+          className="ml-0 sm:ml-1 flex flex-wrap items-center gap-1 sm:gap-1.5 border-t sm:border-t-0 sm:border-l border-border pt-1 sm:pt-0 pl-0 sm:pl-2"
         >
           <ToolbarSwitch
             label="Hex view"
@@ -154,7 +154,7 @@ export default function PacketToolbar({
           {shareStatus.msg}
         </div>
       ) : null}
-      <div className="ml-auto text-sm-tight font-mono tabular-nums text-fg-muted">
+      <div className="text-xs sm:text-sm-tight font-mono tabular-nums text-fg-muted sm:ml-auto">
         Header size: {headerSizeLabel}
       </div>
     </div>

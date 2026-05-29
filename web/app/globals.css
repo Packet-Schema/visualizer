@@ -4,7 +4,7 @@
    Packet Schema Visualizer — 2026 visual layer.
 
    Wave B2 rewrites the palette in OKLCH (perceptually uniform lightness so
-   light/dark variants stay in balance), swaps the body font to Geist via
+   light/dark variants stay in balance), swaps the body font to LINE Seed JP via
    next/font, and gives the diagram a hybrid HTML-grid renderer. The legacy
    SVG-only styles have been replaced; what remains is HTML / CSS Grid for the
    field cells, plus a thin CSS ruler.
@@ -62,6 +62,13 @@
   --text-3xs--line-height: 14px;
   --text-sm-tight: 13px;
   --text-sm-tight--line-height: 16px;
+  --legend-swatch-size: 10px;
+  --slider-height: 22px;
+  --slider-thumb-size: 16px;
+  --switch-track-width: 32px;
+  --switch-track-height: 18px;
+  --switch-thumb-size: 12px;
+  --switch-translate: 14px;
 }
 
 /* ---- base ---- */
@@ -128,6 +135,25 @@ code {
 @import "./styles/drawer.css";
 @import "./styles/theme-toggle.css";
 @import "./styles/embed.css";
+
+/* ---- Mobile responsive typography ---- */
+
+@media (max-width: 768px) {
+  :root {
+    --text-2xs: 9px;
+    --text-3xs: 10px;
+    --text-sm-tight: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --text-2xs: 8px;
+    --text-3xs: 9px;
+    --text-sm-tight: 11px;
+  }
+}
+
 /* ==========================================================================
    Reduced motion
    ========================================================================== */
