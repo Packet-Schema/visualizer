@@ -221,15 +221,37 @@ export function normalizeShareQuery(
       ? params.getAll("preset").find((p) => known.has(p))
       : undefined;
 
+  // controller の正規化: parseControllers と同じく後勝ちで有効値を採用。
+  // 重複キーの先頭が無効値でも後続の有効値を失わないようにする。
+  for (const [key, raw] of params) {
+    if (!key.startsWith(CONTROLLER_PARAM_PREFIX)) continue;
+    const controllerKey = key.slice(CONTROLLER_PARAM_PREFIX.length);
+    if (
+      !controllerKey ||
+      controllerKey === "__proto__" ||
+      controllerKey === "constructor" ||
+      controllerKey === "prototype"
+    )
+      continue;
+    const num = Number(raw);
+    if (
+      Number.isFinite(num) &&
+      Number.isInteger(num) &&
+      Math.abs(num) <= Number.MAX_SAFE_INTEGER
+    ) {
+      out.set(key, raw);
+    }
+  }
+
   for (const [key, value] of params) {
     const isPreset = key === "preset";
     const isPsdl = key === "psdl";
-    const isController = key.startsWith(CONTROLLER_PARAM_PREFIX);
-    if (!isPreset && !isPsdl && !isController) continue;
+    if (!isPreset && !isPsdl) continue;
     // Drop invalid psdl values entirely.
     if (isPsdl && !isPsdlValueValid(value)) continue;
     // Canonicalize psdl: decode→re-encode でキー順を正規化した値に置き換える。
     if (isPsdl) {
+      if (seen.has(key)) continue;
       const canonical = canonicalizePsdlValue(value);
       out.set(key, canonical);
       seen.add(key);
@@ -243,7 +265,6 @@ export function normalizeShareQuery(
       if (value !== firstValidPreset) continue;
       if (seen.has(key)) continue;
     } else {
-      // Keep only the first occurrence of each key.
       if (seen.has(key)) continue;
     }
     seen.add(key);
