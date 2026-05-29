@@ -1,5 +1,6 @@
 import sharp from "sharp";
-import toIco from "to-ico";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const toIco = require("to-ico") as (buffers: Buffer[]) => Promise<Buffer>;
 import { promises as fs } from "fs";
 import { resolve } from "path";
 
