@@ -5,6 +5,7 @@ import {
 
 import { fromJson, toJson } from "./formats/json";
 import { validatePsdlPacket } from "./psdl/validate";
+import { stableStringify } from "./stable-stringify";
 import type { ControllerState } from "./psdl/renderer";
 import type { Packet as PsdlPacket, PacketEnv } from "./psdl/types";
 
@@ -37,8 +38,12 @@ export function encodePsdlParam(
   packet: PsdlPacket,
   controllers: ControllerState = {},
 ): string {
-  const json = toJson(packet, controllersToEnv(controllers));
-  return compressToEncodedURIComponent(json);
+  // stableStringify でキー順を正規化してから圧縮することで、
+  // 同一内容のパケットは常に同じ psdl 文字列になる。
+  const canonical = stableStringify(
+    JSON.parse(toJson(packet, controllersToEnv(controllers))),
+  );
+  return compressToEncodedURIComponent(canonical);
 }
 
 export function decodePsdlParam(value: string): {
@@ -223,6 +228,13 @@ export function normalizeShareQuery(
     if (!isPreset && !isPsdl && !isController) continue;
     // Drop invalid psdl values entirely.
     if (isPsdl && !isPsdlValueValid(value)) continue;
+    // Canonicalize psdl: decode→re-encode でキー順を正規化した値に置き換える。
+    if (isPsdl) {
+      const canonical = canonicalizePsdlValue(value);
+      out.set(key, canonical);
+      seen.add(key);
+      continue;
+    }
     // When a valid psdl is present, preset is redundant — drop it.
     if (isPreset && psdlValid) continue;
     // For preset: skip invalid values when a valid one exists elsewhere,
@@ -257,22 +269,14 @@ export function findPresetKeyForPacket(
   return null;
 }
 
-/** JSON.stringify with recursively sorted keys — order-independent structural fingerprint. */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
+/** decode→re-encode で psdl 値のキー順を正規化する。無効な値は呼び出し前に除去済み前提。 */
+function canonicalizePsdlValue(value: string): string {
+  try {
+    const { packet, controllers } = decodePsdlParam(value);
+    return encodePsdlParam(packet, controllers);
+  } catch {
+    return value;
   }
-  if (Array.isArray(value)) {
-    return "[" + value.map(stableStringify).join(",") + "]";
-  }
-  const keys = Object.keys(value as object).sort();
-  const pairs = keys.map(
-    (k) =>
-      JSON.stringify(k) +
-      ":" +
-      stableStringify((value as Record<string, unknown>)[k]),
-  );
-  return "{" + pairs.join(",") + "}";
 }
 
 function isPsdlValueValid(value: string): boolean {

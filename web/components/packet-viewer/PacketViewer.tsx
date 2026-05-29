@@ -82,6 +82,7 @@ import {
   useUndoRedoShortcuts,
 } from "./hooks";
 import { initialUiState, uiReducer } from "./ui-state-reducer";
+import { stableStringify } from "@/lib/stable-stringify";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
@@ -1305,37 +1306,6 @@ function normalizeCustomPresetName(name: string): string {
   const normalized = name.trim().replace(/\s+/g, " ");
   if (normalized.length === 0) return SHARED_CUSTOM_PRESET_FALLBACK_NAME;
   return normalized.slice(0, CUSTOM_PRESET_NAME_MAX).trimEnd();
-}
-
-/**
- * Stable JSON comparison without the `safe-stable-stringify` dep — equality
- * only needs key-order independence (the studio reducer deep-clones via
- * `structuredClone`, which preserves key insertion order, but PSDL packets
- * from disparate sources may iterate differently). `JSON.stringify`'s
- * second-arg array form sorts keys at every depth in one pass and is enough
- * for our shallow-name PsdlPacket shape.
- */
-function stableStringify(value: unknown): string {
-  const keys = new Set<string>();
-  // First pass: collect every property name reachable from the value so
-  // the replacer-array form of JSON.stringify can sort them globally.
-  // The replacer's *first* invocation is the root call with key === ""
-  // and val === value, which we skip; every subsequent empty-string key
-  // is a legitimate object property (e.g. `switch.cases[""]`, which
-  // `validateSwitch` doesn't forbid) and must enter the Set, otherwise
-  // `samePsdlPacket` would treat two packets that differ only inside an
-  // empty-keyed sub-object as identical and `persistSharedCustomPreset`
-  // would silently dedupe them away (Codex P2).
-  let seenRoot = false;
-  JSON.stringify(value, (key, val) => {
-    if (!seenRoot) {
-      seenRoot = true;
-      return val;
-    }
-    keys.add(key);
-    return val;
-  });
-  return JSON.stringify(value, Array.from(keys).sort());
 }
 
 function samePsdlPacket(a: PsdlPacket, b: PsdlPacket): boolean {
