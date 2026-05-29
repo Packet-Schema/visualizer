@@ -10,70 +10,228 @@ _ipv4_option_variants: &ipv4_option_variants
     id: eol
     name: EOL (End of Option List)
     fields:
-      - { id: type, name: "Type=0", type: { kind: bits, n: 8 }, category: type }
+      - id: type
+        name: "Type=0"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: Option type byte. 0 marks the End of Option List; any padding after it up to the header boundary is ignored. [RFC 791]
   "1":
     id: nop
     name: NOP (No Operation)
     fields:
-      - { id: type, name: "Type=1", type: { kind: bits, n: 8 }, category: type }
+      - id: type
+        name: "Type=1"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: Option type byte. 1 is a No-Operation pad, commonly inserted to align a following option on a 32-bit boundary. [RFC 791]
   "7":
     id: recordRoute
     name: Record Route
     fields:
-      - { id: type, name: "Type=7", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=15", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr2, name: "Addr 3", type: { kind: int, bits: 32 }, category: addressing }
+      - id: type
+        name: "Type=7"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: Option type byte; 7 selects Record Route, which collects the IPv4 address of each router the datagram traverses. [RFC 791]
+      - id: length
+        name: "Len=15"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: Total length of this option in bytes, including the type, length, and pointer bytes. [RFC 791]
+      - id: pointer
+        name: "Ptr"
+        type: { kind: bits, n: 8 }
+        category: identifier
+        doc: One-based byte offset to the next free address slot in the option; each recording router advances it by 4. [RFC 791]
+      - id: addr0
+        name: "Addr 1"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: Recorded IPv4 address slot — filled in by a router as the datagram passes through. [RFC 791]
+      - id: addr1
+        name: "Addr 2"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: Recorded IPv4 address slot — filled in by a router as the datagram passes through. [RFC 791]
+      - id: addr2
+        name: "Addr 3"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: Recorded IPv4 address slot — filled in by a router as the datagram passes through. [RFC 791]
   "131":
     id: looseSourceRoute
     name: Loose Source Route
     fields:
-      - { id: type, name: "Type=131", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+      - id: type
+        name: "Type=131"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: Option type byte; 131 selects Loose Source and Record Route, where the listed gateways must be visited in order but other hops may occur between them. [RFC 791]
+      - id: length
+        name: "Len=11"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: Total length of this option in bytes, including the type, length, and pointer bytes. [RFC 791]
+      - id: pointer
+        name: "Ptr"
+        type: { kind: bits, n: 8 }
+        category: identifier
+        doc: One-based byte offset to the next route address to be processed; advanced by 4 as each listed gateway is reached. [RFC 791]
+      - id: addr0
+        name: "Addr 1"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 address of a gateway on the source-specified route. [RFC 791]
+      - id: addr1
+        name: "Addr 2"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 address of a gateway on the source-specified route. [RFC 791]
   "137":
     id: strictSourceRoute
     name: Strict Source Route
     fields:
-      - { id: type, name: "Type=137", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+      - id: type
+        name: "Type=137"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: Option type byte; 137 selects Strict Source and Record Route, where the datagram must be forwarded only through the exact gateways listed, in order. [RFC 791]
+      - id: length
+        name: "Len=11"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: Total length of this option in bytes, including the type, length, and pointer bytes. [RFC 791]
+      - id: pointer
+        name: "Ptr"
+        type: { kind: bits, n: 8 }
+        category: identifier
+        doc: One-based byte offset to the next route address to be processed; advanced by 4 as each listed gateway is reached. [RFC 791]
+      - id: addr0
+        name: "Addr 1"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 address of a gateway on the source-specified route. [RFC 791]
+      - id: addr1
+        name: "Addr 2"
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 address of a gateway on the source-specified route. [RFC 791]
   "68":
     id: timestamp
     name: Timestamp
     fields:
-      - { id: type, name: "Type=68", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=12", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: oflwflg, name: "Oflw/Flg", type: { kind: bits, n: 8 }, category: flags }
-      - { id: ts0, name: "TS 1", type: { kind: int, bits: 32 }, category: identifier }
-      - { id: ts1, name: "TS 2", type: { kind: int, bits: 32 }, category: identifier }
+      - id: type
+        name: "Type=68"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: Option type byte; 68 selects the Internet Timestamp option, which records the time each router handled the datagram. [RFC 791]
+      - id: length
+        name: "Len=12"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: Total length of this option in bytes, including the type, length, pointer, and overflow/flag bytes. [RFC 791]
+      - id: pointer
+        name: "Ptr"
+        type: { kind: bits, n: 8 }
+        category: identifier
+        doc: One-based byte offset to the next free timestamp slot; advanced as each router records its timestamp. [RFC 791]
+      - id: oflwflg
+        name: "Oflw/Flg"
+        type: { kind: bits, n: 8 }
+        category: flags
+        doc: Overflow count (high 4 bits) of routers that could not add a timestamp, plus a 4-bit flag selecting the recording mode (timestamps only, with prespecified addresses, etc.). [RFC 791]
+      - id: ts0
+        name: "TS 1"
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: Timestamp slot in milliseconds since UTC midnight — written by a router as the datagram passes through. [RFC 791]
+      - id: ts1
+        name: "TS 2"
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: Timestamp slot in milliseconds since UTC midnight — written by a router as the datagram passes through. [RFC 791]
 
 body:
-  - { id: version, name: Version, type: { kind: bits, n: 4 }, category: type, defaultValue: 4 }
-  - { id: ihl, name: IHL, type: { kind: bits, n: 4 }, category: length, defaultValue: 5 }
-  - { id: dscp, name: DSCP, type: { kind: bits, n: 6 }, category: type }
-  - { id: ecn, name: ECN, type: { kind: bits, n: 2 }, category: flags }
-  - { id: totalLength, name: Total Length, type: { kind: int, bits: 16 }, category: length }
-  - { id: identification, name: Identification, type: { kind: int, bits: 16 }, category: identifier }
+  - id: version
+    name: Version
+    type: { kind: bits, n: 4 }
+    category: type
+    defaultValue: 4
+    doc: IP version number — identifies the header format that follows. 4 for IPv4. [RFC 791]
+  - id: ihl
+    name: IHL
+    type: { kind: bits, n: 4 }
+    category: length
+    defaultValue: 5
+    doc: Internet Header Length, measured in 32-bit words — locates where the header ends and the payload begins. 5 (= 20 bytes) when no options are present; the maximum 15 allows up to 40 bytes of options. [RFC 791]
+  - id: dscp
+    name: DSCP
+    type: { kind: bits, n: 6 }
+    category: type
+    doc: Differentiated Services Code Point — marks the packet's per-hop forwarding class for QoS. Occupies the upper 6 bits of the legacy Type of Service octet; 0 is best-effort. [RFC 2474]
+  - id: ecn
+    name: ECN
+    type: { kind: bits, n: 2 }
+    category: flags
+    doc: Explicit Congestion Notification — lets routers signal congestion without dropping packets. 00=not ECN-capable, 01/10=ECN-capable transport, 11=congestion experienced (CE). [RFC 3168]
+  - id: totalLength
+    name: Total Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length of the datagram (header plus data) in bytes. Minimum 20 (header only); maximum 65535 since the field is 16 bits wide. [RFC 791]
+  - id: identification
+    name: Identification
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: Identifies fragments that belong to the same original datagram so the receiver can reassemble them. Assigned by the sender and shared by all fragments of one packet. [RFC 791]
   - kind: group
     id: flagsBits
     children:
-      - { id: flags_reserved, name: R, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_df, name: DF, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_mf, name: MF, type: { kind: bits, n: 1 }, category: flags }
-  - { id: fragOffset, name: Fragment Offset, type: { kind: bits, n: 13 }, category: identifier }
-  - { id: ttl, name: TTL, type: { kind: int, bits: 8 }, category: identifier }
-  - { id: protocol, name: Protocol, type: { kind: int, bits: 8 }, category: type }
-  - { id: headerChecksum, name: Header Checksum, type: { kind: int, bits: 16 }, category: checksum }
-  - { id: srcAddr, name: Source Address, type: { kind: int, bits: 32 }, category: addressing }
-  - { id: dstAddr, name: Destination Address, type: { kind: int, bits: 32 }, category: addressing }
+      - id: flags_reserved
+        name: R
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Reserved flag — must be 0. [RFC 791]
+      - id: flags_df
+        name: DF
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Don't Fragment — when 1, routers must not fragment the packet and drop it (returning ICMP) if it exceeds the next link's MTU. Used by Path MTU Discovery. [RFC 791, RFC 1191]
+      - id: flags_mf
+        name: MF
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: More Fragments — 1 on every fragment except the last, 0 on the final (or only) fragment, telling the receiver when reassembly is complete. [RFC 791]
+  - id: fragOffset
+    name: Fragment Offset
+    type: { kind: bits, n: 13 }
+    category: identifier
+    doc: Position of this fragment's data within the original datagram, counted in 8-byte units. 0 for the first fragment. [RFC 791]
+  - id: ttl
+    name: TTL
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: Time To Live — decremented by one at each router; the packet is discarded (with an ICMP Time Exceeded) when it reaches 0, preventing routing loops. [RFC 791]
+  - id: protocol
+    name: Protocol
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: Identifies the next-level protocol carried in the payload. Common values 1=ICMP, 6=TCP, 17=UDP. [RFC 791, IANA Protocol Numbers]
+  - id: headerChecksum
+    name: Header Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: 16-bit one's-complement checksum computed over the header only (not the payload). Recomputed at each hop because the TTL changes. [RFC 791]
+  - id: srcAddr
+    name: Source Address
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: IPv4 address of the sender. [RFC 791]
+  - id: dstAddr
+    name: Destination Address
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: IPv4 address of the intended recipient. [RFC 791]
   - kind: repeat
     id: options
     name: Options
