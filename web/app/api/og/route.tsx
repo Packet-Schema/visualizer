@@ -2,8 +2,8 @@ import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
 import { PRESETS } from "@/lib/psdl/presets";
-import { LIGHT_DIAGRAM_THEME } from "@/lib/theme";
-import { createExportTheme } from "@/lib/colors";
+import { LIGHT_DIAGRAM_THEME, LIGHT_UI_THEME } from "@/lib/theme";
+import { createExportTheme, convertOklchInString } from "@/lib/colors";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 import { initialEnv } from "@/lib/psdl/normalize";
@@ -54,8 +54,11 @@ const createOGImageResponseOptions = () => ({
   headers: OG_HEADERS,
 });
 
-const FALLBACK_GRADIENT = "linear-gradient(135deg, #3B2F6F 0%, #2D1E52 100%)";
-const FALLBACK_TITLE_FONT_SIZE = 120;
+// Satori does not support oklch, so convert LIGHT_UI_THEME.bgHeader to hex at module load
+const FALLBACK_GRADIENT = convertOklchInString(LIGHT_UI_THEME.bgHeader);
+// Font size derived so text fits within the inner square (min(OG_WIDTH, OG_HEIGHT) - OG_MARGIN * 2)
+const OG_SQUARE_INNER = Math.min(OG_WIDTH, OG_HEIGHT) - OG_MARGIN * 2;
+const FALLBACK_TITLE_FONT_SIZE = Math.floor(OG_SQUARE_INNER / 6);
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
 
