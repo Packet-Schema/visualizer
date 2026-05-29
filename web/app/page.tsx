@@ -40,7 +40,7 @@ export async function generateMetadata({
 
   const isValidLength = isShareQueryLengthValid(shareQuery);
   const imageUrl = new URL(
-    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og",
+    isValidLength && shareQuery ? `/api/og/?${shareQuery}` : "/api/og/",
     await getRequestOrigin(),
   ).toString();
 
