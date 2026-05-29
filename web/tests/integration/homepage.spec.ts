@@ -149,7 +149,7 @@ test.describe("Homepage and Meta Tags", () => {
   test.describe("Meta tags - with PSDL custom packet", () => {
     // PSDL for: { name: "Custom UDP", description: "A custom UDP-like packet for testing.", rowBits: 32, body: [...] }
     const PSDL_CUSTOM_UDP =
-      "N4KABGBEBmD2BOBbAhgF0gLigBwM4BMAbSAGnCgDcBTeXAS1gDtMoAGAOgCZTzJHlEVFpADCAV1ypYiMAFUAIgAUeESPFgB3AEJ1UuFgGZOZVfiq4AxvDrZUDZlkgBBMBYlSZCxQFpCdANZUYNjIFoGoYHDwYKjmdowA5uwqUABGsPgAniwA2uQQoBBFUHT4wrjwFinFfAJCjgDKsGKVQYoI6CbFUKiZ2PVghd2q-nSMZY6puvpdw3wsAIwAbPlFAL6rGxAAuiBrQA";
+      "N4KABGBEBmD2BOBbAhgF0gLigBwM4BMAbSAGnCgDcBTeXAS1gDtMoAGAOgCZTzJHlEVFpADCAV1ypYiMAFUAIgAUeESPFgB3AEJ1UuFgGZOZVfiq4AxvDrZUDZlkgBBMBYlSZCxQFpCdANZUYNjIFoGoYHDwYKjmdowA5uwqUABGsPgAniwA2uQQoBBFUHT4wrjwFinFfAJCjgDKsGKVQYoI6CbFUKiZ2PVghd2q_nSMZY6puvpdw3wsAIwAbPlFAL6rGxAAuiBrQAAA";
 
     test("includes og:title with custom packet name", async ({ request }) => {
       const response = await request.get(`/?psdl=${PSDL_CUSTOM_UDP}`);
