@@ -48,8 +48,8 @@ export async function generateMetadata({
     : null;
 
   const title = packet
-    ? `${packet.name} | Packet Visualizer`
-    : "Packet Visualizer";
+    ? `${packet.name} | Packet Schema Visualizer`
+    : "Packet Schema Visualizer";
   const description =
     packet?.description ?? "Visual viewer for common network packet headers.";
 

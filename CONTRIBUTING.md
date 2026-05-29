@@ -1,4 +1,4 @@
-# Contributing — Packet View
+# Contributing — Packet Schema Visualizer
 
 ようこそ! このドキュメントは「最初に読む」前提で書かれています。長く読む必要はなく、
 詰まった所だけ拾い読みしてください。深い仕様は [`docs/psdl-0.4.md`](./docs/psdl-0.4.md)

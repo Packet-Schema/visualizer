@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 
-const SEEN_KEY = "packet-view-tour-seen";
+const SEEN_KEY = "packet-schema-visualizer-tour-seen";
 
 export type TourStep = {
   title: string;

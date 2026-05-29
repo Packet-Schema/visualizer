@@ -27,7 +27,7 @@ import type { PsdlPacket } from "@/lib/psdl/types";
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem("packet-view-tour-seen", "1");
+  localStorage.setItem("packet-schema-visualizer-tour-seen", "1");
   window.history.replaceState(null, "", "/");
 });
 
