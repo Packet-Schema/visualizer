@@ -173,7 +173,7 @@ describe("StaticDiagram", () => {
 
     expect(result.props.style).toHaveProperty(
       "fontFamily",
-      "Noto Sans, system-ui, sans-serif",
+      "LINE Seed JP, system-ui, sans-serif",
     );
   });
 
