@@ -1,6 +1,5 @@
 import sharp from "sharp";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const toIco = require("to-ico") as (buffers: Buffer[]) => Promise<Buffer>;
+import pngToIco from "png-to-ico";
 import { promises as fs } from "fs";
 import { resolve } from "path";
 
@@ -45,7 +44,7 @@ async function generateFavicon() {
     sizes.map((size) => resizeWithRoundedCorners(sourceIcon, size)),
   );
 
-  const icoBuffer = await toIco(buffers);
+  const icoBuffer = await pngToIco(buffers);
   await fs.writeFile(resolve(appDir, "favicon.ico"), icoBuffer);
 
   // Generate apple-icon.png (180x180)
