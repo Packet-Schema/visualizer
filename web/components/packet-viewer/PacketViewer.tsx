@@ -58,6 +58,7 @@ import type {
   TlvInstance,
 } from "@/lib/psdl/renderer";
 import type { PsdlPacket } from "@/lib/psdl/types";
+import { EnrichedText } from "@/components/common/EnrichedText";
 import DetailPanel from "@/components/field-details/DetailPanel";
 import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
@@ -1069,7 +1070,7 @@ export default function PacketViewer({
 
         {packet.description ? (
           <p className="text-sm-tight mx-0.5 mt-2 mb-1 text-fg-muted">
-            {packet.description}
+            <EnrichedText text={packet.description} />
           </p>
         ) : null}
         <p className="text-xs mx-0.5 mb-3 italic flex items-center gap-1.5 text-fg-faint">
