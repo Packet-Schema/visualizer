@@ -4,7 +4,7 @@ import satori from "satori";
 import type { ReactNode } from "react";
 import { OG_FONT_BUFFER } from "@/lib/og-font";
 
-const FONT_FAMILY = "Noto Sans, system-ui, sans-serif";
+const FONT_NAME = "LINE Seed JP";
 
 /**
  * Renders a React element to SVG using Satori in the browser.
@@ -25,7 +25,7 @@ export async function renderToSvgString(
     height,
     fonts: [
       {
-        name: FONT_FAMILY,
+        name: FONT_NAME,
         data: OG_FONT_BUFFER,
         weight: 400,
         style: "normal",
