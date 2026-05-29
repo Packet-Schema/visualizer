@@ -8,7 +8,7 @@ import { generateThemeCssVariables } from "@/lib/diagram-themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Packet Visualizer",
+  title: "Packet Schema Visualizer",
   description: "Visual viewer for common network packet headers.",
 };
 
@@ -63,7 +63,7 @@ const geistMono = Geist_Mono({
 const themeBootstrap = `
 (function () {
   try {
-    var stored = localStorage.getItem('packet-view-theme');
+    var stored = localStorage.getItem('packet-schema-visualizer-theme');
     var theme = stored || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
   } catch (e) {

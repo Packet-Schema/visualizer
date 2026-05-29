@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 
-import { validate } from "@/lib/psml/constraint";
-import type { EditAction } from "@/lib/psml/edit-reducer";
-import type { Constraint, Expr, PacketEnv } from "@/lib/psml/types";
+import { validate } from "@/lib/psdl/constraint";
+import type { EditAction } from "@/lib/psdl/edit-reducer";
+import type { Constraint, Expr, PacketEnv } from "@/lib/psdl/types";
 
 /**
  * Mint a unique key for a new Constraint row. We can't use

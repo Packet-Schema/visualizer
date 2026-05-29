@@ -20,7 +20,7 @@ const eslintConfig = [
       "out/**",
       "node_modules/**",
       "next-env.d.ts",
-      "lib/psml/presets.generated.ts",
+      "lib/psdl/presets.generated.ts",
     ],
   },
 ];

@@ -1,4 +1,4 @@
-// Shared fixture: a tiny synthetic PSML packet that exercises the PSML 0.3
+// Shared fixture: a tiny synthetic PSDL packet that exercises the PSDL 0.3
 // Encrypted container without depending on the full QUIC/TLS presets. Other
 // Phase 2 agents (format hub, UI) import this to test view-mode toggles,
 // renderer decoration, and round-tripping of the Encrypted primitive in
@@ -14,8 +14,8 @@
 // Wire totalBits     = 8 + 8 + 64 = 80
 // Semantic totalBits = 8 + 8 + 16 + 64 = 96
 
-import { lit } from "../../lib/psml/expr";
-import type { Encrypted, Packet } from "../../lib/psml/types";
+import { lit } from "../../lib/psdl/expr";
+import type { Encrypted, Packet } from "../../lib/psdl/types";
 
 export const ENCRYPTED_SAMPLE_PLAINTEXT_BITS = 16 + 64; // msg_id + body
 export const ENCRYPTED_SAMPLE_WIRE_BITS = 64;

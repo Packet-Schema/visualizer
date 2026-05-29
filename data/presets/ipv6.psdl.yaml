@@ -1,0 +1,233 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IPv6 Header
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). Addresses are transmitted high-group first; e.g. 2001:db8::1 is sent as 0x2001 0x0db8 ... 0x0001.
+description: Internet Protocol version 6 header (RFC 8200 §3). Fixed 40 bytes; optional features such as fragmentation and routing live in chained extension headers selected by Next Header.
+body:
+  - id: version
+    name: Version
+    type:
+      kind: bits
+      n: 4
+    category: type
+    doc: IP version field — always 6 for IPv6, distinguishing this header from an IPv4 header that begins with 4. [RFC 8200 §3]
+  - id: trafficClass
+    name: Traffic Class
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: "Equivalent of IPv4's DSCP+ECN packed into one byte: top 6 bits are DSCP for QoS classification, bottom 2 bits are ECN for congestion signalling. [RFC 8200, RFC 2474, RFC 3168]"
+  - id: flowLabel
+    name: Flow Label
+    type:
+      kind: bits
+      n: 20
+    category: identifier
+    doc: 20-bit label tagging packets that belong to the same flow (e.g. one TCP connection) so routers can keep them on the same path without parsing L4 headers. [RFC 6437]
+  - id: payloadLength
+    name: Payload Length
+    type:
+      kind: bits
+      n: 16
+    category: length
+    doc: Bytes of payload following this header, including any extension headers. 0 means a Jumbogram (length carried in a Hop-by-Hop option, allowing packets >65535 bytes). [RFC 8200, RFC 2675]
+  - id: nextHeader
+    name: Next Header
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: Type of the immediately following header — uses the same numbering as IPv4 Protocol. e.g. 6=TCP, 17=UDP, 58=ICMPv6, 0=Hop-by-Hop, 43=Routing, 44=Fragment, 50=ESP, 51=AH.
+  - id: hopLimit
+    name: Hop Limit
+    type:
+      kind: bits
+      n: 8
+    category: identifier
+    doc: Hop counter decremented by each forwarding router; the packet is dropped at 0. IPv6 equivalent of IPv4 TTL; default is typically 64. [RFC 8200]
+  - id: srcAddr
+    name: Source Address
+    type:
+      kind: bits
+      n: 128
+    category: addressing
+    doc: "128-bit sender address — written as eight 16-bit hex groups, with :: collapsing one run of zero groups. e.g. 2001:db8::1, fe80::1 (link-local). [RFC 4291]"
+  - id: dstAddr
+    name: Destination Address
+    type:
+      kind: bits
+      n: 128
+    category: addressing
+    doc: 128-bit receiver address — also supports multicast (ff00::/8) and anycast. e.g. 2606:4700:4700::1111 is one of Cloudflare's public DNS resolvers. [RFC 4291]
+  - kind: repeat
+    id: nextHeader_chain
+    name: Next Header (chain)
+    category: type
+    doc: IPv6 extension-header chain. Sits after the 40-byte base header (RFC 8200 §4); each entry is selected by the preceding Next Header value.
+    element:
+      id: nextHeader_chainRecord
+      fields:
+        - kind: switch
+          id: nextHeader_byProto
+          on:
+            kind: ref
+            field: nextHeader_proto
+          cases:
+            "0":
+              id: nextHeader_proto_0
+              name: Hop-by-Hop Options
+              fields:
+                - id: nextHeader
+                  name: Next Header
+                  type:
+                    kind: bits
+                    n: 8
+                - id: hdrExtLen
+                  name: Hdr Ext Len
+                  type:
+                    kind: bits
+                    n: 8
+                - id: options
+                  name: Options + padding
+                  type:
+                    kind: bits
+                    n: 48
+            "43":
+              id: nextHeader_proto_43
+              name: Routing
+              fields:
+                - id: nextHeader
+                  name: Next Header
+                  type:
+                    kind: bits
+                    n: 8
+                - id: hdrExtLen
+                  name: Hdr Ext Len
+                  type:
+                    kind: bits
+                    n: 8
+                - id: routingType
+                  name: Routing Type
+                  type:
+                    kind: bits
+                    n: 8
+                - id: segmentsLeft
+                  name: Segments Left
+                  type:
+                    kind: bits
+                    n: 8
+                - id: typeSpecific
+                  name: Type-Specific Data
+                  type:
+                    kind: bits
+                    n: 32
+            "44":
+              id: nextHeader_proto_44
+              name: Fragment
+              fields:
+                - id: nextHeader
+                  name: Next Header
+                  type:
+                    kind: bits
+                    n: 8
+                - id: reserved
+                  name: Reserved
+                  type:
+                    kind: bits
+                    n: 8
+                - id: fragOffset
+                  name: Frag Offset
+                  type:
+                    kind: bits
+                    n: 13
+                - id: res2
+                  name: Res
+                  type:
+                    kind: bits
+                    n: 2
+                - id: mFlag
+                  name: M
+                  type:
+                    kind: bits
+                    n: 1
+                - id: ident
+                  name: Identification
+                  type:
+                    kind: bits
+                    n: 32
+            "50":
+              id: nextHeader_proto_50
+              name: ESP
+              fields:
+                - id: spi
+                  name: SPI
+                  type:
+                    kind: bits
+                    n: 32
+                - id: seq
+                  name: Sequence Number
+                  type:
+                    kind: bits
+                    n: 32
+                - id: payload
+                  name: Encrypted Payload (var)
+                  type:
+                    kind: bits
+                    n: 64
+            "51":
+              id: nextHeader_proto_51
+              name: AH
+              fields:
+                - id: nextHeader
+                  name: Next Header
+                  type:
+                    kind: bits
+                    n: 8
+                - id: payloadLen
+                  name: Payload Len
+                  type:
+                    kind: bits
+                    n: 8
+                - id: reserved
+                  name: Reserved
+                  type:
+                    kind: bits
+                    n: 16
+                - id: spi
+                  name: SPI
+                  type:
+                    kind: bits
+                    n: 32
+                - id: seq
+                  name: Sequence Number
+                  type:
+                    kind: bits
+                    n: 32
+                - id: icv
+                  name: Integrity Check Value
+                  type:
+                    kind: bits
+                    n: 96
+            "60":
+              id: nextHeader_proto_60
+              name: Destination Options
+              fields:
+                - id: nextHeader
+                  name: Next Header
+                  type:
+                    kind: bits
+                    n: 8
+                - id: hdrExtLen
+                  name: Hdr Ext Len
+                  type:
+                    kind: bits
+                    n: 8
+                - id: options
+                  name: Options + padding
+                  type:
+                    kind: bits
+                    n: 48
+    count:
+      kind: ref
+      field: nextHeader_chainCount

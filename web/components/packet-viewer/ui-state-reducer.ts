@@ -18,7 +18,7 @@
 //     selection on the new preset's body".
 
 import type { DrawerMode } from "@/components/import-export/ImportExportDrawer";
-import type { ViewMode } from "@/lib/psml/types";
+import type { ViewMode } from "@/lib/psdl/types";
 
 export type ShareStatus = {
   msg: string;
@@ -29,7 +29,7 @@ export type ShareStatus = {
  * Custom Packet Studio の表示モード。
  *
  * - "form":   既存のフォーム編集 (FieldRow / ContainerRow / ConstraintEditor)
- * - "source": PSML テキスト直編集 (YAML / JSON)
+ * - "source": PSDL テキスト直編集 (YAML / JSON)
  *
  * 上部のメイン diagram が両方の live preview を兼ねる。 form と source は
  * 同じ studio reducer を経由するので、 切替時に packet の値は保持される

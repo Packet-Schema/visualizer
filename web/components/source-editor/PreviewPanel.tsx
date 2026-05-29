@@ -5,23 +5,23 @@ import { useMemo } from "react";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
 import Legend from "@/components/diagram/Legend";
-import { packetCategories } from "@/lib/psml/renderer-helpers";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { packetCategories } from "@/lib/psdl/renderer-helpers";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
-import type { ResolvedLayout } from "@/lib/psml/renderer";
-import type { PsmlPacket } from "@/lib/psml/types";
+import type { ResolvedLayout } from "@/lib/psdl/renderer";
+import type { PsdlPacket } from "@/lib/psdl/types";
 
 type Props = {
-  packet: PsmlPacket;
+  packet: PsdlPacket;
   layout: ResolvedLayout;
 };
 
 const noop = () => {};
 
 /**
- * SourceEditor 右ペイン — PsmlPacket をそのまま静的 preview として描画する。
+ * SourceEditor 右ペイン — PsdlPacket をそのまま静的 preview として描画する。
  *
- * クリック / hover の編集動線は持たない。 PSML を直書きしているユーザーは
+ * クリック / hover の編集動線は持たない。 PSDL を直書きしているユーザーは
  * テキスト側で field を編集するので、diagram は read-only な「見える鏡」に
  * 徹する方が動線が混ざらない。
  *
@@ -29,7 +29,7 @@ const noop = () => {};
  * ントが受け取る `packet` / `layout` は必ず妥当である前提。
  */
 export default function PreviewPanel({ packet, layout }: Props) {
-  const rendererPacket = useMemo(() => psmlToRenderer(packet), [packet]);
+  const rendererPacket = useMemo(() => psdlToRenderer(packet), [packet]);
   const categories = useMemo(
     () => packetCategories(rendererPacket),
     [rendererPacket],

@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import SiteHeader from "@/components/app-shell/SiteHeader";
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
-import { PRESETS } from "@/lib/psml/presets";
-import { initialState } from "@/lib/psml/renderer-helpers";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { PRESETS } from "@/lib/psdl/presets";
+import { initialState } from "@/lib/psdl/renderer-helpers";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
   parseShareParams,
   buildShareQueryFromParams,
   isShareQueryLengthValid,
 } from "@/lib/share-url";
-import type { ControllerState } from "@/lib/psml/renderer";
+import type { ControllerState } from "@/lib/psdl/renderer";
 import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
 
 type Props = {
@@ -40,7 +40,7 @@ export async function generateMetadata({
     await getRequestOrigin(),
   ).toString();
 
-  const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psml";
+  const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psdl";
   const packet = hasExplicitParams
     ? parsed.kind === "preset"
       ? (PRESETS[parsed.presetKey] ?? PRESETS[DEFAULT_PACKET_KEY])
@@ -48,8 +48,8 @@ export async function generateMetadata({
     : null;
 
   const title = packet
-    ? `${packet.name} | Packet Visualizer`
-    : "Packet Visualizer";
+    ? `${packet.name} | Packet Schema Visualizer`
+    : "Packet Schema Visualizer";
   const description =
     packet?.description ?? "Visual viewer for common network packet headers.";
 
@@ -77,16 +77,19 @@ export default async function Page({ searchParams }: Props) {
 
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
-  const initialControllers = mergeInitialControllers(
-    initialPacketKey,
-    parsed.controllers,
-  );
+  const initialPsdlPacket = parsed.kind === "psdl" ? parsed.packet : undefined;
+  // For PSDL, pass raw controllers so PacketViewer can merge them with the
+  // packet's own defaults. For preset/none, merge server-side as before.
+  const initialControllers = initialPsdlPacket
+    ? parsed.controllers
+    : mergeInitialControllers(initialPacketKey, parsed.controllers);
 
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
       <PacketViewer
         initialPacketKey={initialPacketKey}
+        initialPsdlPacket={initialPsdlPacket}
         initialControllers={initialControllers}
       />
     </div>
@@ -99,7 +102,7 @@ function mergeInitialControllers(
 ): ControllerState {
   const packet = PRESETS[packetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
   return {
-    ...initialState(psmlToRenderer(packet)),
+    ...initialState(psdlToRenderer(packet)),
     ...(controllers ?? {}),
   };
 }

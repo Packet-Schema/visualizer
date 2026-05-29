@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ICMP Echo (IPv4)
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). The Identifier and Sequence Number are 16-bit big-endian.
+description: Internet Control Message Protocol echo request/reply layout (RFC 792). Carried directly inside IPv4 with Protocol=1.
+body:
+  - id: type
+    name: Type
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: ICMP message type — selects the kind of control/error message. e.g. 8=Echo Request (ping), 0=Echo Reply, 3=Destination Unreachable, 11=Time Exceeded (used by traceroute). [RFC 792]
+  - id: code
+    name: Code
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: "Sub-type within the Type — refines the meaning. e.g. for Type=3 (Destination Unreachable): 0=net unreachable, 1=host unreachable, 3=port unreachable, 4=fragmentation needed and DF set."
+  - id: checksum
+    name: Checksum
+    type:
+      kind: bits
+      n: 16
+    category: checksum
+    doc: 16-bit one's-complement checksum over the entire ICMP message (header + data). Detects in-transit corruption. [RFC 1071]
+  - id: identifier
+    name: Identifier
+    type:
+      kind: bits
+      n: 16
+    category: identifier
+    doc: Echo identifier — lets a sender match replies to its outstanding requests when many are in flight. Often the OS sets this to the ping process's PID.
+  - id: sequence
+    name: Sequence Number
+    type:
+      kind: bits
+      n: 16
+    category: identifier
+    doc: Echo sequence number — incremented for each ping so you can spot dropped replies. e.g. ping shows 'icmp_seq=1, icmp_seq=2, ...'.

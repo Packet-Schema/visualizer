@@ -4,11 +4,11 @@
 import { describe, it, expect } from "vitest";
 
 import { resolveSelection } from "@/components/field-details/selection-resolver";
-import { PRESETS } from "@/lib/psml/presets.generated";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { PRESETS } from "@/lib/psdl/presets.generated";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 describe("resolveSelection", () => {
-  const ipv4 = psmlToRenderer(PRESETS.ipv4!);
+  const ipv4 = psdlToRenderer(PRESETS.ipv4!);
 
   it("returns empty for a null selection", () => {
     expect(resolveSelection(ipv4, null)).toEqual({ kind: "empty" });

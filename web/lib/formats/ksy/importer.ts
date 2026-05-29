@@ -1,9 +1,9 @@
-// .ksy → PSML importer.
+// .ksy → PSDL importer.
 //
 // Best-effort: anything we cannot model is collected into `warnings[]` and
 // either dropped or replaced with a 0-byte placeholder so the rest of the
 // packet still renders. The exporter (./exporter.ts) is the matching
-// PSML → .ksy direction.
+// PSDL → .ksy direction.
 
 import { parse as yamlParse } from "yaml";
 
@@ -17,7 +17,7 @@ import type {
   Struct,
   Switch,
   Type,
-} from "../../psml/types";
+} from "../../psdl/types";
 
 import {
   collectEnums,
@@ -31,7 +31,7 @@ import {
   type TypeRegistry,
 } from "./types";
 
-/** Parse .ksy YAML text into a PSML packet plus non-fatal warnings. */
+/** Parse .ksy YAML text into a PSDL packet plus non-fatal warnings. */
 export function fromKsy(text: string): { packet: Packet; warnings: string[] } {
   const warnings: string[] = [];
   let raw: unknown;
@@ -56,7 +56,7 @@ export function fromKsy(text: string): { packet: Packet; warnings: string[] } {
   // User-defined `types:` registry — resolved on demand while walking seq.
   const typeRegistry: TypeRegistry = collectTypes(root.types, warnings);
 
-  // Top-level seq → PSML body.
+  // Top-level seq → PSDL body.
   const ctx: WalkCtx = {
     warnings,
     typeRegistry,

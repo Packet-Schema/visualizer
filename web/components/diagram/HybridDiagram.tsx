@@ -7,7 +7,7 @@ import type {
   ResolvedLayout,
   SubCell,
   SubField,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 import { categoryCellColorClasses } from "@/lib/render-tokens";
 import { rowsFor, textForCell, LAYOUT } from "@/lib/diagram-export";
 import { tlvBaseId } from "@/components/field-details/tlv-cell-id";
@@ -253,7 +253,7 @@ function FieldCellImpl({
   const span = cell.endBit - cell.startBit + 1;
   const hasSubfields = !!cell.subCells && cell.subCells.length > 0;
   const variableNote = cell.field.variable ? ", variable-length" : "";
-  // Encryption-decoration props are written to the rendered cell on PSML 0.3
+  // Encryption-decoration props are written to the rendered cell on PSDL 0.3
   // packets. Wire mode collapses to one `encrypted` block; semantic mode emits
   // child fields tagged with `encryptedParentId`. `headerProtected` is a
   // semantic-mode-only flag for QUIC's XOR'd packet-number bits.

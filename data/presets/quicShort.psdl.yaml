@@ -1,0 +1,137 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: QUIC Short Header (1-RTT)
+rowBits: 32
+byteOrder: BE
+description: QUIC v1 short-header (1-RTT) packet (RFC 9000 §17.3). Connection ID length is negotiated out-of-band; this preset assumes an 8-byte Destination CID for illustration and wraps the header-protected and AEAD-protected regions in Encrypted containers.
+body:
+  - id: headerForm
+    name: Header Form (0=Short)
+    type:
+      kind: bits
+      n: 1
+    category: type
+    doc: 0 = short header (1-RTT). [RFC 9000 §17.3]
+  - id: fixedBit
+    name: Fixed Bit
+    type:
+      kind: bits
+      n: 1
+    category: reserved
+    doc: Must be 1 in QUIC v1. [RFC 9000 §17.2]
+  - id: spinBit
+    name: Spin Bit
+    type:
+      kind: bits
+      n: 1
+    category: flags
+    doc: Latency spin bit — toggled once per RTT for passive on-path RTT measurement. [RFC 9000 §17.4]
+  - id: reserved
+    name: Reserved
+    type:
+      kind: bits
+      n: 2
+    category: reserved
+    doc: Reserved bits — protected by header protection on the wire; must decrypt to 0. [RFC 9000 §17.3.1]
+  - id: keyPhase
+    name: Key Phase
+    type:
+      kind: bits
+      n: 1
+    category: flags
+    doc: Identifies which set of packet-protection keys is in use; flips on key update. [RFC 9000 §6]
+  - id: dcid
+    name: Destination Connection ID
+    type:
+      kind: bits
+      n: 64
+    category: addressing
+    doc: Receiver-chosen Connection ID — length is negotiated out-of-band (0–20 bytes); shown here as 8 bytes.
+  - kind: encrypted
+    id: pnArea
+    name: Header-protected PN area
+    contextNote: Header protection mask (XOR) derived from the AEAD sample using the hp key — required before reading these bits.
+    headerProtected:
+      - pnLen
+      - packetNumber
+    category: identifier
+    plaintext:
+      id: pnAreaPlaintext
+      fields:
+        - id: pnLen
+          name: Packet Number Length
+          type:
+            kind: bits
+            n: 2
+          category: length
+          doc: Encoded length of the Packet Number field minus 1 (1–4 bytes). Header-protected. [RFC 9000 §17.3.1]
+        - id: packetNumber
+          name: Packet Number
+          type:
+            kind: bits
+            n: 8
+          category: identifier
+          doc: Truncated packet number — header-protected on the wire. 1–4 bytes wide. [RFC 9000 §17.1]
+  - kind: encrypted
+    id: payload
+    name: Encrypted Payload
+    contextNote: AEAD-protected QUIC frames — requires TLS 1.3 handshake outputs (1-RTT keys) to decrypt.
+    wireBits:
+      kind: lit
+      value: 128
+    category: payload-marker
+    plaintext:
+      id: frames
+      fields:
+        - id: frameType
+          name: Frame Type
+          type:
+            kind: bits
+            n: 8
+          category: type
+          defaultValue: 8
+        - kind: switch
+          id: frameByType
+          on:
+            kind: ref
+            field: frameType
+          cases:
+            "2":
+              id: ackFrame
+              fields:
+                - id: ack_body
+                  name: ACK Ranges
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: ACK frame ranges (RFC 9000 §19.3). 16-byte placeholder.
+            "6":
+              id: cryptoFrame
+              fields:
+                - id: crypto_body
+                  name: CRYPTO Data
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: CRYPTO frame data (RFC 9000 §19.6). 16-byte placeholder.
+            "8":
+              id: streamFrame
+              fields:
+                - id: stream_body
+                  name: Stream Data
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: STREAM frame payload (RFC 9000 §19.8). 16-byte placeholder.
+          default:
+            id: frameDefault
+            fields:
+              - id: frame_body
+                name: Frame Payload
+                type:
+                  kind: bits
+                  n: 128
+                category: payload-marker
+                doc: Unknown frame type — placeholder body.

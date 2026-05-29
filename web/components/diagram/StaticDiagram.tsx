@@ -1,4 +1,4 @@
-import type { Cell, Packet, ResolvedLayout } from "@/lib/psml/renderer";
+import type { Cell, Packet, ResolvedLayout } from "@/lib/psdl/renderer";
 import {
   rowsFor,
   cellVisual,
@@ -6,7 +6,7 @@ import {
   rowBandColor,
   isFieldOverridable,
 } from "@/lib/diagram-export";
-import { LAYOUT } from "@/lib/theme";
+import { LAYOUT, ENCRYPTED_STRIPE } from "@/lib/theme";
 import type { DiagramExportTheme } from "@/lib/diagram-export";
 import { LockIcon } from "@/components/diagram/diagram-badges";
 
@@ -205,7 +205,17 @@ export function StaticDiagram({
                       padding: `${cellPaddingVertical}px ${cellPaddingHorizontal}px`,
                       overflow: "hidden",
                       minWidth: 0,
-                      background: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                      ...(isDashed
+                        ? { opacity: ENCRYPTED_STRIPE.cellOpacity }
+                        : {}),
+                      ...(isDashed
+                        ? {
+                            backgroundImage: `repeating-linear-gradient(${ENCRYPTED_STRIPE.angleDeg}deg, transparent 0px, transparent ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx}px, ${theme.encryptedStripe} ${ENCRYPTED_STRIPE.gapPx + ENCRYPTED_STRIPE.linePx}px)`,
+                            backgroundColor: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                          }
+                        : {
+                            backgroundColor: `rgba(${hexToRgb(fill).join(", ")}, ${fillOpacity})`,
+                          }),
                     }}
                   >
                     <div
@@ -341,9 +351,11 @@ export function StaticDiagram({
                     {isEncryptedBlock && cell.isFirst ? (
                       <div
                         style={{
+                          display: "flex",
                           position: "absolute",
                           top: Math.round(LAYOUT.badgeOffsetY * scale),
                           right: Math.round(LAYOUT.badgeOffsetX * scale),
+                          opacity: LAYOUT.badgeOpacityBlock,
                           zIndex: 2,
                         }}
                       >
@@ -357,9 +369,11 @@ export function StaticDiagram({
                     {isEncryptedChild && cell.isFirst ? (
                       <div
                         style={{
+                          display: "flex",
                           position: "absolute",
                           bottom: Math.round(LAYOUT.badgeOffsetYSmall * scale),
                           right: Math.round(LAYOUT.badgeOffsetXSmall * scale),
+                          opacity: LAYOUT.badgeOpacityChild,
                           zIndex: 2,
                         }}
                       >

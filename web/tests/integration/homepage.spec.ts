@@ -90,7 +90,7 @@ test.describe("Homepage and Meta Tags", () => {
 
       expect(html).toContain("<title>");
       expect(html).toContain("IPv4");
-      expect(html).toContain("Packet Visualizer");
+      expect(html).toContain("Packet Schema Visualizer");
     });
 
     test("includes OGP meta tags with preset info when accessing with preset", async ({
@@ -143,6 +143,51 @@ test.describe("Homepage and Meta Tags", () => {
       expect(html).toContain(
         'property="og:description" content="Internet Protocol version 6 header (RFC 8200 §3). Fixed 40 bytes; optional features such as fragmentation and routing live in chained extension headers selected by Next Header."',
       );
+    });
+  });
+
+  test.describe("Meta tags - with PSDL custom packet", () => {
+    // PSDL for: { name: "Custom UDP", description: "A custom UDP-like packet for testing.", rowBits: 32, body: [...] }
+    const PSDL_CUSTOM_UDP =
+      "N4KABGBEBmD2BOBbAhgF0gLigBwM4BMAbSAGnCgDcBTeXAS1gDtMoAGAOgCZTzJHlEVFpADCAV1ypYiMAFUAIgAUeESPFgB3AEJ1UuFgGZOZVfiq4AxvDrZUDZlkgBBMBYlSZCxQFpCdANZUYNjIFoGoYHDwYKjmdowA5uwqUABGsPgAniwA2uQQoBBFUHT4wrjwFinFfAJCjgDKsGKVQYoI6CbFUKiZ2PVghd2q_nSMZY6puvpdw3wsAIwAbPlFAL6rGxAAuiBrQAAA";
+
+    test("includes og:title with custom packet name", async ({ request }) => {
+      const response = await request.get(`/?psdl=${PSDL_CUSTOM_UDP}`);
+      const html = await response.text();
+
+      expect(html).toContain('property="og:title"');
+      expect(html).toContain("Custom UDP");
+      expect(html).toContain("Packet Schema Visualizer");
+    });
+
+    test("includes correct og:description with custom packet description", async ({
+      request,
+    }) => {
+      const response = await request.get(`/?psdl=${PSDL_CUSTOM_UDP}`);
+      const html = await response.text();
+
+      expect(html).toContain(
+        'property="og:description" content="A custom UDP-like packet for testing."',
+      );
+    });
+
+    test("includes description meta tag with custom packet description", async ({
+      request,
+    }) => {
+      const response = await request.get(`/?psdl=${PSDL_CUSTOM_UDP}`);
+      const html = await response.text();
+
+      expect(html).toContain(
+        'name="description" content="A custom UDP-like packet for testing."',
+      );
+    });
+
+    test("includes og:image with psdl parameter", async ({ request }) => {
+      const response = await request.get(`/?psdl=${PSDL_CUSTOM_UDP}`);
+      const html = await response.text();
+
+      expect(html).toContain('property="og:image"');
+      expect(html).toContain("psdl=");
     });
   });
 

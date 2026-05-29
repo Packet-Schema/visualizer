@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { PRESETS } from "@/lib/psml/presets";
+import { PRESETS } from "@/lib/psdl/presets";
 import {
   decodeSource,
   encodeSource,
   SourceParseError,
-} from "@/lib/psml/source-format";
-import type { PsmlPacket } from "@/lib/psml/types";
+} from "@/lib/psdl/source-format";
+import type { PsdlPacket } from "@/lib/psdl/types";
 
-const sample: PsmlPacket = {
+const sample: PsdlPacket = {
   name: "Sample",
   rowBits: 8,
   body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
@@ -42,7 +42,7 @@ describe("source-format", () => {
 
     it("strips wire `format` / `version` markers if a user pastes them", () => {
       const text =
-        'format: psml\nversion: "0.4"\nname: Tagged\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n';
+        'format: psdl\nversion: "0.4"\nname: Tagged\nrowBits: 8\nbody:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n';
       const back = decodeSource(text);
       expect((back as { format?: unknown }).format).toBeUndefined();
       expect((back as { version?: unknown }).version).toBeUndefined();

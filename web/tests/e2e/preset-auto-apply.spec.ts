@@ -8,14 +8,14 @@ test.describe("Preset Auto-Apply Behavior", () => {
     // Verify SSR title via raw HTML response (timing-independent)
     const response = await request.get("/");
     const html = await response.text();
-    expect(html).toContain("<title>Packet Visualizer</title>");
+    expect(html).toContain("<title>Packet Schema Visualizer</title>");
 
     // Load the page and wait for client-side hydration to update the title
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
     // Client-side useEffect updates title to include default preset
-    await expect(page).toHaveTitle("IPv4 Header | Packet Visualizer");
+    await expect(page).toHaveTitle("IPv4 Header | Packet Schema Visualizer");
 
     // URL should also be updated to include preset parameter (client-side)
     const finalUrl = page.url();
@@ -24,7 +24,7 @@ test.describe("Preset Auto-Apply Behavior", () => {
     // OG meta tag is server-generated based on initial URL (no preset param)
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute("content");
-    expect(ogTitleContent).toBe("Packet Visualizer");
+    expect(ogTitleContent).toBe("Packet Schema Visualizer");
   });
 
   test("should preserve title when preset is explicitly set", async ({
@@ -39,7 +39,7 @@ test.describe("Preset Auto-Apply Behavior", () => {
     // Check that page title reflects ipv6 preset
     const title = await page.title();
     expect(title).toContain("IPv6");
-    expect(title).toContain("Packet Visualizer");
+    expect(title).toContain("Packet Schema Visualizer");
 
     // Verify URL still has the preset parameter
     expect(page.url()).toContain("preset=ipv6");
@@ -90,7 +90,7 @@ test.describe("Preset Auto-Apply Behavior", () => {
     // Should either show default (ipv4) or generic title
     const title = await page.title();
     expect(title).toBeTruthy();
-    expect(title).toContain("Packet Visualizer");
+    expect(title).toContain("Packet Schema Visualizer");
   });
 
   test("should update page when switching presets in the UI", async ({

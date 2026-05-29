@@ -60,12 +60,15 @@ export const LAYOUT = {
   strokeWidthCell: 1,
   strokeWidthBadge: 1.6,
   // Lock badge (encryption icon) dimensions
+  // Offset values match .field-lock-icon--block / --child in encryption.css
   badgeSizeLarge: 14,
   badgeSizeSmall: 10,
-  badgeOffsetX: 20,
+  badgeOffsetX: 6,
   badgeOffsetY: 6,
-  badgeOffsetXSmall: 14,
-  badgeOffsetYSmall: 14,
+  badgeOffsetXSmall: 4,
+  badgeOffsetYSmall: 4,
+  badgeOpacityBlock: 0.85,
+  badgeOpacityChild: 0.7,
   // Badge SVG constants (16x16 viewBox)
   badgeSvgViewBox: 16,
   badgeSvgRectX: 3,
@@ -97,8 +100,8 @@ export const LAYOUT = {
   cellMarkerRadius: 2,
   cellMarkerMarginBottom: 3,
   // Header protected badge dimensions
-  headerProtectedMarginBottom: 6,
-  headerProtectedMarginRight: 28,
+  headerProtectedMarginBottom: 4,
+  headerProtectedMarginRight: 18,
   headerProtectedFontSize: 9,
   // Subfield padding
   subfieldPaddingHorizontal: 2,
@@ -115,6 +118,26 @@ export const LAYOUT_DERIVED = {
 export const DIAGRAM_OPACITY = {
   rulerMinor: 0.55,
   subfieldBackground: 0.52,
+} as const;
+
+/**
+ * Encrypted-field diagonal stripe pattern parameters.
+ * Structural values (angle, size) live here; the stripe color lives in
+ * LIGHT_DIAGRAM_THEME / DARK_DIAGRAM_THEME as `encryptedStripe` so that
+ * oklchToRgb can derive the hex value used by the Satori renderer, while
+ * generateThemeCssVariables() injects --encrypted-stripe for the CSS renderer.
+ */
+export const ENCRYPTED_STRIPE = {
+  /** Angle of the repeating stripe (deg). CSS cannot interpolate this via var(). */
+  angleDeg: 135,
+  /** Width of the transparent gap between stripes (px). */
+  gapPx: 5,
+  /** Width of the colored stripe line (px). */
+  linePx: 1,
+  /** Cell opacity for encrypted blocks — matches `opacity` in encryption.css. */
+  cellOpacity: 0.65,
+  /** Cell opacity on hover/focus — slightly lifted for readability. */
+  cellOpacityHover: 0.85,
 } as const;
 
 /**
@@ -252,6 +275,7 @@ export const LIGHT_DIAGRAM_THEME: DiagramTheme = {
   markerAccentSoft: "oklch(78% 0.18 330 / 0.55)",
   subfieldBackground: "oklch(99.5% 0.005 260)",
   subfieldLabel: "oklch(22% 0.02 270)",
+  encryptedStripe: "oklch(46% 0.02 270 / 0.35)",
   fieldFillOpacity: 0.78,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
@@ -276,6 +300,7 @@ export const DARK_DIAGRAM_THEME: DiagramTheme = {
   markerAccentSoft: "oklch(85% 0.18 330 / 0.55)",
   subfieldBackground: "oklch(22% 0.028 270)",
   subfieldLabel: "oklch(96% 0.012 270)",
+  encryptedStripe: "oklch(72% 0.02 270 / 0.55)",
   fieldFillOpacity: 0.85,
   rulerMinorOpacity: DIAGRAM_OPACITY.rulerMinor,
   subfieldBackgroundOpacity: DIAGRAM_OPACITY.subfieldBackground,
