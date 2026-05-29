@@ -7,7 +7,7 @@ export function middleware(request: NextRequest): NextResponse | undefined {
   // the canonical form with a slash. Paths with a file extension (e.g. /og.png)
   // are excluded because static assets must not have a trailing slash appended.
   const hasExtension = /\.[^/]+$/.test(pathname);
-  if (!pathname.endsWith("/") && !hasExtension && !pathname.startsWith("/api/")) {
+  if (!pathname.endsWith("/") && !hasExtension) {
     const url = request.nextUrl.clone();
     url.pathname = (pathname || "/") + "/";
     return NextResponse.redirect(url, 302);
