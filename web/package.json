@@ -10,7 +10,7 @@
     "prebuild": "tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts && tsx scripts/generate-favicon.ts",
     "build": "opennextjs-cloudflare build",
     "build:favicon": "tsx scripts/generate-favicon.ts",
-    "prebuild:next": "tsx scripts/generate-og-font.ts",
+    "prebuild:next": "tsx scripts/generate-og-font.ts && tsx scripts/generate-favicon.ts",
     "build:next": "next build",
     "start": "next start",
     "format": "prettier --write .",
