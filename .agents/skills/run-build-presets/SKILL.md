@@ -1,6 +1,6 @@
 ---
 name: run-build-presets
-description: packet-view リポジトリで preset 生成を実行したいときに使う。data/presets や関連スクリプト変更後に web ディレクトリで npm run build:presets を実行し、生成物差分を確認したい場合にこのスキルを使う。
+description: Packet Schema Visualizer リポジトリで preset 生成を実行したいときに使う。data/presets や関連スクリプト変更後に web ディレクトリで npm run build:presets を実行し、生成物差分を確認したい場合にこのスキルを使う。
 ---
 
 # preset 生成実行

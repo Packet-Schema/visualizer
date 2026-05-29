@@ -3,7 +3,7 @@
 組み込み preset は `data/presets/*.psdl.yaml` に YAML として置くだけで、
 TypeScript の編集なしに登録されます。本書は最短手順 + 注意点をまとめたものです。
 
-関連: 機能要望は [issue #91](https://github.com/HackU-5/packet-view/issues/91)
+関連: 機能要望は [issue #91](https://github.com/Packet-Schema/visualizer/issues/91)
 に preset 追加リクエストがまとまっています。
 
 ## 手順

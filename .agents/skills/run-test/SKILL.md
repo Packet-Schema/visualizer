@@ -1,6 +1,6 @@
 ---
 name: run-test
-description: packet-view リポジトリでテストを実行したいときに使う。web ディレクトリの Vitest テストを実行し、失敗時は失敗箇所を特定したい場合にこのスキルを使う。
+description: Packet Schema Visualizer リポジトリでテストを実行したいときに使う。web ディレクトリの Vitest テストを実行し、失敗時は失敗箇所を特定したい場合にこのスキルを使う。
 ---
 
 # テスト実行

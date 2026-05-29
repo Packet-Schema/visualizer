@@ -1,6 +1,6 @@
 ---
 name: run-typecheck
-description: packet-view リポジトリで TypeScript の型チェックを実行したいときに使う。専用 npm スクリプトがない前提で web ディレクトリから TypeScript コンパイラを noEmit で実行し、型エラーを確認したい場合にこのスキルを使う。
+description: Packet Schema Visualizer リポジトリで TypeScript の型チェックを実行したいときに使う。専用 npm スクリプトがない前提で web ディレクトリから TypeScript コンパイラを noEmit で実行し、型エラーを確認したい場合にこのスキルを使う。
 ---
 
 # 型チェック実行
