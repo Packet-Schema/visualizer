@@ -23,7 +23,7 @@ export default function ToolbarButton({
       onClick={onClick}
       aria-pressed={pressed}
       aria-label={ariaLabel}
-      className="tb-btn text-sm font-bold px-2.5 py-1.5 rounded-md border"
+      className="tb-btn text-xs sm:text-sm font-bold px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md border whitespace-nowrap"
       style={{
         background: pressed ? "var(--accent)" : "var(--bg-elevated)",
         color: pressed ? "var(--accent-fg)" : "var(--fg)",
