@@ -1,6 +1,6 @@
-import type { ResolvedLayout } from "./psml/renderer";
+import type { ResolvedLayout } from "./psdl/renderer";
 
-export const EMBED_SIZE_MESSAGE_TYPE = "packet-view:embed-size";
+export const EMBED_SIZE_MESSAGE_TYPE = "packet-schema-visualizer:embed-size";
 
 export type EmbedTheme = "light" | "dark" | "system";
 

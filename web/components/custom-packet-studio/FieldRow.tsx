@@ -1,7 +1,7 @@
 import { useState } from "react";
 
-import type { EditAction, Path } from "@/lib/psml/edit-reducer";
-import type { CategoryToken, Field, Type } from "@/lib/psml/types";
+import type { EditAction, Path } from "@/lib/psdl/edit-reducer";
+import type { CategoryToken, Field, Type } from "@/lib/psdl/types";
 
 type TypeKind = Type["kind"];
 
@@ -79,7 +79,7 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
     field.type.kind === "enum";
 
   const onDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-    e.dataTransfer.setData("application/x-psml-path", JSON.stringify(path));
+    e.dataTransfer.setData("application/x-psdl-path", JSON.stringify(path));
     e.dataTransfer.effectAllowed = "move";
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -88,7 +88,7 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
   };
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const raw = e.dataTransfer.getData("application/x-psml-path");
+    const raw = e.dataTransfer.getData("application/x-psdl-path");
     if (!raw) return;
     try {
       const from = JSON.parse(raw) as Path;

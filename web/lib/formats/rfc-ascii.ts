@@ -1,11 +1,11 @@
-// PSML 0.2/0.3 — RFC ASCII art exporter.
+// PSDL 0.2/0.3 — RFC ASCII art exporter.
 //
-// Takes a PSML Packet, normalises it through PSML's expression-aware walker,
-// runs the cell-layout in `web/lib/psml/layout.ts`, and prints a canonical
+// Takes a PSDL Packet, normalises it through PSDL's expression-aware walker,
+// runs the cell-layout in `web/lib/psdl/layout.ts`, and prints a canonical
 // RFC 791 / 793 style ASCII diagram. Variable-length fields render only
 // when the supplied env gives them a concrete bit count.
 //
-// PSML 0.3 additions:
+// PSDL 0.3 additions:
 //   * `viewMode` option ('wire' | 'semantic', default 'wire') threads through
 //     to the layout adapter so Encrypted containers can either collapse to a
 //     single virtual field (wire) or expand into their plaintext (semantic).
@@ -19,18 +19,18 @@
 //     the rendered name with a ` (varint)` suffix so the diagram makes the
 //     variable-length nature obvious.
 
-import { evalExpr } from "../psml/expr";
-import { resolveLayout } from "../psml/layout";
+import { evalExpr } from "../psdl/expr";
+import { resolveLayout } from "../psdl/layout";
 import type {
   Container,
   Encrypted,
   Field,
   Optional,
   PacketEnv,
-  Packet as PsmlPacket,
+  Packet as PsdlPacket,
   ViewMode,
-} from "../psml/types";
-import type { Cell } from "../psml/renderer";
+} from "../psdl/types";
+import type { Cell } from "../psdl/renderer";
 
 type RowCellLike = {
   startBit: number;
@@ -61,7 +61,7 @@ const VARINT_WORST_CASE_BITS: Record<string, number> = {
 };
 
 export function toAscii(
-  packet: PsmlPacket,
+  packet: PsdlPacket,
   env?: PacketEnv,
   opts: AsciiOptions = {},
 ): string {
@@ -73,7 +73,7 @@ export function toAscii(
   const varintEncodings = new Map<string, string>();
   const berLengthFieldIds = new Set<string>();
   const absentOptionals: Optional[] = [];
-  collectPsml04(
+  collectPsdl04(
     packet.body,
     varintEncodings,
     berLengthFieldIds,
@@ -105,7 +105,7 @@ export function toAscii(
 
   // Decorate field names for display. Encrypted-wire-mode fields use a
   // dedicated `~Encrypted Payload~` label so they stand out; varint fields
-  // get a `(varint)` marker; PSML 0.4 berLength fields use a `BER len`
+  // get a `(varint)` marker; PSDL 0.4 berLength fields use a `BER len`
   // label; per-field `byteOrder: 'LE'` appends a `[LE]` suffix.
   const displayName = (cell: Cell): string => {
     if (cell.encrypted) return "~Encrypted Payload~";
@@ -166,7 +166,7 @@ export function toAscii(
     lines.push(indent + separator(rowWidth));
   }
 
-  // PSML 0.4 — render any Optional whose `when` evaluates falsy as a single
+  // PSDL 0.4 — render any Optional whose `when` evaluates falsy as a single
   // `|~ Optional <fieldName> ~|` placeholder row so the reader sees the slot
   // exists in the schema even when it's absent on this wire. The interior is
   // padded to the ruler width so the row aligns with every other field-line
@@ -202,7 +202,7 @@ export function toAscii(
  * fields, every Switch case (including default), Encrypted plaintext, and
  * the inner field of present Optionals.
  */
-function collectPsml04(
+function collectPsdl04(
   containers: Container[],
   varints: Map<string, string>,
   berIds: Set<string>,
@@ -218,20 +218,20 @@ function collectPsml04(
     }
     switch (c.kind) {
       case "group":
-        collectPsml04(c.children, varints, berIds, absent, env);
+        collectPsdl04(c.children, varints, berIds, absent, env);
         break;
       case "repeat":
-        collectPsml04(c.element.fields, varints, berIds, absent, env);
+        collectPsdl04(c.element.fields, varints, berIds, absent, env);
         break;
       case "switch":
         for (const v of Object.values(c.cases)) {
-          collectPsml04(v.fields, varints, berIds, absent, env);
+          collectPsdl04(v.fields, varints, berIds, absent, env);
         }
         if (c.default)
-          collectPsml04(c.default.fields, varints, berIds, absent, env);
+          collectPsdl04(c.default.fields, varints, berIds, absent, env);
         break;
       case "encrypted":
-        collectPsml04(
+        collectPsdl04(
           (c as Encrypted).plaintext.fields,
           varints,
           berIds,

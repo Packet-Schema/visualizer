@@ -1,4 +1,4 @@
-import type { Repeat } from "@/lib/psml/types";
+import type { Repeat } from "@/lib/psdl/types";
 
 import ExprBuilder from "../ExprBuilder";
 

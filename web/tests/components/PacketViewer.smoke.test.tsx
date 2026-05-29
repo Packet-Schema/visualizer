@@ -16,10 +16,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
-import { STORAGE_KEY } from "@/lib/psml/custom-presets";
-import { PRESETS } from "@/lib/psml/presets";
-import { encodePsmlParam } from "@/lib/share-url";
-import type { PsmlPacket } from "@/lib/psml/types";
+import { STORAGE_KEY } from "@/lib/psdl/custom-presets";
+import { PRESETS } from "@/lib/psdl/presets";
+import { encodePsdlParam } from "@/lib/share-url";
+import type { PsdlPacket } from "@/lib/psdl/types";
 
 // The reducer module is a hard dependency for the integration; we import
 // the action shape lazily inside the test so the rest of the file still
@@ -27,7 +27,7 @@ import type { PsmlPacket } from "@/lib/psml/types";
 
 beforeEach(() => {
   localStorage.clear();
-  localStorage.setItem("packet-view-tour-seen", "1");
+  localStorage.setItem("packet-schema-visualizer-tour-seen", "1");
   window.history.replaceState(null, "", "/");
 });
 
@@ -50,7 +50,7 @@ describe("PacketViewer (smoke)", () => {
     // Import the reducer pieces directly; we drive the same state shape the
     // component uses so we don't depend on internal UI affordances.
     const { editReducer, makeInitialState } =
-      await import("@/lib/psml/edit-reducer");
+      await import("@/lib/psdl/edit-reducer");
     const initial = makeInitialState(PRESETS.ipv4);
     const baseline = initial.packet.body.length;
     const next = editReducer(initial, {
@@ -94,12 +94,12 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
-  it("stores a shared psml payload in My presets", async () => {
+  it("stores a shared psdl payload in My presets", async () => {
     const baseName = "Shared URL Packet ";
     const expectedName = `${baseName}${"x".repeat(80 - baseName.length)}`;
     const shared = mkPacket(`   Shared URL Packet   ${"x".repeat(100)}   `);
     const { container, cleanup } = await mountPacketViewer(
-      `/?psml=${encodePsmlParam(shared, { len: 3 })}`,
+      `/?psdl=${encodePsdlParam(shared, { len: 3 })}`,
     );
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
@@ -114,14 +114,14 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
-  it("hydrates shared psml from memory when preset storage is unavailable", async () => {
+  it("hydrates shared psdl from memory when preset storage is unavailable", async () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("Storage is unavailable", "QuotaExceededError");
     });
 
     const shared = mkPacket("No Storage Packet", "storage-only");
     const { container, cleanup } = await mountPacketViewer(
-      `/?psml=${encodePsmlParam(shared, { len: 3 })}`,
+      `/?psdl=${encodePsdlParam(shared, { len: 3 })}`,
     );
     try {
       const picker = container.querySelector("select");
@@ -138,13 +138,13 @@ describe("PacketViewer (smoke)", () => {
   it("reuses a shared custom preset when only object key order differs", async () => {
     const name = "Shared URL Packet";
     const matchingKey = `custom:${name}-2`;
-    const storedPacket: PsmlPacket = {
+    const storedPacket: PsdlPacket = {
       body: [{ name: "X", id: "x", type: { n: 8, kind: "bits" } }],
       rowBits: 8,
       name,
     };
     const collidingPacket = mkPacket(name, "different-packet");
-    const sharedPacket: PsmlPacket = {
+    const sharedPacket: PsdlPacket = {
       name,
       rowBits: 8,
       body: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
@@ -158,7 +158,7 @@ describe("PacketViewer (smoke)", () => {
     );
 
     const { container, cleanup } = await mountPacketViewer(
-      `/?psml=${encodePsmlParam(sharedPacket, {})}`,
+      `/?psdl=${encodePsdlParam(sharedPacket, {})}`,
     );
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
@@ -166,7 +166,7 @@ describe("PacketViewer (smoke)", () => {
       expect(Object.keys(stored)).toEqual([`custom:${name}`, matchingKey]);
       expect(stored[matchingKey]).toMatchObject({ name });
       expect(picker?.value).toBe(matchingKey);
-      expect(window.location.search).toContain("psml=");
+      expect(window.location.search).toContain("psdl=");
       expect(window.location.search).not.toContain("preset=custom");
     } finally {
       await cleanup();
@@ -244,7 +244,7 @@ describe("PacketViewer (smoke)", () => {
     );
 
     const { container, cleanup } = await mountPacketViewer(
-      `/?psml=${encodePsmlParam(sharedPacket, {})}`,
+      `/?psdl=${encodePsdlParam(sharedPacket, {})}`,
     );
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
@@ -258,7 +258,7 @@ describe("PacketViewer (smoke)", () => {
         body: [{ id: "incoming-field" }],
       });
       expect(picker?.value).toBe(`custom:${name}-2`);
-      expect(window.location.search).toContain("psml=");
+      expect(window.location.search).toContain("psdl=");
       expect(window.location.search).not.toContain("preset=custom");
     } finally {
       await cleanup();
@@ -292,7 +292,7 @@ async function mountPacketViewer(path = "/"): Promise<{
   };
 }
 
-function mkPacket(name: string, fieldId = "x"): PsmlPacket {
+function mkPacket(name: string, fieldId = "x"): PsdlPacket {
   return {
     name,
     rowBits: 8,

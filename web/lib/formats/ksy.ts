@@ -1,4 +1,4 @@
-// PSML 0.4 — Kaitai Struct (.ksy) light import/export bridge (barrel).
+// PSDL 0.4 — Kaitai Struct (.ksy) light import/export bridge (barrel).
 //
 // The historical single-file module was split into:
 //   - ksy/types.ts     — minimal KSY YAML typings + registry helpers

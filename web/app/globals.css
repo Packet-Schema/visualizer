@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   Packet View — 2026 visual layer.
+   Packet Schema Visualizer — 2026 visual layer.
 
    Wave B2 rewrites the palette in OKLCH (perceptually uniform lightness so
    light/dark variants stay in balance), swaps the body font to LINE Seed JP via

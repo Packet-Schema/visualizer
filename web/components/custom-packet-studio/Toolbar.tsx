@@ -1,6 +1,6 @@
-import type { EditAction } from "@/lib/psml/edit-reducer";
+import type { EditAction } from "@/lib/psdl/edit-reducer";
 import type { StudioView } from "@/components/packet-viewer/ui-state-reducer";
-import type { Container, Field } from "@/lib/psml/types";
+import type { Container, Field } from "@/lib/psdl/types";
 
 type Props = {
   dispatch: (a: EditAction) => void;
@@ -64,7 +64,7 @@ function makeContainer(
     };
   }
   // struct → represented as a Group of a single Struct's fields per Container union.
-  // PSML uses Group for inline ordering; "+ Struct" wraps an existing list,
+  // PSDL uses Group for inline ordering; "+ Struct" wraps an existing list,
   // so for the top-level button we emit a Group as the closest analogue.
   return { kind: "group", id, name: "struct", children: [] };
 }
@@ -229,7 +229,7 @@ export default function Toolbar({
         {(
           [
             { id: "form", label: "GUI", aria: "Form editor view" },
-            { id: "source", label: "Source", aria: "PSML source view" },
+            { id: "source", label: "Source", aria: "PSDL source view" },
           ] as const
         ).map((opt) => {
           const active = view === opt.id;

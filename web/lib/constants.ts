@@ -1,11 +1,11 @@
-// PSML 0.2 — runtime constants.
+// PSDL 0.2 — runtime constants.
 //
 // Category labels, byte-order copy, preset grouping, theme storage key. The
 // category → CSS variable mapping lives in `./render-tokens.ts` (renderer
 // intent, not schema metadata). This file re-exports the common items so
 // existing component imports stay one-stop.
 
-import type { CategoryToken } from "./psml/renderer";
+import type { CategoryToken } from "./psdl/renderer";
 
 export {
   CATEGORY_TO_TOKEN,
@@ -59,6 +59,6 @@ export const PRESET_GROUPS: ReadonlyArray<{ label: string; keys: string[] }> = [
   },
 ];
 
-export const THEME_STORAGE_KEY = "packet-view-theme";
+export const THEME_STORAGE_KEY = "packet-schema-visualizer-theme";
 
 export const FIELD_FILL_OPACITY = 0.78;

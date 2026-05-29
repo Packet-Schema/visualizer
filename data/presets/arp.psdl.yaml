@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ARP (IPv4 over Ethernet)
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). HLEN/PLEN are single-byte counts, so endianness only matters for the multi-byte fields.
+description: Address Resolution Protocol packet for IPv4-over-Ethernet (RFC 826). Address fields are technically variable; this preset shows the common HTYPE=1, PTYPE=0x0800, HLEN=6, PLEN=4 form (28 bytes total).
+body:
+  - id: htype
+    name: Hardware Type
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: Link-layer technology code — tells the receiver how to interpret the hardware address fields. 1 = Ethernet (the overwhelmingly common case). [RFC 826, IANA ARP parameters]
+  - id: ptype
+    name: Protocol Type
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: Protocol whose address is being resolved — re-uses EtherType numbering. 0x0800 means IPv4 addresses. [RFC 826]
+  - id: hlen
+    name: HLEN
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Hardware address length in bytes — lets a parser walk past the SHA/THA fields. 6 for Ethernet MAC addresses. [RFC 826]
+  - id: plen
+    name: PLEN
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Protocol address length in bytes. 4 for IPv4 addresses; 16 would be used if ARP carried IPv6 (in practice IPv6 uses NDP instead). [RFC 826]
+  - id: oper
+    name: Operation
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: What this packet is doing. 1=Request ('who has this IP?'), 2=Reply ('I do, here's my MAC'), 3/4=RARP request/reply (legacy). [RFC 826]
+  - id: sha
+    name: Sender Hardware Address
+    type:
+      kind: bits
+      n: 48
+    category: addressing
+    doc: Sender's MAC address. Receivers cache the (SPA, SHA) pair so future packets to the sender's IP can be addressed at L2. Length is HLEN bytes; fixed at 48 bits for Ethernet.
+  - id: spa
+    name: Sender Protocol Address
+    type:
+      kind: bits
+      n: 32
+    category: addressing
+    doc: Sender's IPv4 address. Combined with SHA, it tells the LAN 'this IP lives at this MAC'. Gratuitous ARP uses SPA = TPA to announce or detect address conflicts.
+  - id: tha
+    name: Target Hardware Address
+    type:
+      kind: bits
+      n: 48
+    category: addressing
+    doc: Target's MAC address — the value the requester wants to learn. Zero (00:00:00:00:00:00) in an ARP request; filled in on the reply.
+  - id: tpa
+    name: Target Protocol Address
+    type:
+      kind: bits
+      n: 32
+    category: addressing
+    doc: Target's IPv4 address — the address being resolved. e.g. 'who has 192.168.1.1?' carries TPA = 192.168.1.1.

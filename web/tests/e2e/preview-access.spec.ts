@@ -12,10 +12,12 @@ test.describe("Preview Server Access", () => {
     // Client-side JavaScript has executed and updated title to reflect default preset
     const title = await page.title();
     expect(title).toContain("IPv4");
-    expect(title).toContain("Packet Visualizer");
+    expect(title).toContain("Packet Schema Visualizer");
 
     // Check for main content
-    await expect(page.locator("body")).toContainText("Packet Visualizer");
+    await expect(page.locator("body")).toContainText(
+      "Packet Schema Visualizer",
+    );
 
     // Check that page loaded
     const finalUrl = page.url();
@@ -34,7 +36,7 @@ test.describe("Preview Server Access", () => {
     // Check page title contains IPv4
     const title = await page.title();
     expect(title).toContain("IPv4");
-    expect(title).toContain("Packet Visualizer");
+    expect(title).toContain("Packet Schema Visualizer");
 
     // Check that page loaded successfully
     expect(page.url()).toContain("preset=ipv4");
@@ -52,7 +54,7 @@ test.describe("Preview Server Access", () => {
     const ogTitle = page.locator('meta[property="og:title"]');
     const ogTitleContent = await ogTitle.getAttribute("content");
     expect(ogTitleContent).toBeTruthy();
-    expect(ogTitleContent).toContain("Packet Visualizer");
+    expect(ogTitleContent).toContain("Packet Schema Visualizer");
 
     // Check for og:description meta tag
     const ogDescription = page.locator('meta[property="og:description"]');
@@ -79,7 +81,7 @@ test.describe("Preview Server Access", () => {
     const ogTitle = page.locator('meta[property="og:title"]');
     const titleContent = await ogTitle.getAttribute("content");
     expect(titleContent).toContain("IPv4");
-    expect(titleContent).toContain("Packet Visualizer");
+    expect(titleContent).toContain("Packet Schema Visualizer");
 
     // Check for og:image meta tag with preset parameter
     const ogImage = page.locator('meta[property="og:image"]');
@@ -119,7 +121,7 @@ test.describe("Preview Server Access", () => {
       // Check page loaded
       const title = await page.title();
       expect(title).toBeTruthy();
-      expect(title).toContain("Packet Visualizer");
+      expect(title).toContain("Packet Schema Visualizer");
 
       // Check that URL has the preset
       expect(page.url()).toContain(`preset=${preset}`);

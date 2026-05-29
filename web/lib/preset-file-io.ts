@@ -8,19 +8,19 @@
 // runner doesn't crash when files import from here transitively.
 
 import { getFormat, type FormatKey } from "./formats/registry";
-import type { PsmlPacket } from "./psml/types";
+import type { PsdlPacket } from "./psdl/types";
 
 // Re-export so callers don't have to know whether the extension lookup lives
 // in the registry or in this preset I/O module — there is only one name.
 export { extToFormat } from "./formats/registry";
 export type { FormatKey } from "./formats/registry";
 
-export const MY_PRESETS_FILE_FORMAT_VERSION = "psml-0.4" as const;
+export const MY_PRESETS_FILE_FORMAT_VERSION = "psdl-0.4" as const;
 
 export type MyPresetsBundle = {
   schemaVersion: typeof MY_PRESETS_FILE_FORMAT_VERSION;
   exportedAt: string;
-  presets: Record<string, PsmlPacket>;
+  presets: Record<string, PsdlPacket>;
 };
 
 /* ------------------------------------------------------------------ *
@@ -49,8 +49,8 @@ export function slugify(name: string): string {
 }
 
 /**
- * Map a FormatKey to the file extension used in downloads. The PSML JSON
- * format takes a compound `.psml.json` extension so it round-trips through
+ * Map a FormatKey to the file extension used in downloads. The PSDL JSON
+ * format takes a compound `.psdl.json` extension so it round-trips through
  * `extToFormat` without ambiguity vs. the bulk-export `.json` envelope.
  *
  * Thin wrapper over the format registry — the source of truth is
@@ -129,7 +129,7 @@ export function readFileAsText(file: File): Promise<string> {
 
 /** Build a MyPresetsBundle from a custom-presets map. */
 export function buildMyPresetsBundle(
-  presets: Record<string, PsmlPacket>,
+  presets: Record<string, PsdlPacket>,
 ): MyPresetsBundle {
   return {
     schemaVersion: MY_PRESETS_FILE_FORMAT_VERSION,

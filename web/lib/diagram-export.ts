@@ -16,12 +16,13 @@
 
 import { CATEGORY_TO_TOKEN } from "./constants";
 import { createExportTheme } from "./colors";
-import type { Cell, Field, ResolvedLayout } from "./psml/renderer";
+import type { Cell, Field, ResolvedLayout } from "./psdl/renderer";
 import {
   LAYOUT,
   LAYOUT_DERIVED,
   LIGHT_DIAGRAM_THEME,
   DARK_DIAGRAM_THEME,
+  ENCRYPTED_STRIPE,
 } from "./theme";
 
 // Re-export LAYOUT and LAYOUT_DERIVED for backward compatibility
@@ -42,6 +43,7 @@ export type DiagramExportTheme = {
   markerAccentSoft: string;
   subfieldBackground: string;
   subfieldLabel: string;
+  encryptedStripe: string;
   fieldFillOpacity: number;
   rulerMinorOpacity: number;
   subfieldBackgroundOpacity: number;
@@ -302,10 +304,13 @@ const CSS_PROPERTY_MAP: Partial<Record<keyof typeof LAYOUT, string>> = {
   gridLineWidth: "--grid-line-width",
   cellTitleFontWeight: "--cell-title-font-weight",
   textAnchor: "--text-anchor",
+  headerProtectedMarginBottom: "--hp-badge-bottom",
+  headerProtectedMarginRight: "--hp-badge-right",
+  headerProtectedFontSize: "--hp-badge-font-size",
 };
 
 export function generateLayoutCssVariables(): string {
-  const rules = Array.from(Object.entries(CSS_PROPERTY_MAP))
+  const layoutRules = Array.from(Object.entries(CSS_PROPERTY_MAP))
     .map(([key, cssVar]) => {
       const value = LAYOUT[key as keyof typeof LAYOUT];
       // Only append 'px' for numeric values; skip string values like textAnchor
@@ -313,5 +318,17 @@ export function generateLayoutCssVariables(): string {
       return `${cssVar}: ${cssValue};`;
     })
     .join("");
-  return `:root { ${rules} }`;
+
+  // ENCRYPTED_STRIPE structural values (angle excluded — CSS cannot interpolate
+  // a var() into the Xdeg angle syntax inside repeating-linear-gradient).
+  const stripeRules = [
+    `--encrypted-stripe-gap: ${ENCRYPTED_STRIPE.gapPx}px`,
+    `--encrypted-stripe-line: ${ENCRYPTED_STRIPE.linePx}px`,
+    `--encrypted-stripe-cell-opacity: ${ENCRYPTED_STRIPE.cellOpacity}`,
+    `--encrypted-stripe-cell-opacity-hover: ${ENCRYPTED_STRIPE.cellOpacityHover}`,
+    `--badge-opacity-block: ${LAYOUT.badgeOpacityBlock}`,
+    `--badge-opacity-child: ${LAYOUT.badgeOpacityChild}`,
+  ].join(";");
+
+  return `:root { ${layoutRules}${stripeRules}; }`;
 }

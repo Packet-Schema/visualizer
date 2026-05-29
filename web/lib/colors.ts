@@ -55,6 +55,8 @@ export type DiagramTheme = {
   markerAccentSoft: string;
   subfieldBackground: string;
   subfieldLabel: string;
+  /** Pre-computed color (with alpha) for the encrypted-field diagonal stripe. */
+  encryptedStripe: string;
   fieldFillOpacity: number;
   rulerMinorOpacity: number;
   subfieldBackgroundOpacity: number;
@@ -77,6 +79,7 @@ export function createExportTheme(theme: DiagramTheme): DiagramTheme {
     markerAccentSoft: oklchToRgb(theme.markerAccentSoft),
     subfieldBackground: oklchToRgb(theme.subfieldBackground),
     subfieldLabel: oklchToRgb(theme.subfieldLabel),
+    encryptedStripe: oklchToRgb(theme.encryptedStripe),
     fieldFillOpacity: theme.fieldFillOpacity,
     rulerMinorOpacity: theme.rulerMinorOpacity,
     subfieldBackgroundOpacity: theme.subfieldBackgroundOpacity,

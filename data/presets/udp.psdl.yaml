@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: UDP Header
+rowBits: 32
+byteOrder: BE
+description: UDP header (RFC 768) — fixed 8 bytes.
+body:
+  - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing }
+  - { id: dstPort, name: Destination Port, type: { kind: int, bits: 16 }, category: addressing }
+  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length }
+  - { id: checksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum }

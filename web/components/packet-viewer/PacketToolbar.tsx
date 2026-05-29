@@ -1,5 +1,5 @@
-import type { PacketRegistry } from "@/lib/psml/renderer";
-import type { PsmlPacket, ViewMode } from "@/lib/psml/types";
+import type { PacketRegistry } from "@/lib/psdl/renderer";
+import type { PsdlPacket, ViewMode } from "@/lib/psdl/types";
 import PresetPicker from "@/components/presets/PresetPicker";
 import ToolbarButton from "./ToolbarButton";
 
@@ -24,7 +24,7 @@ export type PacketToolbarActions = {
 type Props = {
   packetKey: string;
   importedPackets: PacketRegistry;
-  customPresets: Record<string, PsmlPacket>;
+  customPresets: Record<string, PsdlPacket>;
   hexStripVisible: boolean;
   editMode: boolean;
   viewMode: ViewMode;

@@ -7,7 +7,7 @@ import type {
   Packet,
   SubField,
   TlvInstance,
-} from "@/lib/psml/renderer";
+} from "@/lib/psdl/renderer";
 
 import SliderTooltip from "../controls/SliderTooltip";
 import ChainEditor from "./ChainEditor";
@@ -632,7 +632,7 @@ function SwitchDropdown({ target, controllers, onChange }: WidgetProps) {
 
 function WidthPicker({ target, controllers, onChange }: WidgetProps) {
   // Valid widths in bits per encoding. The env override key is the field id
-  // (PSML convention — see normalize.ts).
+  // (PSDL convention — see normalize.ts).
   const widths = pickerWidths(target);
   const current = controllers[target.id] ?? widths[0];
   return (
@@ -852,7 +852,7 @@ function RepeatCountStepper({
 }: RepeatCountStepperProps) {
   const value = controllers[countKey] ?? 0;
   const min = 0;
-  // The earlier `max = 64` was an arbitrary cap that contradicted PSML's
+  // The earlier `max = 64` was an arbitrary cap that contradicted PSDL's
   // env-driven Repeat semantics (any count is legal). We use a soft ceiling
   // on the number input's spinner just to keep the buttons sane; the +/−
   // buttons themselves don't clamp upwards. Codex P2.
@@ -963,7 +963,7 @@ function ByteOrderToggle({ fieldId, current, onChange }: ByteOrderToggleProps) {
         })}
       </div>
       <p className="mt-1.5 text-3xs text-fg-muted m-0">
-        Edits the PSML schema (per-field byteOrder, RFC 791 §3 / PSML 0.4).
+        Edits the PSDL schema (per-field byteOrder, RFC 791 §3 / PSDL 0.4).
         Persisted via the studio reducer.
       </p>
     </div>

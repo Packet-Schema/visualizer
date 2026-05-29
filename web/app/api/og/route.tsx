@@ -1,15 +1,15 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-import { PRESETS } from "@/lib/psml/presets";
+import { PRESETS } from "@/lib/psdl/presets";
 import { LIGHT_DIAGRAM_THEME } from "@/lib/theme";
 import { createExportTheme } from "@/lib/colors";
-import { resolveLayout } from "@/lib/psml/layout";
-import { initialState } from "@/lib/psml/renderer-helpers";
-import { initialEnv } from "@/lib/psml/normalize";
-import { collectPsmlRefs } from "@/lib/psml/collect-refs";
-import { setupDerivedCounts } from "@/lib/psml/setup-derived-counts";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { resolveLayout } from "@/lib/psdl/layout";
+import { initialState } from "@/lib/psdl/renderer-helpers";
+import { initialEnv } from "@/lib/psdl/normalize";
+import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
   parseShareParams,
   buildShareQueryFromParams,
@@ -91,6 +91,7 @@ function renderFallbackImage() {
         }}
       >
         <div>Packet</div>
+        <div>Schema</div>
         <div>Visualizer</div>
       </div>
     </div>,
@@ -137,20 +138,20 @@ export async function GET(request: NextRequest) {
       return renderFallbackImage();
     }
 
-    const fallbackPsml = getDefaultPreset();
-    const psml =
-      parsed.kind === "psml"
+    const fallbackPsdl = getDefaultPreset();
+    const psdl =
+      parsed.kind === "psdl"
         ? parsed.packet
         : parsed.kind === "preset"
-          ? (PRESETS[parsed.presetKey] ?? fallbackPsml)
-          : fallbackPsml;
+          ? (PRESETS[parsed.presetKey] ?? fallbackPsdl)
+          : fallbackPsdl;
 
-    if (psml.rowBits > MAX_ROW_BITS) {
+    if (psdl.rowBits > MAX_ROW_BITS) {
       return renderFallbackImage();
     }
 
-    const packet = psmlToRenderer(psml);
-    const env = initialEnv(psml);
+    const packet = psdlToRenderer(psdl);
+    const env = initialEnv(psdl);
     const sanitized = sanitizeControllers(parsed.controllers ?? {});
     const mergedControllers = {
       ...initialState(packet),
@@ -162,19 +163,22 @@ export async function GET(request: NextRequest) {
 
     setupDerivedCounts(env);
 
-    const refs = collectPsmlRefs(psml);
+    const refs = collectPsdlRefs(psdl);
     for (const ref of refs) {
       if (!env.has(ref)) {
         env.set(ref, 0);
       }
     }
 
-    const layout = resolveLayout(psml, { env, viewMode: "semantic" });
+    const layout = resolveLayout(psdl, { env, viewMode: "semantic" });
 
     const availableW = OG_WIDTH - OG_MARGIN * 2;
     const availableH = OG_HEIGHT - OG_MARGIN * 2;
 
-    return new ImageResponse(
+    // Force Satori to render synchronously inside this try/catch so any
+    // JSX layout error (e.g. "display: flex" constraint) is caught here
+    // rather than escaping as an unhandled "failed to pipe response" 500.
+    const imgResponse = new ImageResponse(
       <div
         style={{
           width: OG_WIDTH,
@@ -205,6 +209,8 @@ export async function GET(request: NextRequest) {
       </div>,
       createOGImageResponseOptions(),
     );
+    const buffer = await imgResponse.arrayBuffer();
+    return new Response(buffer, { headers: OG_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("OGP generation failed:", message);

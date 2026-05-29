@@ -1,13 +1,13 @@
-// PSML 0.2 — JSON format.
+// PSDL 0.2 — JSON format.
 //
-// Reads and writes the canonical PSML JSON wire format. This is the central
-// hub: every format converts to/from PSML once, and the renderer consumes
-// PSML via `web/lib/psml/psml-to-renderer.ts`. The schema lives at
-// `schemas/psml.schema.json` (repo root) — keep this file in lock-step.
+// Reads and writes the canonical PSDL JSON wire format. This is the central
+// hub: every format converts to/from PSDL once, and the renderer consumes
+// PSDL via `web/lib/psdl/psdl-to-renderer.ts`. The schema lives at
+// `schemas/psdl.schema.json` (repo root) — keep this file in lock-step.
 //
 // Wire shape:
 //   {
-//     "format": "psml",
+//     "format": "psdl",
 //     "version": "0.2",
 //     "name": string,
 //     "rowBits": integer,
@@ -18,13 +18,13 @@
 //     "env"?: { [key]: integer }      // optional packet env (controllers etc.)
 //   }
 //
-// PSML 0.3 adds two new shapes that flow through this serializer untouched:
+// PSDL 0.3 adds two new shapes that flow through this serializer untouched:
 //   * `TypeVarint` on a Field — `{ kind: 'varint', encoding: 'quic' | 'protobuf' | 'cbor' }`.
 //   * `Encrypted` container — `{ kind: 'encrypted', id, plaintext: Struct,
 //     contextNote, wireBits?, headerProtected? }`. The Struct inside is the
 //     recursive on-wire format unchanged (so its children round-trip too).
-// PSML 0.4 adds four more shapes that likewise flow through this serializer
-// untouched — every PSML primitive is a tagged JSON object so structural
+// PSDL 0.4 adds four more shapes that likewise flow through this serializer
+// untouched — every PSDL primitive is a tagged JSON object so structural
 // JSON encoding is sufficient:
 //   * `Optional` container — `{ kind: 'optional', when: Expr, field: Field }`.
 //   * `berLength` Type     — `{ kind: 'berLength' }` on a Field's type slot.
@@ -32,17 +32,17 @@
 //                            (typically used as a Switch's `on` discriminator).
 //   * Per-field byteOrder  — `byteOrder: 'BE' | 'LE'` on a Field (additive).
 // All are passed through `body: r.body as Packet["body"]`; structural
-// validation lives in `lib/psml/validate.ts` and runs downstream.
+// validation lives in `lib/psdl/validate.ts` and runs downstream.
 //
-// Color is intentionally not part of the wire shape — PSML carries
+// Color is intentionally not part of the wire shape — PSDL carries
 // semantic category only.
 
-import type { Constraint, Container, Packet, PacketEnv } from "../psml/types";
+import type { Constraint, Container, Packet, PacketEnv } from "../psdl/types";
 
-const FORMAT_TAG = "psml";
+const FORMAT_TAG = "psdl";
 const FORMAT_VERSION = "0.2";
 // Versions we tolerate on input. The on-wire JSON shape is shape-stable
-// across 0.2 → 0.4: every PSML 0.3 / 0.4 addition (Encrypted, varint,
+// across 0.2 → 0.4: every PSDL 0.3 / 0.4 addition (Encrypted, varint,
 // Optional, peek, berLength, per-field byteOrder) lives on tagged sub-
 // objects that `body: Container[]` already passes through structurally,
 // so an older codec can still parse a packet that carries those
@@ -53,14 +53,14 @@ type SupportedVersion = "0.2" | "0.3" | "0.4";
 const SUPPORTED_VERSIONS = new Set<SupportedVersion>(["0.2", "0.3", "0.4"]);
 
 /**
- * Serialised JSON wire shape — the structural mirror of PSML.
+ * Serialised JSON wire shape — the structural mirror of PSDL.
  *
  * `version` is widened to the full SupportedVersion union so the type
  * reflects what `fromJson` actually accepts. The writer (`toJson`) only
  * ever emits FORMAT_VERSION ("0.2") as the canonical output; readers
  * narrow further before use if needed (Copilot review).
  */
-export type JsonPsmlPacket = {
+export type JsonPsdlPacket = {
   format: typeof FORMAT_TAG;
   version: SupportedVersion;
   name: string;
@@ -92,9 +92,9 @@ function objectToEnv(obj: Record<string, unknown> | undefined): PacketEnv {
   return env;
 }
 
-/** Serialise a PSML Packet (+ optional env) to canonical JSON text. */
+/** Serialise a PSDL Packet (+ optional env) to canonical JSON text. */
 export function toJson(packet: Packet, env?: PacketEnv): string {
-  const out: JsonPsmlPacket = {
+  const out: JsonPsdlPacket = {
     format: FORMAT_TAG,
     version: FORMAT_VERSION,
     name: packet.name,
@@ -110,7 +110,7 @@ export function toJson(packet: Packet, env?: PacketEnv): string {
   return JSON.stringify(out, null, 2);
 }
 
-/** Parse PSML JSON text into a PSML Packet plus its embedded env (if any). */
+/** Parse PSDL JSON text into a PSDL Packet plus its embedded env (if any). */
 export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
   let raw: unknown;
   try {
@@ -119,9 +119,9 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
     throw new Error(`Invalid JSON: ${(e as Error).message}`);
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("PSML JSON root must be an object");
+    throw new Error("PSDL JSON root must be an object");
   }
-  const r = raw as Partial<JsonPsmlPacket> & Record<string, unknown>;
+  const r = raw as Partial<JsonPsdlPacket> & Record<string, unknown>;
   if (r.format !== FORMAT_TAG) {
     throw new Error(`Unknown format tag: ${String(r.format ?? "(missing)")}`);
   }
@@ -129,20 +129,20 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
     typeof r.version !== "string" ||
     !SUPPORTED_VERSIONS.has(r.version as SupportedVersion)
   ) {
-    throw new Error(`Unsupported PSML version: ${String(r.version)}`);
+    throw new Error(`Unsupported PSDL version: ${String(r.version)}`);
   }
   if (typeof r.name !== "string" || r.name.length === 0) {
-    throw new Error("PSML JSON missing string `name`");
+    throw new Error("PSDL JSON missing string `name`");
   }
   if (
     typeof r.rowBits !== "number" ||
     !Number.isInteger(r.rowBits) ||
     r.rowBits <= 0
   ) {
-    throw new Error("PSML JSON requires integer `rowBits`");
+    throw new Error("PSDL JSON requires integer `rowBits`");
   }
   if (!Array.isArray(r.body)) {
-    throw new Error("PSML JSON missing array `body`");
+    throw new Error("PSDL JSON missing array `body`");
   }
   const packet: Packet = {
     name: r.name,

@@ -8,8 +8,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import OverridePanel from "@/components/field-details/OverridePanel";
-import { PRESETS } from "@/lib/psml/presets.generated";
-import { psmlToRenderer } from "@/lib/psml/psml-to-renderer";
+import { PRESETS } from "@/lib/psdl/presets.generated";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 let activeRoot: Root | null = null;
 let activeContainer: HTMLElement | null = null;
@@ -39,7 +39,7 @@ async function mount(ui: React.ReactNode) {
 
 describe("OverridePanel widgets", () => {
   it("renders an OverrideSlider for IHL on IPv4", async () => {
-    const packet = psmlToRenderer(PRESETS.ipv4!);
+    const packet = psdlToRenderer(PRESETS.ipv4!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -55,7 +55,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders a SwitchDropdown for longPacketType on quicLong", async () => {
-    const packet = psmlToRenderer(PRESETS.quicLong!);
+    const packet = psdlToRenderer(PRESETS.quicLong!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -70,7 +70,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders a SwitchDropdown for payloadLength7 (Group subfield) on websocketFrame", async () => {
-    const packet = psmlToRenderer(PRESETS.websocketFrame!);
+    const packet = psdlToRenderer(PRESETS.websocketFrame!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -87,7 +87,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders an OptionalToggle for mask (Group subfield) on websocketFrame", async () => {
-    const packet = psmlToRenderer(PRESETS.websocketFrame!);
+    const packet = psdlToRenderer(PRESETS.websocketFrame!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -101,7 +101,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders an EnumDropdown for the BOOTP op field on dhcpv4", async () => {
-    const packet = psmlToRenderer(PRESETS.dhcpv4!);
+    const packet = psdlToRenderer(PRESETS.dhcpv4!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -118,7 +118,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders a TLV inner variant dropdown when an Option's leaf cell is selected", async () => {
-    const packet = psmlToRenderer(PRESETS.ipv4!);
+    const packet = psdlToRenderer(PRESETS.ipv4!);
     // Seed an Options instance so the TLV catalog has something to switch.
     const optionsField = packet.fields.find((f) => f.id === "options");
     if (optionsField?.tlv) optionsField.tlv.instances = [{ kind: 7 }];
@@ -138,7 +138,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders a ByteOrderToggle for pcieTlpFragment.address (LE override)", async () => {
-    const packet = psmlToRenderer(PRESETS.pcieTlpFragment!);
+    const packet = psdlToRenderer(PRESETS.pcieTlpFragment!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -155,7 +155,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders a free Repeat stepper for ospfHello on empty selection", async () => {
-    const packet = psmlToRenderer(PRESETS.ospfHello!);
+    const packet = psdlToRenderer(PRESETS.ospfHello!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -170,7 +170,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders a peek-switch picker for tlsExtensionsBlock on empty selection", async () => {
-    const packet = psmlToRenderer(PRESETS.tlsExtensionsBlock!);
+    const packet = psdlToRenderer(PRESETS.tlsExtensionsBlock!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -184,7 +184,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("opens the TLV editor when the trailing 'Options remaining' cell is clicked", async () => {
-    const packet = psmlToRenderer(PRESETS.ipv4!);
+    const packet = psdlToRenderer(PRESETS.ipv4!);
     const optionsField = packet.fields.find((f) => f.id === "options");
     if (optionsField?.tlv) optionsField.tlv.instances = [{ kind: 1 }];
     const { container } = await mount(
@@ -209,7 +209,7 @@ describe("OverridePanel widgets", () => {
   });
 
   it("renders the empty state for a plain TTL field", async () => {
-    const packet = psmlToRenderer(PRESETS.ipv4!);
+    const packet = psdlToRenderer(PRESETS.ipv4!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
