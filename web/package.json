@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build:presets": "tsx scripts/build-presets.ts",
     "generate:og-font": "tsx scripts/generate-og-font.ts",
-    "prebuild": "tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts",
+    "prebuild": "rm -rf .open-next && tsx scripts/build-presets.ts && tsx scripts/generate-og-font.ts",
     "build": "opennextjs-cloudflare build",
     "prebuild:next": "tsx scripts/generate-og-font.ts",
     "build:next": "next build",
