@@ -56,9 +56,26 @@ const createOGImageResponseOptions = () => ({
 
 // Satori does not support oklch, so convert LIGHT_UI_THEME.bgHeader to hex at module load
 const FALLBACK_GRADIENT = convertOklchInString(LIGHT_UI_THEME.bgHeader);
-// Font size derived so text fits within the inner square (min(OG_WIDTH, OG_HEIGHT) - OG_MARGIN * 2)
+
+const FALLBACK_LINES = ["Packet", "Schema", "Visualizer"] as const;
+const FALLBACK_LINE_GAP = 20;
+// Approximate character width ratio for LINE Seed JP Latin glyphs
+const FALLBACK_CHAR_WIDTH_RATIO = 0.58;
+// Inner square = shorter side of OG image minus both margins
 const OG_SQUARE_INNER = Math.min(OG_WIDTH, OG_HEIGHT) - OG_MARGIN * 2;
-const FALLBACK_TITLE_FONT_SIZE = Math.floor(OG_SQUARE_INNER / 6);
+// Max font size constrained by height: 3 lines × fontSize + 2 × gap ≤ OG_SQUARE_INNER
+const MAX_FONT_BY_HEIGHT =
+  (OG_SQUARE_INNER - FALLBACK_LINE_GAP * (FALLBACK_LINES.length - 1)) /
+  FALLBACK_LINES.length;
+// Max font size constrained by width: longest word × charWidthRatio × fontSize ≤ OG_SQUARE_INNER
+const longestLine = FALLBACK_LINES.reduce((a, b) =>
+  a.length > b.length ? a : b,
+);
+const MAX_FONT_BY_WIDTH =
+  OG_SQUARE_INNER / (longestLine.length * FALLBACK_CHAR_WIDTH_RATIO);
+const FALLBACK_TITLE_FONT_SIZE = Math.floor(
+  Math.min(MAX_FONT_BY_HEIGHT, MAX_FONT_BY_WIDTH),
+);
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
 
@@ -84,7 +101,7 @@ function renderFallbackImage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 20,
+          gap: FALLBACK_LINE_GAP,
           fontSize: FALLBACK_TITLE_FONT_SIZE,
           fontWeight: 600,
           color: FALLBACK_TITLE_COLOR,
@@ -93,9 +110,9 @@ function renderFallbackImage() {
           lineHeight: 1,
         }}
       >
-        <div>Packet</div>
-        <div>Schema</div>
-        <div>Visualizer</div>
+        {FALLBACK_LINES.map((line) => (
+          <div key={line}>{line}</div>
+        ))}
       </div>
     </div>,
     createOGImageResponseOptions(),
