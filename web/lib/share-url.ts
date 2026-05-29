@@ -243,17 +243,36 @@ export function normalizeShareQuery(
 
 /**
  * Returns the preset key whose packet matches the given packet, or null if none matches.
- * Comparison is done via canonical JSON serialization (no env) so key order is stable.
+ * Uses key-order-independent structural comparison so packets decoded from external
+ * JSON (where property insertion order may differ) still match built-in presets.
  */
 export function findPresetKeyForPacket(
   packet: PsdlPacket,
   presets: Record<string, PsdlPacket>,
 ): string | null {
-  const target = toJson(packet);
+  const target = stableStringify(packet);
   for (const [key, presetPacket] of Object.entries(presets)) {
-    if (toJson(presetPacket) === target) return key;
+    if (stableStringify(presetPacket) === target) return key;
   }
   return null;
+}
+
+/** JSON.stringify with recursively sorted keys — order-independent structural fingerprint. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return "[" + value.map(stableStringify).join(",") + "]";
+  }
+  const keys = Object.keys(value as object).sort();
+  const pairs = keys.map(
+    (k) =>
+      JSON.stringify(k) +
+      ":" +
+      stableStringify((value as Record<string, unknown>)[k]),
+  );
+  return "{" + pairs.join(",") + "}";
 }
 
 function isPsdlValueValid(value: string): boolean {

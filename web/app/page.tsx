@@ -12,6 +12,7 @@ import {
   normalizeShareQuery,
   isShareQueryLengthValid,
   findPresetKeyForPacket,
+  CONTROLLER_PARAM_PREFIX,
 } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psdl/renderer";
 import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
@@ -91,10 +92,15 @@ export default async function Page({ searchParams }: Props) {
   const parsed = parseShareParamsOrFallback(shareQuery);
 
   // psdl がプリセットと同一内容なら正規の ?preset=<key> へリダイレクト。
+  // controllers.* は引き継ぐ。
   if (parsed.kind === "psdl") {
     const matchingKey = findPresetKeyForPacket(parsed.packet, PRESETS);
     if (matchingKey) {
-      redirect(`/?preset=${matchingKey}`);
+      const q = new URLSearchParams({ preset: matchingKey });
+      for (const [k, v] of Object.entries(parsed.controllers)) {
+        q.set(`${CONTROLLER_PARAM_PREFIX}${k}`, String(v));
+      }
+      redirect(`/?${q.toString()}`);
     }
   }
 
