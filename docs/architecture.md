@@ -1,6 +1,6 @@
 # Architecture
 
-Packet View は「PSDL を中央 hub にした N+M 設計」のパケット可視化アプリです。
+Packet Schema Visualizer は「PSDL を中央 hub にした N+M 設計」のパケット可視化アプリです。
 本ドキュメントはハイレベルなフォルダ構成とデータフローを示します。詳しい
 仕様は [`psdl-0.4.md`](./psdl-0.4.md) を参照してください。
 

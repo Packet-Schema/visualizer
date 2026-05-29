@@ -35,10 +35,14 @@ export async function generateMetadata({
   const parsed = parseShareParamsOrFallback(shareQuery);
 
   const isValidLength = isShareQueryLengthValid(shareQuery);
-  const imageUrl = new URL(
-    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og",
-    await getRequestOrigin(),
-  ).toString();
+  const buildId = process.env.BUILD_ID ?? "";
+  const cacheBust = buildId ? `v=${buildId}` : "";
+  const ogBase =
+    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og";
+  const ogWithBust = cacheBust
+    ? `${ogBase}${ogBase.includes("?") ? "&" : "?"}${cacheBust}`
+    : ogBase;
+  const imageUrl = new URL(ogWithBust, await getRequestOrigin()).toString();
 
   const hasExplicitParams = parsed.kind === "preset" || parsed.kind === "psdl";
   const packet = hasExplicitParams
@@ -48,8 +52,8 @@ export async function generateMetadata({
     : null;
 
   const title = packet
-    ? `${packet.name} | Packet Visualizer`
-    : "Packet Visualizer";
+    ? `${packet.name} | Packet Schema Visualizer`
+    : "Packet Schema Visualizer";
   const description =
     packet?.description ?? "Visual viewer for common network packet headers.";
 
@@ -77,16 +81,19 @@ export default async function Page({ searchParams }: Props) {
 
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
-  const initialControllers = mergeInitialControllers(
-    initialPacketKey,
-    parsed.controllers,
-  );
+  const initialPsdlPacket = parsed.kind === "psdl" ? parsed.packet : undefined;
+  // For PSDL, pass raw controllers so PacketViewer can merge them with the
+  // packet's own defaults. For preset/none, merge server-side as before.
+  const initialControllers = initialPsdlPacket
+    ? parsed.controllers
+    : mergeInitialControllers(initialPacketKey, parsed.controllers);
 
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
       <PacketViewer
         initialPacketKey={initialPacketKey}
+        initialPsdlPacket={initialPsdlPacket}
         initialControllers={initialControllers}
       />
     </div>

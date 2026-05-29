@@ -1,13 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import Script from "next/script";
 import { generateLayoutCssVariables } from "@/lib/diagram-export";
 import { generateThemeCssVariables } from "@/lib/diagram-themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Packet Visualizer",
+  title: "Packet Schema Visualizer",
   description: "Visual viewer for common network packet headers.",
 };
 
@@ -20,11 +21,32 @@ export const viewport: Viewport = {
   ],
 };
 
-// 2026 typography: Geist + Geist Mono via next/font for self-hosted, FOIT-free
-// loading. We bind the resulting CSS variables to --font-sans / --font-mono so
-// any component can opt into the right family.
-const geistSans = Geist({
-  subsets: ["latin"],
+// 2026 typography: LINE Seed JP + Geist Mono via next/font for self-hosted,
+// FOIT-free loading. We bind the resulting CSS variables to --font-sans /
+// --font-mono so any component can opt into the right family.
+const lineSeedJp = localFont({
+  src: [
+    {
+      path: "../node_modules/@fontsource/line-seed-jp/files/line-seed-jp-japanese-100-normal.woff2",
+      weight: "100",
+      style: "normal",
+    },
+    {
+      path: "../node_modules/@fontsource/line-seed-jp/files/line-seed-jp-japanese-400-normal.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../node_modules/@fontsource/line-seed-jp/files/line-seed-jp-japanese-700-normal.woff2",
+      weight: "700",
+      style: "normal",
+    },
+    {
+      path: "../node_modules/@fontsource/line-seed-jp/files/line-seed-jp-japanese-800-normal.woff2",
+      weight: "800",
+      style: "normal",
+    },
+  ],
   variable: "--font-sans",
   display: "swap",
 });
@@ -41,7 +63,7 @@ const geistMono = Geist_Mono({
 const themeBootstrap = `
 (function () {
   try {
-    var stored = localStorage.getItem('packet-view-theme');
+    var stored = localStorage.getItem('packet-schema-visualizer-theme');
     var theme = stored || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
   } catch (e) {
@@ -61,7 +83,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     // post-script DOM. React's docs sanction this exact pattern.
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable}`}
+      className={`${lineSeedJp.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
       <head>

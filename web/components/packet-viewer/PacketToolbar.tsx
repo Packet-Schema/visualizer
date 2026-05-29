@@ -60,7 +60,7 @@ function ToolbarSwitch({
         className="pv-switch-input"
       />
       <span className="pv-switch-track" aria-hidden="true" />
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="whitespace-nowrap font-bold">{label}</span>
     </label>
   );
 }

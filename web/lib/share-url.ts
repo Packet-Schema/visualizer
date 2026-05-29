@@ -1,7 +1,4 @@
-import {
-  compressToEncodedURIComponent,
-  decompressFromEncodedURIComponent,
-} from "lz-string";
+import { compressToUint8Array, decompressFromUint8Array } from "lz-string";
 
 import { fromJson, toJson } from "./formats/json";
 import { validatePsdlPacket } from "./psdl/validate";
@@ -10,9 +7,12 @@ import type { Packet as PsdlPacket, PacketEnv } from "./psdl/types";
 
 export const CONTROLLER_PARAM_PREFIX = "controllers.";
 export const SHARE_URL_WARN_BYTES = 2048;
-// Maximum URL length to ensure compatibility across browsers and social media platforms.
-// Exceeding this limit may cause truncation or rendering issues when sharing links.
-export const SHARE_URL_MAX_LENGTH = 2048;
+// Hard ceiling to guard against pathologically large payloads (DoS).
+// Browsers and CDNs typically support up to ~64 KB in query strings, so
+// 100 000 bytes gives room for complex PSDL packets while still bounding
+// server-side work. The WARN threshold above is intentionally lower and
+// is used only to surface a UI warning when copying a share URL.
+export const SHARE_URL_MAX_LENGTH = 100_000;
 export const SHARE_PARAM_KEYS = ["preset", "psdl"] as const;
 
 export type ParsedShareParams =
@@ -35,14 +35,23 @@ export function encodePsdlParam(
   controllers: ControllerState = {},
 ): string {
   const json = toJson(packet, controllersToEnv(controllers));
-  return compressToEncodedURIComponent(json);
+  const bytes = compressToUint8Array(json);
+  return toBase64Url(bytes);
 }
 
 export function decodePsdlParam(value: string): {
   packet: PsdlPacket;
   controllers: ControllerState;
 } {
-  const json = decompressFromEncodedURIComponent(value);
+  let bytes: Uint8Array;
+  try {
+    bytes = fromBase64Url(value);
+  } catch {
+    throw new Error(
+      "Invalid shared link — the packet data could not be read. Please verify the link is complete.",
+    );
+  }
+  const json = decompressFromUint8Array(bytes);
   if (!json) {
     // User-facing — surfaced verbatim by parseShareParams' error toast.
     // Avoid leaking internal terms ("PSDL") and tell the user what to do.
@@ -254,4 +263,22 @@ function envToControllers(env: PacketEnv): ControllerState {
     if (Number.isFinite(value)) out[key] = value;
   }
   return out;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function fromBase64Url(str: string): Uint8Array {
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }

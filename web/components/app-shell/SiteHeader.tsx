@@ -12,7 +12,7 @@ export default function SiteHeader() {
       <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-2 flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-baseline gap-1.5 sm:gap-2.5 min-w-0 overflow-hidden">
           <h1 className="m-0 text-base md:text-[18px] font-semibold tracking-wide whitespace-nowrap">
-            Packet Visualizer
+            Packet Schema Visualizer
           </h1>
           <p
             className="m-0 text-xs truncate min-w-0"
