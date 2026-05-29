@@ -7,7 +7,7 @@ const sourceIcon = resolve(process.cwd(), "assets/icon.png");
 const appDir = resolve(process.cwd(), "app");
 
 function roundedMask(size: number): Buffer {
-  const r = Math.round(size * 0.16);
+  const r = Math.round(size * 0.20);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
     <rect width="${size}" height="${size}" rx="${r}" ry="${r}" fill="white"/>
   </svg>`;
