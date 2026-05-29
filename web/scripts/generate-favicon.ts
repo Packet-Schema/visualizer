@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import pngToIco from "png-to-ico";
+import toIco from "to-ico";
 import { promises as fs } from "fs";
 import { resolve } from "path";
 
@@ -44,7 +44,7 @@ async function generateFavicon() {
     sizes.map((size) => resizeWithRoundedCorners(sourceIcon, size)),
   );
 
-  const icoBuffer = await pngToIco(buffers);
+  const icoBuffer = await toIco(buffers);
   await fs.writeFile(resolve(appDir, "favicon.ico"), icoBuffer);
 
   // Generate apple-icon.png (180x180)
