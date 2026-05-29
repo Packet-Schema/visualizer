@@ -50,7 +50,8 @@ describe("share URL params", () => {
     const encoded = encodePsdlParam(packet("Custom Packet"), {
       customLen: 12,
     });
-    expect(encoded).toMatch(/^[A-Za-z0-9+$-]+$/);
+    expect(encoded).toMatch(/^[A-Za-z0-9\-_]+$/);
+    expect(encoded).not.toContain("+");
     expect(encoded).not.toContain("/");
     expect(encoded).not.toContain("=");
 
