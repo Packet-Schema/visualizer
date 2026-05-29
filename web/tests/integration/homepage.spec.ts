@@ -298,7 +298,6 @@ test.describe("Homepage and Meta Tags", () => {
     test("psdl with different key order but same content as preset redirects to preset", async ({
       request,
     }) => {
-      // Two redirect hops: normalizeShareQuery canonicalizes → findPresetKeyForPacket matches.
       const response = await request.get(
         `/?psdl=${PSDL_IPV4_PRESET_NONCANONICAL}`,
       );

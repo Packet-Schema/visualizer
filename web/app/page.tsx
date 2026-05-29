@@ -77,12 +77,29 @@ export async function generateMetadata({
 export default async function Page({ searchParams }: Props) {
   const params = await searchParams;
 
-  // クエリが汚れていれば正規化済みURLへ302リダイレクト。
-  // buildShareQueryFromParams は既知キーのみ抽出するので、不明パラメーターの
-  // 有無を判定するために全パラメーターを含む rawQuery と比較する。
+  // クエリ正規化（不明パラメーター除去・重複排除・無効 psdl 除去）と
+  // psdl→preset 正規化を一括で行い、変化があれば1回だけリダイレクト。
   const rawQuery = buildRawQuery(params);
   if (isShareQueryLengthValid(rawQuery)) {
-    const normalizedQuery = normalizeShareQuery(rawQuery, Object.keys(PRESETS));
+    let normalizedQuery = normalizeShareQuery(rawQuery, Object.keys(PRESETS));
+    // 正規化後の psdl がプリセットと一致するなら ?preset=<key> に変換。
+    const normalizedParsed = parseShareParams(
+      normalizedQuery,
+      Object.keys(PRESETS),
+    );
+    if (normalizedParsed.kind === "psdl") {
+      const matchingKey = findPresetKeyForPacket(
+        normalizedParsed.packet,
+        PRESETS,
+      );
+      if (matchingKey) {
+        const q = new URLSearchParams({ preset: matchingKey });
+        for (const [k, v] of Object.entries(normalizedParsed.controllers)) {
+          q.set(`${CONTROLLER_PARAM_PREFIX}${k}`, String(v));
+        }
+        normalizedQuery = q.toString();
+      }
+    }
     if (normalizedQuery !== rawQuery) {
       redirect(normalizedQuery ? `/?${normalizedQuery}` : "/");
     }
@@ -90,19 +107,6 @@ export default async function Page({ searchParams }: Props) {
 
   const shareQuery = buildShareQueryFromParams(params);
   const parsed = parseShareParamsOrFallback(shareQuery);
-
-  // psdl がプリセットと同一内容なら正規の ?preset=<key> へリダイレクト。
-  // controllers.* は引き継ぐ。
-  if (parsed.kind === "psdl") {
-    const matchingKey = findPresetKeyForPacket(parsed.packet, PRESETS);
-    if (matchingKey) {
-      const q = new URLSearchParams({ preset: matchingKey });
-      for (const [k, v] of Object.entries(parsed.controllers)) {
-        q.set(`${CONTROLLER_PARAM_PREFIX}${k}`, String(v));
-      }
-      redirect(`/?${q.toString()}`);
-    }
-  }
 
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
