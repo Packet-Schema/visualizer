@@ -239,6 +239,19 @@ test.describe("Homepage and Meta Tags", () => {
       expect(params.has("psdl")).toBe(true);
     });
 
+    test("deduplicates repeated preset keeping first valid — redirects", async ({
+      request,
+    }) => {
+      const response = await request.get("/?preset=nope&preset=ipv4", {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(307);
+      const location = response.headers()["location"];
+      const params = new URL(location, "http://localhost").searchParams;
+      expect(params.getAll("preset").length).toBe(1);
+      expect(params.get("preset")).toBe("ipv4");
+    });
+
     test("unknown-only params — redirects to /", async ({ request }) => {
       const response = await request.get("/?foo=1&bar=2", {
         maxRedirects: 0,

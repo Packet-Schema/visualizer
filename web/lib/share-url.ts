@@ -196,13 +196,25 @@ export function isShareQueryLengthValid(shareQuery: string): boolean {
  *
  * Returns a URLSearchParams-style string (no leading `?`).
  */
-export function normalizeShareQuery(search: string): string {
+export function normalizeShareQuery(
+  search: string,
+  builtInKeys: Iterable<string> = [],
+): string {
   const params = new URLSearchParams(search);
   const out = new URLSearchParams();
   const seen = new Set<string>();
+  const known = new Set(builtInKeys);
 
   // 有効な psdl が1つでもあれば preset は不要。複数ある場合は全値を確認する。
   const psdlValid = params.getAll("psdl").some(isPsdlValueValid);
+
+  // preset の重複排除: 最初の有効値を採用する。
+  // 先頭が無効な preset の場合に有効な後続 preset を失わないよう、
+  // seen に入れる前に有効性を確認する。
+  const firstValidPreset =
+    known.size > 0
+      ? params.getAll("preset").find((p) => known.has(p))
+      : undefined;
 
   for (const [key, value] of params) {
     const isPreset = key === "preset";
@@ -213,13 +225,35 @@ export function normalizeShareQuery(search: string): string {
     if (isPsdl && !isPsdlValueValid(value)) continue;
     // When a valid psdl is present, preset is redundant — drop it.
     if (isPreset && psdlValid) continue;
-    // Keep only the first occurrence of each key.
-    if (seen.has(key)) continue;
+    // For preset: skip invalid values when a valid one exists elsewhere,
+    // and keep only the first valid occurrence.
+    if (isPreset && firstValidPreset !== undefined) {
+      if (value !== firstValidPreset) continue;
+      if (seen.has(key)) continue;
+    } else {
+      // Keep only the first occurrence of each key.
+      if (seen.has(key)) continue;
+    }
     seen.add(key);
     out.set(key, value);
   }
 
   return out.toString();
+}
+
+/**
+ * Returns the preset key whose packet matches the given packet, or null if none matches.
+ * Comparison is done via canonical JSON serialization (no env) so key order is stable.
+ */
+export function findPresetKeyForPacket(
+  packet: PsdlPacket,
+  presets: Record<string, PsdlPacket>,
+): string | null {
+  const target = toJson(packet);
+  for (const [key, presetPacket] of Object.entries(presets)) {
+    if (toJson(presetPacket) === target) return key;
+  }
+  return null;
 }
 
 function isPsdlValueValid(value: string): boolean {

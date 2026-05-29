@@ -11,6 +11,7 @@ import {
   buildShareQueryFromParams,
   normalizeShareQuery,
   isShareQueryLengthValid,
+  findPresetKeyForPacket,
 } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psdl/renderer";
 import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
@@ -80,7 +81,7 @@ export default async function Page({ searchParams }: Props) {
   // 有無を判定するために全パラメーターを含む rawQuery と比較する。
   const rawQuery = buildRawQuery(params);
   if (rawQuery && isShareQueryLengthValid(rawQuery)) {
-    const normalizedQuery = normalizeShareQuery(rawQuery);
+    const normalizedQuery = normalizeShareQuery(rawQuery, Object.keys(PRESETS));
     if (normalizedQuery !== rawQuery) {
       redirect(normalizedQuery ? `/?${normalizedQuery}` : "/");
     }
@@ -88,6 +89,14 @@ export default async function Page({ searchParams }: Props) {
 
   const shareQuery = buildShareQueryFromParams(params);
   const parsed = parseShareParamsOrFallback(shareQuery);
+
+  // psdl がプリセットと同一内容なら正規の ?preset=<key> へリダイレクト。
+  if (parsed.kind === "psdl") {
+    const matchingKey = findPresetKeyForPacket(parsed.packet, PRESETS);
+    if (matchingKey) {
+      redirect(`/?preset=${matchingKey}`);
+    }
+  }
 
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
