@@ -374,4 +374,144 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
   }
+
+  /* ---- mobile responsiveness ----
+     Scale factors: 768px→0.85, 640px→0.75, 480px→0.65 (each step ~85% of previous)
+     to keep diagram readable without horizontal scroll on small viewports. */
+
+  @media (max-width: 768px) {
+    .diagram-ruler {
+      height: calc(var(--diagram-ruler-height) * 0.85);
+    }
+
+    .diagram-ruler .ruler-label {
+      font-size: calc(var(--subtitle-font-size) * 0.9);
+    }
+
+    .hybrid-row {
+      min-height: calc(var(--diagram-row-height) * 0.9);
+      padding: calc(var(--diagram-row-padding-vertical) * 0.8) 0;
+      gap: calc(var(--row-gap-2) * 0.9);
+    }
+
+    .cell.field-cell {
+      font-size: var(--text-2xs);
+      padding: calc(var(--diagram-cell-padding-vertical) * 0.8)
+        calc(var(--diagram-cell-padding-horizontal) * 0.8);
+    }
+
+    .cell.field-cell .cell-name,
+    .cell.field-cell .cell-continuation,
+    .cell.field-cell .cell-sublabel {
+      font-size: calc(var(--text-sm-tight) * 0.95);
+    }
+
+    .subfield-cell {
+      /* --text-3xs resolves to 10px at this breakpoint (overridden in globals.css) */
+      font-size: var(--text-3xs);
+      min-height: calc(var(--subfield-height) * 0.85);
+      padding: 0 1px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .diagram-ruler {
+      height: calc(var(--diagram-ruler-height) * 0.75);
+      margin-bottom: calc(var(--diagram-ruler-gap) * 0.8);
+    }
+
+    .diagram-ruler .ruler-label {
+      font-size: var(--text-3xs);
+      transform: translateX(-1px);
+    }
+
+    .diagram-ruler .ruler-tick-major {
+      height: calc(var(--major-tick-height) * 0.75);
+    }
+
+    .diagram-ruler .ruler-tick-minor {
+      height: calc(var(--minor-tick-height) * 0.75);
+    }
+
+    .hybrid-diagram {
+      gap: calc(var(--diagram-gap) * 0.75);
+    }
+
+    .hybrid-row {
+      min-height: calc(var(--diagram-row-height) * 0.75);
+      padding: calc(var(--diagram-row-padding-vertical) * 0.6) 0;
+      gap: calc(var(--row-gap-2) * 0.75);
+      border-radius: calc(var(--row-border-radius) * 0.75);
+    }
+
+    .cell.field-cell {
+      font-size: var(--text-3xs);
+      padding: calc(var(--diagram-cell-padding-vertical) * 0.6)
+        calc(var(--diagram-cell-padding-horizontal) * 0.6);
+      border-radius: calc(var(--cell-border-radius) * 0.75);
+    }
+
+    .cell.field-cell .cell-name,
+    .cell.field-cell .cell-continuation,
+    .cell.field-cell .cell-sublabel {
+      font-size: var(--text-3xs);
+    }
+
+    .cell.field-cell[data-overridable="true"]::after {
+      left: 5px;
+      right: 5px;
+      bottom: 2px;
+      height: 2px;
+    }
+
+    .cell.field-cell[data-overridable="true"]:hover::after,
+    .cell.field-cell[data-overridable="true"].selected::after {
+      left: 3px;
+      right: 3px;
+      height: 2.5px;
+    }
+
+    .subfield-cell {
+      /* --text-2xs resolves to 8px at this breakpoint (overridden in globals.css);
+         smaller than the 768px value of --text-3xs (10px) as intended */
+      font-size: var(--text-2xs);
+      min-height: calc(var(--subfield-height) * 0.75);
+      border-radius: calc(var(--subfield-border-radius) * 0.75);
+    }
+
+    .cell.field-cell.has-subfields .cell-body {
+      margin-bottom: 1px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .diagram-shell {
+      padding: 0 2px;
+    }
+
+    .diagram-ruler {
+      height: calc(var(--diagram-ruler-height) * 0.65);
+      margin-bottom: calc(var(--diagram-ruler-gap) * 0.6);
+    }
+
+    .diagram-ruler .ruler-label {
+      font-size: var(--text-2xs);
+    }
+
+    .hybrid-row {
+      min-height: calc(var(--diagram-row-height) * 0.65);
+      padding: calc(var(--diagram-row-padding-vertical) * 0.5) 0;
+    }
+
+    .cell.field-cell {
+      font-size: var(--text-2xs);
+      padding: calc(var(--diagram-cell-padding-vertical) * 0.5)
+        calc(var(--diagram-cell-padding-horizontal) * 0.5);
+      border-radius: calc(var(--cell-border-radius) * 0.5);
+    }
+
+    .cell.field-cell .cell-body {
+      gap: 0;
+    }
+  }
 }

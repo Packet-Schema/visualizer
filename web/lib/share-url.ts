@@ -2,6 +2,7 @@ import { compressToUint8Array, decompressFromUint8Array } from "lz-string";
 
 import { fromJson, toJson } from "./formats/json";
 import { validatePsdlPacket } from "./psdl/validate";
+import { stableStringify } from "./stable-stringify";
 import type { ControllerState } from "./psdl/renderer";
 import type { Packet as PsdlPacket, PacketEnv } from "./psdl/types";
 
@@ -34,8 +35,10 @@ export function encodePsdlParam(
   packet: PsdlPacket,
   controllers: ControllerState = {},
 ): string {
-  const json = toJson(packet, controllersToEnv(controllers));
-  const bytes = compressToUint8Array(json);
+  const canonical = stableStringify(
+    JSON.parse(toJson(packet, controllersToEnv(controllers))),
+  );
+  const bytes = compressToUint8Array(canonical);
   return toBase64Url(bytes);
 }
 
@@ -70,45 +73,39 @@ export function parseShareParams(
 ): ParsedShareParams {
   const params = typeof input === "string" ? new URLSearchParams(input) : input;
   const controllers = parseControllers(params);
-  const psdl = params.get("psdl");
 
-  if (psdl) {
+  // 複数の psdl 値がある場合は最初の有効なものを使う。
+  // すべて不正だった場合は preset へフォールバックし、
+  // preset もなければ最初のエラーメッセージを返す。
+  let psdlError: string | undefined;
+  for (const psdl of params.getAll("psdl")) {
     try {
-      return { kind: "psdl", ...decodePsdlParam(psdl) };
-    } catch (err) {
-      // `decodePsdlParam` already throws a curated user-facing message
-      // ("Invalid shared link — …"); wrapping it again here produced
-      // the duplicated phrasing "Invalid shared link: Invalid shared
-      // link — …" the user saw in the toast (Copilot review).
-      // Pass the inner message through verbatim. Errors from downstream
-      // codecs (`fromJson` / `validatePsdlPacket`) are short enough to
-      // be informative on their own — surfacing them as-is is the
-      // closest we can get to actionable feedback without inventing
-      // ad-hoc copy on every adapter failure.
-      //
-      // Normalise non-`Error` throws (a third-party codec could `throw
-      // "string"` and we'd otherwise surface `undefined` as the toast
-      // body), and provide a generic fallback when the stringified
-      // value is empty (Copilot review).
-      const raw = err instanceof Error ? err.message : String(err);
+      const decoded = decodePsdlParam(psdl);
       return {
-        kind: "none",
-        controllers,
-        error: raw || "Invalid shared link.",
+        kind: "psdl",
+        ...decoded,
+        controllers: { ...decoded.controllers, ...controllers },
       };
+    } catch (err) {
+      if (psdlError === undefined) {
+        const raw = err instanceof Error ? err.message : String(err);
+        psdlError = raw || "Invalid shared link.";
+      }
     }
   }
 
-  const preset = params.get("preset");
-  if (preset) {
-    const known = new Set(builtInKeys);
-    if (known.has(preset)) {
-      return { kind: "preset", presetKey: preset, controllers };
-    }
+  // 複数の preset 値がある場合は最初の有効なものを使う。
+  const known = new Set(builtInKeys);
+  const presets = params.getAll("preset");
+  const validPreset = presets.find((p) => known.has(p));
+  if (validPreset) {
+    return { kind: "preset", presetKey: validPreset, controllers };
+  }
+  if (presets.length > 0) {
     return {
       kind: "none",
       controllers,
-      error: `Unknown preset in share URL: ${preset}`,
+      error: `Unknown preset in share URL: ${presets[0]}`,
     };
   }
 
@@ -119,7 +116,7 @@ export function parseShareParams(
     return { kind: "preset", presetKey: "ipv4", controllers };
   }
 
-  return { kind: "none", controllers };
+  return { kind: "none", controllers, error: psdlError };
 }
 
 export function buildShareUrl({
@@ -202,6 +199,126 @@ export function isShareQueryLengthValid(shareQuery: string): boolean {
   return (
     new URLSearchParams(shareQuery).toString().length <= SHARE_URL_MAX_LENGTH
   );
+}
+
+/**
+ * Normalize a raw URL search string:
+ *   1. Strip params that are not `preset`, `psdl`, or `controllers.*`
+ *   2. If `psdl` is present but fails to decode, drop it (invalid payload)
+ *   3. If both `preset` and a valid `psdl` are present, drop `preset` (psdl wins)
+ *   4. Deduplicate repeated keys — keep only the first occurrence
+ *
+ * Returns a URLSearchParams-style string (no leading `?`).
+ *
+ * NOTE: When `builtInKeys` is empty (the default), all `preset` values are
+ * treated as unknown and stripped. Always pass the live preset key list when
+ * calling from page-level code.
+ */
+export function normalizeShareQuery(
+  search: string,
+  builtInKeys: Iterable<string> = [],
+): string {
+  const params = new URLSearchParams(search);
+  const out = new URLSearchParams();
+  const seen = new Set<string>();
+  const known = new Set(builtInKeys);
+
+  // 有効な psdl が1つでもあれば preset は不要。複数ある場合は全値を確認する。
+  const psdlValid = params
+    .getAll("psdl")
+    .some((v) => tryCanonicalizeAndEncodePsdl(v) !== null);
+
+  // preset の重複排除: 最初の有効値を採用する。
+  // 先頭が無効な preset の場合に有効な後続 preset を失わないよう、
+  // seen に入れる前に有効性を確認する。
+  const firstValidPreset =
+    known.size > 0
+      ? params.getAll("preset").find((p) => known.has(p))
+      : undefined;
+
+  for (const [key, value] of params) {
+    const isPreset = key === "preset";
+    const isPsdl = key === "psdl";
+    const isController = key.startsWith(CONTROLLER_PARAM_PREFIX);
+
+    if (isController) {
+      const controllerKey = key.slice(CONTROLLER_PARAM_PREFIX.length);
+      if (
+        !controllerKey ||
+        controllerKey === "__proto__" ||
+        controllerKey === "constructor" ||
+        controllerKey === "prototype"
+      )
+        continue;
+      const num = Number(value);
+      if (
+        Number.isFinite(num) &&
+        Number.isInteger(num) &&
+        Math.abs(num) <= Number.MAX_SAFE_INTEGER &&
+        !out.has(key)
+      ) {
+        out.set(key, value);
+      }
+      continue;
+    }
+
+    if (!isPreset && !isPsdl) continue;
+    // Decode psdl once: invalid values are dropped, valid ones are re-encoded
+    // with stable key order. A single decode avoids calling decodePsdlParam
+    // twice (once to validate, once to canonicalize).
+    if (isPsdl) {
+      if (seen.has(key)) continue;
+      const canonical = tryCanonicalizeAndEncodePsdl(value);
+      if (canonical === null) continue;
+      out.set(key, canonical);
+      seen.add(key);
+      continue;
+    }
+    // When a valid psdl is present, preset is redundant — drop it.
+    if (isPreset && psdlValid) continue;
+    // For preset: skip invalid values when a valid one exists elsewhere,
+    // and keep only the first valid occurrence.
+    if (isPreset && firstValidPreset !== undefined) {
+      if (value !== firstValidPreset) continue;
+      if (seen.has(key)) continue;
+    } else {
+      if (seen.has(key)) continue;
+    }
+    seen.add(key);
+    out.set(key, value);
+  }
+
+  return out.toString();
+}
+
+/**
+ * Returns the preset key whose packet matches the given packet, or null if none matches.
+ * Uses key-order-independent structural comparison so packets decoded from external
+ * JSON (where property insertion order may differ) still match built-in presets.
+ */
+export function findPresetKeyForPacket(
+  packet: PsdlPacket,
+  presets: Record<string, PsdlPacket>,
+): string | null {
+  const target = stableStringify(packet);
+  for (const [key, presetPacket] of Object.entries(presets)) {
+    if (stableStringify(presetPacket) === target) return key;
+  }
+  return null;
+}
+
+/**
+ * Decode a raw psdl param value and re-encode it with stable key order.
+ * Returns null if the value is invalid (decode failed).
+ * Combining validation and canonicalization avoids calling decodePsdlParam twice.
+ */
+function tryCanonicalizeAndEncodePsdl(value: string): string | null {
+  try {
+    const { packet, controllers } = decodePsdlParam(value);
+    return encodePsdlParam(packet, controllers);
+  } catch {
+    return null;
+  }
 }
 
 function parseControllers(params: URLSearchParams): ControllerState {

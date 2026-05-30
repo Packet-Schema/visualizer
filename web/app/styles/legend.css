@@ -4,8 +4,8 @@
    ========================================================================== */
 
   .legend-swatch {
-    width: 10px;
-    height: 10px;
+    width: var(--legend-swatch-size);
+    height: var(--legend-swatch-size);
     border-radius: 50%;
     display: inline-block;
     box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.12);
@@ -22,5 +22,40 @@
   .legend-item:focus-visible {
     background: var(--bg-subtle);
     outline: none;
+  }
+
+  @media (max-width: 768px) {
+    .legend-swatch {
+      width: calc(var(--legend-swatch-size) * 0.8);
+      height: calc(var(--legend-swatch-size) * 0.8);
+    }
+
+    .legend-item {
+      font-size: var(--text-2xs);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .legend-swatch {
+      width: calc(var(--legend-swatch-size) * 0.7);
+      height: calc(var(--legend-swatch-size) * 0.7);
+    }
+
+    .legend-item {
+      font-size: var(--text-3xs);
+      padding: 1px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .legend-swatch {
+      width: calc(var(--legend-swatch-size) * 0.6);
+      height: calc(var(--legend-swatch-size) * 0.6);
+    }
+
+    .legend-item {
+      font-size: var(--text-2xs);
+      padding: 0;
+    }
   }
 }
