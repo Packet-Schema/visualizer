@@ -8,64 +8,205 @@ _tcp_option_variants: &tcp_option_variants
   "0":
     id: eol
     fields:
-      - { id: kind, name: "Kind=0", type: { kind: bits, n: 8 }, category: type }
+      - id: kind
+        name: "Kind=0"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "End of Option List. Kind=0 marks the end of the options; any bytes after it up to the header boundary are padding. [RFC 9293]"
   "1":
     id: nop
     fields:
-      - { id: kind, name: "Kind=1", type: { kind: bits, n: 8 }, category: type }
+      - id: kind
+        name: "Kind=1"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "No-Operation. Kind=1 is a one-byte filler used between options to align a following option on a word boundary. [RFC 9293]"
   "2":
     id: mss
     fields:
-      - { id: kind, name: "Kind=2", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=4", type: { kind: bits, n: 8 }, category: length }
-      - { id: mss, name: MSS, type: { kind: int, bits: 16 }, category: length }
+      - id: kind
+        name: "Kind=2"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "Maximum Segment Size option. Kind=2 advertises the largest segment the sender is willing to receive; sent only in the SYN. [RFC 9293]"
+      - id: length
+        name: "Len=4"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: "Total option length in bytes, including Kind and Length. 4 for the MSS option (1 + 1 + 2). [RFC 9293]"
+      - id: mss
+        name: MSS
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Maximum Segment Size in bytes — the largest amount of TCP payload the sender can accept in one segment. [RFC 9293]"
   "3":
     id: windowScale
     fields:
-      - { id: kind, name: "Kind=3", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=3", type: { kind: bits, n: 8 }, category: length }
-      - { id: shift, name: Shift, type: { kind: int, bits: 8 }, category: identifier }
+      - id: kind
+        name: "Kind=3"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "Window Scale option. Kind=3 negotiates a left-shift count applied to the 16-bit Window field, allowing windows larger than 65535; sent only in the SYN. [RFC 7323]"
+      - id: length
+        name: "Len=3"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: "Total option length in bytes, including Kind and Length. 3 for the Window Scale option (1 + 1 + 1). [RFC 7323]"
+      - id: shift
+        name: Shift
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: "Shift count — the advertised window is multiplied by 2^shift. Permitted values are 0 through 14. [RFC 7323]"
   "4":
     id: sackPermitted
     fields:
-      - { id: kind, name: "Kind=4", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=2", type: { kind: bits, n: 8 }, category: length }
+      - id: kind
+        name: "Kind=4"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "SACK-Permitted option. Kind=4 in the SYN tells the peer that selective acknowledgments may be used on this connection. [RFC 2018]"
+      - id: length
+        name: "Len=2"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: "Total option length in bytes, including Kind and Length. 2 for the SACK-Permitted option (1 + 1). [RFC 2018]"
   "5":
     id: sack
     fields:
-      - { id: kind, name: "Kind=5", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=10", type: { kind: bits, n: 8 }, category: length }
-      - { id: leftEdge, name: Left Edge, type: { kind: int, bits: 32 }, category: identifier }
-      - { id: rightEdge, name: Right Edge, type: { kind: int, bits: 32 }, category: identifier }
+      - id: kind
+        name: "Kind=5"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "Selective Acknowledgment option. Kind=5 reports blocks of non-contiguous data already received, so the sender retransmits only the gaps. [RFC 2018]"
+      - id: length
+        name: "Len=10"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: "Total option length in bytes, including Kind and Length. Length is 2 + 8×N for N reported blocks; 10 carries a single block. [RFC 2018]"
+      - id: leftEdge
+        name: Left Edge
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "Left edge of a SACK block — the first sequence number of a contiguous run of received data. [RFC 2018]"
+      - id: rightEdge
+        name: Right Edge
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "Right edge of a SACK block — the sequence number just past the last byte of the received run. [RFC 2018]"
   "8":
     id: timestamps
     fields:
-      - { id: kind, name: "Kind=8", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=10", type: { kind: bits, n: 8 }, category: length }
-      - { id: tsval, name: TS Value, type: { kind: int, bits: 32 }, category: identifier }
-      - { id: tsecr, name: TS Echo Reply, type: { kind: int, bits: 32 }, category: identifier }
+      - id: kind
+        name: "Kind=8"
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "Timestamps option. Kind=8 carries timestamp values used for round-trip time measurement and protection against wrapped sequence numbers (PAWS). [RFC 7323]"
+      - id: length
+        name: "Len=10"
+        type: { kind: bits, n: 8 }
+        category: length
+        doc: "Total option length in bytes, including Kind and Length. 10 for the Timestamps option (1 + 1 + 4 + 4). [RFC 7323]"
+      - id: tsval
+        name: TS Value
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "Timestamp Value (TSval) — the sender's current timestamp clock value at the time the segment is sent. [RFC 7323]"
+      - id: tsecr
+        name: TS Echo Reply
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "Timestamp Echo Reply (TSecr) — echoes back the most recent TSval received from the peer; valid only when the ACK flag is set. [RFC 7323]"
 
 body:
-  - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing }
-  - { id: dstPort, name: Destination Port, type: { kind: int, bits: 16 }, category: addressing }
-  - { id: seqNum, name: Sequence Number, type: { kind: int, bits: 32 }, category: identifier }
-  - { id: ackNum, name: Acknowledgment Number, type: { kind: int, bits: 32 }, category: identifier }
-  - { id: dataOffset, name: Data Offset, type: { kind: bits, n: 4 }, category: length, defaultValue: 5 }
-  - { id: reserved, name: Rsvd, type: { kind: bits, n: 4 }, category: reserved }
+  - id: srcPort
+    name: Source Port
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: "Sending application's port number. Combined with the source IP it identifies one end of the connection. [RFC 9293]"
+  - id: dstPort
+    name: Destination Port
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: "Receiving application's port number — selects the service or socket the segment is delivered to. [RFC 9293]"
+  - id: seqNum
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Sequence number of the first data byte in this segment. When SYN is set it is the Initial Sequence Number and the SYN consumes that number. [RFC 9293]"
+  - id: ackNum
+    name: Acknowledgment Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Next sequence number the sender expects to receive — i.e. all bytes up to it are acknowledged. Valid only when the ACK flag is set. [RFC 9293]"
+  - id: dataOffset
+    name: Data Offset
+    type: { kind: bits, n: 4 }
+    category: length
+    defaultValue: 5
+    doc: "Header length measured in 32-bit words, marking where the data begins. Minimum 5 (20 bytes, no options); maximum 15 (60 bytes). [RFC 9293]"
+  - id: reserved
+    name: Rsvd
+    type: { kind: bits, n: 4 }
+    category: reserved
+    doc: "Reserved for future use; must be sent as zero. [RFC 9293]"
   - kind: group
     id: flagsBits
     children:
-      - { id: flags_cwr, name: CWR, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_ece, name: ECE, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_urg, name: URG, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_ack, name: ACK, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_psh, name: PSH, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_rst, name: RST, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_syn, name: SYN, type: { kind: bits, n: 1 }, category: flags }
-      - { id: flags_fin, name: FIN, type: { kind: bits, n: 1 }, category: flags }
-  - { id: window, name: Window, type: { kind: int, bits: 16 }, category: flags }
-  - { id: checksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum }
-  - { id: urgent, name: Urgent Pointer, type: { kind: int, bits: 16 }, category: identifier }
+      - id: flags_cwr
+        name: CWR
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Congestion Window Reduced. Set by the sender to signal that it has reduced its congestion window in response to an ECN-Echo. [RFC 3168]"
+      - id: flags_ece
+        name: ECE
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "ECN-Echo. Indicates Explicit Congestion Notification capability during the handshake, and echoes a received congestion signal afterwards. [RFC 3168]"
+      - id: flags_urg
+        name: URG
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Urgent. When set, the Urgent Pointer field is significant and marks urgent data. [RFC 9293]"
+      - id: flags_ack
+        name: ACK
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Acknowledgment. When set, the Acknowledgment Number field is significant; set on all segments after the initial SYN. [RFC 9293]"
+      - id: flags_psh
+        name: PSH
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Push. Asks the receiver to deliver buffered data to the application without waiting for more. [RFC 9293]"
+      - id: flags_rst
+        name: RST
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Reset. Abruptly aborts the connection, e.g. in response to a segment for a connection that does not exist. [RFC 9293]"
+      - id: flags_syn
+        name: SYN
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Synchronize. Set on the first segments of each direction to establish a connection and exchange initial sequence numbers. [RFC 9293]"
+      - id: flags_fin
+        name: FIN
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Finish. Indicates the sender has no more data to send and wants to close its half of the connection. [RFC 9293]"
+  - id: window
+    name: Window
+    type: { kind: int, bits: 16 }
+    category: flags
+    doc: "Receive window — the number of bytes, beyond the Acknowledgment Number, that the sender of this segment is willing to accept. May be scaled by the Window Scale option. [RFC 9293]"
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: "16-bit ones-complement checksum over the TCP header, payload, and a pseudo-header derived from the IP addresses and length. [RFC 9293]"
+  - id: urgent
+    name: Urgent Pointer
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Offset from the Sequence Number to the last byte of urgent data. Significant only when the URG flag is set. [RFC 9293]"
   - kind: repeat
     id: options
     name: Options

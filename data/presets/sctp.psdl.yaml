@@ -9,7 +9,7 @@ _sctp_chunk_variants: &sctp_chunk_variants
     id: dataChunk
     name: DATA (Type=0)
     fields:
-      - { id: chunkType, name: "Type=0", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkType, name: "Type=0", type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type — 0 = DATA, carrying user data to the upper layer. [RFC 9260 §3.2 / §3.3.1]" }
       - kind: group
         id: dataFlags
         name: Flags
@@ -33,9 +33,9 @@ _sctp_chunk_variants: &sctp_chunk_variants
     id: initChunk
     name: INIT (Type=1)
     fields:
-      - { id: chunkType, name: "Type=1", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkType, name: "Type=1", type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type — 1 = INIT, the first chunk of association setup, carrying the sender's parameters. [RFC 9260 §3.2 / §3.3.2]" }
       - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved (all bits MUST be zero) in INIT. [RFC 9260 §3.3.2]" }
-      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Chunk Length — bytes in this INIT chunk including the 4-byte header and all variable-length parameters, excluding trailing padding. [RFC 9260 §3.3.2]" }
       - { id: init_initiateTag, name: Initiate Tag, type: { kind: int, bits: 32 }, category: identifier, defaultValue: 1, doc: "Random 32-bit Verification Tag the sender wants its peer to use on every subsequent packet (MUST NOT be zero). Prevents off-path packet injection. [RFC 9260 §3.3.2.1]" }
       - { id: init_arwnd, name: a_rwnd, type: { kind: int, bits: 32 }, category: length, doc: "Advertised Receiver Window Credit in bytes (MUST be ≥ 1500). Caps the peer's in-flight DATA bytes. [RFC 9260 §3.3.2.1]" }
       - { id: init_numOutboundStreams, name: "# Outbound Streams", type: { kind: int, bits: 16 }, category: length, doc: "Number of outbound streams the sender wishes to create on this association (1..65535). [RFC 9260 §3.3.2.1]" }
@@ -50,9 +50,9 @@ _sctp_chunk_variants: &sctp_chunk_variants
     id: sackChunk
     name: SACK (Type=3)
     fields:
-      - { id: chunkType, name: "Type=3", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkType, name: "Type=3", type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type — 3 = SACK (Selective Acknowledgment), reporting received TSNs back to the sender. [RFC 9260 §3.2 / §3.3.4]" }
       - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.4]" }
-      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Chunk Length — bytes in this SACK chunk including the 4-byte header, the 12-byte fixed body (Cumulative TSN Ack, a_rwnd, and the two counts), the gap-ack blocks, and the duplicate-TSN list. [RFC 9260 §3.3.4]" }
       - { id: sack_cumulativeTsnAck, name: Cumulative TSN Ack, type: { kind: int, bits: 32 }, category: identifier, doc: "Largest TSN such that every TSN ≤ this value has been received. Anchors the gap blocks below. [RFC 9260 §3.3.4]" }
       - { id: sack_arwnd, name: a_rwnd, type: { kind: int, bits: 32 }, category: length, doc: "Updated Advertised Receiver Window Credit, reflecting current buffer space. [RFC 9260 §3.3.4]" }
       - { id: sack_numGapAckBlocks, name: "# Gap Ack Blocks", type: { kind: int, bits: 16 }, category: length, doc: "Number of (Start, End) gap blocks following the duplicate-TSN list (each block is 4 bytes of relative offsets). [RFC 9260 §3.3.4]" }
@@ -66,9 +66,9 @@ _sctp_chunk_variants: &sctp_chunk_variants
     id: heartbeatChunk
     name: HEARTBEAT (Type=4)
     fields:
-      - { id: chunkType, name: "Type=4", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkType, name: "Type=4", type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type — 4 = HEARTBEAT, a path-probe sent to verify reachability of a destination address. [RFC 9260 §3.2 / §3.3.5]" }
       - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.5]" }
-      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Chunk Length — bytes in this HEARTBEAT chunk including the 4-byte header and the Heartbeat Info parameter. [RFC 9260 §3.3.5]" }
       - id: heartbeat_info
         name: Heartbeat Info Parameter (TLV)
         type: { kind: bytes, n: { kind: ref, field: sctpHeartbeatInfoBytes } }
@@ -78,14 +78,14 @@ _sctp_chunk_variants: &sctp_chunk_variants
     id: abortChunk
     name: ABORT (Type=6)
     fields:
-      - { id: chunkType, name: "Type=6", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkType, name: "Type=6", type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type — 6 = ABORT, tears down the association immediately without the graceful SHUTDOWN handshake. [RFC 9260 §3.2 / §3.3.7]" }
       - kind: group
         id: abortFlags
         name: Flags
         children:
           - { id: abort_reserved, name: Rsvd, type: { kind: bits, n: 7 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.7]" }
           - { id: abort_t, name: T, type: { kind: bits, n: 1 }, category: flags, doc: "Verification Tag Reflected — when set, this ABORT is being sent in response to an out-of-the-blue packet and reuses the offending packet's Verification Tag. [RFC 9260 §3.3.7]" }
-      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Chunk Length — bytes in this ABORT chunk including the 4-byte header and all Error Cause parameters. [RFC 9260 §3.3.7]" }
       - id: abort_errorCauses
         name: Error Causes
         type: { kind: bytes, n: { kind: ref, field: sctpAbortErrorBytes } }
@@ -95,9 +95,9 @@ _sctp_chunk_variants: &sctp_chunk_variants
     id: shutdownChunk
     name: SHUTDOWN (Type=7)
     fields:
-      - { id: chunkType, name: "Type=7", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkType, name: "Type=7", type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type — 7 = SHUTDOWN, initiates the graceful close of an association once all outstanding DATA has been acknowledged. [RFC 9260 §3.2 / §3.3.8]" }
       - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.8]" }
-      - { id: chunkLength, name: "Length=8", type: { kind: int, bits: 16 }, category: length, defaultValue: 8 }
+      - { id: chunkLength, name: "Length=8", type: { kind: int, bits: 16 }, category: length, defaultValue: 8, doc: "Chunk Length — fixed at 8 bytes (4-byte header + 4-byte Cumulative TSN Ack). [RFC 9260 §3.3.8]" }
       - { id: shutdown_cumulativeTsnAck, name: Cumulative TSN Ack, type: { kind: int, bits: 32 }, category: identifier, doc: "Largest TSN the sender has received cumulatively; mirrors the SACK field. Lets the peer know which DATA chunks may still be in-flight before the association is fully closed. [RFC 9260 §3.3.8]" }
 
 body:
@@ -137,9 +137,9 @@ body:
             id: unknownChunk
             name: Unknown Chunk
             fields:
-              - { id: chunkType, name: Type, type: { kind: int, bits: 8 }, category: type }
-              - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: flags }
-              - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+              - { id: chunkType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Chunk Type for a chunk not catalogued in this preset. The top two bits also tell a receiver how to react to an unknown type (e.g. skip vs. report-and-skip vs. abort). [RFC 9260 §3.2]" }
+              - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: flags, doc: "Chunk-specific flags whose meaning depends on the (uncatalogued) chunk type. [RFC 9260 §3.2]" }
+              - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Chunk Length — bytes in this chunk including the 4-byte header and the Value, excluding trailing padding to a 4-byte boundary. [RFC 9260 §3.2]" }
               - id: chunkValue
                 name: Value
                 type: { kind: bytes, n: { kind: ref, field: sctpChunkValueBytes } }

@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import HybridDiagram from "@/components/diagram/HybridDiagram";
 import Legend from "@/components/diagram/Legend";
+import { EnrichedText } from "@/components/common/EnrichedText";
 import { packetCategories } from "@/lib/psdl/renderer-helpers";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
@@ -49,7 +50,9 @@ export default function PreviewPanel({ packet, layout }: Props) {
         </span>
       </div>
       {packet.description ? (
-        <p className="text-xs m-0 text-fg-muted">{packet.description}</p>
+        <p className="text-xs m-0 text-fg-muted">
+          <EnrichedText text={packet.description} />
+        </p>
       ) : null}
       <p className="text-xs m-0 italic flex items-center gap-1.5 text-fg-faint">
         <span className="not-italic font-bold text-accent" aria-hidden="true">

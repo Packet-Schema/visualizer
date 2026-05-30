@@ -9,8 +9,16 @@ _isis_tlv_variants: &isis_tlv_variants
     id: areaAddresses
     name: TLV 1 — Area Addresses
     fields:
-      - { id: tlvType, name: "Type=1", type: { kind: int, bits: 8 }, category: type }
-      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: tlvType
+        name: "Type=1"
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type code. 1 identifies this record as Area Addresses, listing the area(s) the originating router belongs to. [ISO 10589 §9.8 / TLV 1]
+      - id: tlvLength
+        name: Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves. Lets a parser skip to the next TLV. [ISO 10589 §9.8]
       - id: areaAddressesValue
         name: Area Address List
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
@@ -20,8 +28,16 @@ _isis_tlv_variants: &isis_tlv_variants
     id: authenticationInformation
     name: TLV 10 — Authentication Information
     fields:
-      - { id: tlvType, name: "Type=10", type: { kind: int, bits: 8 }, category: type }
-      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: tlvType
+        name: "Type=10"
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type code. 10 identifies this record as Authentication Information, carrying the credential that protects the PDU. [ISO 10589 §9.8 / RFC 5304]
+      - id: tlvLength
+        name: Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves. Lets a parser skip to the next TLV. [ISO 10589 §9.8]
       - id: authValue
         name: Authentication Value
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
@@ -31,8 +47,16 @@ _isis_tlv_variants: &isis_tlv_variants
     id: extendedIsReachability
     name: TLV 22 — Extended IS Reachability
     fields:
-      - { id: tlvType, name: "Type=22", type: { kind: int, bits: 8 }, category: type }
-      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: tlvType
+        name: "Type=22"
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type code. 22 identifies this record as Extended IS Reachability, the TE-capable replacement for legacy TLV 2. [RFC 5305 §3]
+      - id: tlvLength
+        name: Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves. Lets a parser skip to the next TLV. [ISO 10589 §9.8]
       - id: extIsReachValue
         name: Neighbor Entries
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
@@ -42,8 +66,16 @@ _isis_tlv_variants: &isis_tlv_variants
     id: protocolsSupported
     name: TLV 129 — Protocols Supported
     fields:
-      - { id: tlvType, name: "Type=129", type: { kind: int, bits: 8 }, category: type }
-      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: tlvType
+        name: "Type=129"
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type code. 129 identifies this record as Protocols Supported, the list of network-layer protocols the router routes. [RFC 1195 §4.2]
+      - id: tlvLength
+        name: Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves. Lets a parser skip to the next TLV. [ISO 10589 §9.8]
       - id: nlpidList
         name: NLPID List
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
@@ -53,8 +85,16 @@ _isis_tlv_variants: &isis_tlv_variants
     id: ipInterfaceAddress
     name: TLV 132 — IP Interface Address
     fields:
-      - { id: tlvType, name: "Type=132", type: { kind: int, bits: 8 }, category: type }
-      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: tlvType
+        name: "Type=132"
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type code. 132 identifies this record as IP Interface Address, the IPv4 address(es) of the originating router's interfaces. [RFC 1195 §4.2]
+      - id: tlvLength
+        name: Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves. A multiple of 4 here, one per IPv4 address. [ISO 10589 §9.8 / RFC 1195 §4.2]
       - id: ipInterfaceAddresses
         name: IPv4 Addresses
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
@@ -64,8 +104,16 @@ _isis_tlv_variants: &isis_tlv_variants
     id: dynamicHostname
     name: TLV 137 — Dynamic Hostname
     fields:
-      - { id: tlvType, name: "Type=137", type: { kind: int, bits: 8 }, category: type }
-      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: tlvType
+        name: "Type=137"
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type code. 137 identifies this record as the Dynamic Hostname, mapping the originating System ID to a symbolic name. [RFC 5301]
+      - id: tlvLength
+        name: Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves — here the number of ASCII characters in the hostname. [ISO 10589 §9.8 / RFC 5301]
       - id: hostnameValue
         name: Hostname
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
@@ -226,8 +274,16 @@ body:
             id: unknownTlv
             name: Unknown TLV
             fields:
-              - { id: tlvType, name: Type, type: { kind: int, bits: 8 }, category: type }
-              - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+              - id: tlvType
+                name: Type
+                type: { kind: int, bits: 8 }
+                category: type
+                doc: TLV type code (0..255) not catalogued by this preset. The receiver uses it to dispatch parsing; unrecognised types are skipped using the Length field. [ISO 10589 §9.8]
+              - id: tlvLength
+                name: Length
+                type: { kind: int, bits: 8 }
+                category: length
+                doc: Length of the Value field in octets (0..255), excluding the Type and Length octets themselves. Lets a parser skip an unknown TLV and continue with the next record. [ISO 10589 §9.8]
               - id: tlvValue
                 name: Value
                 type: { kind: bytes, n: { kind: ref, field: tlvLength } }

@@ -26,12 +26,14 @@ body:
                     kind: bits
                     n: 16
                   category: type
+                  doc: ExtensionType discriminator identifying this extension. 0 = server_name (SNI), letting the client tell the server which virtual host it wants so the right certificate is selected. [RFC 8446 §4.2, RFC 6066 §3]
                 - id: serverNameListLength
                   name: server_name_list length
                   type:
                     kind: bits
                     n: 16
                   category: length
+                  doc: Byte length of the following ServerNameList. Bounds the list so a parser knows where this extension's data ends. [RFC 6066 §3]
                 - id: serverNameList
                   name: server_name_list
                   type:
@@ -40,6 +42,7 @@ body:
                       kind: ref
                       field: serverNameListLength
                   category: addressing
+                  doc: The ServerNameList itself. Each entry carries a NameType and a name; type 0 (host_name) holds the target hostname as a UTF-8 string. [RFC 6066 §3]
             "16":
               id: alpnExt
               fields:
@@ -49,12 +52,14 @@ body:
                     kind: bits
                     n: 16
                   category: type
+                  doc: ExtensionType discriminator. 16 = application_layer_protocol_negotiation (ALPN), used to negotiate the upper-layer protocol (e.g. h2, http/1.1) during the handshake. [RFC 8446 §4.2, RFC 7301]
                 - id: protocolNameListLength
                   name: protocol_name_list length
                   type:
                     kind: bits
                     n: 16
                   category: length
+                  doc: Byte length of the following ProtocolNameList, bounding the set of protocol identifiers offered. [RFC 7301 §3.1]
                 - id: alpnProtocols
                   name: alpn_protocols
                   type:
@@ -63,6 +68,7 @@ body:
                       kind: ref
                       field: protocolNameListLength
                   category: type
+                  doc: The ProtocolNameList — a sequence of length-prefixed protocol name strings (e.g. "h2", "http/1.1") in the client's order of preference. [RFC 7301 §3.1]
             "43":
               id: supportedVersionsExt
               fields:
@@ -72,12 +78,14 @@ body:
                     kind: bits
                     n: 16
                   category: type
+                  doc: ExtensionType discriminator. 43 = supported_versions, how a client offers the TLS versions it supports; its presence is what signals TLS 1.3 (0x0304). [RFC 8446 §4.2.1]
                 - id: supportedVersionsLength
                   name: SupportedVersions length
                   type:
                     kind: bits
                     n: 8
                   category: length
+                  doc: Byte length of the following list of versions (a single-byte count, since the list is short). [RFC 8446 §4.2.1]
                 - id: versions
                   name: versions
                   type:
@@ -86,6 +94,7 @@ body:
                       kind: ref
                       field: supportedVersionsLength
                   category: type
+                  doc: List of 16-bit ProtocolVersion values in the client's preference order; 0x0304 denotes TLS 1.3. [RFC 8446 §4.2.1]
             "51":
               id: keyShareExt
               fields:
@@ -95,12 +104,14 @@ body:
                     kind: bits
                     n: 16
                   category: type
+                  doc: ExtensionType discriminator. 51 = key_share, carrying the (EC)DHE public key shares that let TLS 1.3 establish the shared secret within the handshake. [RFC 8446 §4.2.8]
                 - id: clientSharesLength
                   name: client_shares length
                   type:
                     kind: bits
                     n: 16
                   category: length
+                  doc: Byte length of the following list of KeyShareEntry values offered by the client. [RFC 8446 §4.2.8]
                 - id: keyShareEntry
                   name: KeyShareEntry
                   type:
@@ -109,6 +120,7 @@ body:
                       kind: ref
                       field: clientSharesLength
                   category: identifier
+                  doc: One or more KeyShareEntry values, each pairing a NamedGroup (e.g. x25519, secp256r1) with that group's key_exchange public value. [RFC 8446 §4.2.8]
     count:
       kind: ref
       field: tlsExtensionsBlock_extensions_count

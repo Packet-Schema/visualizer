@@ -89,6 +89,7 @@ body:
             n: 8
           category: type
           defaultValue: 8
+          doc: Identifies the QUIC frame that follows; encoded as a variable-length integer. 0x02/0x03=ACK, 0x06=CRYPTO, 0x08–0x0f=STREAM. [RFC 9000 §12.4, §19]
         - kind: switch
           id: frameByType
           on:

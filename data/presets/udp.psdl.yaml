@@ -4,7 +4,23 @@ rowBits: 32
 byteOrder: BE
 description: UDP header (RFC 768) — fixed 8 bytes.
 body:
-  - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing }
-  - { id: dstPort, name: Destination Port, type: { kind: int, bits: 16 }, category: addressing }
-  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length }
-  - { id: checksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum }
+  - id: srcPort
+    name: Source Port
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: "Sending process's port — the receiver may reply here, otherwise it carries no meaning and may be zero. Combined with the IP source address it identifies the sending endpoint. [RFC 768]"
+  - id: dstPort
+    name: Destination Port
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: "Port the datagram is delivered to on the destination host — selects the receiving application/socket. e.g. 53 = DNS, 67/68 = DHCP, 123 = NTP. [RFC 768]"
+  - id: length
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Length in bytes of the UDP header plus payload — minimum value is 8 (header only, empty payload). [RFC 768]"
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: "16-bit ones'-complement checksum over a pseudo-header, the UDP header, and the data. Optional over IPv4 (0 means 'not computed'); mandatory over IPv6. [RFC 768]"

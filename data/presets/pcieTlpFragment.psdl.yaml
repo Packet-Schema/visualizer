@@ -10,6 +10,7 @@ body:
       kind: bits
       n: 8
     category: type
+    doc: 8-bit leading byte standing in for a TLP's Format/Type field — illustrative only, with no real PCIe encoding implied. Uses the BE packet default. [illustrative fixture]
   - id: address
     name: Address (BE)
     type:
@@ -32,3 +33,4 @@ body:
       kind: bits
       n: 8
     category: reserved
+    doc: 8-bit trailing reserved byte that pads the fragment to a row boundary — illustrative only, carries no defined meaning. Uses the BE packet default. [illustrative fixture]

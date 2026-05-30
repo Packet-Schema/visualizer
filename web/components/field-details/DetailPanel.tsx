@@ -1,5 +1,5 @@
 import { CATEGORY_LABELS } from "@/lib/constants";
-import { enrichDescriptionHtml } from "@/lib/enrich";
+import { EnrichedText } from "@/components/common/EnrichedText";
 import type {
   CategoryToken,
   ControllerState,
@@ -7,15 +7,6 @@ import type {
 } from "@/lib/psdl/renderer";
 
 import { resolveSelection } from "./selection-resolver";
-
-function EnrichedText({ text }: { text: string }) {
-  return (
-    <span
-      className="enriched-text"
-      dangerouslySetInnerHTML={{ __html: enrichDescriptionHtml(text) }}
-    />
-  );
-}
 
 type Props = {
   packet: Packet;

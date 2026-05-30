@@ -130,8 +130,11 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       continue;
     }
     if (c.kind === "switch") {
-      // Bare Switch — flatten to a placeholder.
-      fields.push({ id: c.id, name: c.name ?? c.id, bits: 0 });
+      // Bare Switch — flatten to a placeholder. Carry its `doc` across so the
+      // DetailPanel can surface the description, mirroring the Encrypted branch.
+      const fld: RendererField = { id: c.id, name: c.name ?? c.id, bits: 0 };
+      if (c.doc) fld.description = c.doc;
+      fields.push(fld);
       continue;
     }
     if (c.kind === "encrypted") {
