@@ -15,7 +15,7 @@ import {
   buildShareQueryFromParams,
   isShareQueryLengthValid,
 } from "@/lib/share-url";
-import { OG_FONT_BUFFER } from "@/lib/og-font";
+import { OG_FONT_BUFFER, OG_FONT_BUFFER_700 } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
@@ -50,34 +50,39 @@ const createOGImageResponseOptions = () => ({
       weight: 400 as const,
       style: "normal" as const,
     },
+    {
+      name: FONT_NAME,
+      data: OG_FONT_BUFFER_700,
+      weight: 700 as const,
+      style: "normal" as const,
+    },
   ],
   headers: OG_HEADERS,
 });
 
 // Satori does not support oklch, so convert LIGHT_UI_THEME.bgHeader to hex at module load
 const FALLBACK_GRADIENT = convertOklchInString(LIGHT_UI_THEME.bgHeader);
-
+const FALLBACK_TITLE_COLOR = "#FAFAF8";
+const FALLBACK_LETTER_SPACING = "0.025em";
 const FALLBACK_LINES = ["Packet", "Schema", "Visualizer"] as const;
 const FALLBACK_LINE_GAP = 20;
-// Approximate character width ratio for LINE Seed JP Latin glyphs
-const FALLBACK_CHAR_WIDTH_RATIO = 0.58;
+// Approximate character width ratio for LINE Seed JP Latin glyphs at weight 700
+const FALLBACK_CHAR_WIDTH_RATIO = 0.63;
 // Inner square = shorter side of OG image minus both margins
 const OG_SQUARE_INNER = Math.min(OG_WIDTH, OG_HEIGHT) - OG_MARGIN * 2;
-// Max font size constrained by height: 3 lines × fontSize + 2 × gap ≤ OG_SQUARE_INNER
+// Max font size constrained by height: lines × fontSize + (lines-1) × gap ≤ OG_SQUARE_INNER
 const MAX_FONT_BY_HEIGHT =
   (OG_SQUARE_INNER - FALLBACK_LINE_GAP * (FALLBACK_LINES.length - 1)) /
   FALLBACK_LINES.length;
 // Max font size constrained by width: longest word × charWidthRatio × fontSize ≤ OG_SQUARE_INNER
-const longestLine = FALLBACK_LINES.reduce((a, b) =>
+const longestFallbackLine = FALLBACK_LINES.reduce((a, b) =>
   a.length > b.length ? a : b,
 );
 const MAX_FONT_BY_WIDTH =
-  OG_SQUARE_INNER / (longestLine.length * FALLBACK_CHAR_WIDTH_RATIO);
+  OG_SQUARE_INNER / (longestFallbackLine.length * FALLBACK_CHAR_WIDTH_RATIO);
 const FALLBACK_TITLE_FONT_SIZE = Math.floor(
   Math.min(MAX_FONT_BY_HEIGHT, MAX_FONT_BY_WIDTH),
 );
-const FALLBACK_TITLE_COLOR = "#FAFAF8";
-const FALLBACK_LETTER_SPACING = "0.025em";
 
 const MAX_CONTROLLER_VALUE = 100; // Slider max value from UI controls; protects against URL-injected oversized values
 const MAX_ROW_BITS = 256; // Safety limit to prevent memory/rendering issues with oversized packets
