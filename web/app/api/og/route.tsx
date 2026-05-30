@@ -15,7 +15,7 @@ import {
   buildShareQueryFromParams,
   isShareQueryLengthValid,
 } from "@/lib/share-url";
-import { OG_FONT_BUFFER } from "@/lib/og-font";
+import { OG_FONT_BUFFER, OG_FONT_BUFFER_700 } from "@/lib/og-font";
 import { StaticDiagram } from "@/components/diagram/StaticDiagram";
 
 const FALLBACK_PRESET_KEY = "ipv4";
@@ -48,6 +48,12 @@ const createOGImageResponseOptions = () => ({
       name: FONT_NAME,
       data: OG_FONT_BUFFER,
       weight: 400 as const,
+      style: "normal" as const,
+    },
+    {
+      name: FONT_NAME,
+      data: OG_FONT_BUFFER_700,
+      weight: 700 as const,
       style: "normal" as const,
     },
   ],

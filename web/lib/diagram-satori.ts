@@ -2,7 +2,7 @@
 
 import satori from "satori";
 import type { ReactNode } from "react";
-import { OG_FONT_BUFFER } from "@/lib/og-font";
+import { OG_FONT_BUFFER, OG_FONT_BUFFER_700 } from "@/lib/og-font";
 
 const FONT_NAME = "LINE Seed JP";
 
@@ -28,6 +28,12 @@ export async function renderToSvgString(
         name: FONT_NAME,
         data: OG_FONT_BUFFER,
         weight: 400,
+        style: "normal",
+      },
+      {
+        name: FONT_NAME,
+        data: OG_FONT_BUFFER_700,
+        weight: 700,
         style: "normal",
       },
     ],
