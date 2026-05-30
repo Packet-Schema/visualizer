@@ -201,6 +201,7 @@ body:
             n: 8
           category: type
           defaultValue: 8
+          doc: "First byte of a QUIC frame, identifying its type. 2/3=ACK, 6=CRYPTO, 8–0xf=STREAM. [RFC 9000 §12.4, §19]"
         - kind: switch
           id: frameByType
           on:

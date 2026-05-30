@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { CATEGORY_LABELS } from "@/lib/constants";
-import { enrichDescriptionHtml } from "@/lib/enrich";
+import { EnrichedText } from "@/components/common/EnrichedText";
 import type {
   CategoryToken,
   ControllerState,
@@ -272,11 +272,9 @@ function FieldBody({
         {field.description ? (
           <>
             <dt>Description</dt>
-            <dd
-              dangerouslySetInnerHTML={{
-                __html: enrichDescriptionHtml(field.description),
-              }}
-            />
+            <dd>
+              <EnrichedText text={field.description} />
+            </dd>
           </>
         ) : null}
       </dl>
@@ -313,11 +311,9 @@ function SubfieldBody({
         {sub.description ? (
           <>
             <dt>Description</dt>
-            <dd
-              dangerouslySetInnerHTML={{
-                __html: enrichDescriptionHtml(sub.description),
-              }}
-            />
+            <dd>
+              <EnrichedText text={sub.description} />
+            </dd>
           </>
         ) : null}
       </dl>

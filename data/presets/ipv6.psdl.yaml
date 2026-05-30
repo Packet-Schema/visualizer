@@ -83,16 +83,19 @@ body:
                   type:
                     kind: bits
                     n: 8
+                  doc: Type of the header following this Hop-by-Hop Options header, using the same Next Header numbering as the base header. [RFC 8200 §4.3]
                 - id: hdrExtLen
                   name: Hdr Ext Len
                   type:
                     kind: bits
                     n: 8
+                  doc: Length of this header in 8-byte units, not counting the first 8 bytes. 0 means an 8-byte header. [RFC 8200 §4.3]
                 - id: options
                   name: Options + padding
                   type:
                     kind: bits
                     n: 48
+                  doc: One or more TLV-encoded options examined by every node on the path, padded so the header ends on an 8-byte boundary. [RFC 8200 §4.2, §4.3]
             "43":
               id: nextHeader_proto_43
               name: Routing
@@ -102,26 +105,31 @@ body:
                   type:
                     kind: bits
                     n: 8
+                  doc: Type of the header following this Routing header. [RFC 8200 §4.4]
                 - id: hdrExtLen
                   name: Hdr Ext Len
                   type:
                     kind: bits
                     n: 8
+                  doc: Length of this header in 8-byte units, not counting the first 8 bytes. [RFC 8200 §4.4]
                 - id: routingType
                   name: Routing Type
                   type:
                     kind: bits
                     n: 8
+                  doc: Identifies the routing-header variant and how Type-Specific Data is interpreted. [RFC 8200 §4.4]
                 - id: segmentsLeft
                   name: Segments Left
                   type:
                     kind: bits
                     n: 8
+                  doc: Number of intermediate nodes still to be visited before reaching the final destination. [RFC 8200 §4.4]
                 - id: typeSpecific
                   name: Type-Specific Data
                   type:
                     kind: bits
                     n: 32
+                  doc: Variable-length data whose format depends on the Routing Type. [RFC 8200 §4.4]
             "44":
               id: nextHeader_proto_44
               name: Fragment
@@ -131,31 +139,37 @@ body:
                   type:
                     kind: bits
                     n: 8
+                  doc: Type of the header that begins the fragmentable part carried in this fragment. [RFC 8200 §4.5]
                 - id: reserved
                   name: Reserved
                   type:
                     kind: bits
                     n: 8
+                  doc: Reserved field; initialized to zero by the sender and ignored on receipt. [RFC 8200 §4.5]
                 - id: fragOffset
                   name: Frag Offset
                   type:
                     kind: bits
                     n: 13
+                  doc: Offset of this fragment's payload, in 8-byte units, relative to the start of the fragmentable part of the original packet. [RFC 8200 §4.5]
                 - id: res2
                   name: Res
                   type:
                     kind: bits
                     n: 2
+                  doc: Reserved bits; initialized to zero by the sender and ignored on receipt. [RFC 8200 §4.5]
                 - id: mFlag
                   name: M
                   type:
                     kind: bits
                     n: 1
+                  doc: More Fragments flag — 1 if further fragments follow, 0 on the last fragment. [RFC 8200 §4.5]
                 - id: ident
                   name: Identification
                   type:
                     kind: bits
                     n: 32
+                  doc: Identifier shared by all fragments of one original packet so the destination can reassemble them. [RFC 8200 §4.5]
             "50":
               id: nextHeader_proto_50
               name: ESP
@@ -165,16 +179,19 @@ body:
                   type:
                     kind: bits
                     n: 32
+                  doc: Security Parameters Index — combined with the destination address it identifies the Security Association used to decrypt and verify this packet. [RFC 4303 §2.1]
                 - id: seq
                   name: Sequence Number
                   type:
                     kind: bits
                     n: 32
+                  doc: Monotonically increasing counter providing anti-replay protection for the Security Association. [RFC 4303 §2.2]
                 - id: payload
                   name: Encrypted Payload (var)
                   type:
                     kind: bits
                     n: 64
+                  doc: Variable-length encrypted payload data, including padding and the trailing Next Header field; shown here as a fixed-size placeholder. [RFC 4303 §2.3]
             "51":
               id: nextHeader_proto_51
               name: AH
@@ -184,31 +201,37 @@ body:
                   type:
                     kind: bits
                     n: 8
+                  doc: Type of the header following this Authentication Header. [RFC 4302 §2.1]
                 - id: payloadLen
                   name: Payload Len
                   type:
                     kind: bits
                     n: 8
+                  doc: Length of the Authentication Header in 4-byte units, minus 2. [RFC 4302 §2.2]
                 - id: reserved
                   name: Reserved
                   type:
                     kind: bits
                     n: 16
+                  doc: Reserved field; set to zero by the sender and ignored on receipt (but covered by the integrity check). [RFC 4302 §2.3]
                 - id: spi
                   name: SPI
                   type:
                     kind: bits
                     n: 32
+                  doc: Security Parameters Index — combined with the destination address it identifies the Security Association for this packet. [RFC 4302 §2.4]
                 - id: seq
                   name: Sequence Number
                   type:
                     kind: bits
                     n: 32
+                  doc: Monotonically increasing counter providing anti-replay protection for the Security Association. [RFC 4302 §2.5]
                 - id: icv
                   name: Integrity Check Value
                   type:
                     kind: bits
                     n: 96
+                  doc: Variable-length integrity check value (a truncated MAC) authenticating the packet; its length depends on the negotiated algorithm. [RFC 4302 §2.6]
             "60":
               id: nextHeader_proto_60
               name: Destination Options
@@ -218,16 +241,19 @@ body:
                   type:
                     kind: bits
                     n: 8
+                  doc: Type of the header following this Destination Options header. [RFC 8200 §4.6]
                 - id: hdrExtLen
                   name: Hdr Ext Len
                   type:
                     kind: bits
                     n: 8
+                  doc: Length of this header in 8-byte units, not counting the first 8 bytes. 0 means an 8-byte header. [RFC 8200 §4.6]
                 - id: options
                   name: Options + padding
                   type:
                     kind: bits
                     n: 48
+                  doc: One or more TLV-encoded options examined only by the packet's destination node(s), padded to an 8-byte boundary. [RFC 8200 §4.2, §4.6]
     count:
       kind: ref
       field: nextHeader_chainCount

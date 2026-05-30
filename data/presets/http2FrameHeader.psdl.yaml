@@ -11,30 +11,35 @@ body:
       n: 24
     category: length
     defaultValue: 0
+    doc: Length of the frame payload in bytes (the 9-byte header is not counted). Limited to 2^14 (16,384) unless the peer raises SETTINGS_MAX_FRAME_SIZE. [RFC 9113 §4.1]
   - id: type
     name: Type
     type:
       kind: bits
       n: 8
     category: type
+    doc: "Frame type, which determines the payload format. e.g. 0x0=DATA, 0x1=HEADERS, 0x4=SETTINGS, 0x8=WINDOW_UPDATE; unknown types are ignored. [RFC 9113 §4.1, §6]"
   - id: flags
     name: Flags
     type:
       kind: bits
       n: 8
     category: flags
+    doc: Boolean flags specific to the frame type; unused bits are reserved and sent as 0. e.g. END_STREAM and END_HEADERS occupy distinct bit positions per type. [RFC 9113 §4.1]
   - id: r
     name: R
     type:
       kind: bits
       n: 1
     category: reserved
+    doc: Reserved bit. Must be unset (0) when sending and ignored on receipt. [RFC 9113 §4.1]
   - id: streamId
     name: Stream Identifier
     type:
       kind: bits
       n: 31
     category: identifier
+    doc: Unsigned 31-bit identifier of the stream this frame belongs to. 0x0 refers to the whole connection; client-initiated streams use odd numbers, server-initiated use even. [RFC 9113 §4.1, §5.1.1]
   - id: payload
     name: Payload
     type:
