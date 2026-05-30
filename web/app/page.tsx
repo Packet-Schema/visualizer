@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import SiteHeader from "@/components/app-shell/SiteHeader";
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
@@ -8,7 +9,10 @@ import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
   parseShareParams,
   buildShareQueryFromParams,
+  normalizeShareQuery,
   isShareQueryLengthValid,
+  findPresetKeyForPacket,
+  CONTROLLER_PARAM_PREFIX,
 } from "@/lib/share-url";
 import type { ControllerState } from "@/lib/psdl/renderer";
 import { OG_WIDTH, OG_HEIGHT } from "@/app/api/og/route";
@@ -38,7 +42,7 @@ export async function generateMetadata({
   const buildId = process.env.BUILD_ID ?? "";
   const cacheBust = buildId ? `v=${buildId}` : "";
   const ogBase =
-    isValidLength && shareQuery ? `/api/og?${shareQuery}` : "/api/og";
+    isValidLength && shareQuery ? `/api/og/?${shareQuery}` : "/api/og/";
   const ogWithBust = cacheBust
     ? `${ogBase}${ogBase.includes("?") ? "&" : "?"}${cacheBust}`
     : ogBase;
@@ -76,6 +80,37 @@ export async function generateMetadata({
 
 export default async function Page({ searchParams }: Props) {
   const params = await searchParams;
+
+  // クエリ正規化（不明パラメーター除去・重複排除・無効 psdl 除去）と
+  // psdl→preset 正規化を一括で行い、変化があれば1回だけリダイレクト。
+  const rawQuery = buildRawQuery(params);
+  // Skip normalization for URLs that exceed the share URL length limit — they
+  // will be handled downstream with an error message instead of a redirect.
+  if (isShareQueryLengthValid(rawQuery)) {
+    let normalizedQuery = normalizeShareQuery(rawQuery, Object.keys(PRESETS));
+    // 正規化後の psdl がプリセットと一致するなら ?preset=<key> に変換。
+    const normalizedParsed = parseShareParams(
+      normalizedQuery,
+      Object.keys(PRESETS),
+    );
+    if (normalizedParsed.kind === "psdl") {
+      const matchingKey = findPresetKeyForPacket(
+        normalizedParsed.packet,
+        PRESETS,
+      );
+      if (matchingKey) {
+        const q = new URLSearchParams({ preset: matchingKey });
+        for (const [k, v] of Object.entries(normalizedParsed.controllers)) {
+          q.set(`${CONTROLLER_PARAM_PREFIX}${k}`, String(v));
+        }
+        normalizedQuery = q.toString();
+      }
+    }
+    if (normalizedQuery !== rawQuery) {
+      redirect(normalizedQuery ? `/?${normalizedQuery}` : "/");
+    }
+  }
+
   const shareQuery = buildShareQueryFromParams(params);
   const parsed = parseShareParamsOrFallback(shareQuery);
 
@@ -98,6 +133,20 @@ export default async function Page({ searchParams }: Props) {
       />
     </div>
   );
+}
+
+function buildRawQuery(
+  params: Record<string, string | string[] | undefined>,
+): string {
+  const out = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const v of value) out.append(key, v);
+    } else if (typeof value === "string") {
+      out.append(key, value);
+    }
+  }
+  return out.toString();
 }
 
 function mergeInitialControllers(

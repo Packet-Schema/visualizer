@@ -82,6 +82,7 @@ import {
   useUndoRedoShortcuts,
 } from "./hooks";
 import { initialUiState, uiReducer } from "./ui-state-reducer";
+import { stableStringify } from "@/lib/stable-stringify";
 
 const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
@@ -520,6 +521,46 @@ export default function PacketViewer({
     [studioState.packet, packet],
   );
 
+  // When the edit screen is open, continuously check whether the studio
+  // packet matches a built-in preset exactly. If it does, switch packetKey
+  // so the URL stays canonical — but keep edit mode open.
+  useEffect(() => {
+    if (!editMode || !urlHydrated) return;
+    for (const [key, preset] of Object.entries(PRESETS)) {
+      // Canonicalization only matters when switching TO a different preset.
+      // If packetKey is already `key`, all state is already correct and we
+      // must not call setRenderedPresets/setControllers — writing new object
+      // references every render would cause an infinite re-render loop.
+      if (key === packetKey) continue;
+      if (samePsdlPacket(preset, mergedStudioPacket)) {
+        const presetRenderer = psdlToRenderer(preset);
+        const presetDefaults = initialState(presetRenderer);
+        const freeRepeatKeys = new Set(
+          (presetRenderer.freeRepeats ?? []).map((r) => r.countKey),
+        );
+        setPacketKey(key);
+        // Reset the renderer mirror for the target preset to its canonical
+        // state so diagram/detail panels don't rebind to stale TLV/chain
+        // edits from an earlier edit of the same built-in key.
+        setRenderedPresets((prev) => ({ ...prev, [key]: presetRenderer }));
+        // Preserve controller values that belong to the target preset.
+        // Keys not in the preset's renderer (e.g. fields from a different
+        // preset that the studio packet was edited from) are dropped so
+        // they don't pollute the canonical URL. freeRepeats countKeys are
+        // included because initialState() does not seed them. Start from
+        // presetDefaults so new-preset-specific keys are always seeded.
+        setControllers((prev) => {
+          const next = { ...presetDefaults } as typeof prev;
+          for (const [k, v] of Object.entries(prev)) {
+            if (k in presetDefaults || freeRepeatKeys.has(k)) next[k] = v;
+          }
+          return next;
+        });
+        break;
+      }
+    }
+  }, [editMode, mergedStudioPacket, packetKey, urlHydrated]);
+
   // Save the in-progress edit as a user-owned preset. The `custom:<name>`
   // key namespace keeps user-saved presets separate from built-ins and
   // imports so the picker can group them cleanly.
@@ -736,6 +777,16 @@ export default function PacketViewer({
       ? initialState(psdlToRenderer(builtInPsdl))
       : undefined;
 
+    // In edit mode, only force psdl once the studio packet actually differs
+    // from the base preset — opening the editor on a built-in preset with no
+    // changes should keep the clean preset URL.
+    // Use mergedStudioPacket so diagram-driven edits (TLV/chain/byteOrder on
+    // the renderer mirror) are included; studioState.packet alone only captures
+    // form edits and would leave editHasDiff=false after diagram-only changes.
+    const editHasDiff =
+      editMode &&
+      (!builtInPsdl || !samePsdlPacket(mergedStudioPacket, builtInPsdl));
+
     return buildShareUrl({
       baseUrl: window.location.href,
       packetKey,
@@ -743,7 +794,7 @@ export default function PacketViewer({
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultControllers,
-      forcePsdl: editMode || !builtInPsdl,
+      forcePsdl: editHasDiff || !builtInPsdl,
     });
   }, [
     controllers,
@@ -1256,37 +1307,6 @@ function normalizeCustomPresetName(name: string): string {
   const normalized = name.trim().replace(/\s+/g, " ");
   if (normalized.length === 0) return SHARED_CUSTOM_PRESET_FALLBACK_NAME;
   return normalized.slice(0, CUSTOM_PRESET_NAME_MAX).trimEnd();
-}
-
-/**
- * Stable JSON comparison without the `safe-stable-stringify` dep — equality
- * only needs key-order independence (the studio reducer deep-clones via
- * `structuredClone`, which preserves key insertion order, but PSDL packets
- * from disparate sources may iterate differently). `JSON.stringify`'s
- * second-arg array form sorts keys at every depth in one pass and is enough
- * for our shallow-name PsdlPacket shape.
- */
-function stableStringify(value: unknown): string {
-  const keys = new Set<string>();
-  // First pass: collect every property name reachable from the value so
-  // the replacer-array form of JSON.stringify can sort them globally.
-  // The replacer's *first* invocation is the root call with key === ""
-  // and val === value, which we skip; every subsequent empty-string key
-  // is a legitimate object property (e.g. `switch.cases[""]`, which
-  // `validateSwitch` doesn't forbid) and must enter the Set, otherwise
-  // `samePsdlPacket` would treat two packets that differ only inside an
-  // empty-keyed sub-object as identical and `persistSharedCustomPreset`
-  // would silently dedupe them away (Codex P2).
-  let seenRoot = false;
-  JSON.stringify(value, (key, val) => {
-    if (!seenRoot) {
-      seenRoot = true;
-      return val;
-    }
-    keys.add(key);
-    return val;
-  });
-  return JSON.stringify(value, Array.from(keys).sort());
 }
 
 function samePsdlPacket(a: PsdlPacket, b: PsdlPacket): boolean {
