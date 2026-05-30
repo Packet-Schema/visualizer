@@ -61,9 +61,27 @@ const createOGImageResponseOptions = () => ({
 });
 
 const FALLBACK_GRADIENT = "linear-gradient(135deg, #3B2F6F 0%, #2D1E52 100%)";
-const FALLBACK_TITLE_FONT_SIZE = 120;
 const FALLBACK_TITLE_COLOR = "#FAFAF8";
 const FALLBACK_LETTER_SPACING = "0.025em";
+const FALLBACK_LINES = ["Packet", "Schema", "Visualizer"] as const;
+const FALLBACK_LINE_GAP = 20;
+// Approximate character width ratio for LINE Seed JP Latin glyphs at weight 700
+const FALLBACK_CHAR_WIDTH_RATIO = 0.63;
+// Inner square = shorter side of OG image minus both margins
+const OG_SQUARE_INNER = Math.min(OG_WIDTH, OG_HEIGHT) - OG_MARGIN * 2;
+// Max font size constrained by height: lines × fontSize + (lines-1) × gap ≤ OG_SQUARE_INNER
+const MAX_FONT_BY_HEIGHT =
+  (OG_SQUARE_INNER - FALLBACK_LINE_GAP * (FALLBACK_LINES.length - 1)) /
+  FALLBACK_LINES.length;
+// Max font size constrained by width: longest word × charWidthRatio × fontSize ≤ OG_SQUARE_INNER
+const longestFallbackLine = FALLBACK_LINES.reduce((a, b) =>
+  a.length > b.length ? a : b,
+);
+const MAX_FONT_BY_WIDTH =
+  OG_SQUARE_INNER / (longestFallbackLine.length * FALLBACK_CHAR_WIDTH_RATIO);
+const FALLBACK_TITLE_FONT_SIZE = Math.floor(
+  Math.min(MAX_FONT_BY_HEIGHT, MAX_FONT_BY_WIDTH),
+);
 
 const MAX_CONTROLLER_VALUE = 100; // Slider max value from UI controls; protects against URL-injected oversized values
 const MAX_ROW_BITS = 256; // Safety limit to prevent memory/rendering issues with oversized packets
@@ -87,7 +105,7 @@ function renderFallbackImage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 20,
+          gap: FALLBACK_LINE_GAP,
           fontSize: FALLBACK_TITLE_FONT_SIZE,
           fontWeight: 600,
           color: FALLBACK_TITLE_COLOR,
@@ -96,9 +114,9 @@ function renderFallbackImage() {
           lineHeight: 1,
         }}
       >
-        <div>Packet</div>
-        <div>Schema</div>
-        <div>Visualizer</div>
+        {FALLBACK_LINES.map((line) => (
+          <div key={line}>{line}</div>
+        ))}
       </div>
     </div>,
     createOGImageResponseOptions(),
