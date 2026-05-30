@@ -3,7 +3,7 @@ import sharp from "sharp";
 
 test.describe("OG Image Download", () => {
   test("downloads OG image with HTTP protocol", async ({ request }) => {
-    const response = await request.get("/api/og");
+    const response = await request.get("/api/og/");
 
     expect(response.status()).toBe(200);
     expect(response.headers()["content-type"]).toBe("image/png");
@@ -19,7 +19,7 @@ test.describe("OG Image Download", () => {
   });
 
   test("downloads OG image with preset parameter", async ({ request }) => {
-    const response = await request.get("/api/og?preset=ipv4");
+    const response = await request.get("/api/og/?preset=ipv4");
 
     expect(response.status()).toBe(200);
     expect(response.headers()["content-type"]).toBe("image/png");
@@ -34,7 +34,7 @@ test.describe("OG Image Download", () => {
 
   test("downloads OG image with custom controllers", async ({ request }) => {
     const response = await request.get(
-      "/api/og?preset=ipv4&controllers.ihl=6&controllers.dscp=10",
+      "/api/og/?preset=ipv4&controllers.ihl=6&controllers.dscp=10",
     );
 
     expect(response.status()).toBe(200);
@@ -49,7 +49,7 @@ test.describe("OG Image Download", () => {
   });
 
   test("returns fallback image for invalid preset", async ({ request }) => {
-    const response = await request.get("/api/og?preset=nonexistent");
+    const response = await request.get("/api/og/?preset=nonexistent");
 
     expect(response.status()).toBe(200);
     expect(response.headers()["content-type"]).toBe("image/png");
@@ -63,7 +63,7 @@ test.describe("OG Image Download", () => {
   });
 
   test("includes proper cache headers", async ({ request }) => {
-    const response = await request.get("/api/og?preset=ipv4");
+    const response = await request.get("/api/og/?preset=ipv4");
 
     expect(response.status()).toBe(200);
     expect(response.headers()["content-type"]).toBe("image/png");
@@ -75,7 +75,7 @@ test.describe("OG Image Download", () => {
 
   test("handles multiple query parameters", async ({ request }) => {
     const response = await request.get(
-      "/api/og?preset=ipv4&controllers.ihl=5&controllers.dscp=20&controllers.ecn=3",
+      "/api/og/?preset=ipv4&controllers.ihl=5&controllers.dscp=20&controllers.ecn=3",
     );
 
     expect(response.status()).toBe(200);
@@ -90,7 +90,7 @@ test.describe("OG Image Download", () => {
   });
 
   test("verifies PNG is valid and readable by sharp", async ({ request }) => {
-    const response = await request.get("/api/og");
+    const response = await request.get("/api/og/");
     const buffer = await response.body();
 
     const image = sharp(buffer);
@@ -106,7 +106,7 @@ test.describe("OG Image Download", () => {
     const dimensions = [];
 
     for (let i = 0; i < 3; i++) {
-      const response = await request.get("/api/og?preset=ipv4");
+      const response = await request.get("/api/og/?preset=ipv4");
       const buffer = await response.body();
       const metadata = await sharp(buffer).metadata();
       dimensions.push({ width: metadata.width, height: metadata.height });
