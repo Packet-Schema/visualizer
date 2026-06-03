@@ -86,7 +86,7 @@ export default function EmbedViewer() {
       if (!env.has(ref)) env.set(ref, 0);
     }
 
-    return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
+    return resolveLayout(embedState.psdl, { env, viewMode: "semantic" });
   }, [embedState.psdl, embedState.controllers, refs]);
 
   const handleFieldClick = useCallback((field: Field) => {

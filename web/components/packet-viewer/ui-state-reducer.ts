@@ -62,7 +62,7 @@ export const initialUiState: UiState = {
   tourOpen: false,
   hexStripVisible: false,
   hexStripUserSet: false,
-  viewMode: "wire",
+  viewMode: "semantic",
   editMode: false,
   studioView: "form",
   showSaveDialog: false,

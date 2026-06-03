@@ -53,10 +53,10 @@ describe("uiReducer", () => {
   });
 
   it("toggle-view-mode flips wire <-> semantic", () => {
-    const semantic = uiReducer(seed, { type: "toggle-view-mode" });
-    expect(semantic.viewMode).toBe("semantic");
-    const wire = uiReducer(semantic, { type: "toggle-view-mode" });
+    const wire = uiReducer(seed, { type: "toggle-view-mode" });
     expect(wire.viewMode).toBe("wire");
+    const semantic = uiReducer(wire, { type: "toggle-view-mode" });
+    expect(semantic.viewMode).toBe("semantic");
   });
 
   it("open-drawer / close-drawer juggles the DrawerMode null toggle", () => {
