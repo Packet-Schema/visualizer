@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-4 OPEN Message
+rowBits: 32
+byteOrder: BE
+description: BGP-4 OPEN message (RFC 4271 §4.1 + §4.2) — the first message sent by each side after a TCP connection is established. Consists of the 19-byte BGP Common Header followed by 10 OPEN-specific bytes and a variable-length Optional Parameters section.
+body:
+  - kind: group
+    id: bgpCommonHeader
+    name: BGP Common Header
+    children:
+      - id: bgpMarker
+        name: Marker
+        type: { kind: bits, n: 128 }
+        category: identifier
+        doc: 16 octets. Historically carried an authentication value; in BGP-4 it is retained only for backward compatibility and MUST be set to all ones (0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) on transmission. Receivers use it to resynchronise after a malformed message — a 16-byte all-ones run is the unambiguous marker for the next message boundary in the TCP byte stream. [RFC 4271 §4.1]
+      - id: bgpLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: Total length of the BGP message in octets, including this 19-byte Common Header. For an OPEN message with no Optional Parameters the minimum value is 29 (19-byte header + 10-byte OPEN body). MUST not exceed 4096. [RFC 4271 §4.1]
+      - id: bgpType
+        name: Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 1
+        doc: BGP message type. 1 = OPEN (this preset), 2 = UPDATE, 3 = NOTIFICATION, 4 = KEEPALIVE. Always set to 1 for OPEN messages. [RFC 4271 §4.1]
+  - id: version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 4
+    doc: BGP version number. MUST be 4 for BGP-4. If the receiver does not support the version, it sends a NOTIFICATION with Error Code 2 (OPEN Message Error) and Error Subcode 1 (Unsupported Version Number). [RFC 4271 §4.2]
+  - id: myAS
+    name: My Autonomous System
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: The 2-octet Autonomous System number of the sender. When 4-octet AS numbers are used (RFC 6793), this field is set to AS_TRANS (23456) and the real 4-octet ASN is carried in the BGP Capabilities Optional Parameter (Capability Code 65). [RFC 4271 §4.2]
+  - id: holdTime
+    name: Hold Time
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Proposed Hold Time in seconds. After the OPEN exchange both peers use the smaller of the two proposed values. The negotiated Hold Time MUST be either 0 or at least 3 seconds. If 0, no KEEPALIVE messages are sent and the Hold Timer is never started. [RFC 4271 §4.2]
+  - id: bgpIdentifier
+    name: BGP Identifier
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: BGP Identifier of the sender — a 4-octet unsigned integer chosen at startup, typically the highest or loopback IPv4 address of the router. MUST be the same in every OPEN sent by a given BGP speaker and MUST be unique within an AS. [RFC 4271 §4.2]
+  - id: optParmLen
+    name: Optional Parameters Length
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: Total length in octets of the Optional Parameters field that follows. A value of 0 indicates that no Optional Parameters are present. Each Optional Parameter is encoded as a TLV triple (Parm-Type 1 B + Parm-Length 1 B + Parm-Value). [RFC 4271 §4.2]
+  - kind: repeat
+    id: bgpOptParms
+    element:
+      id: bgpOptParm
+      fields:
+        - id: parmType
+          name: Parm Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: Optional Parameter type code. Currently only type 2 (Capabilities Advertisement, RFC 5492) is defined. A BGP speaker that does not recognise a type code MUST close the connection with a NOTIFICATION (Error Code 2, Subcode 8 — Unsupported Optional Parameter). [RFC 4271 §4.2 / RFC 5492]
+        - id: parmLen
+          name: Parm Length
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: Length in octets of the following Parm Value field for this individual parameter. [RFC 4271 §4.2]
+        - id: parmValue
+          name: Parm Value
+          type: { kind: bytes, n: { kind: ref, field: parmLen } }
+          category: variable
+          doc: Parameter value whose interpretation depends on Parm Type. For type 2 (Capabilities), this field contains one or more Capability TLVs, each with a 1-octet Capability Code, a 1-octet Capability Length, and a variable-length Capability Value (e.g. Code 1 = Multiprotocol Extensions RFC 4760, Code 65 = 4-octet AS Number RFC 6793, Code 128 = Route Refresh RFC 2918). [RFC 5492]
+    count: { kind: ref, field: optParmLen }

@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: HIP
+rowBits: 32
+byteOrder: BE
+description: "Host Identity Protocol version 2 (HIP) base exchange packet (RFC 7401, IP protocol 139). The fixed header — Next Header, Header Length (in 8-byte units, not counting the first 8 bytes), Packet Type, Version, Reserved, Checksum, Controls, Sender HIT (128-bit), Receiver HIT (128-bit) — is always 40 bytes. It is followed by a variable-length chain of TLV Parameters. The base exchange uses four packet types: I1 (initiator hello, no parameters required), R1 (responder puzzle, carries R1_COUNTER/PUZZLE/HOST_ID/HIP_SIGNATURE_2), I2 (initiator response, carries SOLUTION/HOST_ID/ESP_INFO/HIP_SIGNATURE), and R2 (responder finalise, carries ESP_INFO/HIP_MAC_2/HIP_SIGNATURE). Each Parameter TLV carries a 16-bit Type, a 16-bit Length (value bytes, excluding padding), and a variable-length Contents padded to an 8-byte boundary."
+
+body:
+  - id: hipNextHeader
+    name: Next Header
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 59
+    doc: "IP protocol number of the payload that follows the HIP header — identical to the 'Next Header' field used in IPv6. Value 59 (No Next Header) is used when HIP is the final protocol in the packet; 17=UDP, 6=TCP if a transport payload follows. [RFC 7401 §5.1]"
+
+  - id: hipHeaderLength
+    name: Header Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 4
+    doc: "Length of the HIP header in 8-byte (64-bit) units, not counting the first 8 bytes. The minimum value for a header with no Parameters is 4 (fixed header = 8 + 4×8 = 40 bytes). A receiver uses this field to locate the start of any trailing payload or to validate total packet length. [RFC 7401 §5.1]"
+
+  - kind: group
+    id: hipPacketTypeGroup
+    name: Packet Type
+    children:
+      - id: hipPacketType
+        name: Packet Type
+        type:
+          kind: enum
+          bits: 7
+          variants:
+            1: "I1 (Initiator Hello)"
+            2: "R1 (Responder Puzzle)"
+            3: "I2 (Initiator Commit)"
+            4: "R2 (Responder Finish)"
+            16: "UPDATE"
+            17: "NOTIFY"
+            18: "CLOSE"
+            19: "CLOSE_ACK"
+        category: type
+        defaultValue: 1
+        doc: "Identifies the HIP packet type. The four base-exchange types are: 1=I1 (first message from initiator, starts the exchange), 2=R1 (responder's puzzle challenge), 3=I2 (initiator's puzzle solution and key material), 4=R2 (responder finalises and confirms the HIP association). Additional types include UPDATE (16), NOTIFY (17), CLOSE (18), and CLOSE_ACK (19) for association maintenance and teardown. [RFC 7401 §5.1 / §5.3]"
+      - id: hipReservedBit
+        name: "Reserved (0)"
+        type: { kind: int, bits: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit — MUST be set to zero by the sender and ignored by the receiver. Placed as the MSB of the byte shared with Packet Type to satisfy the 7-bit Packet Type layout. [RFC 7401 §5.1]"
+
+  - kind: group
+    id: hipVersionGroup
+    name: Version / Reserved
+    children:
+      - id: hipVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 2
+        doc: "HIP protocol version. MUST be 2 for packets compliant with RFC 7401; a receiver SHOULD ignore packets with an unknown version. Version 1 was defined by RFC 5201 (now obsoleted). [RFC 7401 §5.1]"
+      - id: hipReserved3
+        name: Reserved
+        type: { kind: int, bits: 3 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved 3-bit field. MUST be set to zero on transmission; MUST be ignored on reception. [RFC 7401 §5.1]"
+      - id: hipFixed1
+        name: "Fixed (1)"
+        type: { kind: int, bits: 1 }
+        category: type
+        defaultValue: 1
+        doc: "Fixed bit that MUST be set to 1. Together with the Reserved bits it occupies the lower half of the Version byte. A receiver MAY use this to distinguish HIP from other protocols sharing the IP protocol number 139. [RFC 7401 §5.1]"
+
+  - id: hipChecksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: "Internet checksum (RFC 1071) computed over the HIP header and Parameters, with a pseudo-header comprising the source and destination IP addresses and IP protocol number 139 (analogous to TCP/UDP checksum computation). Set to zero before computation; a receiver MUST discard a packet whose checksum fails. [RFC 7401 §5.1]"
+
+  - id: hipControls
+    name: Controls
+    type: { kind: bits, n: 16 }
+    category: flags
+    doc: "16-bit controls field carrying per-packet flags. Currently only bit 15 (the least significant bit, value 0x0001) is defined as the Anonymous flag: when set, the sender's Host Identity is anonymous and the receiver MUST NOT store it in a long-term cache. All other bits are reserved and MUST be set to zero. [RFC 7401 §5.1]"
+
+  - id: hipSenderHIT
+    name: Sender HIT
+    type: { kind: bits, n: 128 }
+    category: addressing
+    doc: "Host Identity Tag (HIT) of the packet sender — a 128-bit cryptographic identifier derived from the sender's public Host Identity key (hash algorithm and input specified by the ORCHID prefix in RFC 7343). In I1/I2 the Initiator's HIT appears here; in R1/R2 the Responder's HIT appears here. A HIT uniquely identifies a host independent of its IP locator. [RFC 7401 §5.1 / §3]"
+
+  - id: hipReceiverHIT
+    name: Receiver HIT
+    type: { kind: bits, n: 128 }
+    category: addressing
+    doc: "Host Identity Tag (HIT) of the intended packet receiver — 128-bit cryptographic identifier derived from the receiver's public Host Identity key. In I1 the Receiver HIT MAY be all-zeros if the Initiator does not yet know it. In subsequent base-exchange messages the correct peer HIT MUST be used. Hosts use this field to demultiplex incoming HIP packets to the correct HIP association. [RFC 7401 §5.1 / §3]"
+
+  - kind: repeat
+    id: hipParameters
+    name: HIP Parameters
+    category: variable
+    element:
+      id: hipParam
+      fields:
+        - id: hipParamType
+          name: Type
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "HIP Parameter Type number (big-endian). Parameters MUST appear in ascending Type order within a HIP packet. The Type also encodes two flags in its two least-significant bits: bit 0 (Critical bit) — if 1 and the receiver does not understand this Type, the packet MUST be dropped; if 0, the parameter MAY be ignored. Bit 1 is reserved. Well-known Types include: 2=R1_COUNTER (R1), 257=PUZZLE (R1), 258=SOLUTION (I2), 512=SEQ (UPDATE), 513=ACK (UPDATE), 640=DIFFIE_HELLMAN (R1/I2), 705=HIP_TRANSFORM (R1/I2), 2048=ESP_INFO (I2/R2), 3001=HOST_ID (R1/I2), 61505=HIP_SIGNATURE_2 (R1), 61633=HIP_SIGNATURE (I2/R2), 65498=HIP_MAC (UPDATE), 65500=HIP_MAC_2 (R2). [RFC 7401 §5.2]"
+        - id: hipParamLen
+          name: Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Length of the Parameter value (Contents) in bytes, NOT including the 4-byte Type+Length header and NOT including any trailing padding. The actual memory consumed by this parameter is: 4 + Length + (0..7 padding bytes) rounded up to the next 8-byte boundary. A Length of zero is permitted. [RFC 7401 §5.2]"
+        - id: hipParamContents
+          name: Contents
+          type: { kind: bytes, n: { kind: ref, field: hipParamLen } }
+          category: variable
+          doc: "Parameter value bytes. Interpretation depends on the Type field; formats are defined per-type in RFC 7401 §5.2 and related specifications. Examples: PUZZLE contains a #K difficulty byte, a Lifetime byte, an Opaque value, and a random puzzle I value; SOLUTION carries the matching J value; HOST_ID carries a DER-encoded public key and optional FQDN; HIP_SIGNATURE carries the algorithm identifier and a DER-encoded signature over the HIP packet. The Contents field is immediately followed by 0–7 zero-padding bytes to align the next parameter on an 8-byte boundary (padding bytes are not counted in Length). [RFC 7401 §5.2]"
+    count:
+      kind: ref
+      field: hipParamCount

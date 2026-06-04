@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NFSv3 READ Arguments (RFC 1813)
+rowBits: 32
+byteOrder: BE
+description: Network File System version 3 READ procedure arguments (READ3args) as defined in RFC 1813 §3.3.6. Carried over ONC RPC (RFC 5531) as procedure 6 of NFS program 100003 version 3. All fields are XDR-encoded (RFC 4506) in big-endian byte order. READ3args contains a file handle (nfs_fh3), a byte offset into the file (offset3, uint64), and the number of bytes requested (count3, uint32).
+body:
+  - id: nfsFhLen
+    name: File Handle Length
+    type:
+      kind: int
+      bits: 32
+    category: length
+    doc: Length in bytes of the opaque file handle data that follows. XDR opaque<> encoding prefix (RFC 4506 §4.10). In NFSv3 the file handle is variable-length with a maximum of 64 bytes (NFS3_FHSIZE). [RFC 1813 §2.3, RFC 4506 §4.10]
+  - id: nfsFh
+    name: File Handle
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: nfsFhLen
+    category: identifier
+    doc: Opaque file handle (nfs_fh3) identifying the file to read. Server-opaque byte string of length nfsFhLen, padded to a 4-byte XDR boundary on the wire (padding bytes are not counted in nfsFhLen). The server uses this handle to locate the file system object; clients treat it as opaque. Maximum 64 bytes. [RFC 1813 §2.3]
+  - id: offset
+    name: Offset
+    type:
+      kind: int
+      bits: 64
+    category: addressing
+    doc: Byte offset from the beginning of the file at which to start reading (offset3 = uint64). XDR unsigned hyper (RFC 4506 §4.5). Allows access to files larger than 4 GiB. The server returns data starting at this offset within the file identified by the file handle. [RFC 1813 §3.3.6]
+  - id: count
+    name: Count
+    type:
+      kind: int
+      bits: 32
+    category: length
+    doc: Number of bytes to read (count3 = uint32). The server MAY return fewer bytes than requested (a short read) even if more data exists, for example due to server implementation limits or a read beyond EOF. The actual number of bytes returned is indicated in the READ3resok reply. [RFC 1813 §3.3.6]

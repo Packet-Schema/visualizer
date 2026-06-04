@@ -1,0 +1,191 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: GTPv2-C
+rowBits: 32
+byteOrder: BE
+description: "GTP version 2 Control Plane (GTPv2-C) header (3GPP TS 29.274), used in the Evolved Packet Core (EPC) for LTE signalling between MME, S-GW, P-GW, and SGSN over UDP port 2123. The mandatory 8-byte header consists of a flags byte (Version=2, Piggyback P-flag, TEID-Present T-flag, three spare bits), an 8-bit Message Type, a 16-bit Message Length (excluding the first 4 mandatory bytes), and a 24-bit Sequence Number plus 8 spare bits. When the T-flag is set, a 32-bit TEID is inserted between the Message Length and the Sequence Number, making the header 12 bytes. Common messages include Create Session Request/Response (32/33), Modify Bearer Request/Response (34/35), Delete Session Request/Response (36/37), Create Bearer Request/Response (95/96), and Echo Request/Response (1/2). The message body consists of Information Elements (IEs) each with a 1-byte IE Type, 2-byte IE Length, 1-byte Spare+Instance nibble, and variable-length IE Value."
+
+body:
+  - kind: group
+    id: gtpv2Flags
+    name: Flags
+    children:
+      - id: gtpv2Version
+        name: Version
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 2
+        doc: "GTPv2-C version. MUST be 2 (binary 010). Receivers MUST discard messages where this field is not 2. [3GPP TS 29.274 §5.1]"
+      - id: gtpv2P
+        name: P (Piggyback)
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Piggyback flag. When set to 1, another GTPv2-C message is piggybacked immediately after the current message within the same UDP datagram. Used to carry a second signalling message (e.g. Create Bearer Request piggybacked on Create Session Response) to reduce round trips. [3GPP TS 29.274 §5.2.2]"
+      - id: gtpv2T
+        name: T (TEID Present)
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "TEID-Present flag. When set to 1, a 32-bit TEID field is included in the header between Message Length and Sequence Number, making the total header 12 bytes instead of 8. T=1 is used when a GTP-C tunnel has already been established (e.g. in Modify Bearer Request). T=0 is used for initial messages such as Create Session Request or Echo Request where no TEID is yet assigned. [3GPP TS 29.274 §5.1]"
+      - kind: group
+        id: gtpv2SpareGroup
+        name: Spare
+        children:
+          - id: gtpv2Spare0
+            name: Spare
+            type: { kind: int, bits: 3 }
+            category: reserved
+            defaultValue: 0
+            doc: "Spare bits in the flags octet. MUST be set to 0 by the sender and MUST be ignored by the receiver. [3GPP TS 29.274 §5.1]"
+
+  - id: gtpv2MessageType
+    name: Message Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Echo Request"
+        2: "Echo Response"
+        3: "Version Not Supported Indication"
+        32: "Create Session Request"
+        33: "Create Session Response"
+        34: "Modify Bearer Request"
+        35: "Modify Bearer Response"
+        36: "Delete Session Request"
+        37: "Delete Session Response"
+        38: "Change Notification Request"
+        39: "Change Notification Response"
+        64: "Modify Bearer Command"
+        65: "Modify Bearer Failure Indication"
+        66: "Delete Bearer Command"
+        67: "Delete Bearer Failure Indication"
+        68: "Bearer Resource Command"
+        69: "Bearer Resource Failure Indication"
+        70: "Downlink Data Notification Failure Indication"
+        71: "Trace Session Activation"
+        72: "Trace Session Deactivation"
+        73: "Stop Paging Indication"
+        95: "Create Bearer Request"
+        96: "Create Bearer Response"
+        97: "Update Bearer Request"
+        98: "Update Bearer Response"
+        99: "Delete Bearer Request"
+        100: "Delete Bearer Response"
+        101: "Delete PDN Connection Set Request"
+        102: "Delete PDN Connection Set Response"
+        128: "Identification Request"
+        129: "Identification Response"
+        130: "Context Request"
+        131: "Context Response"
+        132: "Context Acknowledge"
+        133: "Forward Relocation Request"
+        134: "Forward Relocation Response"
+        135: "Forward Relocation Complete Notification"
+        136: "Forward Relocation Complete Acknowledge"
+        137: "Forward Access Context Notification"
+        138: "Forward Access Context Acknowledge"
+        139: "Relocation Cancel Request"
+        140: "Relocation Cancel Response"
+        160: "Detach Notification"
+        161: "Detach Acknowledge"
+        162: "CS Paging Indication"
+        163: "RAN Information Relay"
+        164: "Alert MME Notification"
+        165: "Alert MME Acknowledge"
+        166: "UE Activity Notification"
+        167: "UE Activity Acknowledge"
+        200: "Create Forwarding Tunnel Request"
+        201: "Create Forwarding Tunnel Response"
+        202: "Suspend Notification"
+        203: "Suspend Acknowledge"
+        204: "Resume Notification"
+        205: "Resume Acknowledge"
+        211: "Create Indirect Data Forwarding Tunnel Request"
+        212: "Create Indirect Data Forwarding Tunnel Response"
+        213: "Delete Indirect Data Forwarding Tunnel Request"
+        214: "Delete Indirect Data Forwarding Tunnel Response"
+        215: "Release Access Bearers Request"
+        216: "Release Access Bearers Response"
+        231: "Downlink Data Notification"
+        232: "Downlink Data Notification Acknowledge"
+        233: "PGW Stop Paging Indication"
+        240: "Update PDN Connection Set Request"
+        241: "Update PDN Connection Set Response"
+    category: type
+    defaultValue: 1
+    doc: "Message Type octet identifying the GTPv2-C message. Defines the EPC signalling operation: Create Session Request/Response (32/33) establishes a PDN connection; Modify Bearer Request/Response (34/35) updates bearer bindings (e.g. after handover); Delete Session Request/Response (36/37) tears down a PDN connection; Create Bearer Request/Response (95/96) establishes a dedicated bearer for QoS; Echo Request/Response (1/2) verify path liveness. [3GPP TS 29.274 §6 / Table 6.1-1]"
+
+  - id: gtpv2MessageLength
+    name: Message Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 0
+    doc: "Total length in octets of the GTPv2-C message excluding the first 4 mandatory bytes (flags octet, Message Type, and this Message Length field itself). When T=1 the TEID (4 bytes), Sequence Number (3 bytes), and Spare (1 byte) are included in this length; when T=0 only the Sequence Number (3 bytes), Spare (1 byte), and IEs are counted. [3GPP TS 29.274 §5.1]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpv2T }
+    field:
+      id: gtpv2Teid
+      name: TEID
+      type: { kind: int, bits: 32 }
+      category: identifier
+      doc: "Tunnel Endpoint Identifier. A 32-bit value identifying the GTP-C tunnel at the receiving entity. Present only when the T-flag (gtpv2T) is set to 1 — i.e. when a control-plane tunnel has already been established and the receiver's TEID is known. Used on all subsequent messages after the initial Create Session Request/Response handshake. Assigned by the peer during tunnel creation. [3GPP TS 29.274 §5.1]"
+
+  - kind: group
+    id: gtpv2SeqGroup
+    name: Sequence Number + Spare
+    children:
+      - id: gtpv2SequenceNumber
+        name: Sequence Number
+        type: { kind: int, bits: 24 }
+        category: identifier
+        defaultValue: 0
+        doc: "24-bit transaction sequence number. Matched between a request and its response: the responding entity copies this value verbatim into the corresponding response message. Retransmitted requests carry the same Sequence Number; retransmitted responses are detected by caching (Sequence Number, peer address, peer port). [3GPP TS 29.274 §5.1]"
+      - id: gtpv2Spare1
+        name: Spare
+        type: { kind: int, bits: 8 }
+        category: reserved
+        defaultValue: 0
+        doc: "Spare octet following the Sequence Number. MUST be set to 0 by the sender and MUST be ignored by the receiver. [3GPP TS 29.274 §5.1]"
+
+  - kind: repeat
+    id: gtpv2Ies
+    name: Information Elements
+    category: variable
+    doc: "Sequence of GTPv2-C Information Elements (IEs) carrying all signalling parameters. Each IE begins with a 1-byte IE Type, a 2-byte IE Length (bytes of the IE Value only, not including the 4-byte IE header), and a 1-byte field whose upper 4 bits are spare (MUST be 0) and lower 4 bits are the Instance number (0..15, allowing the same IE type to appear multiple times, e.g. two Bearer Context IEs). The IE Value follows for exactly IE Length bytes. Common IE types: 1=IMSI, 2=Cause, 71=Bearer Context, 72=Bearer QoS, 73=Flow QoS, 74=RAT Type, 75=Serving Network, 76=Bearer TFT, 77=TAD, 78=ULI, 79=F-TEID, 80=TMSI, 82=PCO, 83=PDN Address Allocation, 84=Bearer Level QoS, 86=EBI, 87=IP Address, 88=MEI, 89=MSISDN, 93=APN, 110=PDN Type, 127=APN Restriction. [3GPP TS 29.274 §8]"
+    element:
+      id: ieRecord
+      fields:
+        - id: ieType
+          name: IE Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: "IE Type octet. Values 1..255 are defined in 3GPP TS 29.274 §8. Examples: 1=IMSI, 2=Cause, 71=Bearer Context (grouped), 74=RAT Type, 78=User Location Information (ULI), 79=Fully Qualified TEID (F-TEID), 83=PDN Address Allocation (PAA), 86=EPS Bearer ID (EBI), 93=Access Point Name (APN), 110=PDN Type. IE Type 0 is reserved. [3GPP TS 29.274 §8.1 / Table 8.1-1]"
+        - id: ieLength
+          name: IE Length
+          type: { kind: int, bits: 16 }
+          category: length
+          defaultValue: 0
+          doc: "Length in octets of the IE Value field only — does NOT include the 4-byte IE header (Type + Length + Spare/Instance). A value of 0 is valid for fixed-length IEs such as Cause. [3GPP TS 29.274 §8.1]"
+        - kind: group
+          id: ieSpareInstance
+          name: Spare / Instance
+          children:
+            - id: ieSpare
+              name: Spare
+              type: { kind: int, bits: 4 }
+              category: reserved
+              defaultValue: 0
+              doc: "Spare nibble in the Spare/Instance octet. MUST be set to 0 by the sender and MUST be ignored by the receiver. [3GPP TS 29.274 §8.1]"
+            - id: ieInstance
+              name: Instance
+              type: { kind: int, bits: 4 }
+              category: identifier
+              defaultValue: 0
+              doc: "Instance number (0..15). Differentiates multiple occurrences of the same IE Type within one message or grouped IE — for example, two Bearer Context IEs (one for uplink F-TEID and one for downlink F-TEID) each with a distinct Instance value. [3GPP TS 29.274 §8.1]"
+        - id: ieValue
+          name: IE Value
+          type: { kind: bytes, n: { kind: ref, field: ieLength } }
+          category: variable
+          doc: "IE Value, exactly ieLength bytes. Content is IE-type-specific: e.g. for Cause (type 2) it is 1 byte cause code + optional flags; for F-TEID (type 79) it is a flags byte, a 32-bit TEID, and a 4- or 16-byte IP address; for Bearer Context (type 71) it is a nested group of IEs; for APN (type 93) it is a DNS-encoded APN string. [3GPP TS 29.274 §8]"
+    count: { kind: ref, field: gtpv2IeCount }

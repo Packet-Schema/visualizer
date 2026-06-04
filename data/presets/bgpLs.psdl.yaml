@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-LS NLRI
+rowBits: 32
+byteOrder: BE
+description: "BGP Link-State (BGP-LS) NLRI (RFC 9552, originally RFC 7752). Distributes IGP link-state topology information — nodes, links, and prefixes — via BGP so that external consumers such as SDN controllers, Traffic Engineering (TE) path computation elements, and segment-routing orchestrators can obtain a network-wide view without running a native IGP. Carried inside a BGP UPDATE message as an MP_REACH_NLRI / MP_UNREACH_NLRI Path Attribute using AFI 16388 (BGP-LS) and SAFI 71. Each BGP-LS NLRI starts with a 2-octet NLRI Type (1=Node, 2=Link, 3=IPv4 Topology Prefix, 4=IPv6 Topology Prefix, 6=SRv6 SID per RFC 9252) and a 2-octet Total NLRI Length giving the byte count of the remaining fields. After the type/length header, every NLRI contains a 1-octet Protocol-ID identifying the originating IGP (1=IS-IS L1, 2=IS-IS L2, 3=OSPFv2, 4=Direct, 5=Static, 6=OSPFv3, 7=BGP per RFC 9552 §5.2) and a 8-octet opaque Identifier that scopes the topology instance. Descriptor TLVs follow — Node NLRI carries Local Node Descriptors; Link NLRI carries Local Node, Remote Node, and Link Descriptors; Prefix NLRI carries Node and Prefix Descriptors. Each TLV has a 2-octet Type, a 2-octet Length, and a variable-length Value. This preset models the common header portion (Type + Total NLRI Length + Protocol-ID + Identifier) and exposes the Descriptor bytes as an opaque region whose size is given by bgpLsDescBytes. [RFC 9552] [RFC 7752]"
+
+body:
+  - id: bgpLsNlriType
+    name: NLRI Type
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        1: "Node NLRI"
+        2: "Link NLRI"
+        3: "IPv4 Topology Prefix NLRI"
+        4: "IPv6 Topology Prefix NLRI"
+        6: "SRv6 SID NLRI"
+    category: type
+    doc: "2-octet NLRI Type field. 1=Node NLRI (describes a router/node in the topology), 2=Link NLRI (describes a unidirectional link between two nodes), 3=IPv4 Topology Prefix NLRI (an IPv4 prefix reachable via the node), 4=IPv6 Topology Prefix NLRI, 6=SRv6 SID NLRI (RFC 9252). The type determines which Descriptor TLV sub-TLVs are valid in the body. Unrecognised type values MUST be ignored by implementations that do not support them. [RFC 9552 §5.1] [RFC 7752 §3.2]"
+
+  - id: bgpLsTotalNlriLength
+    name: Total NLRI Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length in octets of the BGP-LS NLRI fields that follow this 2-octet length field itself — i.e. it covers Protocol-ID (1 B) + Identifier (8 B) + all Descriptor TLVs. Does not include the NLRI Type (2 B) or this Total NLRI Length field (2 B). Used by the receiver to delimit this NLRI within the MP_REACH_NLRI / MP_UNREACH_NLRI attribute value buffer when multiple NLRIs are concatenated. [RFC 9552 §5.1] [RFC 7752 §3.2]"
+
+  - id: bgpLsProtocolId
+    name: Protocol-ID
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "IS-IS Level 1"
+        2: "IS-IS Level 2"
+        3: "OSPFv2"
+        4: "Direct"
+        5: "Static Configuration"
+        6: "OSPFv3"
+        7: "BGP"
+    category: identifier
+    doc: "1-octet Protocol-ID identifying the IGP or source protocol that originated the link-state information. 1=IS-IS Level 1, 2=IS-IS Level 2, 3=OSPFv2 (RFC 2328), 4=Direct (directly connected), 5=Static Configuration, 6=OSPFv3 (RFC 5340), 7=BGP (RFC 4271) — value 7 was added by RFC 9552 to allow BGP itself to originate LS information for use in SR-Policy or Topology Discovery. The Protocol-ID disambiguates between different IGP instances sharing the same BGP-LS session. [RFC 9552 §5.2] [RFC 7752 §3.2]"
+
+  - id: bgpLsIdentifier
+    name: Identifier
+    type: { kind: bits, n: 64 }
+    category: identifier
+    doc: "8-octet opaque Identifier that together with Protocol-ID scopes the topology instance to which this NLRI belongs. For IS-IS, this is the 64-bit IS-IS area address or zero; for OSPF it carries the 32-bit OSPF Area-ID in the low-order 4 octets (high 4 octets set to zero); for OSPFv3 it additionally encodes the Instance-ID. Two BGP-LS NLRIs with the same Protocol-ID but different Identifiers belong to different topology instances and MUST NOT be merged. Value 0 is permissible and denotes the default/single instance. [RFC 9552 §5.2] [RFC 7752 §3.2]"
+
+  - id: bgpLsDescriptors
+    name: Descriptor TLVs
+    type: { kind: bytes, n: { kind: ref, field: bgpLsDescBytes } }
+    category: variable
+    doc: "Variable-length region carrying the Descriptor TLVs for this NLRI. Each TLV has a 2-octet Type, a 2-octet Length, and a Length-octet Value (Type-Length-Value). For Node NLRI (type 1) the region contains a Local Node Descriptors TLV (type 256) whose sub-TLVs identify the advertising router (e.g. sub-TLV 512=Autonomous System, 513=BGP-LS Identifier, 514=OSPF Area-ID, 515=IGP Router-ID). For Link NLRI (type 2) Local Node Descriptors (256) + Remote Node Descriptors (257) + Link Descriptors (type 258–267, e.g. 258=Link Local/Remote Identifiers, 259=IPv4 Interface Address, 261=IPv4 Neighbor Address) are present. For Prefix NLRIs (type 3/4) Node Descriptors + Prefix Descriptors (type 265, e.g. sub-TLV 265=OSPF Route Type, 1152=IP Reachability Information) are present. The byte length of this region is given by bgpLsDescBytes, which equals bgpLsTotalNlriLength minus 9 (1-octet Protocol-ID plus 8-octet Identifier). [RFC 9552 §5.3–§5.5] [RFC 7752 §3.2–§3.4]"

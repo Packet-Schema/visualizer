@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DTLS Handshake
+rowBits: 32
+byteOrder: BE
+description: "DTLS 1.2 Handshake Protocol header and body (RFC 6347 §4.2.2). Extends the TLS 1.2 Handshake header (RFC 5246 §7.4) by inserting three fields between Length and the body: a 2-byte message_seq for deduplication across retransmissions, a 3-byte fragment_offset indicating where in the reassembled message this fragment begins, and a 3-byte fragment_length indicating how many bytes this fragment carries. Together these three fields enable DTLS to fragment large handshake messages across multiple records and to retransmit lost messages without confusing the peer. The body is fragment_length bytes of the (possibly partial) handshake message payload."
+
+body:
+  - id: dtlsHsType
+    name: Handshake Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "ClientHello"
+        2: "ServerHello"
+        3: "HelloVerifyRequest"
+        11: "Certificate"
+        12: "ServerKeyExchange"
+        13: "CertificateRequest"
+        14: "ServerHelloDone"
+        15: "CertificateVerify"
+        16: "ClientKeyExchange"
+        20: "Finished"
+    category: type
+    doc: "One-byte HandshakeType identifying the specific handshake message. Values mirror TLS 1.2 (RFC 5246 §7.4) with the addition of 3=HelloVerifyRequest introduced by DTLS for the cookie exchange that prevents amplification attacks. [RFC 6347 §4.2.1]"
+
+  - id: dtlsHsLength
+    name: Length
+    type: { kind: int, bits: 24 }
+    category: length
+    doc: "24-bit big-endian total length of the complete (unfragmented) handshake message body in bytes, regardless of how many fragments carry it. Receivers use this field to allocate reassembly buffers before any fragment is processed. [RFC 6347 §4.2.2]"
+
+  - id: dtlsHsMsgSeq
+    name: Message Seq
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "16-bit message sequence number assigned to each distinct handshake message and kept constant across all retransmissions of that message. Allows the receiver to deduplicate retransmitted messages and to correlate fragments belonging to the same logical message. Starts at 0 and increments by 1 for each new handshake message. [RFC 6347 §4.2.2]"
+
+  - id: dtlsHsFragmentOffset
+    name: Fragment Offset
+    type: { kind: int, bits: 24 }
+    category: variable
+    doc: "24-bit big-endian byte offset within the complete handshake message body at which this fragment starts. Zero for the first (or only) fragment. Together with fragment_length it defines the byte range [fragment_offset, fragment_offset+fragment_length) of the reassembled body carried by this record. [RFC 6347 §4.2.2]"
+
+  - id: dtlsHsFragmentLength
+    name: Fragment Length
+    type: { kind: int, bits: 24 }
+    category: length
+    doc: "24-bit big-endian length in bytes of the fragment body carried in this record. When a message is not fragmented, fragment_offset is 0 and fragment_length equals length. When fragmented, the sum of all fragment_length values across retransmission-free fragments equals length. [RFC 6347 §4.2.2]"
+
+  - id: dtlsHsBody
+    name: Fragment Body
+    type: { kind: bytes, n: { kind: ref, field: dtlsHsFragmentLength } }
+    category: payload-marker
+    doc: "Variable-length fragment body carrying dtlsHsFragmentLength bytes of the handshake message payload starting at dtlsHsFragmentOffset. When fragment_length equals length the entire message body is present; otherwise the receiver MUST buffer this fragment and reassemble before processing. [RFC 6347 §4.2.2]"

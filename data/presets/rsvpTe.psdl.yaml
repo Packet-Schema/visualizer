@@ -1,0 +1,133 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RSVP-TE Path Message
+rowBits: 32
+byteOrder: BE
+description: "RSVP-TE Path message (RFC 3209) — an extension of RSVP (RFC 2205) for establishing Traffic-Engineered Label Switched Paths (LSPs) in MPLS networks. The packet begins with the RSVP Common Header (8 bytes): Version (4 bits), Flags (4 bits), Message Type (8 bits, value 1 for Path), Checksum (16 bits), Send TTL (8 bits), Reserved (8 bits), and RSVP Message Length (16 bits). The header is followed by a sequence of RSVP objects, each consisting of a 16-bit Object Length, an 8-bit Class-Num, an 8-bit C-Type, and variable-length object contents. Key RSVP-TE object classes include: 1=SESSION, 3=HOP (RSVP_HOP), 5=TIME_VALUES, 8=STYLE, 9=FLOWSPEC, 10=FILTER_SPEC, 11=SENDER_TEMPLATE, 12=SENDER_TSPEC, 14=ADSPEC, 16=EXPLICIT_ROUTE (ERO), 19=LABEL_REQUEST, 20=LABEL, 207=SESSION_ATTRIBUTE. RSVP-TE enables constraint-based routing, fast-reroute (RFC 4090), and GMPLS extensions (RFC 3473) for carrier MPLS-TE deployments."
+
+body:
+  - kind: group
+    id: rsvpTeCommonHeader
+    name: RSVP Common Header
+    children:
+      - id: rsvpTeVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 1
+        doc: "RSVP protocol version number. MUST be 1 for all RSVP messages defined in RFC 2205 and extended by RFC 3209. A node receiving an RSVP message with an unrecognised version MUST discard it silently. [RFC 2205 §3.1, RFC 3209 §3]"
+
+      - id: rsvpTeFlags
+        name: Flags
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "RSVP header flags (4 bits). Currently no flags are defined by RFC 2205; all bits MUST be set to zero by the sender and MUST be ignored by the receiver. Reserved for future RSVP protocol extensions. [RFC 2205 §3.1]"
+
+      - id: rsvpTeMsgType
+        name: Msg Type
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: "Path"
+            2: "Resv"
+            3: "PathErr"
+            4: "ResvErr"
+            5: "PathTear"
+            6: "ResvTear"
+            7: "ResvConf"
+            20: "Bundle"
+            25: "Hello"
+        category: type
+        defaultValue: 1
+        doc: "RSVP message type. 1=Path (sent by senders to establish or refresh an LSP along the explicit route), 2=Resv (sent by receivers upstream to reserve resources), 3=PathErr, 4=ResvErr, 5=PathTear, 6=ResvTear, 7=ResvConf, 20=Bundle (RFC 2961), 25=Hello (RFC 3209 §5.3). Path messages carry LABEL_REQUEST, ERO, and SESSION_ATTRIBUTE objects required for MPLS-TE LSP setup. [RFC 2205 §3.1, RFC 3209 §2]"
+
+      - id: rsvpTeChecksum
+        name: Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: "Standard one's-complement checksum of the entire RSVP message. Computed with the Checksum field set to zero. A value of zero in the received packet means checksum computation was skipped; receivers MUST accept such packets. Used to detect corruption of the RSVP header and object data in transit. [RFC 2205 §3.1]"
+
+      - id: rsvpTeSendTtl
+        name: Send TTL
+        type: { kind: int, bits: 8 }
+        category: variable
+        doc: "IP TTL value at which the RSVP message was sent, copied from the IP header TTL field by the originating node. Intermediate RSVP nodes compare this value with the TTL in the received IP header to detect non-RSVP hops and adjust path state accordingly. Critical for correct operation when RSVP messages traverse routers that do not process RSVP. [RFC 2205 §3.1]"
+
+      - id: rsvpTeReserved
+        name: Reserved
+        type: { kind: int, bits: 8 }
+        category: reserved
+        doc: "Reserved octet in the RSVP Common Header. MUST be set to zero by the sender and ignored by the receiver. This field was allocated for potential future use in RSVP header extensions. [RFC 2205 §3.1]"
+
+      - id: rsvpTeMsgLength
+        name: RSVP Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Total length of the RSVP message in bytes, including the 8-byte Common Header and all RSVP objects that follow. Receivers use this field, together with the IP Total Length, to locate the boundary of the RSVP message within the IP datagram. The minimum Path message length is 8 bytes (header only). [RFC 2205 §3.1]"
+
+  - id: rsvpTeObjCount
+    name: Object Count
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Number of RSVP objects that follow this field in the packet. This field is a PSDL-level framing aid; in standard RSVP the object sequence is bounded by the RSVP Length field rather than an explicit count. Each object carries ObjLength, Class-Num, C-Type, and Contents. Typical Path messages contain 6–12 objects covering SESSION, RSVP_HOP, TIME_VALUES, EXPLICIT_ROUTE (ERO), LABEL_REQUEST, SENDER_TEMPLATE, SENDER_TSPEC, and optionally SESSION_ATTRIBUTE. [RFC 2205 §3.1, RFC 3209 §4]"
+
+  - id: rsvpTeObjPad
+    name: Pad
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "16-bit alignment padding field inserted before the object array to maintain 32-bit alignment of the object repeat block when the PSDL object count field above consumes only 16 bits. MUST be set to zero. Not present in the wire format of RFC 2205; introduced as a PSDL structural artefact. [RFC 2205 §3.1]"
+
+  - kind: repeat
+    id: rsvpTeObjects
+    name: RSVP Objects
+    count: { kind: ref, field: rsvpTeObjCount }
+    element:
+      id: rsvpTeObj
+      fields:
+        - id: rsvpTeObjLength
+          name: Obj Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Total length of this RSVP object in bytes, including the 4-byte object header (ObjLength + Class-Num + C-Type) and the Contents field. MUST be a multiple of 4; if the natural object data is not 4-byte aligned, the sender pads with zeros. A receiver that receives an object whose length field is less than 4 MUST treat it as a protocol error. [RFC 2205 §3.1.4]"
+
+        - id: rsvpTeClassNum
+          name: Class-Num
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: "SESSION"
+              3: "RSVP_HOP"
+              5: "TIME_VALUES"
+              8: "STYLE"
+              9: "FLOWSPEC"
+              10: "FILTER_SPEC"
+              11: "SENDER_TEMPLATE"
+              12: "SENDER_TSPEC"
+              14: "ADSPEC"
+              16: "EXPLICIT_ROUTE"
+              19: "LABEL_REQUEST"
+              20: "LABEL"
+              21: "EXPLICIT_ROUTE_HOP"
+              204: "FAST_REROUTE"
+              207: "SESSION_ATTRIBUTE"
+          category: type
+          doc: "RSVP object class number. Identifies the semantic role of the object within the Path message. Key MPLS-TE classes: 1=SESSION (destination address + tunnel ID + LSP ID), 3=RSVP_HOP (previous-hop PHOP/NHOP address for path refresh), 5=TIME_VALUES (refresh period in ms), 9=FLOWSPEC (traffic parameters), 12=SENDER_TSPEC (token bucket spec for admission control), 16=EXPLICIT_ROUTE/ERO (strict and loose hops for constraint-based routing), 19=LABEL_REQUEST (requested label type: 0x0800=MPLS), 20=LABEL (allocated label value), 207=SESSION_ATTRIBUTE (LSP name, flags, setup/hold priority for preemption). The high two bits encode error handling: 0b00=discard silently, 0b01=discard and send PathErr, 0b10=forward unknown object, 0b11=forward and send PathErr. [RFC 2205 §3.1.4, RFC 3209 §4]"
+
+        - id: rsvpTeCType
+          name: C-Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: "C-Type (class-type) sub-identifier scoped within Class-Num. Allows multiple encodings of the same object class. Common C-Type values: SESSION Class-Num 1: C-Type 7=IPv4 LSP Session (RFC 3209 §4.6.1); RSVP_HOP Class-Num 3: C-Type 1=IPv4 (RFC 2205); EXPLICIT_ROUTE Class-Num 16: C-Type 1=Type 1 ERO (RFC 3209 §4.3); LABEL_REQUEST Class-Num 19: C-Type 1=without label range (MPLS, RFC 3209 §4.1); LABEL Class-Num 20: C-Type 1=generalized label (RFC 3473); SESSION_ATTRIBUTE Class-Num 207: C-Type 7=with resource colors / C-Type 1=without (RFC 3209 §4.7). [RFC 2205 §3.1.4, RFC 3209 §4]"
+
+        - id: rsvpTeObjContents
+          name: Contents
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: rsvpTeObjLength }
+              b: { kind: lit, value: 4 }
+          category: variable
+          doc: "Object contents payload: ObjLength minus the 4-byte object header bytes. Interpretation is determined by Class-Num and C-Type. LABEL_REQUEST (Class 19, C-Type 1): 16-bit Reserved + 16-bit L3PID (0x0800=IPv4/MPLS). EXPLICIT_ROUTE (Class 16, C-Type 1): sequence of ERO sub-objects each with Type(1B)+Length(1B)+Value encoding IPv4/IPv6 prefix or AS hops with L-bit for loose routing. SESSION_ATTRIBUTE (Class 207, C-Type 7): Setup Priority(1B)+Hold Priority(1B)+Flags(1B)+Name Length(1B)+Session Name(variable)+Resource Colors(4B). LABEL (Class 20, C-Type 1): 32-bit generalised label value (bottom-of-stack label for MPLS). SENDER_TSPEC (Class 12, C-Type 2): IntServ token bucket spec — service header + TB parameter set (peak rate, token rate, bucket depth, min policed unit, max packet size). [RFC 2205 §3.1.4, RFC 3209 §4.1–4.7, RFC 3473 §2.1]"

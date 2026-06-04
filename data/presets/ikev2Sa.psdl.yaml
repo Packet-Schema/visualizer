@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IKEv2 Security Association Payload
+rowBits: 32
+byteOrder: BE
+description: "IKEv2 Security Association (SA) payload (RFC 7296 §3.3). Carried inside an IKEv2 message to negotiate cryptographic algorithms and keying material for IKE SAs and Child SAs. The SA payload begins with a 4-byte Generic Payload Header, followed by one or more Proposal substructures. Each Proposal specifies a protocol (IKE=1, AH=2, ESP=3), an optional SPI, and a list of Transform substructures that each describe a single cryptographic algorithm (encryption, integrity, PRF, DH group). The initiator offers a set of proposals; the responder selects exactly one. Proposals and Transforms use a last/more sub-structure identifier (2=more substructs follow, 0=last) inherited from ISAKMP (RFC 2408)."
+
+body:
+  # ── Generic Payload Header (RFC 7296 §3.2) ──────────────────────────────
+  - id: saNextPayload
+    name: Next Payload
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "Payload type of the next payload in the IKEv2 payload chain, or 0 if this SA payload is the last. Values: 0=none, 33=SA, 34=KE, 35=IDi, 36=IDr, 37=CERT, 38=CERTREQ, 39=AUTH, 40=Nonce, 41=Notify, 42=Delete, 43=Vendor ID, 44=TSi, 45=TSr, 46=SK, 47=CP, 48=EAP. [RFC 7296 §3.2]"
+
+  - kind: group
+    id: saCriticalGroup
+    name: C / Reserved
+    children:
+      - id: saCritical
+        name: C
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Critical (C) flag. When set to 1, the receiver MUST reject the entire message with a NOTIFY of type UNSUPPORTED_CRITICAL_PAYLOAD if it does not understand this payload type. When 0, an unrecognised payload type MAY be silently skipped. For the well-known SA payload type (33) this flag is always 0. [RFC 7296 §3.2]"
+      - id: saReserved
+        name: Reserved
+        type: { kind: int, bits: 7 }
+        category: reserved
+        doc: "Reserved bits in the second byte of the Generic Payload Header. MUST be sent as zero and MUST be ignored on receipt. [RFC 7296 §3.2]"
+
+  - id: saPayloadLength
+    name: Payload Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length in bytes of the SA payload including the 4-byte Generic Payload Header and all Proposal substructures. The minimum value is 4 (empty SA body). Used by the receiver to advance past this payload to the next one in the chain. [RFC 7296 §3.2]"
+
+  # ── Proposal Substructures ───────────────────────────────────────────────
+  - kind: repeat
+    id: ikev2Proposals
+    name: Proposals
+    category: variable
+    element:
+      id: ikev2Proposal
+      fields:
+        - id: ikev2ProposalLast
+          name: Last Substruc
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              0: "Last Proposal"
+              2: "More Proposals"
+          category: type
+          doc: "Indicates whether additional Proposal substructures follow. 0=this is the last (or only) proposal; 2=more proposals follow. This field re-uses the ISAKMP sub-structure convention. Any value other than 0 or 2 is a protocol error. [RFC 7296 §3.3.1]"
+
+        - id: ikev2ProposalReserved
+          name: Reserved
+          type: { kind: int, bits: 8 }
+          category: reserved
+          doc: "Reserved byte immediately following the Last Substruc field within the Proposal substructure header. MUST be sent as zero and MUST be ignored on receipt. [RFC 7296 §3.3.1]"
+
+        - id: ikev2ProposalLength
+          name: Proposal Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Total length in bytes of this Proposal substructure, including the 8-byte Proposal header, the variable-length SPI field, and all Transform substructures. Used to advance the parser to the next Proposal. [RFC 7296 §3.3.1]"
+
+        - id: ikev2ProposalNum
+          name: Proposal Num
+          type: { kind: int, bits: 8 }
+          category: identifier
+          doc: "Sequential number identifying this proposal, starting at 1 for the first proposal. The responder echoes back the chosen Proposal Num in its SA payload. Proposal numbers MUST be assigned consecutively without gaps. [RFC 7296 §3.3.1]"
+
+        - id: ikev2ProtocolID
+          name: Protocol ID
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: "IKE"
+              2: "AH"
+              3: "ESP"
+          category: type
+          doc: "Security protocol being negotiated. 1=IKE SA (no SPI in the first IKE_SA_INIT exchange; SPI size is 8 in rekeying); 2=AH (IP Authentication Header, RFC 4302, SPI size 4); 3=ESP (IP Encapsulating Security Payload, RFC 4303, SPI size 4). Values 4–200 are reserved; 201–255 are private use. [RFC 7296 §3.3.1]"
+
+        - id: ikev2SpiLen
+          name: SPI Size
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Length in bytes of the SPI field that follows. For IKE proposals in the initial IKE_SA_INIT exchange this is 0 (the IKE SPI is carried in the IKE header). For IKE rekey proposals this is 8. For AH and ESP proposals this is 4. [RFC 7296 §3.3.1]"
+
+        - id: ikev2NumTransforms
+          name: Num Transforms
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Number of Transform substructures contained within this Proposal. A complete IKE proposal typically includes four transforms: Encryption (type 1), PRF (type 2), Integrity (type 3), and DH Group (type 4). An ESP proposal with combined-mode ciphers may omit the separate Integrity transform. MUST be at least 1. [RFC 7296 §3.3.1]"
+
+        - id: ikev2Spi
+          name: SPI
+          type: { kind: bytes, n: { kind: ref, field: ikev2SpiLen } }
+          category: identifier
+          doc: "Security Parameters Index value whose length is given by the SPI Size field. For IKE proposals in the initial exchange this field is absent (SPI Size=0). For AH/ESP proposals the 4-byte SPI is set to zero in the first Child SA negotiation (IKE_AUTH) and carries a meaningful value during rekey CREATE_CHILD_SA exchanges. [RFC 7296 §3.3.1]"
+
+        - id: ikev2TransformBytes
+          name: Transforms
+          type: { kind: bytes, n: { kind: ref, field: ikev2TransformBytesLen } }
+          category: variable
+          doc: "Concatenated Transform substructures for this Proposal. Each Transform substructure contains: Last Substruc (0=last, 3=more, 1 byte), Reserved (1 byte), Transform Length (2 bytes), Transform Type (1 byte: 1=Encr, 2=PRF, 3=Integ, 4=DH, 5=ESN), Reserved2 (1 byte), Transform ID (2 bytes), and optional Transform Attributes (variable, e.g. key length for AES). The total byte count is implicitly (Proposal Length - 8 - SPI Size). [RFC 7296 §3.3.2]"
+
+    count: { kind: ref, field: ikev2ProposalCount }

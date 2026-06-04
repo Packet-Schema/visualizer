@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LLDP Frame
+rowBits: 32
+byteOrder: BE
+description: >-
+  Link Layer Discovery Protocol frame body (IEEE 802.1AB-2016). Carried directly in an Ethernet frame with EtherType 0x88CC. The payload is a sequence of Type-Length-Value (TLV) records. Three mandatory TLVs must appear in order — Chassis ID (type 1), Port ID (type 2), Time To Live (type 3) — followed by any number of optional TLVs, and terminated by the mandatory End of LLDPDU TLV (type 0, length 0). Each TLV header is a 16-bit word: the upper 7 bits are the TLV Type and the lower 9 bits are the TLV Length in bytes. Well-known optional TLV types: 4=Port Description, 5=System Name, 6=System Description, 7=System Capabilities, 8=Management Address, 127=Organizationally Specific (OUI + subtype in the first 4 bytes of Value). [IEEE 802.1AB-2016]
+
+body:
+  - kind: repeat
+    id: lldpTlvs
+    name: LLDP TLVs
+    category: variable
+    element:
+      id: tlvRecord
+      fields:
+        - kind: group
+          id: tlvHeader
+          name: TLV Header
+          children:
+            - id: lldpTlvType
+              name: TLV Type
+              type:
+                kind: enum
+                bits: 7
+                variants:
+                  0: End of LLDPDU
+                  1: Chassis ID
+                  2: Port ID
+                  3: Time To Live
+                  4: Port Description
+                  5: System Name
+                  6: System Description
+                  7: System Capabilities
+                  8: Management Address
+                  127: Organizationally Specific
+              category: type
+              doc: "7-bit TLV type field. Mandatory sequence: 1=Chassis ID, 2=Port ID, 3=Time To Live; terminated by 0=End of LLDPDU (length=0). Optional types: 4=Port Description (UTF-8), 5=System Name (FQDN), 6=System Description (sysDescr), 7=System Capabilities (bitmap + enabled), 8=Management Address (addr family + addr + ifnum + OID), 127=Organizationally Specific (OUI + subtype + info). Types 9..126 and 128..255 are reserved. [IEEE 802.1AB-2016 §8.5]"
+            - id: lldpTlvLen
+              name: TLV Length
+              type:
+                kind: int
+                bits: 9
+              category: length
+              doc: "9-bit unsigned length of the TLV Value field in bytes (0..511). For End of LLDPDU this MUST be 0. For Chassis ID and Port ID the minimum is 2 (1-byte subtype + at least 1 byte of ID). For TTL the value is always exactly 2. [IEEE 802.1AB-2016 §9.2]"
+        - id: lldpTlvValue
+          name: TLV Value
+          type:
+            kind: bytes
+            n: { kind: ref, field: lldpTlvLen }
+          category: variable
+          doc: "TLV Value, lldpTlvLen bytes long. Interpretation is type-specific. Chassis ID (type 1): 1-byte subtype (1=chassisComponent, 4=macAddress, 5=networkAddress, 7=local) + subtype-encoded ID. Port ID (type 2): 1-byte subtype (1=interfaceAlias, 3=macAddress, 5=networkAddress, 7=local) + subtype-encoded ID. TTL (type 3): 2-byte big-endian seconds (0=LLDPDU should be deleted). Port Description (type 4): UTF-8 string. System Name (type 5): UTF-8 FQDN. System Description (type 6): UTF-8 sysDescr. System Capabilities (type 7): 2-byte capability bitmap + 2-byte enabled bitmap (bits: 0=Other, 1=Repeater, 2=Bridge, 3=WLAN, 4=Router, 5=Phone, 6=DOCSIS, 7=StationOnly). Management Address (type 8): 1-byte addr-string-len, 1-byte IANA AFN, addr bytes, 1-byte ifNumbering-subtype, 4-byte ifNumber, 1-byte OID len, OID bytes. Org Specific (type 127): 3-byte OUI + 1-byte subtype + org-defined info. [IEEE 802.1AB-2016 §8.5]"
+    count: { kind: ref, field: lldpTlvCount }

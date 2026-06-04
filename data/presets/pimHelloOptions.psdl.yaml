@@ -1,0 +1,208 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PIM Hello (Options Detail)
+rowBits: 32
+byteOrder: BE
+description: >-
+  PIM Hello message with expanded option decoding (RFC 7761, message type 0).
+  Sent periodically by PIM routers to discover neighbours and negotiate
+  parameters.  The fixed 32-bit header (Version=2, Type=0, Reserved, Checksum)
+  is followed by a count of TLV options and a sequence of those options.  Each
+  option carries a 16-bit Type, a 16-bit Length and a variable-length Value.
+  Well-known types are decoded individually via a Switch: 1=Holdtime (16-bit
+  seconds), 2=LAN Prune Delay (T-bit + Propagation Delay + Override Interval),
+  19=DR Priority (32-bit), 20=Generation ID (32-bit), 24=Address List
+  (Encoded-Unicast addresses).  Unknown types fall through to a raw byte
+  payload.  Transmitted over IP protocol 103 to 224.0.0.13 (ALL-PIM-ROUTERS).
+body:
+  - id: pimVersion
+    name: Version
+    type: { kind: int, bits: 4 }
+    category: type
+    defaultValue: 2
+    doc: >-
+      PIM protocol version number; MUST be 2 for PIM-SM.  A router receiving
+      any other value MUST silently discard the message. [RFC 7761 §4.9]
+  - id: pimType
+    name: Type
+    type: { kind: int, bits: 4 }
+    category: type
+    defaultValue: 0
+    doc: >-
+      PIM message type.  0 = Hello (this preset).  Other values: 1=Register,
+      2=Register-Stop, 3=Join/Prune, 4=Bootstrap, 5=Assert,
+      8=Candidate-RP-Advertisement. [RFC 7761 §4.9]
+  - id: pimReserved
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: >-
+      Reserved bits; MUST be set to zero on transmission and ignored on
+      receipt. [RFC 7761 §4.9]
+  - id: pimChecksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: >-
+      One's-complement checksum computed over the entire PIM Hello message
+      with this field set to zero.  A receiver MUST verify the checksum and
+      silently discard the message on failure. [RFC 7761 §4.9]
+  - id: pimHelloOptCount
+    name: Option Count
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: >-
+      Number of TLV Hello Options that follow in this message.  Not present in
+      the wire format defined by RFC 7761 (which uses end-of-datagram
+      termination); this field is a visualiser-level count added to drive the
+      fixed-count repeat below.  Set to the actual number of options when
+      constructing a packet for display. [RFC 7761 §4.9.2]
+  - id: pimHelloOptPad
+    name: Reserved
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: >-
+      Padding to maintain 32-bit row alignment after the Option Count field;
+      MUST be set to zero on transmission and ignored on receipt. [RFC 7761 §4.9]
+  - kind: repeat
+    id: pimHelloOptions
+    name: Hello Options
+    category: variable
+    count: { kind: ref, field: pimHelloOptCount }
+    element:
+      id: pimHelloOption
+      fields:
+        - id: pimHelloOptType
+          name: Option Type
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              1: Holdtime
+              2: LAN Prune Delay
+              19: DR Priority
+              20: Generation ID
+              24: Address List
+          category: type
+          doc: >-
+            16-bit TLV type code identifying the Hello Option.  Defined
+            values: 1=Holdtime, 2=LAN Prune Delay, 19=DR Priority,
+            20=Generation ID, 24=Address List.  Unrecognised types MUST be
+            silently ignored. [RFC 7761 §4.9.2]
+        - id: pimHelloOptLen
+          name: Option Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: >-
+            Length in bytes of the Option Value field that immediately follows.
+            A receiver MUST skip (pimHelloOptLen) bytes when the Option Type is
+            unrecognised.  The length of each well-known option is fixed by the
+            specification. [RFC 7761 §4.9.2]
+        - kind: switch
+          id: pimHelloOptValue
+          on: { kind: ref, field: pimHelloOptType }
+          cases:
+            "1":
+              id: optHoldtime
+              name: Holdtime Option Value
+              fields:
+                - id: htHoldtime
+                  name: Holdtime
+                  type: { kind: int, bits: 16 }
+                  category: identifier
+                  defaultValue: 105
+                  doc: >-
+                    Time in seconds that neighbours MUST keep this router in
+                    the neighbour table after the last Hello is received.
+                    0 = neighbour should be immediately timed out; 0xFFFF =
+                    neighbour never times out (infinity).  Default is 3.5 ×
+                    Hello_Period (105 s for a 30 s Hello_Period). [RFC 7761 §4.11]
+            "2":
+              id: optLanPruneDelay
+              name: LAN Prune Delay Option Value
+              fields:
+                - id: lpdT
+                  name: T
+                  type: { kind: bits, n: 1 }
+                  category: flags
+                  doc: >-
+                    Tracking bit.  When set, the originating router is able to
+                    track individual downstream PIM neighbours; this enables
+                    upstream routers to suppress Prune overrides when only one
+                    downstream router is present. [RFC 7761 §4.11]
+                - id: lpdPropagationDelay
+                  name: Propagation Delay
+                  type: { kind: int, bits: 15 }
+                  category: identifier
+                  defaultValue: 500
+                  doc: >-
+                    Expected propagation delay in milliseconds for a Prune
+                    message to reach all other PIM routers on the LAN segment.
+                    Used to compute the Prune-Pending timer.  Typical default
+                    is 500 ms. [RFC 7761 §4.11]
+                - id: lpdOverrideInterval
+                  name: Override Interval
+                  type: { kind: int, bits: 16 }
+                  category: identifier
+                  defaultValue: 2500
+                  doc: >-
+                    Randomisation interval in milliseconds within which a
+                    downstream router must send a Join override to suppress a
+                    Prune sent by another downstream router.  Typical default
+                    is 2500 ms.  Together with Propagation Delay, it determines
+                    the Join/Prune Override Interval. [RFC 7761 §4.11]
+            "19":
+              id: optDrPriority
+              name: DR Priority Option Value
+              fields:
+                - id: drPriority
+                  name: DR Priority
+                  type: { kind: int, bits: 32 }
+                  category: identifier
+                  defaultValue: 1
+                  doc: >-
+                    Designated Router election priority for this interface.
+                    The router with the highest DR Priority value on the LAN
+                    becomes the Designated Router; ties are broken by the
+                    numerically largest IP address.  Default is 1. [RFC 7761 §4.11]
+            "20":
+              id: optGenerationId
+              name: Generation ID Option Value
+              fields:
+                - id: genId
+                  name: Generation ID
+                  type: { kind: int, bits: 32 }
+                  category: identifier
+                  doc: >-
+                    Random 32-bit value re-generated each time PIM forwarding
+                    is started or restarted on the interface.  Neighbours use
+                    changes in the Generation ID to detect that the originating
+                    router has restarted and to reset neighbour state
+                    accordingly. [RFC 7761 §4.11]
+            "24":
+              id: optAddressList
+              name: Address List Option Value
+              fields:
+                - id: addrListData
+                  name: Secondary Addresses
+                  type: { kind: bytes, n: { kind: ref, field: pimHelloOptLen } }
+                  category: variable
+                  doc: >-
+                    Variable-length list of Encoded-Unicast addresses carrying
+                    the secondary IP addresses of the originating interface.
+                    Each entry is an Address Family (8 bits), Encoding Type
+                    (8 bits), and a native unicast address (32 bits for IPv4).
+                    The number of entries is pimHelloOptLen divided by the
+                    per-entry size. [RFC 7761 §4.11]
+          default:
+            id: optUnknown
+            name: Unknown Option Value
+            fields:
+              - id: unknownOptData
+                name: Option Data
+                type: { kind: bytes, n: { kind: ref, field: pimHelloOptLen } }
+                category: payload-marker
+                doc: >-
+                  Raw bytes of an unrecognised Hello Option Value.  Length is
+                  given by the preceding Option Length field.  MUST be silently
+                  ignored by receivers that do not understand the Option Type.
+                  [RFC 7761 §4.9.2]

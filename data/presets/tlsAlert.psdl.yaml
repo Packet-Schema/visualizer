@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TLS Alert
+rowBits: 32
+byteOrder: BE
+description: "TLS Alert Protocol message (RFC 8446 §6). A fixed 2-byte payload carried inside a TLSCiphertext record with ContentType=21. The first byte encodes the AlertLevel (1=warning, 2=fatal) and the second byte encodes the AlertDescription. Sending an alert with level fatal immediately terminates the TLS connection; both peers MUST discard any pending writes and close the connection. A close_notify alert (level warning or fatal) gracefully closes the write side of the connection. In TLS 1.3 all error alerts MUST be sent with level fatal and the AlertLevel field is ignored by receivers — it is retained only for backwards compatibility with TLS 1.2."
+
+body:
+  - id: alertLevel
+    name: Alert Level
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "warning"
+        2: "fatal"
+    category: type
+    doc: "Severity of the alert. 1=warning, 2=fatal. In TLS 1.3 all error alerts MUST be sent as fatal; implementations MUST send close_notify or user_canceled with any level and treat an unknown level as fatal. Receiving a fatal alert immediately terminates the connection. [RFC 8446 §6]"
+
+  - id: alertDescription
+    name: Alert Description
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "close_notify"
+        10: "unexpected_message"
+        20: "bad_record_mac"
+        40: "handshake_failure"
+        42: "bad_certificate"
+        47: "illegal_parameter"
+        48: "unknown_ca"
+        50: "decode_error"
+        70: "protocol_version"
+        80: "internal_error"
+        112: "unrecognized_name"
+    category: type
+    doc: "Identifies the specific alert condition. close_notify(0): orderly shutdown; the sender will not send any more messages on this connection. unexpected_message(10): inappropriate message received; always fatal. bad_record_mac(20): record failed integrity check (decryption or MAC failure); always fatal. handshake_failure(40): unable to negotiate an acceptable set of security parameters; always fatal. bad_certificate(42): certificate was corrupt, contained signatures that did not verify correctly, or was otherwise malformed. illegal_parameter(47): a field in a handshake message was out of range or inconsistent; always fatal. unknown_ca(48): certificate chain could not be validated because the CA certificate could not be found; always fatal. decode_error(50): a message could not be decoded; always fatal. protocol_version(70): the protocol version the client attempted to negotiate is not supported; always fatal. internal_error(80): an internal error unrelated to the peer or the protocol made it impossible to continue; always fatal. unrecognized_name(112): TLS SNI extension — the server does not serve a virtual host matching the supplied name; may be a warning or fatal. Sending any alert terminates the connection after the alert is delivered. [RFC 8446 §6 / §6.2]"

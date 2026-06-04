@@ -1,0 +1,243 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DNSSEC Resource Records
+rowBits: 32
+byteOrder: BE
+description: "DNS Security Extensions Resource Records (RFC 4034). A single DNS RR beginning with a 2-byte compression-pointer NAME (0xC0xx, per RFC 1035 §4.1.4), followed by the standard RR header fields TYPE (16-bit), CLASS (16-bit), TTL (32-bit) and RDLENGTH (16-bit), then RDATA decoded per TYPE via a Switch: 48=DNSKEY (public key used to verify DNSSEC signatures), 46=RRSIG (cryptographic signature over an RRset), 43=DS (Delegation Signer, links parent to child zone key), 47=NSEC (authenticated denial of existence for a name). Provides origin authentication of DNS data and authenticated denial of existence. [RFC 4034, RFC 4035]"
+
+body:
+  # ---- RR Header (RFC 1035 §4.1.3 / RFC 4034 §6) --------------------------------
+  - id: rrName
+    name: NAME (compression pointer)
+    type: { kind: bits, n: 16 }
+    category: addressing
+    doc: "Owner name of this resource record encoded as a 2-byte DNS compression pointer (high bits = 11, i.e. 0xC0xx) referencing the QNAME in the question section. The two high bits (11) signal a pointer; the remaining 14 bits are the byte offset into the DNS message where the actual name begins. Uncompressed label chains are not modeled by this preset. [RFC 1035 §4.1.4, RFC 4034 §6]"
+
+  - id: rrType
+    name: TYPE
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        43: "DS (Delegation Signer)"
+        46: "RRSIG (Resource Record Signature)"
+        47: "NSEC (Next Secure)"
+        48: "DNSKEY (DNS Public Key)"
+    category: type
+    doc: "Resource record type — selects how RDATA is interpreted. 43=DS (RFC 4034 §5), 46=RRSIG (RFC 4034 §3), 47=NSEC (RFC 4034 §4), 48=DNSKEY (RFC 4034 §2). Drives the RDATA Switch below. [RFC 4034 §2–5]"
+
+  - id: rrClass
+    name: CLASS
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        1: "IN (Internet)"
+        3: "CH (Chaos)"
+        4: "HS (Hesiod)"
+        255: "ANY"
+    category: type
+    doc: "Resource record class. DNSSEC records are almost exclusively class IN (1, Internet). The ANY pseudo-class (255) may appear in queries but not in authoritative responses. [RFC 1035 §3.2.4, RFC 4034 §6]"
+
+  - id: rrTtl
+    name: TTL
+    type: { kind: bits, n: 32 }
+    category: variable
+    doc: "Time To Live in seconds — how long a caching resolver may retain this record before re-querying. For RRSIG records the TTL MUST be set to the minimum of the RRset TTL and the RRSIG Original TTL field, so the cached signature expires no later than the signed data. [RFC 1035 §3.2.1, RFC 4034 §3.1.5]"
+
+  - id: rrRdLength
+    name: RDLENGTH
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Length in octets of the RDATA field that immediately follows. Enables parsers to skip records of unknown TYPE. Each DNSSEC RDATA case below uses this value (or a derived expression) to bound the variable-length fields. [RFC 1035 §3.2.1, RFC 4034 §6]"
+
+  # ---- RDATA Switch (RFC 4034 §2–5) ---------------------------------------------
+  - kind: switch
+    id: rrRdata
+    name: RDATA
+    on: { kind: ref, field: rrType }
+    doc: "RDATA decoded per record TYPE. 48=DNSKEY, 46=RRSIG, 43=DS, 47=NSEC. The default case carries RDATA as RDLENGTH opaque octets for any type not enumerated above. [RFC 4034 §2–5]"
+    cases:
+      # ---- DNSKEY (TYPE 48, RFC 4034 §2) ----------------------------------------
+      "48":
+        id: rdataDnskey
+        name: DNSKEY RDATA
+        fields:
+          - id: dnskeyFlags
+            name: Flags
+            type: { kind: bits, n: 16 }
+            category: flags
+            doc: "16-bit flags bitmap. Bit 7 (Zone Key flag, value 0x0100) MUST be set for a key that is used to sign zone data; keys without this bit MUST NOT be used to verify RRSIGs. Bit 15 (SEP flag, value 0x0001) indicates a Secure Entry Point / Key Signing Key (KSK). All other bits are reserved and MUST be zero. [RFC 4034 §2.1.1]"
+          - id: dnskeyProtocol
+            name: Protocol
+            type: { kind: bits, n: 8 }
+            category: type
+            doc: "Protocol field. MUST be 3 (DNSSEC); a DNSKEY RR with any other Protocol value MUST be treated as invalid. Originally defined for future protocol multiplexing, but only value 3 is currently assigned. [RFC 4034 §2.1.2]"
+          - id: dnskeyAlgorithm
+            name: Algorithm
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                5: "RSASHA1 (RFC 4034)"
+                7: "RSASHA1-NSEC3-SHA1 (RFC 5155)"
+                8: "RSASHA256 (RFC 5702)"
+                10: "RSASHA512 (RFC 5702)"
+                13: "ECDSAP256SHA256 (RFC 6605)"
+                14: "ECDSAP384SHA384 (RFC 6605)"
+                15: "ED25519 (RFC 8080)"
+                16: "ED448 (RFC 8080)"
+            category: type
+            doc: "Public key cryptographic algorithm. Identifies the algorithm used for both the public key in this record and the signatures it verifies. Values are assigned by IANA; current recommendations prefer 13 (ECDSAP256SHA256) or 15 (ED25519). [RFC 4034 §2.1.3, RFC 8624]"
+          - id: dnskeyPublicKey
+            name: Public Key
+            type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: rrRdLength }, b: { kind: lit, value: 4 } } }
+            category: variable
+            doc: "The public key material — RDLENGTH minus 4 bytes (Flags 2 + Protocol 1 + Algorithm 1). The wire format is algorithm-specific: RSA keys are a big-endian exponent length + exponent + modulus; ECDSA keys are an uncompressed curve point (Q); Ed25519/Ed448 keys are the raw compressed point. [RFC 4034 §2.1.4, RFC 6605 §4, RFC 8080 §3]"
+
+      # ---- RRSIG (TYPE 46, RFC 4034 §3) -----------------------------------------
+      "46":
+        id: rdataRrsig
+        name: RRSIG RDATA
+        fields:
+          - id: rrsigTypeCovered
+            name: Type Covered
+            type:
+              kind: enum
+              bits: 16
+              variants:
+                1: "A"
+                2: "NS"
+                5: "CNAME"
+                6: "SOA"
+                12: "PTR"
+                15: "MX"
+                16: "TXT"
+                28: "AAAA"
+                33: "SRV"
+                43: "DS"
+                47: "NSEC"
+                48: "DNSKEY"
+            category: type
+            doc: "The RR TYPE of the RRset that this RRSIG covers. For example, a signature over the zone's DNSKEY RRset has Type Covered = 48. Validators look up the matching DNSKEY using the Signer's Name and Key Tag fields. [RFC 4034 §3.1.1]"
+          - id: rrsigAlgorithm
+            name: Algorithm
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                5: "RSASHA1 (RFC 4034)"
+                7: "RSASHA1-NSEC3-SHA1 (RFC 5155)"
+                8: "RSASHA256 (RFC 5702)"
+                10: "RSASHA512 (RFC 5702)"
+                13: "ECDSAP256SHA256 (RFC 6605)"
+                14: "ECDSAP384SHA384 (RFC 6605)"
+                15: "ED25519 (RFC 8080)"
+                16: "ED448 (RFC 8080)"
+            category: type
+            doc: "Algorithm used to create the signature. MUST match the Algorithm field of the DNSKEY RR that can be used to verify this signature. [RFC 4034 §3.1.2]"
+          - id: rrsigLabels
+            name: Labels
+            type: { kind: bits, n: 8 }
+            category: variable
+            doc: "Number of labels in the original RRSIG RR owner name, excluding the null (root) label and any initial wildcard label. Used by validators to detect if the RRSIG was synthesized from a wildcard expansion — if the label count of the validated name exceeds this field, a wildcard was used. [RFC 4034 §3.1.3]"
+          - id: rrsigOriginalTtl
+            name: Original TTL
+            type: { kind: bits, n: 32 }
+            category: variable
+            doc: "The TTL of the covered RRset at the time the RRSIG was created. Validators use this (not the RR TTL) to reconstruct the canonical signed data, because the TTL may have been decremented during caching. The RR TTL MUST be set to the minimum of this value and the RRset TTL. [RFC 4034 §3.1.4, §3.1.5]"
+          - id: rrsigSigExpiration
+            name: Signature Expiration
+            type: { kind: bits, n: 32 }
+            category: variable
+            doc: "Expiration date/time of this signature as a 32-bit unsigned seconds-since-epoch (UTC). A validator MUST NOT use this signature after this time. Expressed as yyyymmddHHMMSS in presentation format. [RFC 4034 §3.1.5]"
+          - id: rrsigSigInception
+            name: Signature Inception
+            type: { kind: bits, n: 32 }
+            category: variable
+            doc: "Inception date/time of this signature as a 32-bit unsigned seconds-since-epoch (UTC). A validator MUST NOT use this signature before this time. Together with Signature Expiration it defines the validity window. [RFC 4034 §3.1.5]"
+          - id: rrsigKeyTag
+            name: Key Tag
+            type: { kind: bits, n: 16 }
+            category: identifier
+            doc: "A 16-bit value computed from the DNSKEY RR that can be used to verify this signature. Used as a hint to select the correct DNSKEY when multiple keys are present; if the tag matches but verification fails, other keys with the same tag MUST be tried. Computed per the algorithm in RFC 4034 Appendix B. [RFC 4034 §3.1.6, Appendix B]"
+          - id: rrsigSignerName
+            name: Signer's Name
+            type: { kind: bytes, n: { kind: ref, field: rrsigSignerNameLen } }
+            category: addressing
+            doc: "The fully-qualified owner name of the DNSKEY RR that contains the public key used to verify this signature, encoded as uncompressed DNS wire-format labels. The zone apex name for a zone signing key. Byte length given by the auxiliary counter rrsigSignerNameLen; defaults to 0 bytes (empty) when the field is not yet set. [RFC 4034 §3.1.7]"
+          - id: rrsigSignature
+            name: Signature
+            type: { kind: bytes, n: { kind: ref, field: rrsigSigLen } }
+            category: variable
+            doc: "The cryptographic signature over the covered RRset, encoded in the algorithm-specific wire format. For RSA, this is the big-endian signature integer. For ECDSA/EdDSA, this is the concatenated (r, s) integers or the raw signature bytes per the relevant RFC. Byte length given by the auxiliary counter rrsigSigLen; defaults to 0 bytes when not yet set. [RFC 4034 §3.1.8, RFC 6605 §5, RFC 8080 §4]"
+
+      # ---- DS (TYPE 43, RFC 4034 §5) ---------------------------------------------
+      "43":
+        id: rdataDs
+        name: DS RDATA
+        fields:
+          - id: dsKeyTag
+            name: Key Tag
+            type: { kind: bits, n: 16 }
+            category: identifier
+            doc: "Key Tag of the DNSKEY RR that this DS record refers to. Computed using the algorithm in RFC 4034 Appendix B. When multiple DS records are present in a delegation, Key Tag helps resolvers quickly identify which DNSKEY to fetch and hash. [RFC 4034 §5.1.1, Appendix B]"
+          - id: dsAlgorithm
+            name: Algorithm
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                5: "RSASHA1 (RFC 4034)"
+                7: "RSASHA1-NSEC3-SHA1 (RFC 5155)"
+                8: "RSASHA256 (RFC 5702)"
+                10: "RSASHA512 (RFC 5702)"
+                13: "ECDSAP256SHA256 (RFC 6605)"
+                14: "ECDSAP384SHA384 (RFC 6605)"
+                15: "ED25519 (RFC 8080)"
+                16: "ED448 (RFC 8080)"
+            category: type
+            doc: "Algorithm of the DNSKEY RR referenced by this DS record. Must match the Algorithm field in the corresponding DNSKEY. Used together with Key Tag to identify the signing key in the child zone. [RFC 4034 §5.1.2]"
+          - id: dsDigestType
+            name: Digest Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                1: "SHA-1 (RFC 4034)"
+                2: "SHA-256 (RFC 4509)"
+                3: "GOST R 34.11-94 (RFC 5933)"
+                4: "SHA-384 (RFC 6605)"
+            category: type
+            doc: "Identifies the cryptographic hash algorithm used to construct the Digest field. 1=SHA-1 (deprecated, 20-byte output), 2=SHA-256 (recommended, 32-byte output), 4=SHA-384 (48-byte output). Validators compute hash(canonical-owner-name | DNSKEY-RDATA) and compare. [RFC 4034 §5.1.3, RFC 4509, RFC 6605]"
+          - id: dsDigest
+            name: Digest
+            type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: rrRdLength }, b: { kind: lit, value: 4 } } }
+            category: variable
+            doc: "Digest of the DNSKEY RR being referenced — computed as hash(owner-name-in-wire-format | DNSKEY-flags | DNSKEY-protocol | DNSKEY-algorithm | DNSKEY-public-key). Length is RDLENGTH minus 4 (Key Tag 2 + Algorithm 1 + Digest Type 1): 20 bytes for SHA-1, 32 bytes for SHA-256, 48 bytes for SHA-384. [RFC 4034 §5.1.4, RFC 4509 §2]"
+
+      # ---- NSEC (TYPE 47, RFC 4034 §4) -------------------------------------------
+      "47":
+        id: rdataNsec
+        name: NSEC RDATA
+        fields:
+          - id: nsecNextDomainName
+            name: Next Domain Name
+            type: { kind: bytes, n: { kind: ref, field: nsecNextDomainNameLen } }
+            category: addressing
+            doc: "The owner name of the next authoritative node in the canonical DNS name ordering for this zone, encoded as uncompressed DNS wire-format labels. Together with the NSEC owner name it defines a range; any queried name within that range provably does not exist. The last NSEC in a zone wraps back to the zone apex. Byte length given by the auxiliary counter nsecNextDomainNameLen; defaults to 0 bytes when not yet set. [RFC 4034 §4.1.1]"
+          - id: nsecTypeBitMaps
+            name: Type Bit Maps
+            type: { kind: bytes, n: { kind: ref, field: nsecTypeBitMapsLen } }
+            category: variable
+            doc: "Encodes the set of RR types present at the NSEC owner name as a sequence of Window Blocks. Each window block starts with a 1-byte window number (bits 8..15 of the type value), a 1-byte bitmap length (1..32), and then that many bytes of bitmask where bit N is set if type (window*256 + N) exists. Validators use this to prove that a queried type does not exist at a name that does exist. Byte length given by nsecTypeBitMapsLen; defaults to 0 bytes when not yet set. [RFC 4034 §4.1.2]"
+
+    # ---- Default: opaque RDATA ---------------------------------------------------
+    default:
+      id: rdataRaw
+      name: RDATA (opaque)
+      fields:
+        - id: rdataRawBytes
+          name: RDATA
+          type: { kind: bytes, n: { kind: ref, field: rrRdLength } }
+          category: payload-marker
+          doc: "RDATA for a DNSSEC-related record type not individually decoded by this preset (e.g. NSEC3=50, NSEC3PARAM=51, CDNSKEY=60, CDS=59, TLSA=52), carried as RDLENGTH opaque octets. A DNS parser MUST be able to handle unknown types by using RDLENGTH to skip over RDATA. [RFC 4034 §6, RFC 5155 §3]"

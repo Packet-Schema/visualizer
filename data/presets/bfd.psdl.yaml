@@ -1,0 +1,169 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BFD Control
+rowBits: 32
+byteOrder: BE
+description: "Bidirectional Forwarding Detection (BFD) Control packet (RFC 5880). A fixed 24-byte mandatory section — Version/Diagnostic, State/Flags, Detect Multiplier, Length, My Discriminator, Your Discriminator, Desired Min TX Interval, Required Min RX Interval, Required Min Echo RX Interval — followed by an optional Authentication Section present only when the Auth Present (A) flag is set. BFD operates over UDP port 3784 (single-hop, RFC 5881) or 4784 (multi-hop, RFC 5883) and provides sub-second liveness detection for any forwarding path."
+
+body:
+  - kind: group
+    id: bfdVerDiag
+    name: Ver / Diag
+    children:
+      - id: bfdVersion
+        name: Version
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 1
+        doc: "BFD protocol version. MUST be 1; a packet with any other version MUST be discarded silently. [RFC 5880 §4.1]"
+      - id: bfdDiag
+        name: Diag
+        type:
+          kind: enum
+          bits: 5
+          variants:
+            0: "No Diagnostic"
+            1: "Control Detection Time Expired"
+            2: "Echo Function Failed"
+            3: "Neighbor Signaled Session Down"
+            4: "Forwarding Plane Reset"
+            5: "Path Down"
+            6: "Concatenated Path Down"
+            7: "Administratively Down"
+            8: "Reverse Concatenated Path Down"
+        category: type
+        defaultValue: 0
+        doc: "Diagnostic code indicating the local system's reason for the last session state change. Carried in all packets so the remote system can report why BFD went down. Values 9–31 are reserved. [RFC 5880 §4.1]"
+
+  - kind: group
+    id: bfdStateFlags
+    name: Sta / Flags
+    children:
+      - id: bfdSta
+        name: Sta
+        type:
+          kind: enum
+          bits: 2
+          variants:
+            0: "AdminDown"
+            1: "Down"
+            2: "Init"
+            3: "Up"
+        category: flags
+        defaultValue: 1
+        doc: "Current BFD session state as seen by the transmitting system. 0=AdminDown, 1=Down, 2=Init, 3=Up. The three-way handshake (Down→Init→Up) uses these values to synchronise session establishment. [RFC 5880 §4.1]"
+      - id: bfdPoll
+        name: P
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Poll (P) flag. Set to 1 to solicit a response packet with the Final (F) bit set; used to verify connectivity and to confirm parameter changes. A system MUST NOT set both P and F in the same packet. [RFC 5880 §4.1]"
+      - id: bfdFinal
+        name: F
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Final (F) flag. Set to 1 in a packet sent in response to a packet with the Poll (P) bit set, using the same sequence of discriminator values. [RFC 5880 §4.1]"
+      - id: bfdCpi
+        name: C
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Control Plane Independent (C) flag. Set to 1 when the BFD implementation is implemented in the forwarding plane and is independent of the control plane. When 0, the control plane is involved. [RFC 5880 §4.1]"
+      - id: bfdAuthPresent
+        name: A
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Auth Present (A) flag. Set to 1 when an Authentication Section is present at the end of the BFD Control packet. When 0, no authentication data follows. [RFC 5880 §4.1]"
+      - id: bfdDemand
+        name: D
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Demand (D) flag. Set to 1 when the transmitting system wishes to operate in Demand mode, which suppresses periodic BFD Control packets as long as the path is verified by some other mechanism. [RFC 5880 §4.1]"
+      - id: bfdMultipoint
+        name: M
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Multipoint (M) flag. Set to 1 in packets sent over a point-to-multipoint path; MUST be zero in all current implementations. Reserved for future point-to-multipoint extensions. [RFC 5880 §4.1]"
+
+  - id: bfdDetectMult
+    name: Detect Mult
+    type: { kind: int, bits: 8 }
+    category: variable
+    defaultValue: 3
+    doc: "Detection Time Multiplier. The negotiated transmit interval (Desired Min TX Interval) multiplied by this value gives the Detection Time — the period after which a session is declared down if no BFD Control packets have been received. MUST NOT be zero. [RFC 5880 §4.1]"
+
+  - id: bfdLength
+    name: Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 24
+    doc: "Length of the BFD Control packet in bytes, including the optional Authentication Section. The mandatory section is always 24 bytes; when authentication is present the total grows by 2 + Auth Data length. [RFC 5880 §4.1]"
+
+  - id: bfdMyDiscriminator
+    name: My Discriminator
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "A unique, nonzero discriminator value generated by the transmitting system. Used to demultiplex multiple BFD sessions between the same pair of systems. The remote system returns this value as Your Discriminator in its reply packets. MUST NOT be zero. [RFC 5880 §4.1]"
+
+  - id: bfdYourDiscriminator
+    name: Your Discriminator
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "The discriminator received from the remote BFD system — i.e. the remote system's My Discriminator. Set to zero until a valid BFD packet has been received from the remote system. Used to demultiplex sessions at the receiver. [RFC 5880 §4.1]"
+
+  - id: bfdDesiredMinTxInterval
+    name: Desired Min TX Interval
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: "The minimum interval, in microseconds, that the local system would like to use when transmitting BFD Control packets, less any jitter applied. The actual transmit interval is the larger of this value and the remote system's Required Min RX Interval. MUST NOT be zero. [RFC 5880 §4.1]"
+
+  - id: bfdRequiredMinRxInterval
+    name: Required Min RX Interval
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: "The minimum interval, in microseconds, between received BFD Control packets that this system is capable of supporting. The actual receive interval is the larger of this value and the remote system's Desired Min TX Interval. A value of zero means the system does not want to receive BFD Control packets. [RFC 5880 §4.1]"
+
+  - id: bfdRequiredMinEchoRxInterval
+    name: Required Min Echo RX Interval
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: "The minimum interval, in microseconds, between received BFD Echo packets that this system is capable of supporting. Set to zero if the system does not support the Echo function or does not wish to receive Echo packets. [RFC 5880 §4.1]"
+
+  - kind: optional
+    when: { kind: ref, field: bfdAuthPresent }
+    field:
+      id: bfdAuthType
+      name: Auth Type
+      type:
+        kind: enum
+        bits: 8
+        variants:
+          0: "Reserved"
+          1: "Simple Password"
+          2: "Keyed MD5"
+          3: "Meticulous Keyed MD5"
+          4: "Keyed SHA1"
+          5: "Meticulous Keyed SHA1"
+      category: type
+      doc: "Authentication type. Present only when the Auth Present (A) flag is set. 1=Simple Password (RFC 5880 §4.2), 2=Keyed MD5 (§4.3), 3=Meticulous Keyed MD5 (§4.4), 4=Keyed SHA1 (§4.5), 5=Meticulous Keyed SHA1 (§4.6). [RFC 5880 §4.1]"
+
+  - kind: optional
+    when: { kind: ref, field: bfdAuthPresent }
+    field:
+      id: bfdAuthLen
+      name: Auth Len
+      type: { kind: int, bits: 8 }
+      category: length
+      doc: "Length in bytes of the Authentication Section, including the Auth Type and Auth Len fields themselves. For Simple Password: 3 + password length (max 25 bytes); for Keyed MD5: 24; for Keyed SHA1: 28. [RFC 5880 §4.1]"
+
+  - kind: optional
+    when: { kind: ref, field: bfdAuthPresent }
+    field:
+      id: bfdAuthData
+      name: Auth Data
+      type: { kind: bytes, n: { kind: ref, field: bfdAuthDataLen } }
+      category: variable
+      doc: "Authentication data whose format depends on Auth Type. Simple Password: 1-byte Key ID + password (1–16 bytes); Keyed MD5/SHA1: 1-byte Key ID + 3-byte reserved + 4-byte sequence number + 16-byte (MD5) or 20-byte (SHA1) digest. bfdAuthDataLen is an external reference supplying the byte count. [RFC 5880 §4.2–4.6]"

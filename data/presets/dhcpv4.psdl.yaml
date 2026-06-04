@@ -103,6 +103,148 @@ _dhcpv4_option_variants: &dhcpv4_option_variants
         type: { kind: bytes, n: { kind: ref, field: optionLength } }
         category: type
         doc: Ordered list of option codes the client wants the server to include in its reply (e.g. 1 = Subnet Mask, 3 = Router, 6 = DNS, 15 = Domain Name, 51 = Lease Time). The server SHOULD return the requested options in the order specified. [RFC 2132 §9.8]
+  "15":
+    id: domainNameOption
+    name: Domain Name (Code=15)
+    fields:
+      - { id: optionCode, name: "Code=15", type: { kind: int, bits: 8 }, category: type, defaultValue: 15 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Length of the domain-name string in octets; MUST be ≥ 1. [RFC 2132 §3.17]" }
+      - id: domainNameValue
+        name: Domain Name
+        type: { kind: bytes, n: { kind: ref, field: optionLength } }
+        category: identifier
+        doc: Default domain name (NVT-ASCII) the client SHOULD use when resolving hostnames via DNS. [RFC 2132 §3.17]
+  "28":
+    id: broadcastAddressOption
+    name: Broadcast Address (Code=28)
+    fields:
+      - { id: optionCode, name: "Code=28", type: { kind: int, bits: 8 }, category: type, defaultValue: 28 }
+      - { id: optionLength, name: "Len=4", type: { kind: int, bits: 8 }, category: length, defaultValue: 4, doc: "Length is always 4 — a single IPv4 address. [RFC 2132 §3.16]" }
+      - { id: broadcastAddressValue, name: Broadcast Address, type: { kind: int, bits: 32 }, category: addressing, doc: "Broadcast address in use on the client's subnet, computed per RFC 1122 §3.3.6. [RFC 2132 §3.16]" }
+  "42":
+    id: ntpServersOption
+    name: NTP Servers (Code=42)
+    fields:
+      - { id: optionCode, name: "Code=42", type: { kind: int, bits: 8 }, category: type, defaultValue: 42 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Length in octets — MUST be a multiple of 4 and ≥ 4 (one IPv4 address per NTP server). [RFC 2132 §3.21]" }
+      - id: ntpServerAddresses
+        name: NTP Server Addresses
+        type: { kind: bytes, n: { kind: ref, field: optionLength } }
+        category: addressing
+        doc: List of IPv4 addresses of NTP (RFC 1305) servers available to the client, in order of preference. [RFC 2132 §3.21]
+  "50":
+    id: requestedIpAddressOption
+    name: Requested IP Address (Code=50)
+    fields:
+      - { id: optionCode, name: "Code=50", type: { kind: int, bits: 8 }, category: type, defaultValue: 50 }
+      - { id: optionLength, name: "Len=4", type: { kind: int, bits: 8 }, category: length, defaultValue: 4, doc: "Length is always 4 — a single IPv4 address. [RFC 2132 §9.1]" }
+      - { id: requestedIpAddressValue, name: Requested IP, type: { kind: int, bits: 32 }, category: addressing, doc: "Used in a client DHCPREQUEST (or DHCPDISCOVER) to ask for a specific IPv4 address (e.g. a previously assigned lease). [RFC 2132 §9.1 / RFC 2131 §4.3.1]" }
+  "52":
+    id: optionOverloadOption
+    name: Option Overload (Code=52)
+    fields:
+      - { id: optionCode, name: "Code=52", type: { kind: int, bits: 8 }, category: type, defaultValue: 52 }
+      - { id: optionLength, name: "Len=1", type: { kind: int, bits: 8 }, category: length, defaultValue: 1, doc: "Length is always 1 — a single overload-value octet. [RFC 2132 §9.3]" }
+      - id: optionOverloadValue
+        name: Overload
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: file
+            2: sname
+            3: both
+        category: type
+        defaultValue: 1
+        doc: Indicates that the BOOTP file and/or sname fields are overloaded to carry additional DHCP options — 1 = file, 2 = sname, 3 = both. [RFC 2132 §9.3]
+  "57":
+    id: maxDhcpMessageSizeOption
+    name: Maximum DHCP Message Size (Code=57)
+    fields:
+      - { id: optionCode, name: "Code=57", type: { kind: int, bits: 8 }, category: type, defaultValue: 57 }
+      - { id: optionLength, name: "Len=2", type: { kind: int, bits: 8 }, category: length, defaultValue: 2, doc: "Length is always 2 — a single 16-bit size. [RFC 2132 §9.10]" }
+      - { id: maxDhcpMessageSizeValue, name: Max Message Size, type: { kind: int, bits: 16 }, category: length, doc: "Maximum length of a DHCP message (including IP and UDP headers) the client is willing to accept, in octets; MUST be ≥ 576. [RFC 2132 §9.10]" }
+  "58":
+    id: renewalTimeOption
+    name: Renewal Time T1 (Code=58)
+    fields:
+      - { id: optionCode, name: "Code=58", type: { kind: int, bits: 8 }, category: type, defaultValue: 58 }
+      - { id: optionLength, name: "Len=4", type: { kind: int, bits: 8 }, category: length, defaultValue: 4, doc: "Length is always 4 — a single 32-bit interval. [RFC 2132 §9.11]" }
+      - { id: renewalTimeValue, name: T1 (s), type: { kind: int, bits: 32 }, category: identifier, doc: "Interval (seconds, unsigned 32-bit) from address assignment until the client transitions to the RENEWING state. Defaults to 0.5 × lease time. [RFC 2132 §9.11 / RFC 2131 §4.4.5]" }
+  "59":
+    id: rebindingTimeOption
+    name: Rebinding Time T2 (Code=59)
+    fields:
+      - { id: optionCode, name: "Code=59", type: { kind: int, bits: 8 }, category: type, defaultValue: 59 }
+      - { id: optionLength, name: "Len=4", type: { kind: int, bits: 8 }, category: length, defaultValue: 4, doc: "Length is always 4 — a single 32-bit interval. [RFC 2132 §9.12]" }
+      - { id: rebindingTimeValue, name: T2 (s), type: { kind: int, bits: 32 }, category: identifier, doc: "Interval (seconds, unsigned 32-bit) from address assignment until the client transitions to the REBINDING state. Defaults to 0.875 × lease time. [RFC 2132 §9.12 / RFC 2131 §4.4.5]" }
+  "60":
+    id: vendorClassIdentifierOption
+    name: Vendor Class Identifier (Code=60)
+    fields:
+      - { id: optionCode, name: "Code=60", type: { kind: int, bits: 8 }, category: type, defaultValue: 60 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Length of the vendor-class string in octets; MUST be ≥ 1. [RFC 2132 §9.13]" }
+      - id: vendorClassIdentifierValue
+        name: Vendor Class
+        type: { kind: bytes, n: { kind: ref, field: optionLength } }
+        category: identifier
+        doc: Opaque vendor-class identifier the client uses to convey its hardware/software type so the server can return vendor-specific information (option 43). [RFC 2132 §9.13]
+  "61":
+    id: clientIdentifierOption
+    name: Client Identifier (Code=61)
+    fields:
+      - { id: optionCode, name: "Code=61", type: { kind: int, bits: 8 }, category: type, defaultValue: 61 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Total length of the Type + Client-ID value in octets; MUST be ≥ 2. [RFC 2132 §9.14]" }
+      - { id: clientIdType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Type of the client identifier — when 0x01 the Client-ID is an Ethernet hardware address (htype 1); other values follow the ARP hardware-type registry, and 0xFF indicates an RFC 4361 DUID+IAID. [RFC 2132 §9.14 / RFC 4361]" }
+      - id: clientIdValue
+        name: Client ID
+        type: { kind: bytes, n: { kind: ref, field: clientIdLen } }
+        category: identifier
+        doc: Unique client identifier used by the server to index its lease database in preference to (htype, chaddr). For type 0x01 this is the client's link-layer address. [RFC 2132 §9.14]
+  "82":
+    id: relayAgentInfoOption
+    name: Relay Agent Information (Code=82)
+    fields:
+      - { id: optionCode, name: "Code=82", type: { kind: int, bits: 8 }, category: type, defaultValue: 82 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Total length in octets of the contained sub-option chain. [RFC 3046 §2.0]" }
+      - kind: repeat
+        id: relayAgentSubOptions
+        name: Sub-options
+        category: variable
+        doc: Chain of agent sub-options (sub-option Code/Length/Value triples) appended by a DHCP relay agent — e.g. 1 = Agent Circuit ID, 2 = Agent Remote ID. [RFC 3046 §2.0]
+        element:
+          id: relayAgentSubOption
+          fields:
+            - { id: subOptCode, name: Sub-Code, type: { kind: int, bits: 8 }, category: type, doc: "Agent sub-option code — 1 = Agent Circuit ID, 2 = Agent Remote ID (others per IANA). [RFC 3046 §2.0]" }
+            - { id: subOptLen, name: Sub-Len, type: { kind: int, bits: 8 }, category: length, doc: "Length of this sub-option's value field in octets. [RFC 3046 §2.0]" }
+            - id: subOptValue
+              name: Sub-Value
+              type: { kind: bytes, n: { kind: ref, field: dhcpRaiSubLen } }
+              category: variable
+              doc: Opaque sub-option value placed by the relay agent (e.g. a circuit or remote identifier). [RFC 3046 §2.0]
+        count: { kind: ref, field: dhcpRaiSubCount }
+  "119":
+    id: domainSearchOption
+    name: Domain Search (Code=119)
+    fields:
+      - { id: optionCode, name: "Code=119", type: { kind: int, bits: 8 }, category: type, defaultValue: 119 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Length in octets of the encoded domain-search list. [RFC 3397 §2]" }
+      - id: domainSearchValue
+        name: Domain Search List
+        type: { kind: bytes, n: { kind: ref, field: optionLength } }
+        category: identifier
+        doc: DNS domain search list, encoded using the RFC 1035 §4.1.4 message-compression scheme (sequence of length-prefixed labels with optional pointers). [RFC 3397 §2]
+  "121":
+    id: classlessStaticRouteOption
+    name: Classless Static Route (Code=121)
+    fields:
+      - { id: optionCode, name: "Code=121", type: { kind: int, bits: 8 }, category: type, defaultValue: 121 }
+      - { id: optionLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Length in octets of the encoded route list. [RFC 3442]" }
+      - id: classlessStaticRouteValue
+        name: Static Routes
+        type: { kind: bytes, n: { kind: ref, field: optionLength } }
+        category: addressing
+        doc: One or more classless static routes, each encoded as a width-prefixed destination descriptor (subnet width + significant network octets) followed by a 4-octet router IPv4 address. [RFC 3442]
 
 body:
   - id: op

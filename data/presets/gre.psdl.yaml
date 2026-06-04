@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: GRE Header
+rowBits: 32
+byteOrder: BE
+description: Generic Routing Encapsulation header (RFC 2784). GRE encapsulates arbitrary network-layer packets inside an IPv4 or IPv6 tunnel (IP Protocol 47). The minimal 4-byte header contains a Checksum Present bit, a 12-bit Reserved field (MUST be 0), a 3-bit Version (MUST be 0), and a 16-bit EtherType-style Protocol Type identifying the encapsulated payload (e.g. 0x0800 IPv4, 0x86DD IPv6, 0x0806 ARP). When C=1 a 4-byte extension carrying an optional checksum and a reserved word follows. RFC 2784 deliberately removed the Key and Sequence Number fields of the original RFC 1701 — those are now carried by the GRE Key extension (RFC 2890) using a separate bit field.
+body:
+  - kind: group
+    id: flagsAndVer
+    name: Flags & Version
+    children:
+      - id: checksumPresent
+        name: C
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Checksum Present. 1 = the optional Checksum and Reserved1 fields are present in the 4 bytes following the Protocol Type. 0 = those fields are absent (minimum 4-byte header). [RFC 2784 §2.1]
+      - id: reserved0
+        name: Reserved0
+        type: { kind: bits, n: 12 }
+        category: reserved
+        doc: Reserved. MUST be set to zero on transmission and MUST be ignored on receipt. RFC 2784 repurposed most bits that RFC 1701 used for Key/Sequence/Routing Present flags. [RFC 2784 §2.1]
+      - id: version
+        name: Ver
+        type: { kind: bits, n: 3 }
+        category: type
+        defaultValue: 0
+        doc: Version Number. MUST be 0 for RFC 2784 GRE. If non-zero the receiver SHOULD discard the packet. [RFC 2784 §2.1]
+  - id: protocolType
+    name: Protocol Type
+    type: { kind: int, bits: 16 }
+    category: type
+    doc: EtherType of the encapsulated payload protocol. Common values — 0x0800 IPv4, 0x86DD IPv6, 0x0806 ARP, 0x8100 VLAN-tagged, 0x8847 MPLS unicast, 0x8848 MPLS multicast. The same IANA registry used for Ethernet frames governs these codes. [RFC 2784 §2.1 / RFC 7042]
+  - kind: optional
+    when: { kind: ref, field: checksumPresent }
+    field:
+      id: checksum
+      name: Checksum
+      type: { kind: int, bits: 16 }
+      category: checksum
+      doc: One's-complement checksum over the entire GRE header and payload (including the encapsulated packet). Present only when C=1. Computed with the Checksum field zeroed; a receiver SHOULD verify it and MAY silently discard packets with a bad checksum. [RFC 2784 §2.2]
+  - kind: optional
+    when: { kind: ref, field: checksumPresent }
+    field:
+      id: reserved1
+      name: Reserved1
+      type: { kind: bits, n: 16 }
+      category: reserved
+      doc: Reserved. Present only when C=1 (paired with the Checksum field to maintain 32-bit alignment). MUST be set to zero on transmission and MUST be ignored on receipt. [RFC 2784 §2.2]

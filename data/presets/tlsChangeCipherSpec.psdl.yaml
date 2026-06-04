@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TLS ChangeCipherSpec
+rowBits: 32
+byteOrder: BE
+description: TLS ChangeCipherSpec Protocol message (RFC 5246 §7.1). A single-byte message sent by either endpoint to notify the peer that subsequent records will be protected under the just-negotiated cipher suite and keys. In TLS 1.3 (RFC 8446 §D.4) this message is retained solely for middlebox compatibility and carries no cryptographic meaning.
+body:
+  - id: ccsType
+    name: CCS Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "change_cipher_spec"
+    category: type
+    doc: Identifies the ChangeCipherSpec message; the only valid value is 1 (change_cipher_spec). In TLS 1.2 and earlier this signals the receiver to copy the pending cipher state into the active state. In TLS 1.3 the field is sent for compatibility with middleboxes but is ignored by the record-layer state machine. [RFC 5246 §7.1, RFC 8446 §D.4]

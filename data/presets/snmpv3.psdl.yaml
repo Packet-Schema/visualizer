@@ -1,0 +1,275 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SNMPv3 Message
+rowBits: 32
+byteOrder: BE
+description: "SNMPv3 message (RFC 3412 / RFC 3411) — ASN.1 BER/DER encoded over UDP (port 161/162) or TCP. Introduces a three-part security architecture: the User-based Security Model (USM, RFC 3414) for authentication (HMAC-MD5/SHA) and privacy (DES/AES), and the View-based Access Control Model (VACM, RFC 3415) for fine-grained OID access control. The outer wrapper is a SEQUENCE TLV containing: msgVersion INTEGER (=3), msgGlobalData HeaderData SEQUENCE (msgID, msgMaxSize, msgFlags, msgSecurityModel=3 for USM), msgSecurityParameters OCTET STRING (USM security parameters BER-encoded: authEngineID, authEngineBoots, authEngineTime, userName, authParameters, privParameters), and msgData which is either a plaintext ScopedPDU SEQUENCE or an encrypted ScopedPDU OCTET STRING when privacy is enabled. All lengths use BER short/long form (kind: berLength). [RFC 3412 §6 / RFC 3414 §2 / RFC 3415 §3]"
+
+body:
+  - kind: group
+    id: snmpv3SequenceWrapper
+    name: SNMPv3 SEQUENCE Wrapper
+    children:
+      - id: outerTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag, always 0x30 (decimal 48). Signals that the remainder of the datagram is a BER-encoded SEQUENCE containing the SNMPv3 message fields. [RFC 3412 §6 / ITU-T X.690 §8.9]"
+      - id: outerLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the SEQUENCE contents (msgVersion + msgGlobalData + msgSecurityParameters + msgData). Short form (0x00–0x7F) encodes the count directly; long form uses 0x80|n followed by n big-endian length octets. Typical SNMPv3 messages fit in one or two length octets. [RFC 3412 §6 / ITU-T X.690 §8.1.3]"
+
+  - kind: group
+    id: snmpv3Version
+    name: msgVersion INTEGER
+    children:
+      - id: versionTag
+        name: INTEGER Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: "ASN.1 universal INTEGER tag, always 0x02. Precedes the BER-length and value bytes of the msgVersion field. [RFC 3412 §6 / ITU-T X.690 §8.3]"
+      - id: versionLength
+        name: INTEGER Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the msgVersion integer value bytes; typically 0x01 (one byte) since the SNMPv3 version value is 3, which fits in a single octet. [RFC 3412 §6 / ITU-T X.690 §8.1.3]"
+      - id: versionValue
+        name: msgVersion Value
+        type: { kind: bytes, n: { kind: ref, field: versionLength } }
+        category: identifier
+        doc: "SNMPv3 version number encoded as a BER INTEGER value. The integer value is 3 (0x03) for SNMPv3 per RFC 3412. SNMPv1 uses 0, SNMPv2c uses 1, SNMPv3 uses 3. [RFC 3412 §6]"
+
+  - kind: group
+    id: msgGlobalData
+    name: msgGlobalData HeaderData SEQUENCE
+    children:
+      - id: headerTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag 0x30 wrapping the HeaderData fields: msgID, msgMaxSize, msgFlags, and msgSecurityModel. This SEQUENCE is defined as HeaderData in RFC 3412 §6.4. [RFC 3412 §6.4 / ITU-T X.690 §8.9]"
+      - id: headerLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the HeaderData SEQUENCE contents. Typically 10–14 octets for standard USM messages. [RFC 3412 §6.4 / ITU-T X.690 §8.1.3]"
+      - kind: group
+        id: msgIdGroup
+        name: msgID INTEGER
+        children:
+          - id: msgIdTag
+            name: INTEGER Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 preceding the BER-length and value of msgID. [RFC 3412 §6.4 / ITU-T X.690 §8.3]"
+          - id: msgIdLength
+            name: INTEGER Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the msgID integer value bytes; typically 4 octets for a full 32-bit message identifier. [RFC 3412 §6.4]"
+          - id: msgIdValue
+            name: msgID Value
+            type: { kind: bytes, n: { kind: ref, field: msgIdLength } }
+            category: identifier
+            doc: "Message identifier used to coordinate request/response pairs and to detect duplicate messages. Generated randomly and unique for each outstanding request. Integer range 0..2147483647. [RFC 3412 §6.4]"
+      - kind: group
+        id: msgMaxSizeGroup
+        name: msgMaxSize INTEGER
+        children:
+          - id: msgMaxSizeTag
+            name: INTEGER Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 preceding the BER-length and value of msgMaxSize. [RFC 3412 §6.4 / ITU-T X.690 §8.3]"
+          - id: msgMaxSizeLength
+            name: INTEGER Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the msgMaxSize integer value bytes; typically 3 octets for values up to 0xFFFFFF. [RFC 3412 §6.4]"
+          - id: msgMaxSizeValue
+            name: msgMaxSize Value
+            type: { kind: bytes, n: { kind: ref, field: msgMaxSizeLength } }
+            category: length
+            doc: "Maximum message size (in octets) the sender can receive, including all headers. MUST be at least 484 octets. Allows the receiver to avoid generating responses larger than the sender can accept. [RFC 3412 §6.4]"
+      - kind: group
+        id: msgFlagsGroup
+        name: msgFlags OCTET STRING
+        children:
+          - id: msgFlagsTag
+            name: OCTET STRING Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 4
+            doc: "ASN.1 universal OCTET STRING tag 0x04 for the msgFlags field, which carries a single-byte security flags bitmask. [RFC 3412 §6.4 / ITU-T X.690 §8.7]"
+          - id: msgFlagsLength
+            name: OCTET STRING Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the msgFlags value; always 0x01 (one octet) for the current SNMPv3 flags byte. [RFC 3412 §6.4 / ITU-T X.690 §8.1.3]"
+          - kind: group
+            id: msgFlagsByte
+            name: msgFlags Byte
+            children:
+              - id: msgFlagsReserved
+                name: Reserved
+                type: { kind: int, bits: 5 }
+                category: reserved
+                doc: "Reserved bits (bits 7–3 of the flags octet). MUST be zero on transmission and MUST be ignored on receipt. [RFC 3412 §6.4]"
+              - id: msgFlagsReportable
+                name: reportableFlag
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Reportable flag (bit 2). When set to 1, the sender requests that a Report-PDU be sent back if an error occurs that is not associated with a specific request. MUST be set for all Unconfirmed PDU types; SHOULD be set for all other message types. [RFC 3412 §6.4]"
+              - id: msgFlagsPriv
+                name: privFlag
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Privacy flag (bit 1). When set to 1, the msgData field contains an encrypted ScopedPDU (OCTET STRING). When 0, msgData contains a plaintext ScopedPDU (SEQUENCE). authFlag MUST also be 1 if privFlag is 1; combination 0b10 is prohibited. [RFC 3412 §6.4 / RFC 3414 §3.1]"
+              - id: msgFlagsAuth
+                name: authFlag
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Authentication flag (bit 0). When set to 1, the USM authentication procedure was applied to this message using HMAC-MD5-96 or HMAC-SHA-96. When 0, the message is unauthenticated (noAuthNoPriv security level). [RFC 3412 §6.4 / RFC 3414 §6.3]"
+      - kind: group
+        id: msgSecurityModelGroup
+        name: msgSecurityModel INTEGER
+        children:
+          - id: msgSecModelTag
+            name: INTEGER Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 preceding the BER-length and value of msgSecurityModel. [RFC 3412 §6.4 / ITU-T X.690 §8.3]"
+          - id: msgSecModelLength
+            name: INTEGER Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the msgSecurityModel integer value bytes; typically 1 octet for the value 3 (USM). [RFC 3412 §6.4]"
+          - id: msgSecModelValue
+            name: msgSecurityModel Value
+            type: { kind: bytes, n: { kind: ref, field: msgSecModelLength } }
+            category: identifier
+            doc: "Identifies the security model used for this message. Value 3 denotes the User-based Security Model (USM, RFC 3414), which is the standard SNMPv3 security model providing authentication and privacy. Values 1=SNMPv1, 2=SNMPv2c are reserved for compatibility. Range 1..2147483647 is IANA-assigned. [RFC 3412 §6.4 / RFC 3414 §2.1]"
+
+  - kind: group
+    id: msgSecurityParametersGroup
+    name: msgSecurityParameters OCTET STRING
+    children:
+      - id: secParamsTag
+        name: OCTET STRING Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 4
+        doc: "ASN.1 universal OCTET STRING tag 0x04 for the msgSecurityParameters field, which carries the BER-encoded USM security parameters as an opaque octet string. [RFC 3412 §6.5 / RFC 3414 §2.4]"
+      - id: secParamsLength
+        name: OCTET STRING Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the msgSecurityParameters value in octets. For USM with authentication, this is typically 52–70 octets depending on the engine ID length. Empty (0x00) is valid for noAuthNoPriv discovery messages. [RFC 3412 §6.5 / RFC 3414 §2.4]"
+      - id: secParamsValue
+        name: USM Security Parameters
+        type: { kind: bytes, n: { kind: ref, field: secParamsLength } }
+        category: variable
+        doc: "BER-encoded UsmSecurityParameters SEQUENCE (RFC 3414 §2.4): msgAuthoritativeEngineID OCTET STRING (identifies the authoritative SNMP engine), msgAuthoritativeEngineBoots INTEGER (boot count to prevent replay), msgAuthoritativeEngineTime INTEGER (current time in seconds, anti-replay window), msgUserName OCTET STRING (USM principal name), msgAuthenticationParameters OCTET STRING (12-byte HMAC-MD5/SHA digest or zero-filled placeholder), msgPrivacyParameters OCTET STRING (8-byte DES IV or AES salt). These parameters implement the Time Window anti-replay mechanism: |engineTime - local_time| MUST be <= 150 seconds (RFC 3414 §3.2). [RFC 3414 §2.4 / §3.2 / §8]"
+
+  - kind: switch
+    id: msgData
+    on: { kind: peek, bits: 8, offset: { kind: lit, value: 0 } }
+    cases:
+      "48":
+        id: msgDataPlaintext
+        name: msgData ScopedPDU (plaintext)
+        fields:
+          - id: scopedPduTag
+            name: SEQUENCE Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "ASN.1 universal SEQUENCE tag 0x30 for the ScopedPDU, present when privFlag is 0 (noAuthNoPriv or authNoPriv security level). Contains contextEngineID, contextName, and the PDU itself. [RFC 3412 §6.6 / RFC 3411 §3.4]"
+          - id: scopedPduLength
+            name: SEQUENCE Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of the ScopedPDU SEQUENCE contents (contextEngineID + contextName + PDU TLV). [RFC 3412 §6.6 / ITU-T X.690 §8.1.3]"
+          - id: ctxEngineIdTag
+            name: OCTET STRING Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 4
+            doc: "ASN.1 OCTET STRING tag 0x04 for contextEngineID. Identifies the SNMP entity that should process the PDU. For managed objects, this is the authoritative engine ID of the agent. [RFC 3412 §6.6 / RFC 3411 §3.4]"
+          - id: ctxEngineIdLength
+            name: contextEngineID Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the contextEngineID value in octets. Engine IDs are 5–32 octets (RFC 3411 §5), constructed from enterprise OID, format indicator, and uniqueness suffix. Length 0 is permitted in discovery exchanges. [RFC 3411 §5 / RFC 3412 §6.6]"
+          - id: ctxEngineIdValue
+            name: contextEngineID
+            type: { kind: bytes, n: { kind: ref, field: ctxEngineIdLength } }
+            category: identifier
+            doc: "Authoritative SNMP engine ID that scopes the contextName and PDU. Format per RFC 3411 §5: first 4 octets are enterprise-specific (high bit set=non-enterprise) followed by format indicator octet and uniqueness suffix. Typically 12 octets for IP-address format. [RFC 3411 §5 / RFC 3412 §6.6]"
+          - id: ctxNameTag
+            name: OCTET STRING Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 4
+            doc: "ASN.1 OCTET STRING tag 0x04 for contextName. Together with contextEngineID uniquely identifies the SNMP context (i.e., a particular collection of management information). [RFC 3412 §6.6 / RFC 3411 §3.4]"
+          - id: ctxNameLength
+            name: contextName Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the contextName octet string. An empty string (0x00) refers to the default context of the identified engine. Non-empty names select specific contexts such as VPN routing instances. Maximum 32 octets per VACM. [RFC 3412 §6.6 / RFC 3415 §4]"
+          - id: ctxNameValue
+            name: contextName
+            type: { kind: bytes, n: { kind: ref, field: ctxNameLength } }
+            category: identifier
+            doc: "UTF-8 string naming the management context within the authoritative engine. An empty contextName selects the default context. VACM (RFC 3415) uses the combination of contextEngineID and contextName to determine which MIB views are accessible. [RFC 3412 §6.6 / RFC 3415 §4]"
+          - id: plainPduData
+            name: PDU Data
+            type: { kind: bytes, n: { kind: ref, field: scopedPduLength } }
+            category: payload-marker
+            doc: "BER-encoded PDU carried inside the ScopedPDU: one of GetRequest (0xA0), GetNextRequest (0xA1), Response (0xA2), SetRequest (0xA3), GetBulkRequest (0xA5), InformRequest (0xA7), SNMPv2-Trap (0xA8), or Report (0xA8 with specific OIDs). Each PDU contains request-id, error-status, error-index, and VarBindList fields per RFC 3416. [RFC 3412 §6.6 / RFC 3416 §3]"
+      "4":
+        id: msgDataEncrypted
+        name: msgData Encrypted ScopedPDU
+        fields:
+          - id: encryptedPduTag
+            name: OCTET STRING Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 4
+            doc: "ASN.1 universal OCTET STRING tag 0x04 for the encrypted ScopedPDU, present when privFlag is 1 (authPriv security level). The entire ScopedPDU has been encrypted using the negotiated privacy protocol. [RFC 3412 §6.6 / RFC 3414 §8.1]"
+          - id: encryptedPduLength
+            name: OCTET STRING Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of the encrypted ScopedPDU ciphertext in octets. For DES (RFC 3414 §8.1), this is padded to a multiple of 8 octets. For AES-128 (RFC 3826 §3.2), ciphertext length equals plaintext length (stream cipher mode). [RFC 3412 §6.6 / RFC 3414 §8.1 / RFC 3826 §3.2]"
+          - id: encryptedPduValue
+            name: Encrypted ScopedPDU
+            type: { kind: bytes, n: { kind: ref, field: encryptedPduLength } }
+            category: payload-marker
+            doc: "Ciphertext of the BER-encoded ScopedPDU. Decrypted using the privacy key derived via the USM key localisation algorithm (RFC 3414 §2.6): DES uses CBC mode with 8-byte IV from msgPrivacyParameters XOR engineBoots/engineTime; AES-128 uses CFB128 mode with 128-bit IV formed from engineBoots (32 bits), engineTime (32 bits), and msgPrivacyParameters (64 bits). After decryption the result is a SEQUENCE-tagged ScopedPDU identical to the plaintext case. [RFC 3414 §8.1 / RFC 3826 §3.2]"
+    default:
+      id: msgDataUnknown
+      name: msgData Unknown
+      fields:
+        - id: unknownPduTag
+          name: Unknown Tag
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: "Unrecognised tag for msgData. SNMPv3 defines 0x30 (SEQUENCE) for plaintext ScopedPDU and 0x04 (OCTET STRING) for encrypted ScopedPDU; any other value indicates a malformed message. [RFC 3412 §6.6]"
+        - id: unknownPduLength
+          name: Unknown Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER/DER length of the unrecognised msgData contents. [RFC 3412 §6.6 / ITU-T X.690 §8.1.3]"
+        - id: unknownPduValue
+          name: Unknown Data
+          type: { kind: bytes, n: { kind: ref, field: unknownPduLength } }
+          category: variable
+          doc: "Raw bytes of the unrecognised msgData field; interpretation is undefined. Receiving entities SHOULD discard such messages or generate a Report PDU. [RFC 3412 §6.6]"

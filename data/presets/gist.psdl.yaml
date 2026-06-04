@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: GIST (General Internet Signalling Transport)
+rowBits: 32
+byteOrder: BE
+description: "General Internet Signalling Transport (GIST, also known as NSIS Transport Layer Protocol – NTLP) message format (RFC 5971). GIST provides a generic transport layer for the Next Steps In Signaling (NSIS) framework, carrying signalling messages for NSIS Signalling Layer Protocols (NSLPs) along the path between network nodes. Every GIST message begins with an 8-byte common header: Version (8 bits), GIST Hops (8 bits), Message Length (16 bits), NSLP Identifier (16 bits), C-flag (1 bit), Message Type (7 bits), and Reserved (8 bits). The header is followed by a sequence of Type-Length-Value (TLV) Objects conveying signalling state, routing, and control information."
+
+body:
+  - kind: group
+    id: gistCommonHeader
+    name: GIST Common Header
+    children:
+      - id: gistVersion
+        name: Version
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 1
+        doc: "GIST protocol version. MUST be 1 for this specification. A node receiving a GIST message with an unrecognised version MUST silently discard it. [RFC 5971 §8.1]"
+
+      - id: gistHops
+        name: GIST Hops
+        type: { kind: int, bits: 8 }
+        category: variable
+        doc: "Remaining GIST hop count. Decremented by each GIST node that forwards the message. When a node receives a message with GIST Hops equal to 0, it MUST NOT forward it further and MUST generate an error if the message has not yet reached its destination. Functions similarly to IP TTL for GIST-level hop limiting. [RFC 5971 §8.1]"
+
+      - id: gistMessageLength
+        name: Message Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Total length of the GIST message in 32-bit words, including the 8-byte (2-word) common header and all TLV objects that follow. A receiver MUST discard a message whose indicated length exceeds the available data. [RFC 5971 §8.1]"
+
+  - kind: group
+    id: gistTypeBlock
+    name: Message Type / C-flag
+    children:
+      - id: gistNslpId
+        name: NSLP Identifier
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: "NSLP Identifier (NSLPID). Identifies the NSIS Signalling Layer Protocol that is the target of this GIST message. Assigned values are maintained by IANA. A value of 0 is reserved for GIST itself (e.g., error messages not associated with any NSLP). [RFC 5971 §8.1]"
+
+      - id: gistCFlag
+        name: C
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "C (Control) flag. When set to 1, the message is a GIST control message (e.g., Query, Response, Confirm, MA-Hello) that is processed by the GIST layer itself. When 0, the message carries an NSLP payload to be delivered to the signalling application identified by NSLPID. [RFC 5971 §8.1]"
+
+      - id: gistType
+        name: Type
+        type:
+          kind: enum
+          bits: 7
+          variants:
+            0: "Query"
+            1: "Response"
+            2: "Confirm"
+            3: "Data"
+            4: "Error"
+            5: "MA-Hello"
+            6: "MA-Hello-Ack"
+        category: type
+        doc: "GIST message type. 0=Query (initiate path-coupled association), 1=Response (reply to Query), 2=Confirm (complete three-way handshake), 3=Data (carry NSLP payload along an existing association), 4=Error (report a GIST-level error condition), 5=MA-Hello (keepalive on a Messaging Association), 6=MA-Hello-Ack (acknowledge an MA-Hello). Values 7–127 are reserved. [RFC 5971 §8.1]"
+
+      - id: gistReserved
+        name: Reserved
+        type: { kind: int, bits: 8 }
+        category: reserved
+        doc: "Reserved field. MUST be set to zero by the sender and ignored by the receiver. [RFC 5971 §8.1]"
+
+  - kind: repeat
+    id: gistObjects
+    name: TLV Object List
+    category: variable
+    element:
+      id: gistObject
+      fields:
+        - id: gistObjType
+          name: Object Type
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "GIST TLV object type code. The high two bits (AB) encode extensibility behaviour: A=0/B=0 skip if unknown, A=0/B=1 error if unknown, A=1/B=0 forward if unknown, A=1/B=1 error-and-forward if unknown. The remaining 14 bits identify the object. Assigned types include: 1=NLI (Node Local Information), 2=R-Entry (Routing Entry), 3=Query Cookie, 4=Responder Cookie, 5=NAT Traversal, 6=NSLP Data, 7=Stack Proposal, 8=Stack Configuration Data (SCD), 9=Hop Count, 10=MRI (Message Routing Information). [RFC 5971 §8.1 / §8.2]"
+        - id: gistObjLen
+          name: Object Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Length of the TLV object value in bytes, not including the 4-byte Object Type and Object Length fields. The value field is padded to the next 32-bit boundary; padding bytes MUST be zero and are included in this length. A receiver MUST skip any object whose type is unrecognised using this field to advance past the value. [RFC 5971 §8.1]"
+        - id: gistObjValue
+          name: Object Value
+          type: { kind: bytes, n: { kind: ref, field: gistObjLen } }
+          category: variable
+          doc: "Object value bytes, exactly gistObjLen bytes. Interpretation depends on Object Type. NLI (1): peer node address and interface information. R-Entry (2): routing state (MRI + session ID + NSLPID). Query Cookie (3): opaque value chosen by the querier for replay protection. Responder Cookie (4): opaque value chosen by the responder. NAT Traversal (5): information for traversing Network Address Translators. NSLP Data (6): opaque payload to be delivered to the NSLP identified by NSLPID. Stack Proposal (7): ordered list of transport/security protocol stacks for Messaging Association negotiation. SCD (8): parameters for a proposed protocol stack (MA setup). Hop Count (9): remaining signalling hop count. MRI (10): Message Routing Information encoding the signalling path (flow 5-tuple or explicit route). [RFC 5971 §8.2 / §8.3]"
+    count: { kind: ref, field: gistObjCount }

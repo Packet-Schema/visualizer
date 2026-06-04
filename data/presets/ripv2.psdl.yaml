@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RIPv2
+rowBits: 32
+byteOrder: BE
+description: RIPv2 message format (RFC 2453). Carries routing information with a fixed 4-byte header followed by up to 25 route entries of 20 bytes each.
+body:
+  - { id: command, name: Command, type: { kind: int, bits: 8 }, category: type, doc: "Command type: 1=Request, 2=Response." }
+  - { id: version, name: Version, type: { kind: int, bits: 8 }, category: identifier, doc: "RIP version number; always 2 for RIPv2." }
+  - { id: mustBeZero, name: Must Be Zero, type: { kind: int, bits: 16 }, category: reserved, doc: "Reserved field; must be zero on transmission and ignored on reception." }
+  - kind: repeat
+    id: routes
+    count: { kind: ref, field: ripv2RouteCount }
+    element:
+      id: routeEntry
+      fields:
+        - { id: afi, name: Address Family Identifier, type: { kind: int, bits: 16 }, category: type, doc: "Address Family Identifier: 2=IP, 0xFFFF=authentication entry." }
+        - { id: routeTag, name: Route Tag, type: { kind: int, bits: 16 }, category: identifier, doc: "Route tag used to distinguish internal and external routes." }
+        - { id: ipAddress, name: IP Address, type: { kind: int, bits: 32 }, category: addressing, doc: "Destination IP address for this route entry." }
+        - { id: subnetMask, name: Subnet Mask, type: { kind: int, bits: 32 }, category: addressing, doc: "Subnet mask associated with the destination IP address." }
+        - { id: nextHop, name: Next Hop, type: { kind: int, bits: 32 }, category: addressing, doc: "Next hop IP address; 0.0.0.0 means the sending router is the next hop." }
+        - { id: metric, name: Metric, type: { kind: int, bits: 32 }, category: length, doc: "Hop count metric for the route: valid values 1-15; 16 indicates infinity (unreachable)." }

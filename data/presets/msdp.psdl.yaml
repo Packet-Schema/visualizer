@@ -1,0 +1,173 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MSDP Message
+rowBits: 32
+byteOrder: BE
+description: >-
+  Multicast Source Discovery Protocol (MSDP) message (RFC 3618). MSDP runs over TCP port 639 between Rendezvous Points (RPs) to advertise active multicast sources across PIM-SM domain boundaries. Each message starts with a 1-octet Type field, a 2-octet Length field (total including header), and a variable-length body whose structure depends on the Type. Defined types are 1=Source-Active (SA), 2=SA-Request, 3=SA-Response, 4=KeepAlive, 5=Notification. The SA message is the core of MSDP: it carries one or more (S,G) entries together with the originating RP address and optional encapsulated data packets.
+
+body:
+  - id: msdpType
+    name: Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Source-Active"
+        2: "SA-Request"
+        3: "SA-Response"
+        4: "KeepAlive"
+        5: "Notification"
+    category: type
+    doc: MSDP message type. 1=Source-Active (SA) — carries (S,G) state from an RP; 2=SA-Request — peer requests cached SA entries for a specific group; 3=SA-Response — replies to an SA-Request with matching SA entries; 4=KeepAlive — maintains the TCP session when no SA traffic is flowing; 5=Notification — error reporting (experimental, rarely deployed). [RFC 3618 §4]
+
+  - id: msdpLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 3
+    doc: Total length of the MSDP message in octets, including this 3-octet Type+Length header. Minimum value is 3 for a KeepAlive; for an SA message it is 3 + 4 (entry count + RP address) + N * 12 (each (S,G) entry). [RFC 3618 §4]
+
+  - kind: switch
+    id: msdpBody
+    on: { kind: ref, field: msdpType }
+    cases:
+      "1":
+        id: msdpSA
+        fields:
+          - id: msdpSAEntryCount
+            name: Entry Count
+            type: { kind: int, bits: 8 }
+            category: length
+            doc: Number of (S,G) entries carried in this SA message. Each entry is 12 octets (Reserved 3 B + Sprefix-len 1 B + Source Address 4 B + Group Address 4 B). A single SA message MUST NOT exceed the TCP MSS; if more entries are needed they are sent in multiple SA messages. [RFC 3618 §5.1]
+
+          - id: msdpRPAddress
+            name: RP Address
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: IPv4 address of the originating RP that is advertising the (S,G) state. Receiving peers use this address to perform RPF checks — the SA MUST arrive on the interface toward this RP in the unicast routing table. [RFC 3618 §5.1]
+
+          - kind: repeat
+            id: msdpSAEntries
+            name: SA Entries
+            element:
+              id: msdpSAEntry
+              fields:
+                - id: msdpEntryReserved
+                  name: Reserved
+                  type: { kind: bits, n: 24 }
+                  category: reserved
+                  doc: Reserved bits. Senders MUST set to zero; receivers MUST ignore. [RFC 3618 §5.1]
+
+                - id: msdpSprfxLen
+                  name: Sprefix-len
+                  type: { kind: int, bits: 8 }
+                  category: length
+                  doc: Length in bits of the significant prefix in the Source Address field. For a host source this is 32; smaller values indicate an aggregated source prefix (not common in practice). [RFC 3618 §5.1]
+
+                - id: msdpGroupAddress
+                  name: Group Address
+                  type: { kind: int, bits: 32 }
+                  category: addressing
+                  doc: IPv4 multicast group address (G) of the active (S,G) entry. MUST be in the 224.0.0.0/4 range. [RFC 3618 §5.1]
+
+                - id: msdpSourceAddress
+                  name: Source Address
+                  type: { kind: int, bits: 32 }
+                  category: addressing
+                  doc: IPv4 unicast address of the multicast source (S) that is sending traffic to the group. The significant portion is indicated by msdpSprfxLen. [RFC 3618 §5.1]
+            count: { kind: ref, field: msdpSAEntryCount }
+
+      "2":
+        id: msdpSARequest
+        fields:
+          - id: msdpReqReserved
+            name: Reserved
+            type: { kind: bits, n: 8 }
+            category: reserved
+            doc: Reserved octet in the SA-Request message. Senders MUST set to zero; receivers MUST ignore. [RFC 3618 §5.2]
+
+          - id: msdpReqGroupAddress
+            name: Group Address
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: The multicast group address for which the requesting peer wants to receive cached SA entries. The peer will respond with a SA-Response (type 3) containing all matching (S,G) states from its SA cache. [RFC 3618 §5.2]
+
+      "3":
+        id: msdpSAResponse
+        fields:
+          - id: msdpRespEntryCount
+            name: Entry Count
+            type: { kind: int, bits: 8 }
+            category: length
+            doc: Number of (S,G) entries in this SA-Response message. SA-Response uses the same (S,G) entry format as SA (type 1). [RFC 3618 §5.3]
+
+          - id: msdpRespRPAddress
+            name: RP Address
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: IPv4 address of the RP that originates the SA-Response. Semantics are identical to the RP Address field in a Source-Active (type 1) message. [RFC 3618 §5.3]
+
+          - kind: repeat
+            id: msdpRespSAEntries
+            name: SA Entries
+            element:
+              id: msdpRespSAEntry
+              fields:
+                - id: msdpRespEntryReserved
+                  name: Reserved
+                  type: { kind: bits, n: 24 }
+                  category: reserved
+                  doc: Reserved bits. Senders MUST set to zero; receivers MUST ignore. [RFC 3618 §5.3]
+
+                - id: msdpRespSprfxLen
+                  name: Sprefix-len
+                  type: { kind: int, bits: 8 }
+                  category: length
+                  doc: Length in bits of the significant prefix in the Source Address field. Semantics identical to the Sprefix-len field in SA (type 1) entries. [RFC 3618 §5.3]
+
+                - id: msdpRespGroupAddress
+                  name: Group Address
+                  type: { kind: int, bits: 32 }
+                  category: addressing
+                  doc: IPv4 multicast group address (G) of the (S,G) entry being responded. MUST be in the 224.0.0.0/4 range. [RFC 3618 §5.3]
+
+                - id: msdpRespSourceAddress
+                  name: Source Address
+                  type: { kind: int, bits: 32 }
+                  category: addressing
+                  doc: IPv4 unicast source address (S) of the (S,G) entry being responded. Significant bits are indicated by msdpRespSprfxLen. [RFC 3618 §5.3]
+            count: { kind: ref, field: msdpRespEntryCount }
+
+      "4":
+        id: msdpKeepAlive
+        fields: []
+
+      "5":
+        id: msdpNotification
+        fields:
+          - id: msdpNotifBody
+            name: Notification Body
+            type:
+              kind: bytes
+              n:
+                kind: op
+                op: "-"
+                a: { kind: ref, field: msdpLength }
+                b: { kind: lit, value: 3 }
+            category: variable
+            doc: Body of the Notification message, length derived as msdpLength minus 3 (header). The Notification format is experimental and not finalised in RFC 3618; the body carries error code and diagnostic information whose exact layout is implementation-defined. [RFC 3618 §5.5]
+
+    default:
+      id: msdpUnknown
+      fields:
+        - id: msdpUnknownBody
+          name: Unknown Body
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: msdpLength }
+              b: { kind: lit, value: 3 }
+          category: variable
+          doc: Raw body bytes for unrecognised MSDP message types, length computed as msdpLength minus the 3-byte Type+Length header. [RFC 3618 §4]

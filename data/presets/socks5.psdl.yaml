@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SOCKS5 Connect Request
+rowBits: 32
+byteOrder: BE
+description: >
+  SOCKS5 proxy protocol Connect Request (RFC 1928). A client opens a TCP connection to
+  the SOCKS5 server and, after an authentication sub-negotiation, sends a request message
+  consisting of a 4-byte fixed header (VER / CMD / RSV / ATYP) followed by a variable-length
+  destination address (IPv4 = 4 bytes, IPv6 = 16 bytes, or domain name = 1-byte length + N bytes)
+  and a 2-byte destination port. The server replies with a BND.ADDR / BND.PORT confirming the
+  relay endpoint. This preset covers the client-to-server request frame only.
+
+body:
+  - id: socksVer
+    name: VER
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 5
+    doc: "SOCKS protocol version. MUST be 0x05 for SOCKS5; a server receiving any other value MUST close the connection. [RFC 1928 §3]"
+
+  - id: socksCmd
+    name: CMD
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: CONNECT
+        2: BIND
+        3: UDP ASSOCIATE
+    category: type
+    defaultValue: 1
+    doc: "Command requested by the client. 0x01=CONNECT (open a proxied TCP stream to DST.ADDR:DST.PORT), 0x02=BIND (accept an inbound connection through the proxy), 0x03=UDP ASSOCIATE (establish a UDP relay). [RFC 1928 §4]"
+
+  - id: socksRsv
+    name: RSV
+    type: { kind: int, bits: 8 }
+    category: reserved
+    defaultValue: 0
+    doc: "Reserved byte. MUST be set to 0x00 by the client; the server SHOULD reject a request where RSV is non-zero. [RFC 1928 §4]"
+
+  - id: socksAtyp
+    name: ATYP
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: IPv4 address
+        3: Domain name
+        4: IPv6 address
+    category: type
+    defaultValue: 1
+    doc: "Address type of the following DST.ADDR field. 0x01=IPv4 (4 bytes), 0x03=domain name (1-byte length prefix + N bytes), 0x04=IPv6 (16 bytes). [RFC 1928 §4]"
+
+  - kind: switch
+    id: byAtyp
+    on: { kind: ref, field: socksAtyp }
+    doc: "Selects the destination address encoding based on ATYP. IPv4 (1) carries a 4-byte address; IPv6 (4) carries a 16-byte address; domain name (3) carries a 1-byte length followed by that many octets of hostname. The 2-byte DST.PORT follows the address in all cases. [RFC 1928 §4]"
+    cases:
+      "4":
+        id: addrIPv6
+        name: DST.ADDR (IPv6)
+        fields:
+          - id: dstAddrIPv6
+            name: DST.ADDR
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "128-bit IPv6 destination address in network (big-endian) byte order. Present only when ATYP=0x04. [RFC 1928 §4]"
+          - id: dstPortIPv6
+            name: DST.PORT
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "16-bit big-endian TCP/UDP destination port number. Valid range 1–65535; port 0 is reserved. Follows DST.ADDR regardless of address type. [RFC 1928 §4]"
+      "3":
+        id: addrDomain
+        name: DST.ADDR (Domain Name)
+        fields:
+          - id: socksDomainLen
+            name: Domain Length
+            type: { kind: int, bits: 8 }
+            category: length
+            defaultValue: 0
+            doc: "Number of octets in the following domain name. The domain name is not NUL-terminated; its length is given entirely by this field. Present only when ATYP=0x03. [RFC 1928 §4]"
+          - id: dstAddrDomain
+            name: DST.ADDR
+            type: { kind: bytes, n: { kind: ref, field: socksDomainLen } }
+            category: addressing
+            doc: "Fully-qualified domain name (FQDN) of the target host, exactly socksDomainLen octets, in ASCII (no trailing dot, no NUL). The SOCKS server resolves this name to an address on behalf of the client. Present only when ATYP=0x03. [RFC 1928 §4]"
+          - id: dstPortDomain
+            name: DST.PORT
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "16-bit big-endian TCP/UDP destination port number. Valid range 1–65535; port 0 is reserved. Follows DST.ADDR regardless of address type. [RFC 1928 §4]"
+    default:
+      id: addrIPv4
+      name: DST.ADDR (IPv4)
+      fields:
+        - id: dstAddrIPv4
+          name: DST.ADDR
+          type: { kind: bits, n: 32 }
+          category: addressing
+          defaultValue: 0
+          doc: "32-bit IPv4 destination address in network (big-endian) byte order. Present when ATYP=0x01 (the default and most common case). [RFC 1928 §4]"
+        - id: dstPortIPv4
+          name: DST.PORT
+          type: { kind: int, bits: 16 }
+          category: addressing
+          doc: "16-bit big-endian TCP/UDP destination port number. Valid range 1–65535; port 0 is reserved. Follows DST.ADDR regardless of address type. [RFC 1928 §4]"

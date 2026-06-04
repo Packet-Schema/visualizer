@@ -1,0 +1,256 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NetBIOS Name Service
+rowBits: 32
+byteOrder: BE
+description: "NetBIOS Name Service packet (RFC 1002 §4.2). Used to register, resolve, and release NetBIOS names over TCP/IP (NBT). The packet structure mirrors DNS (RFC 1035) but with NetBIOS-specific opcodes and name encoding. The 12-byte fixed header carries a Transaction ID, a FLAGS word (response flag, opcode, AA, TC, RD, RA, reserved, broadcast, and RCODE), and four section counters (QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT). Packets are exchanged over UDP port 137 for name queries and registrations, and TCP port 137 for session-level name service operations."
+
+body:
+  - id: nameTrnId
+    name: NAME_TRN_ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Transaction ID. A 16-bit identifier assigned by the client that issued the name service request. The server copies this value into the corresponding reply so the client can match responses to outstanding requests. Analogous to the DNS ID field. [RFC 1002 §4.2.1.1]"
+
+  - kind: group
+    id: nmFlags
+    name: FLAGS
+    children:
+      - id: rBit
+        name: R
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Response flag. 0 = this packet is a request; 1 = this packet is a response. Mirrors the QR bit in DNS. [RFC 1002 §4.2.1.1]"
+      - id: opcode
+        name: Opcode
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            0: "Query"
+            5: "Registration"
+            6: "Release"
+            7: "WACK"
+            8: "Refresh"
+        category: type
+        doc: "Operation code. 0x0=Query, 0x5=Registration, 0x6=Release, 0x7=WACK (Wait for Acknowledgement), 0x8=Refresh. Determines how the receiver should process the packet body. [RFC 1002 §4.2.1.1]"
+      - id: aaBit
+        name: AA
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Authoritative Answer. 1 when the responding node is the authoritative owner of the queried NetBIOS name. Analogous to the AA bit in DNS. Valid in responses only. [RFC 1002 §4.2.1.1]"
+      - id: tcBit
+        name: TC
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Truncation flag. 1 if the message was truncated because the total length exceeded the maximum UDP datagram size. The receiver should retry over TCP (port 137) to obtain the full response. Analogous to the TC bit in DNS. [RFC 1002 §4.2.1.1]"
+      - id: rdBit
+        name: RD
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Recursion Desired. Set to 1 by the client to request that the name service node perform iterative resolution on behalf of the client. The server copies this bit into the response. [RFC 1002 §4.2.1.1]"
+      - id: raBit
+        name: RA
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Recursion Available. Set to 1 in a response to indicate that the server supports recursive name resolution. The NBNS (NetBIOS Name Server) sets this bit; an end-node typically does not. [RFC 1002 §4.2.1.1]"
+      - id: zBits
+        name: Z
+        type: { kind: int, bits: 2 }
+        category: reserved
+        doc: "Reserved bits. MUST be zero on transmission. Receivers MUST ignore these bits. [RFC 1002 §4.2.1.1]"
+      - id: bBit
+        name: B
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Broadcast flag. 1 if the packet was sent or received as a broadcast or multicast datagram; 0 for unicast. Used by P-node and M-node implementations to distinguish broadcast from point-to-point name service traffic. [RFC 1002 §4.2.1.1]"
+      - id: rcode
+        name: RCODE
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            0: "No Error"
+            1: "Format Error"
+            2: "Server Failure"
+            3: "Name Error"
+            4: "Unsupported Request"
+            5: "Refused"
+            6: "Active Error"
+            7: "Name in Conflict"
+        category: flags
+        doc: "Result code. 0=No Error, 1=FMT_ERR (format error), 2=SRV_ERR (server failure), 3=NAM_ERR (name does not exist), 4=IMP_ERR (unsupported request type), 5=RFS_ERR (policy refusal), 6=ACT_ERR (name is active), 7=CFT_ERR (name in conflict). Meaningful only in response packets (R=1). [RFC 1002 §4.2.1.1]"
+
+  - id: qdcount
+    name: QDCOUNT
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Question count. Number of entries in the Question Section. For most NetBIOS Name Service packets this is 1 (a single name being queried or registered). Analogous to QDCOUNT in DNS. [RFC 1002 §4.2.1.1]"
+
+  - id: ancount
+    name: ANCOUNT
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Answer record count. Number of Resource Records in the Answer Section. Zero in request packets. In a positive Name Query Response this is typically 1, carrying the owner's IP address. [RFC 1002 §4.2.1.1]"
+
+  - id: nscount
+    name: NSCOUNT
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Authority record count. Number of Resource Records in the Authority Section. Analogous to NSCOUNT in DNS; rarely used in basic NetBIOS Name Service exchanges. [RFC 1002 §4.2.1.1]"
+
+  - id: arcount
+    name: ARCOUNT
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Additional record count. Number of Resource Records in the Additional Records Section. Analogous to ARCOUNT in DNS; used in some registration and WACK packets to carry additional address information. [RFC 1002 §4.2.1.1]"
+
+  - kind: repeat
+    id: questionSection
+    name: Question Section
+    category: variable
+    element:
+      id: questionEntry
+      fields:
+        - id: questionName
+          name: Question Name
+          type: { kind: bytes, n: { kind: lit, value: 34 } }
+          category: addressing
+          doc: "Encoded NetBIOS name. A NetBIOS name is first padded to 16 bytes (15 characters + 1-byte suffix/type), then each byte is split into two 4-bit nibbles and each nibble is offset by 0x41 to produce two uppercase ASCII letters, yielding a 32-character label. This is prefixed by a 1-byte length (0x20 = 32) and terminated by a 1-byte null label (0x00), for a total of 34 bytes. The encoding is called 'first-level encoding' or 'half-ASCII' encoding. [RFC 1002 §4.1]"
+        - id: questionType
+          name: Question Type
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              0x0020: "NB (NetBIOS general Name)"
+              0x0021: "NBSTAT (NetBIOS Node Status)"
+          category: type
+          doc: "Question type. 0x0020=NB (NetBIOS general Name Service RR), used for name queries and registrations; 0x0021=NBSTAT (NetBIOS Node Status Request), requests the list of names registered by the target node. [RFC 1002 §4.2.1.2]"
+        - id: questionClass
+          name: Question Class
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Question class. Always 0x0001 (IN — Internet) for NetBIOS Name Service packets. Mirrors DNS class encoding. [RFC 1002 §4.2.1.2]"
+    count: { kind: ref, field: qdcount }
+
+  - kind: repeat
+    id: answerSection
+    name: Answer Section
+    category: variable
+    element:
+      id: answerRr
+      fields:
+        - id: rrName
+          name: RR Name
+          type: { kind: bytes, n: { kind: lit, value: 34 } }
+          category: addressing
+          doc: "Resource Record name. The first-level-encoded NetBIOS name (34 bytes) this Resource Record describes, in the same format as Question Name. [RFC 1002 §4.2.1.3]"
+        - id: rrType
+          name: RR Type
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              0x0020: "NB (NetBIOS general Name)"
+              0x0021: "NBSTAT (NetBIOS Node Status)"
+          category: type
+          doc: "Resource Record type. 0x0020=NB, carrying one or more NB_FLAGS+NB_ADDRESS pairs; 0x0021=NBSTAT, carrying the node status response. [RFC 1002 §4.2.1.3]"
+        - id: rrClass
+          name: RR Class
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Resource Record class. Always 0x0001 (IN — Internet). [RFC 1002 §4.2.1.3]"
+        - id: rrTtl
+          name: TTL
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: "Time To Live in seconds. The number of seconds a resolver may cache this Resource Record. A value of 0 means the record must not be cached. Typically set to 0 in conflict and WACK responses; registration responses carry a non-zero TTL chosen by the NBNS. [RFC 1002 §4.2.1.3]"
+        - id: rrDataLength
+          name: RDLENGTH
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Resource Data length in bytes. For NB records each NB_FLAGS+NB_ADDRESS entry is 6 bytes, so RDLENGTH is a multiple of 6. For NBSTAT records this is the total byte count of the node status payload. [RFC 1002 §4.2.1.3]"
+        - id: rrData
+          name: RDATA
+          type: { kind: bytes, n: { kind: ref, field: rrDataLength } }
+          category: variable
+          doc: "Resource Data payload. For NB records: one or more (NB_FLAGS[2 bytes] + NB_ADDRESS[4 bytes]) tuples. NB_FLAGS bits: G=group flag (bit 15), ONT=owner node type bits 14-13 (00=B-node, 01=P-node, 10=M-node, 11=H-node). NB_ADDRESS is the IPv4 address of the name owner. For NBSTAT records: the node status structure defined in RFC 1002 §4.2.18. [RFC 1002 §4.2.1.3]"
+    count: { kind: ref, field: ancount }
+
+  - kind: repeat
+    id: authoritySection
+    name: Authority Section
+    category: variable
+    element:
+      id: nsRr
+      fields:
+        - id: nsRrName
+          name: RR Name
+          type: { kind: bytes, n: { kind: lit, value: 34 } }
+          category: addressing
+          doc: "Authority Section Resource Record name, first-level-encoded NetBIOS name (34 bytes). [RFC 1002 §4.2.1.3]"
+        - id: nsRrType
+          name: RR Type
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Authority Section Resource Record type code. Same type space as Answer Section RR types (e.g. 0x0020=NB). [RFC 1002 §4.2.1.3]"
+        - id: nsRrClass
+          name: RR Class
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Authority Section Resource Record class. Always 0x0001 (IN). [RFC 1002 §4.2.1.3]"
+        - id: nsRrTtl
+          name: TTL
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: "Time To Live in seconds for this authority record. [RFC 1002 §4.2.1.3]"
+        - id: nsRrDataLength
+          name: RDLENGTH
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Byte count of the RDATA field that follows for this authority record. [RFC 1002 §4.2.1.3]"
+        - id: nsRrData
+          name: RDATA
+          type: { kind: bytes, n: { kind: ref, field: nsRrDataLength } }
+          category: variable
+          doc: "Authority Section Resource Data. Rarely populated in standard NetBIOS Name Service exchanges. [RFC 1002 §4.2.1.3]"
+    count: { kind: ref, field: nscount }
+
+  - kind: repeat
+    id: additionalSection
+    name: Additional Records Section
+    category: variable
+    element:
+      id: arRr
+      fields:
+        - id: arRrName
+          name: RR Name
+          type: { kind: bytes, n: { kind: lit, value: 34 } }
+          category: addressing
+          doc: "Additional Records Section Resource Record name, first-level-encoded NetBIOS name (34 bytes). [RFC 1002 §4.2.1.3]"
+        - id: arRrType
+          name: RR Type
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Additional Records Section Resource Record type code. Same type space as Answer Section RR types. [RFC 1002 §4.2.1.3]"
+        - id: arRrClass
+          name: RR Class
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Additional Records Section Resource Record class. Always 0x0001 (IN). [RFC 1002 §4.2.1.3]"
+        - id: arRrTtl
+          name: TTL
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: "Time To Live in seconds for this additional record. [RFC 1002 §4.2.1.3]"
+        - id: arRrDataLength
+          name: RDLENGTH
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Byte count of the RDATA field that follows for this additional record. [RFC 1002 §4.2.1.3]"
+        - id: arRrData
+          name: RDATA
+          type: { kind: bytes, n: { kind: ref, field: arRrDataLength } }
+          category: variable
+          doc: "Additional Records Section Resource Data. Used in some registration exchanges to supply additional NB address information. [RFC 1002 §4.2.1.3]"
+    count: { kind: ref, field: arcount }

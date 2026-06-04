@@ -1,0 +1,640 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SNMPv2c Message
+rowBits: 32
+byteOrder: BE
+description: "SNMPv2c message (RFC 3416 / RFC 1901) — ASN.1 BER/DER encoded over UDP (port 161/162). Outer wrapper is a SEQUENCE TLV; contains version INTEGER (value=1 for SNMPv2c), community OCTET STRING, and a PDU selected by a context-specific tag (0xA0=GetRequest, 0xA1=GetNextRequest, 0xA2=GetResponse, 0xA3=SetRequest, 0xA5=GetBulkRequest, 0xA7=InformRequest, 0xA8=SNMPv2-Trap). Each PDU holds request-id, error-status (or non-repeaters for GetBulk), error-index (or max-repetitions for GetBulk), and a VarBindList SEQUENCE. All lengths use BER short/long form (kind: berLength). [RFC 3416 §3 / RFC 1901 §3]"
+body:
+  - kind: group
+    id: snmpSequenceWrapper
+    name: SNMP SEQUENCE Wrapper
+    children:
+      - id: msgTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag, always 0x30 (decimal 48). Signals that the remainder of the datagram is a BER-encoded SEQUENCE containing the SNMPv2c message fields. [RFC 3416 §3 / ITU-T X.690 §8.9]"
+      - id: msgLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the SEQUENCE contents (version + community + PDU). Short form (0x00–0x7F) encodes the count directly in one octet; long form uses the leading octet 0x80|n followed by n octets of big-endian count. [RFC 3416 §3 / ITU-T X.690 §8.1.3]"
+
+  - kind: group
+    id: snmpVersion
+    name: version INTEGER
+    children:
+      - id: versionTag
+        name: INTEGER Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: "ASN.1 universal INTEGER tag, always 0x02. Precedes the BER-length and value bytes of the SNMPv2c version field. [RFC 1901 §3 / ITU-T X.690 §8.3]"
+      - id: versionLength
+        name: INTEGER Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the version value bytes; typically 0x01 (one byte) since SNMPv2c version value is 1. [RFC 1901 §3 / ITU-T X.690 §8.1.3]"
+      - id: versionValue
+        name: version Value
+        type: { kind: bytes, n: { kind: ref, field: versionLength } }
+        category: identifier
+        doc: "SNMPv2c version number encoded as a BER INTEGER value. The integer value is 1 (0x01) for SNMPv2c per RFC 1901. SNMPv1 uses 0, SNMPv3 uses 3. [RFC 1901 §3]"
+
+  - kind: group
+    id: snmpCommunity
+    name: community OCTET STRING
+    children:
+      - id: communityTag
+        name: OCTET STRING Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 4
+        doc: "ASN.1 universal OCTET STRING tag, always 0x04. Precedes the BER-length and bytes of the community string, which is the SNMPv2c authentication primitive. [RFC 1901 §3 / ITU-T X.690 §8.7]"
+      - id: communityLength
+        name: OCTET STRING Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the community string in octets. Common values are 6 for 'public' or 7 for 'private'; long-form encoding is possible but unusual. [RFC 1901 §3 / ITU-T X.690 §8.1.3]"
+      - id: communityString
+        name: Community String
+        type: { kind: bytes, n: { kind: ref, field: communityLength } }
+        category: identifier
+        doc: "Community string used as a cleartext shared secret for SNMPv2c authentication. Typically 'public' (read) or 'private' (read-write). Transmitted in plaintext — SNMPv3 USM replaces this with proper authentication and privacy. [RFC 1901 §3]"
+
+  - kind: switch
+    id: pduSwitch
+    on: { kind: peek, bits: 8, offset: { kind: lit, value: 0 } }
+    cases:
+      "160":
+        id: getRequestPdu
+        name: GetRequest-PDU (0xA0)
+        fields:
+          - id: pduTagGetRequest
+            name: GetRequest Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 160
+            doc: "Context-specific constructed tag 0xA0 identifying a GetRequest-PDU. Requests the values of one or more object instances from the agent. [RFC 3416 §4.1]"
+          - id: pduLengthGetRequest
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of the PDU contents (request-id + error-status + error-index + variable-bindings). [RFC 3416 §4.1 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagGR
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 for the request-id field of GetRequest-PDU. [RFC 3416 §4.1]"
+          - id: requestIdLengthGR
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id integer value bytes; typically 1–4 octets. [RFC 3416 §4.1]"
+          - id: requestIdValueGR
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthGR } }
+            category: identifier
+            doc: "32-bit signed integer identifying this request. The response PDU echoes this value so the manager can correlate replies to outstanding requests. [RFC 3416 §4.1]"
+          - id: errorStatusTagGR
+            name: error-status Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 for the error-status field. In a request PDU this field MUST be zero. [RFC 3416 §4.1]"
+          - id: errorStatusLengthGR
+            name: error-status Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the error-status integer value bytes; typically 1 octet. [RFC 3416 §4.1]"
+          - id: errorStatusValueGR
+            name: error-status Value
+            type: { kind: bytes, n: { kind: ref, field: errorStatusLengthGR } }
+            category: identifier
+            doc: "Error status integer: 0=noError, 1=tooBig, 2=noSuchName, 3=badValue, 4=readOnly, 5=genErr, 6=noAccess, 7=wrongType, 8=wrongLength, 9=wrongEncoding, 10=wrongValue, 11=noCreation, 12=inconsistentValue, 13=resourceUnavailable, 14=commitFailed, 15=undoFailed, 16=authorizationError, 17=notWritable, 18=inconsistentName. Must be 0 in requests. [RFC 3416 §4.1]"
+          - id: errorIndexTagGR
+            name: error-index Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 for the error-index field. In a request PDU this field MUST be zero. [RFC 3416 §4.1]"
+          - id: errorIndexLengthGR
+            name: error-index Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the error-index integer value bytes; typically 1 octet. [RFC 3416 §4.1]"
+          - id: errorIndexValueGR
+            name: error-index Value
+            type: { kind: bytes, n: { kind: ref, field: errorIndexLengthGR } }
+            category: identifier
+            doc: "When error-status is non-zero, this 1-based index identifies the VarBind in the VarBindList that caused the error. Zero in requests and when error-status is noError. [RFC 3416 §4.1]"
+          - id: varBindsTagGR
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "ASN.1 universal SEQUENCE tag 0x30 for the VarBindList, which is a SEQUENCE OF VarBind. [RFC 3416 §4.1]"
+          - id: varBindsLengthGR
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of the VarBindList contents. Each VarBind is itself a SEQUENCE {name OID, value ObjectSyntax}. [RFC 3416 §4.1]"
+          - id: varBindsDataGR
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthGR } }
+            category: variable
+            doc: "Encoded VarBindList: zero or more VarBind SEQUENCE values, each containing an OID and its associated value (or a noSuchObject / noSuchInstance / endOfMibView exception). [RFC 3416 §4.1]"
+      "161":
+        id: getNextRequestPdu
+        name: GetNextRequest-PDU (0xA1)
+        fields:
+          - id: pduTagGetNextRequest
+            name: GetNextRequest Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 161
+            doc: "Context-specific constructed tag 0xA1 for GetNextRequest-PDU. The agent returns the lexicographically next OID after each OID in the VarBindList, enabling MIB table traversal. [RFC 3416 §4.2]"
+          - id: pduLengthGetNextRequest
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of GetNextRequest-PDU contents. [RFC 3416 §4.2 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagGN
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "ASN.1 INTEGER tag 0x02 for request-id in GetNextRequest-PDU. [RFC 3416 §4.2]"
+          - id: requestIdLengthGN
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id value bytes. [RFC 3416 §4.2]"
+          - id: requestIdValueGN
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthGN } }
+            category: identifier
+            doc: "Correlation identifier echoed by the agent in the Response-PDU. [RFC 3416 §4.2]"
+          - id: errorStatusTagGN
+            name: error-status Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-status; MUST be 0 in a request. [RFC 3416 §4.2]"
+          - id: errorStatusLengthGN
+            name: error-status Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-status value bytes. [RFC 3416 §4.2]"
+          - id: errorStatusValueGN
+            name: error-status Value
+            type: { kind: bytes, n: { kind: ref, field: errorStatusLengthGN } }
+            category: identifier
+            doc: "Must be zero in GetNextRequest-PDU. See error-status enumeration in GetRequest-PDU description. [RFC 3416 §4.2]"
+          - id: errorIndexTagGN
+            name: error-index Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-index; MUST be 0 in a request. [RFC 3416 §4.2]"
+          - id: errorIndexLengthGN
+            name: error-index Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-index value bytes. [RFC 3416 §4.2]"
+          - id: errorIndexValueGN
+            name: error-index Value
+            type: { kind: bytes, n: { kind: ref, field: errorIndexLengthGN } }
+            category: identifier
+            doc: "Must be zero in GetNextRequest-PDU. [RFC 3416 §4.2]"
+          - id: varBindsTagGN
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "SEQUENCE tag 0x30 for the VarBindList. Each OID in the list specifies the object immediately before the desired next value in the MIB. [RFC 3416 §4.2]"
+          - id: varBindsLengthGN
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the VarBindList. [RFC 3416 §4.2]"
+          - id: varBindsDataGN
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthGN } }
+            category: variable
+            doc: "Encoded VarBindList for GetNextRequest; value fields are typically Null since only the OIDs matter for traversal. [RFC 3416 §4.2]"
+      "162":
+        id: getResponsePdu
+        name: GetResponse-PDU (0xA2)
+        fields:
+          - id: pduTagGetResponse
+            name: Response Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 162
+            doc: "Context-specific constructed tag 0xA2 for Response-PDU (called GetResponse-PDU in older RFCs). The agent sends this in reply to Get, GetNext, Set, Inform, and GetBulk requests. [RFC 3416 §4.7]"
+          - id: pduLengthGetResponse
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of Response-PDU contents. [RFC 3416 §4.7 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagRS
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for request-id echoed from the originating request. [RFC 3416 §4.7]"
+          - id: requestIdLengthRS
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id value bytes. [RFC 3416 §4.7]"
+          - id: requestIdValueRS
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthRS } }
+            category: identifier
+            doc: "Copied verbatim from the request PDU so the manager can correlate the response. [RFC 3416 §4.7]"
+          - id: errorStatusTagRS
+            name: error-status Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-status in the response. Non-zero indicates the request failed. [RFC 3416 §4.7]"
+          - id: errorStatusLengthRS
+            name: error-status Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-status value bytes. [RFC 3416 §4.7]"
+          - id: errorStatusValueRS
+            name: error-status Value
+            type: { kind: bytes, n: { kind: ref, field: errorStatusLengthRS } }
+            category: identifier
+            doc: "Error code: 0=noError, 1=tooBig, 2=noSuchName (SNMPv1 compat), 3=badValue (SNMPv1 compat), 5=genErr, 6=noAccess, 7=wrongType, 8=wrongLength, 9=wrongEncoding, 10=wrongValue, 11=noCreation, 12=inconsistentValue, 13=resourceUnavailable, 14=commitFailed, 15=undoFailed, 16=authorizationError, 17=notWritable, 18=inconsistentName. [RFC 3416 §4.7]"
+          - id: errorIndexTagRS
+            name: error-index Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-index. When error-status != 0, identifies which VarBind caused the error (1-based). [RFC 3416 §4.7]"
+          - id: errorIndexLengthRS
+            name: error-index Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-index value bytes. [RFC 3416 §4.7]"
+          - id: errorIndexValueRS
+            name: error-index Value
+            type: { kind: bytes, n: { kind: ref, field: errorIndexLengthRS } }
+            category: identifier
+            doc: "1-based index into the VarBindList that caused the error. Zero when error-status is noError or when the error is not attributable to a specific VarBind. [RFC 3416 §4.7]"
+          - id: varBindsTagRS
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "SEQUENCE tag 0x30 for the VarBindList. In a response this contains the requested object instances or exception values. [RFC 3416 §4.7]"
+          - id: varBindsLengthRS
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the VarBindList. [RFC 3416 §4.7]"
+          - id: varBindsDataRS
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthRS } }
+            category: variable
+            doc: "Encoded VarBindList: SEQUENCE OF VarBind, each VarBind is SEQUENCE {name OID, value ObjectSyntax | noSuchObject | noSuchInstance | endOfMibView}. [RFC 3416 §4.7]"
+      "163":
+        id: setRequestPdu
+        name: SetRequest-PDU (0xA3)
+        fields:
+          - id: pduTagSetRequest
+            name: SetRequest Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 163
+            doc: "Context-specific constructed tag 0xA3 for SetRequest-PDU. The manager requests that the agent modify the values of the specified object instances. [RFC 3416 §4.5]"
+          - id: pduLengthSetRequest
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of SetRequest-PDU contents. [RFC 3416 §4.5 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagST
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for request-id in SetRequest-PDU. [RFC 3416 §4.5]"
+          - id: requestIdLengthST
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id value bytes. [RFC 3416 §4.5]"
+          - id: requestIdValueST
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthST } }
+            category: identifier
+            doc: "Correlation identifier; the agent echoes this in the Response-PDU. [RFC 3416 §4.5]"
+          - id: errorStatusTagST
+            name: error-status Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-status; MUST be 0 in a SetRequest. [RFC 3416 §4.5]"
+          - id: errorStatusLengthST
+            name: error-status Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-status value bytes. [RFC 3416 §4.5]"
+          - id: errorStatusValueST
+            name: error-status Value
+            type: { kind: bytes, n: { kind: ref, field: errorStatusLengthST } }
+            category: identifier
+            doc: "Must be zero in SetRequest-PDU. The agent returns errors via the Response-PDU error-status. [RFC 3416 §4.5]"
+          - id: errorIndexTagST
+            name: error-index Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-index; MUST be 0 in a SetRequest. [RFC 3416 §4.5]"
+          - id: errorIndexLengthST
+            name: error-index Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-index value bytes. [RFC 3416 §4.5]"
+          - id: errorIndexValueST
+            name: error-index Value
+            type: { kind: bytes, n: { kind: ref, field: errorIndexLengthST } }
+            category: identifier
+            doc: "Must be zero in SetRequest-PDU. [RFC 3416 §4.5]"
+          - id: varBindsTagST
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "SEQUENCE tag 0x30 for the VarBindList. Each VarBind specifies an OID and the new value to assign. [RFC 3416 §4.5]"
+          - id: varBindsLengthST
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the VarBindList. [RFC 3416 §4.5]"
+          - id: varBindsDataST
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthST } }
+            category: variable
+            doc: "Encoded VarBindList: SEQUENCE OF VarBind, each pairing an OID with the value to set. The agent validates all bindings before modifying any (RFC 3416 two-phase commit). [RFC 3416 §4.5]"
+      "165":
+        id: getBulkRequestPdu
+        name: GetBulkRequest-PDU (0xA5)
+        fields:
+          - id: pduTagGetBulk
+            name: GetBulkRequest Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 165
+            doc: "Context-specific constructed tag 0xA5 for GetBulkRequest-PDU. Allows the manager to retrieve large blocks of MIB data with a single request, reducing round trips for table retrieval. [RFC 3416 §4.4]"
+          - id: pduLengthGetBulk
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of GetBulkRequest-PDU contents. [RFC 3416 §4.4 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagGB
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for request-id in GetBulkRequest-PDU. [RFC 3416 §4.4]"
+          - id: requestIdLengthGB
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id value bytes. [RFC 3416 §4.4]"
+          - id: requestIdValueGB
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthGB } }
+            category: identifier
+            doc: "Correlation identifier echoed in the Response-PDU. [RFC 3416 §4.4]"
+          - id: nonRepeatersTagGB
+            name: non-repeaters Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for non-repeaters. Reuses the error-status TLV position but carries GetBulk-specific semantics. [RFC 3416 §4.4]"
+          - id: nonRepeatersLengthGB
+            name: non-repeaters Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the non-repeaters integer value bytes. [RFC 3416 §4.4]"
+          - id: nonRepeatersValueGB
+            name: non-repeaters Value
+            type: { kind: bytes, n: { kind: ref, field: nonRepeatersLengthGB } }
+            category: identifier
+            doc: "Number of leading VarBinds in the VarBindList that are non-repeating (retrieved at most once, like GetNext). The remaining VarBinds are repeaters. [RFC 3416 §4.4]"
+          - id: maxRepetitionsTagGB
+            name: max-repetitions Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for max-repetitions. Reuses the error-index TLV position but carries GetBulk-specific semantics. [RFC 3416 §4.4]"
+          - id: maxRepetitionsLengthGB
+            name: max-repetitions Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the max-repetitions integer value bytes. [RFC 3416 §4.4]"
+          - id: maxRepetitionsValueGB
+            name: max-repetitions Value
+            type: { kind: bytes, n: { kind: ref, field: maxRepetitionsLengthGB } }
+            category: identifier
+            doc: "Maximum number of iterations over the repeating VarBinds. The agent returns up to max-repetitions lexicographic successors for each repeating OID. Large values speed up bulk retrieval but risk generating tooBig responses. [RFC 3416 §4.4]"
+          - id: varBindsTagGB
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "SEQUENCE tag 0x30 for the VarBindList. The first non-repeaters VarBinds use GetNext semantics; the remainder are iterated up to max-repetitions times. [RFC 3416 §4.4]"
+          - id: varBindsLengthGB
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the VarBindList. [RFC 3416 §4.4]"
+          - id: varBindsDataGB
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthGB } }
+            category: variable
+            doc: "Encoded VarBindList for GetBulkRequest. Value fields should be Null for non-repeaters; the agent fills in values in the Response-PDU. [RFC 3416 §4.4]"
+      "167":
+        id: informRequestPdu
+        name: InformRequest-PDU (0xA7)
+        fields:
+          - id: pduTagInform
+            name: InformRequest Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 167
+            doc: "Context-specific constructed tag 0xA7 for InformRequest-PDU. Manager-to-manager notification requiring acknowledgement via a Response-PDU; unlike Trap, the originator retransmits until acknowledged. [RFC 3416 §4.6]"
+          - id: pduLengthInform
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of InformRequest-PDU contents. [RFC 3416 §4.6 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagIF
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for request-id in InformRequest-PDU. [RFC 3416 §4.6]"
+          - id: requestIdLengthIF
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id value bytes. [RFC 3416 §4.6]"
+          - id: requestIdValueIF
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthIF } }
+            category: identifier
+            doc: "Correlation identifier; the receiver echoes this in the Response-PDU to acknowledge delivery. [RFC 3416 §4.6]"
+          - id: errorStatusTagIF
+            name: error-status Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-status; MUST be 0 in InformRequest. [RFC 3416 §4.6]"
+          - id: errorStatusLengthIF
+            name: error-status Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-status value bytes. [RFC 3416 §4.6]"
+          - id: errorStatusValueIF
+            name: error-status Value
+            type: { kind: bytes, n: { kind: ref, field: errorStatusLengthIF } }
+            category: identifier
+            doc: "Must be zero in InformRequest-PDU. [RFC 3416 §4.6]"
+          - id: errorIndexTagIF
+            name: error-index Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-index; MUST be 0 in InformRequest. [RFC 3416 §4.6]"
+          - id: errorIndexLengthIF
+            name: error-index Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-index value bytes. [RFC 3416 §4.6]"
+          - id: errorIndexValueIF
+            name: error-index Value
+            type: { kind: bytes, n: { kind: ref, field: errorIndexLengthIF } }
+            category: identifier
+            doc: "Must be zero in InformRequest-PDU. [RFC 3416 §4.6]"
+          - id: varBindsTagIF
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "SEQUENCE tag 0x30 for the VarBindList. For InformRequest the first two VarBinds conventionally carry sysUpTime.0 and snmpTrapOID.0. [RFC 3416 §4.6]"
+          - id: varBindsLengthIF
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the VarBindList. [RFC 3416 §4.6]"
+          - id: varBindsDataIF
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthIF } }
+            category: variable
+            doc: "Encoded VarBindList for InformRequest. Must include sysUpTime.0 (1.3.6.1.2.1.1.3.0) and snmpTrapOID.0 (1.3.6.1.6.3.1.1.4.1.0) as the first two bindings, plus optional enterprise-specific VarBinds. [RFC 3416 §4.6]"
+      "168":
+        id: snmpV2TrapPdu
+        name: SNMPv2-Trap-PDU (0xA8)
+        fields:
+          - id: pduTagTrap
+            name: SNMPv2-Trap Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 168
+            doc: "Context-specific constructed tag 0xA8 for SNMPv2-Trap-PDU. Unacknowledged agent-to-manager notification; the manager does not reply. Replaces SNMPv1 Trap-PDU (type 4) with a uniform PDU structure. [RFC 3416 §4.3]"
+          - id: pduLengthTrap
+            name: PDU Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER/DER length of SNMPv2-Trap-PDU contents. [RFC 3416 §4.3 / ITU-T X.690 §8.1.3]"
+          - id: requestIdTagTP
+            name: request-id Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for request-id in SNMPv2-Trap-PDU. [RFC 3416 §4.3]"
+          - id: requestIdLengthTP
+            name: request-id Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the request-id value bytes. [RFC 3416 §4.3]"
+          - id: requestIdValueTP
+            name: request-id Value
+            type: { kind: bytes, n: { kind: ref, field: requestIdLengthTP } }
+            category: identifier
+            doc: "Monotonically increasing trap-request identifier used by managers to detect duplicate traps. [RFC 3416 §4.3]"
+          - id: errorStatusTagTP
+            name: error-status Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-status; MUST be 0 in SNMPv2-Trap-PDU. [RFC 3416 §4.3]"
+          - id: errorStatusLengthTP
+            name: error-status Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-status value bytes. [RFC 3416 §4.3]"
+          - id: errorStatusValueTP
+            name: error-status Value
+            type: { kind: bytes, n: { kind: ref, field: errorStatusLengthTP } }
+            category: identifier
+            doc: "Must be zero in SNMPv2-Trap-PDU. [RFC 3416 §4.3]"
+          - id: errorIndexTagTP
+            name: error-index Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 2
+            doc: "INTEGER tag 0x02 for error-index; MUST be 0 in SNMPv2-Trap-PDU. [RFC 3416 §4.3]"
+          - id: errorIndexLengthTP
+            name: error-index Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of error-index value bytes. [RFC 3416 §4.3]"
+          - id: errorIndexValueTP
+            name: error-index Value
+            type: { kind: bytes, n: { kind: ref, field: errorIndexLengthTP } }
+            category: identifier
+            doc: "Must be zero in SNMPv2-Trap-PDU. [RFC 3416 §4.3]"
+          - id: varBindsTagTP
+            name: VarBindList Tag
+            type: { kind: int, bits: 8 }
+            category: type
+            defaultValue: 48
+            doc: "SEQUENCE tag 0x30 for the VarBindList. Must include sysUpTime.0 and snmpTrapOID.0 as the first two bindings. [RFC 3416 §4.3]"
+          - id: varBindsLengthTP
+            name: VarBindList Length
+            type: { kind: berLength }
+            category: length
+            doc: "BER length of the VarBindList. [RFC 3416 §4.3]"
+          - id: varBindsDataTP
+            name: VarBindList Data
+            type: { kind: bytes, n: { kind: ref, field: varBindsLengthTP } }
+            category: variable
+            doc: "Encoded VarBindList for SNMPv2-Trap-PDU. Must include sysUpTime.0 (1.3.6.1.2.1.1.3.0) and snmpTrapOID.0 (1.3.6.1.6.3.1.1.4.1.0) as first two bindings; additional enterprise-specific VarBinds follow. [RFC 3416 §4.3]"
+    default:
+      id: unknownPdu
+      name: Unknown PDU
+      fields:
+        - id: pduTagUnknown
+          name: PDU Tag
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: "Unrecognised context-specific PDU tag. SNMPv2c defines 0xA0, 0xA1, 0xA2, 0xA3, 0xA5, 0xA7, 0xA8; any other value indicates a malformed or future-extension PDU. [RFC 3416 §3]"
+        - id: pduLengthUnknown
+          name: PDU Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER/DER length of the unrecognised PDU contents. [ITU-T X.690 §8.1.3]"
+        - id: pduDataUnknown
+          name: PDU Data
+          type: { kind: bytes, n: { kind: ref, field: pduLengthUnknown } }
+          category: variable
+          doc: "Raw bytes of the unrecognised PDU; contents are opaque until the tag is mapped to a known PDU type. [RFC 3416 §3]"

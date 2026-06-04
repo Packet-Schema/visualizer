@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../../schemas/psdl.schema.json
-name: ICMP Echo (IPv4)
+name: ICMP (IPv4)
 rowBits: 32
 byteOrder: Network byte order (big-endian, MSB-first). The Identifier and Sequence Number are 16-bit big-endian.
-description: Internet Control Message Protocol echo request/reply layout (RFC 792). Carried directly inside IPv4 with Protocol=1.
+description: Internet Control Message Protocol (RFC 792). Carried directly inside IPv4 with Protocol=1. A shared Type/Code/Checksum header is followed by a Switch on Type that selects the per-message body — Echo Request/Reply (8/0), Destination Unreachable (3, with Next-Hop MTU per RFC 1191), Redirect (5), Time Exceeded (11, used by traceroute), Parameter Problem (12), and Timestamp/Reply (13/14).
 body:
   - id: type
     name: Type
@@ -25,17 +25,193 @@ body:
       n: 16
     category: checksum
     doc: 16-bit one's-complement checksum over the entire ICMP message (header + data). Detects in-transit corruption. [RFC 1071]
-  - id: identifier
-    name: Identifier
-    type:
-      kind: bits
-      n: 16
-    category: identifier
-    doc: Echo identifier — lets a sender match replies to its outstanding requests when many are in flight. Often the OS sets this to the ping process's PID.
-  - id: sequence
-    name: Sequence Number
-    type:
-      kind: bits
-      n: 16
-    category: identifier
-    doc: Echo sequence number — incremented for each ping so you can spot dropped replies. e.g. ping shows 'icmp_seq=1, icmp_seq=2, ...'.
+  - kind: switch
+    id: rest
+    name: Rest of Header
+    on:
+      kind: ref
+      field: type
+    cases:
+      "0":
+        id: echoReply
+        name: Echo Reply
+        fields:
+          - id: identifier
+            name: Identifier
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo identifier — lets a sender match replies to its outstanding requests when many are in flight. Often the OS sets this to the ping process's PID. Type=0 is Echo Reply. [RFC 792]
+          - id: sequence
+            name: Sequence Number
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo sequence number — incremented for each ping so you can spot dropped replies. e.g. ping shows 'icmp_seq=1, icmp_seq=2, ...'. [RFC 792]
+      "8":
+        id: echoRequest
+        name: Echo Request
+        fields:
+          - id: identifierReq
+            name: Identifier
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo identifier for an Echo Request (Type=8, ping). Returned unchanged in the matching Echo Reply so the sender can correlate requests and replies. [RFC 792]
+          - id: sequenceReq
+            name: Sequence Number
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo sequence number for an Echo Request (Type=8). Incremented per packet and echoed back in the reply to detect loss/reordering. [RFC 792]
+      "3":
+        id: destUnreachable
+        name: Destination Unreachable
+        fields:
+          - id: unused3
+            name: Unused
+            type:
+              kind: bits
+              n: 16
+            category: reserved
+            doc: Unused field for Destination Unreachable (Type=3). Sent as zero. Code 0..15 refines the reason (0=net, 1=host, 3=port, 4=fragmentation needed and DF set). [RFC 792]
+          - id: nextHopMtu
+            name: Next-Hop MTU
+            type:
+              kind: bits
+              n: 16
+            category: length
+            doc: Next-hop MTU advertised for Path MTU Discovery when Code=4 (fragmentation needed and DF set); zero in original RFC 792 messages. [RFC 1191]
+      "11":
+        id: timeExceeded
+        name: Time Exceeded
+        fields:
+          - id: unused11
+            name: Unused
+            type:
+              kind: bits
+              n: 32
+            category: reserved
+            doc: Unused field for Time Exceeded (Type=3 unused area, 32 bits) sent as zero. Code 0=TTL exceeded in transit (used by traceroute), 1=fragment reassembly time exceeded. [RFC 792]
+      "5":
+        id: redirect
+        name: Redirect
+        fields:
+          - id: gatewayAddress
+            name: Gateway Internet Address
+            type:
+              kind: bits
+              n: 32
+            category: addressing
+            doc: IPv4 address of the gateway (router) to which traffic for the destination should be redirected (Type=5). [RFC 792]
+      "12":
+        id: parameterProblem
+        name: Parameter Problem
+        fields:
+          - id: pointer
+            name: Pointer
+            type:
+              kind: bits
+              n: 8
+            category: identifier
+            doc: Pointer identifying the octet in the original IP header where the error was detected (Type=12). [RFC 792]
+          - id: unused12
+            name: Unused
+            type:
+              kind: bits
+              n: 24
+            category: reserved
+            doc: Unused field for Parameter Problem (Type=12), sent as zero. [RFC 792]
+      "13":
+        id: timestamp
+        name: Timestamp
+        fields:
+          - id: identifierTs
+            name: Identifier
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Identifier to match Timestamp Request (Type=13) with its Timestamp Reply. [RFC 792]
+          - id: sequenceTs
+            name: Sequence Number
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Sequence number for Timestamp messages (Type=13). [RFC 792]
+          - id: originateTimestamp
+            name: Originate Timestamp
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Time the sender last touched the message before sending, in milliseconds since midnight UT (Type=13). [RFC 792]
+          - id: receiveTimestamp
+            name: Receive Timestamp
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Time the echoer first touched the message on receipt, in milliseconds since midnight UT (Type=13). [RFC 792]
+          - id: transmitTimestamp
+            name: Transmit Timestamp
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Time the echoer last touched the message before sending the reply, in milliseconds since midnight UT (Type=13). [RFC 792]
+      "14":
+        id: timestampReply
+        name: Timestamp Reply
+        fields:
+          - id: identifierTsr
+            name: Identifier
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Identifier to match Timestamp Reply (Type=14) with its originating Timestamp Request. [RFC 792]
+          - id: sequenceTsr
+            name: Sequence Number
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Sequence number for Timestamp Reply messages (Type=14). [RFC 792]
+          - id: originateTimestampR
+            name: Originate Timestamp
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Time the original sender last touched the message before sending, in milliseconds since midnight UT (Type=14). [RFC 792]
+          - id: receiveTimestampR
+            name: Receive Timestamp
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Time the echoer first touched the request on receipt, in milliseconds since midnight UT (Type=14). [RFC 792]
+          - id: transmitTimestampR
+            name: Transmit Timestamp
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Time the echoer last touched the message before sending this reply, in milliseconds since midnight UT (Type=14). [RFC 792]
+    default:
+      id: restOpaque
+      name: Rest of Header
+      fields:
+        - id: restOfHeader
+          name: Rest of Header
+          type:
+            kind: bits
+            n: 32
+          category: reserved
+          doc: Type-specific 32-bit "Rest of Header" field whose meaning depends on Type/Code; shown opaque for message types not otherwise modeled. [RFC 792]

@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: L2TPv3 Data Message (over IP)
+rowBits: 32
+byteOrder: BE
+description: "L2TP version 3 data message encapsulated directly over IP (Protocol 115, RFC 3931). L2TPv3 replaces the 16-bit Tunnel ID + Session ID pair of L2TPv2 (RFC 2661) with a single 32-bit Session ID in the data-plane header, eliminating the framing overhead of the control word and enabling pseudowire (PW) services — Ethernet, Frame Relay, ATM, HDLC — over an IP or UDP/IP network. The minimal data-plane header is 32 bits: a 32-bit Session ID. An optional 64-bit Cookie (two 32-bit halves, CookieHigh and CookieLow) follows when negotiated via the control channel; the Cookie provides a lightweight spoofing-resistance check independent of any IP-layer security. An optional L2-Specific Sublayer of 32 bits MAY follow the Cookie (or Session ID when no Cookie is present) to carry the Default L2-Specific Sublayer (sequence number + reserved bits) per RFC 4719. The encapsulated L2 payload follows. Because PSDL has no comparison operator, the cookie and sublayer are each represented as independent optional fields controlled by external boolean references (l2tpv3Cookie and l2tpv3Sublayer) set by the visualizer. [RFC 3931 §4.1 / §4.1.2]"
+
+body:
+  - id: sessionId
+    name: Session ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "32-bit session identifier allocated by the local LAC/LNS for the pseudowire session. Unlike L2TPv2, there is no Tunnel ID in the data-plane header; the Session ID alone demultiplexes incoming data messages to the correct pseudowire. A value of 0 is reserved for L2TP control messages; a data-plane packet MUST NOT carry Session ID 0 on the wire. [RFC 3931 §4.1 / §3.3]"
+
+  - kind: optional
+    when: { kind: ref, field: l2tpv3Cookie }
+    field:
+      id: cookieHigh
+      name: Cookie (High 32)
+      type: { kind: int, bits: 32 }
+      category: variable
+      doc: "Upper 32 bits of the 64-bit Cookie. Present only when a Cookie of length 4 or 8 bytes was negotiated via the Cookie Length AVP in the control channel. The Cookie is an opaque value chosen by the session originator to provide protection against off-path Session ID spoofing; receivers MUST silently discard packets whose Cookie does not match the negotiated value. When a 4-byte cookie is used only CookieHigh carries the value and CookieLow is absent. [RFC 3931 §4.1.2]"
+
+  - kind: optional
+    when: { kind: ref, field: l2tpv3Cookie }
+    field:
+      id: cookieLow
+      name: Cookie (Low 32)
+      type: { kind: int, bits: 32 }
+      category: variable
+      doc: "Lower 32 bits of the 64-bit Cookie. Present only when an 8-byte Cookie was negotiated. Together with CookieHigh this forms the full 8-byte Cookie value that the receiver compares against the locally stored cookie for the session. If only a 4-byte cookie was negotiated this field is absent; the visualizer controls presence via the same l2tpv3Cookie flag as CookieHigh. [RFC 3931 §4.1.2]"
+
+  - kind: optional
+    when: { kind: ref, field: l2tpv3Sublayer }
+    field:
+      id: l2Sublayer
+      name: L2-Specific Sublayer
+      type: { kind: int, bits: 32 }
+      category: variable
+      doc: "32-bit Default L2-Specific Sublayer, present when negotiated via the L2-Specific Sublayer AVP. Bit layout (MSB first): 1-bit S (Sequence) flag, 15-bit sequence number, 16-bit reserved (MUST be zero). The sequence number provides per-session in-order delivery detection for pseudowire payloads; a value of 0 in the S flag indicates the sequence number field is not valid. When no L2-Specific Sublayer type was negotiated this field is absent. [RFC 3931 §4.1.1 / RFC 4719 §2.1]"
+
+  - id: l2Payload
+    name: L2 Payload
+    type: { kind: bytes, n: { kind: ref, field: l2tpv3PayloadBytes } }
+    category: variable
+    doc: "Encapsulated Layer-2 payload for the pseudowire. Content depends on the PW Type negotiated via the Pseudowire Type AVP: 0x0004 Ethernet Tagged Mode (RFC 4448), 0x0005 Ethernet (untagged, RFC 4448), 0x0001 Frame Relay DLCI (RFC 4619), 0x0002 ATM AAL5 SDU (RFC 4454), 0x0006 HDLC (RFC 4618), among others. The length is not carried in the L2TPv3 data-plane header; it is derived from the IP Total Length minus the IP and L2TPv3 overhead. l2tpv3PayloadBytes is an external reference supplied by the visualizer. [RFC 3931 §4.1 / RFC 4446]"

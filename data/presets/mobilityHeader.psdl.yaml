@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: Mobile IPv6 Mobility Header
+rowBits: 32
+byteOrder: BE
+description: "Mobile IPv6 Mobility Header (RFC 6275, IPv6 Next Header 135). A variable-length header carried directly in an IPv6 packet or as the final extension header before the upper-layer payload. The fixed portion — Payload Proto (8 b), Header Len (8 b), MH Type (8 b), Reserved (8 b), Checksum (16 b), and Reserved (16 b) — is 8 bytes (the two Reserved bytes after Checksum close the fixed header to a 64-bit boundary). Message Data follows and is selected by MH Type: Binding Update (type 5) carries Sequence, four flags (A/H/L/K), a 12-bit reserved field, and Lifetime; all other types carry raw Message Data bytes. The header length field (Header Len) encodes the total length in 8-octet units minus 1, consistent with other IPv6 extension headers."
+
+body:
+  - id: mh6PayloadProto
+    name: Payload Proto
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "Next Header value identifying the type of the header that immediately follows the Mobility Header in the encapsulated payload (e.g. 59 = No Next Header, 6 = TCP, 17 = UDP). Uses the same number space as IPv6 Next Header. [RFC 6275 §6.1.1]"
+
+  - id: mh6HeaderLen
+    name: Header Len
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Length of the Mobility Header in 8-octet units, excluding the first 8 octets. A value of 0 means the header is exactly 8 bytes; the minimum legal value for a Binding Update (type 5) is 1 (16 bytes total). Receivers MUST silently discard Mobility Headers whose Header Len is inconsistent with the MH Type. [RFC 6275 §6.1.1]"
+
+  - id: mhType
+    name: MH Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "BRR (Binding Refresh Request)"
+        1: "HoTI (Home Test Init)"
+        2: "CoTI (Care-of Test Init)"
+        3: "HoT (Home Test)"
+        4: "CoT (Care-of Test)"
+        5: "BU (Binding Update)"
+        6: "BA (Binding Acknowledgement)"
+        7: "BE (Binding Error)"
+    category: type
+    doc: "Mobility Header message type. Determines the format of the Message Data that follows the fixed 8-byte header. Values 0–7 are defined by RFC 6275; values 8–255 are reserved or assigned by IANA. An unrecognised MH Type MUST cause the node to discard the packet and, if not a multicast, send a Binding Error (type 7) with Status 2 (Unrecognized MH Type). [RFC 6275 §6.1.1 / §9.3.3]"
+
+  - id: mh6Reserved
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: "Reserved field in the fixed Mobility Header. MUST be initialised to zero by the sender and ignored by the receiver. [RFC 6275 §6.1.1]"
+
+  - id: mh6Checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: "Internet checksum of the Mobility Header computed over a pseudo-header (IPv6 source address, destination address, Mobility Header payload length, zero-padded Next Header 135) prepended to the Mobility Header itself. The checksum field is treated as zero during computation. MUST be verified and discarded on mismatch. [RFC 6275 §6.1.1]"
+
+  - kind: switch
+    id: mhMessageData
+    on: { kind: ref, field: mhType }
+    cases:
+      "5":
+        id: mhBindingUpdate
+        name: Binding Update
+        fields:
+          - id: buSequence
+            name: Sequence
+            type: { kind: int, bits: 16 }
+            category: identifier
+            doc: "Sequence number used to order Binding Updates from a given mobile node. The receiving node uses this value to detect reordering and to match a Binding Acknowledgement back to the corresponding Binding Update. MUST be incremented for each successive Binding Update sent to the same home agent or correspondent node. [RFC 6275 §6.1.7]"
+
+          - kind: group
+            id: buFlags
+            name: Flags
+            children:
+              - id: buFlagA
+                name: A
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Acknowledge (A) flag. When set to 1 the mobile node requests that the recipient send a Binding Acknowledgement (MH Type 6) in response to this Binding Update. MUST be set when registering with the home agent. [RFC 6275 §6.1.7]"
+
+              - id: buFlagH
+                name: H
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Home Registration (H) flag. When set to 1 this Binding Update is intended for the home agent; the home agent will establish or update a binding cache entry and tunnel return traffic to the care-of address. When 0, this is a correspondent registration. [RFC 6275 §6.1.7]"
+
+              - id: buFlagL
+                name: L
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Link-Local Address Compatibility (L) flag. When set to 1 the home address reported by the mobile node has the same interface identifier as the mobile node's link-local address. Allows the home agent to form the link-local address of the mobile node for Neighbor Discovery purposes. [RFC 6275 §6.1.7]"
+
+              - id: buFlagK
+                name: K
+                type: { kind: int, bits: 1 }
+                category: flags
+                doc: "Key Management Mobility Capability (K) flag. When set to 1 indicates that the Binding Update was protected by a security association that is managed by a key management protocol (e.g. IKEv2). Allows the home agent to determine whether mobility of the key management session is also needed. [RFC 6275 §6.1.7]"
+
+              - id: buReserved
+                name: Reserved
+                type: { kind: int, bits: 12 }
+                category: reserved
+                doc: "Reserved bits within the flags/reserved half-word of the Binding Update. MUST be set to zero by the sender and ignored by the receiver. [RFC 6275 §6.1.7]"
+
+          - id: buLifetime
+            name: Lifetime
+            type: { kind: int, bits: 16 }
+            category: variable
+            doc: "Requested lifetime of the binding in units of 4 seconds. A value of zero requests deletion of the binding cache entry (deregistration). The home agent or correspondent node may return a shorter lifetime in the Binding Acknowledgement. Maximum representable value is 262140 seconds (approximately 3 days). [RFC 6275 §6.1.7]"
+
+    default:
+      id: mhGenericData
+      name: Message Data
+      fields:
+        - id: mh6MessageBytes
+          name: Message Data
+          type: { kind: bytes, n: { kind: ref, field: mh6MessageDataLen } }
+          category: variable
+          doc: "Raw message data whose length and interpretation depend on MH Type. For types other than Binding Update (5), the layout is defined by the relevant RFC section for that type (e.g. BRR §6.1.2, HoTI §6.1.3, CoTI §6.1.4, HoT §6.1.5, CoT §6.1.6, BA §6.1.8, BE §6.1.9). The byte count mh6MessageDataLen is derived externally from the Header Len field. [RFC 6275 §6.1]"

@@ -1,0 +1,116 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PCEP
+rowBits: 32
+byteOrder: BE
+description: "Path Computation Element Communication Protocol (PCEP) message (RFC 5440). PCEP enables a Path Computation Client (PCC) to request and a Path Computation Element (PCE) to supply Traffic-Engineering label-switched paths across an MPLS or GMPLS network. Every PCEP message begins with a 4-byte Common Header — Version (3 bits, MUST be 1), Flags (5 bits), Message-Type (8 bits), and Message-Length (16 bits) — followed by zero or more PCEP Objects. Each Object carries a fixed 4-byte Object Header (Class, Type, Reserved, P-flag, I-flag, Length) and a variable-length Object Body. Message types: 1=Open, 2=Keepalive, 3=PCReq, 4=PCRep, 5=PCNtf, 6=PCErr, 7=Close. PCEP runs over TCP port 4189."
+
+body:
+  - kind: group
+    id: pcepCommonHeader
+    name: Common Header
+    children:
+      - id: pcepVersion
+        name: Version
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 1
+        doc: "PCEP protocol version. MUST be set to 1; a message with any other version MUST be rejected with a PCErr. [RFC 5440 §6.1]"
+      - id: pcepFlags
+        name: Flags
+        type: { kind: bits, n: 5 }
+        category: flags
+        doc: "Reserved flags in the Common Header. MUST be set to zero on transmission; MUST be ignored on receipt. No flag assignments are defined for this field in RFC 5440. [RFC 5440 §6.1]"
+      - id: pcepMessageType
+        name: Message Type
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: "Open"
+            2: "Keepalive"
+            3: "PCReq"
+            4: "PCRep"
+            5: "PCNtf"
+            6: "PCErr"
+            7: "Close"
+        category: type
+        defaultValue: 1
+        doc: "PCEP message type. 1=Open (session negotiation), 2=Keepalive (session liveness), 3=PCReq (path computation request from PCC to PCE), 4=PCRep (path computation reply from PCE to PCC), 5=PCNtf (notification), 6=PCErr (error), 7=Close (session teardown). Values 8–255 are unassigned. [RFC 5440 §6.1]"
+      - id: pcepMessageLength
+        name: Message Length
+        type: { kind: int, bits: 16 }
+        category: length
+        defaultValue: 4
+        doc: "Total length of the PCEP message in bytes, including this 4-byte Common Header and all Object bodies that follow. The minimum value for a Keepalive message is 4 (header only). [RFC 5440 §6.1]"
+
+  - kind: repeat
+    id: pcepObjects
+    name: PCEP Objects
+    category: variable
+    element:
+      id: pcepObject
+      fields:
+        - id: pcepObjectClass
+          name: Object Class
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: "OPEN"
+              2: "RP"
+              3: "NO-PATH"
+              4: "END-POINTS"
+              5: "BANDWIDTH"
+              6: "METRIC"
+              7: "ERO"
+              8: "RRO"
+              9: "LSPA"
+              10: "IRO"
+              11: "SVEC"
+              12: "NOTIFICATION"
+              13: "PCEP-ERROR"
+              14: "LOAD-BALANCING"
+              15: "CLOSE"
+              16: "PATH-KEY"
+              17: "XRO"
+              19: "OF"
+          category: type
+          doc: "PCEP Object Class identifying the high-level purpose of this object. Key classes: 1=OPEN (session parameters), 2=RP (Request Parameters), 3=NO-PATH (no feasible path exists), 4=END-POINTS (source/destination), 5=BANDWIDTH, 6=METRIC, 7=ERO (Explicit Route), 8=RRO (Reported Route), 9=LSPA (LSP Attributes), 10=IRO (Include Route), 11=SVEC (Synchronisation Vector), 12=NOTIFICATION, 13=PCEP-ERROR, 14=LOAD-BALANCING, 15=CLOSE, 17=XRO (Exclude Route), 19=OF (Objective Function). [RFC 5440 §7 / §9]"
+        - kind: group
+          id: pcepObjTypeFlags
+          name: Type / Flags
+          children:
+            - id: pcepObjectType
+              name: Object Type
+              type: { kind: int, bits: 4 }
+              category: type
+              doc: "Object Type sub-classifying the Object Class. For example, END-POINTS Class (4): Type 1 = IPv4 addresses, Type 2 = IPv6 addresses. The combination of Class and Type uniquely identifies the object format. [RFC 5440 §7]"
+            - id: pcepObjReserved
+              name: Reserved
+              type: { kind: bits, n: 2 }
+              category: reserved
+              doc: "Reserved bits in the Object Header. MUST be set to zero on transmission; MUST be ignored on receipt. [RFC 5440 §7]"
+            - id: pcepObjFlagP
+              name: P
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 0
+              doc: "Processing-Rule (P) flag. When set to 1, the object is mandatory and the PCE MUST take it into account when computing the path. When 0, the object is optional and the PCE MAY ignore it. [RFC 5440 §7]"
+            - id: pcepObjFlagI
+              name: I
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 0
+              doc: "Ignore (I) flag. When set to 1 and the object is not recognised, the PCE MUST ignore it and continue processing the message rather than sending a PCErr. When 0, an unrecognised object causes a PCErr to be returned. [RFC 5440 §7]"
+        - id: pcepObjectLength
+          name: Object Length
+          type: { kind: int, bits: 16 }
+          category: length
+          defaultValue: 4
+          doc: "Total length of this PCEP object in bytes, including the 4-byte Object Header and the Object Body. MUST be a multiple of 4; padding bytes (value 0x00) MUST be added to the Object Body when necessary to reach alignment. [RFC 5440 §7]"
+        - id: pcepObjectBody
+          name: Object Body
+          type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: pcepObjectLength }, b: { kind: lit, value: 4 } } }
+          category: payload-marker
+          doc: "Object Body, exactly (pcepObjectLength - 4) bytes. Content and encoding are determined by the Object Class and Object Type fields. For example: OPEN body carries Version, Keepalive-Timer, Dead-Timer, SID (Session ID); RP body carries Flags and Request-ID-Number; ERO/RRO bodies carry sequences of sub-objects (IPv4/IPv6 prefix, AS number, label). [RFC 5440 §7]"
+    count: { kind: ref, field: pcepObjectCount }

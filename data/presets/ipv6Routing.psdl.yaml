@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IPv6 Routing Extension Header
+rowBits: 32
+byteOrder: BE
+description: "IPv6 Routing Extension Header (RFC 8200 §4.4). Directs a packet through one or more intermediate nodes before delivery to the final destination. The Routing Type field selects the specific routing sub-type: Type 0 (deprecated, RFC 5095), Type 2 (Mobile IPv6 Home Address routing, RFC 6275), Type 3 (RPL Source Route Header, RFC 6554), Type 4 (Segment Routing Header / SRH, RFC 8754). The header length is always a multiple of 8 bytes: total octets = (Hdr Ext Len + 1) × 8."
+body:
+  - id: nextHeader
+    name: Next Header
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "IP Protocol Number of the header immediately following this Routing Extension Header (e.g. 6=TCP, 17=UDP, 58=ICMPv6, 43=another Routing header). Uses the same IANA numbering as IPv4 Protocol. [RFC 8200 §4.4]"
+  - id: hdrExtLen
+    name: Hdr Ext Len
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Length of the Routing Extension Header in 8-octet units, not including the first 8 octets. A value of 0 means the header is exactly 8 bytes long. Total header length in bytes = (Hdr Ext Len + 1) × 8. [RFC 8200 §4.4]"
+  - id: routingType
+    name: Routing Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "Type 0 (deprecated)"
+        2: "Type 2 (Mobile IPv6)"
+        3: "Type 3 (RPL SRH)"
+        4: "Type 4 (SRH)"
+    category: type
+    doc: "Identifies the variant of the Routing header. Type 0 (deprecated per RFC 5095 — causes amplification attacks and MUST be ignored). Type 2 carries a single Home Address for Mobile IPv6 (RFC 6275 §6.4). Type 3 is the RPL Source Route Header carrying an abbreviated address list (RFC 6554). Type 4 is the Segment Routing Header (SRH) carrying an ordered list of 128-bit IPv6 segment addresses (RFC 8754). [RFC 8200 §4.4, RFC 5095, RFC 6275, RFC 6554, RFC 8754]"
+  - id: segmentsLeft
+    name: Segments Left
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Number of route segments remaining to be visited before reaching the final destination. Decremented by each intermediate node that processes this Routing header. When it reaches 0, the packet is delivered to its current destination address. [RFC 8200 §4.4]"
+  - kind: switch
+    id: routingTypeData
+    on: { kind: ref, field: routingType }
+    cases:
+      "4":
+        id: routingTypeData_srh
+        name: SRH Type-Specific Data (RFC 8754)
+        fields:
+          - id: srhLastEntry
+            name: Last Entry
+            type: { kind: int, bits: 8 }
+            category: identifier
+            doc: "Index (zero-based) of the last element in the Segment List. Since the Segment List is stored in reverse path order, this value equals (number of segments − 1). Segment List[0] is the final destination; Segment List[Last Entry] is the first hop. [RFC 8754 §2]"
+          - kind: group
+            id: srhFlagsGroup
+            name: Flags
+            children:
+              - id: srhFlags
+                name: Flags
+                type: { kind: bits, n: 8 }
+                category: flags
+                doc: "8-bit flags field. Currently no flags are defined; all bits MUST be set to 0 on transmission and MUST be ignored on receipt. Future RFCs may assign individual bits for extensions such as Hmac (see RFC 8754 §8.2). [RFC 8754 §2]"
+          - id: srhTag
+            name: Tag
+            type: { kind: int, bits: 16 }
+            category: identifier
+            doc: "16-bit tag value that marks packets that carry the same instruction set (i.e., belong to the same policy). Set to 0 when not used. Allows a middlebox or the destination to group or distinguish SR-encapsulated flows. [RFC 8754 §2]"
+          - kind: repeat
+            id: srhSegmentList
+            name: Segment List
+            category: addressing
+            doc: "Ordered list of 128-bit IPv6 addresses constituting the SR policy. Entries are stored in reverse path order: Segment List[0] is the ultimate destination of the SR path; Segment List[Last Entry] is the first segment to be visited. The active segment is Segment List[Segments Left]. Total segments = Last Entry + 1. [RFC 8754 §2]"
+            element:
+              id: srhSegmentRecord
+              fields:
+                - id: srhSegment
+                  name: Segment
+                  type: { kind: bits, n: 128 }
+                  category: addressing
+                  doc: "One 128-bit IPv6 address in the Segment List. Represented as a standard IPv6 address (e.g. 2001:db8::1). The segment list is stored in reverse path order; Segment List[Segments Left] identifies the segment currently being forwarded to. [RFC 8754 §2]"
+            count: { kind: ref, field: srhSegmentCount }
+    default:
+      id: routingTypeData_generic
+      name: Type-Specific Data
+      fields:
+        - id: typeSpecificData
+          name: Type-Specific Data
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "+"
+              a: { kind: op, op: "*", a: { kind: ref, field: hdrExtLen }, b: { kind: lit, value: 8 } }
+              b: { kind: lit, value: 4 }
+          category: variable
+          doc: "Type-specific data occupying the remainder of the Routing Extension Header. Length in bytes = (Hdr Ext Len × 8) + 4, ensuring the total header size is (Hdr Ext Len + 1) × 8 bytes. For Type 0 (deprecated) this was a list of IPv6 addresses; for Type 2 (Mobile IPv6) it is the 16-byte Home Address; for Type 3 (RPL) it is the CmprI/CmprE/Pad fields followed by compressed addresses. [RFC 8200 §4.4, RFC 5095, RFC 6275 §6.4, RFC 6554 §3]"

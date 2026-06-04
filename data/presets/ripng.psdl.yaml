@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RIPng
+rowBits: 32
+byteOrder: BE
+description: "RIPng (RIP next generation) message format (RFC 2080). An IPv6 adaptation of RIPv2 (RFC 2453) carried over UDP port 521. The fixed 4-byte header contains Command, Version, and a reserved MustBeZero field, followed by zero or more 20-byte Route Table Entries (RTEs). Each RTE encodes an IPv6 destination prefix (128-bit address, route tag, prefix length, and metric). A metric of 16 means infinity (unreachable). There is no explicit RTE count in the header; the count is inferred from the UDP payload length."
+body:
+  - id: ripngCommand
+    name: Command
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Request"
+        2: "Response"
+    category: type
+    doc: "Command type: 1=Request (solicit routing information from neighbors), 2=Response (carry routing table entries). All other values are reserved. [RFC 2080 §2.1]"
+
+  - id: ripngVersion
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "RIPng protocol version. MUST be 1; packets with any other value MUST be discarded silently. [RFC 2080 §2.1]"
+
+  - id: ripngMustBeZero
+    name: Must Be Zero
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "Reserved field. MUST be zero on transmission; receivers MUST ignore its value. [RFC 2080 §2.1]"
+
+  - kind: repeat
+    id: ripngRtes
+    name: Route Table Entries
+    count: { kind: ref, field: ripngRteCount }
+    element:
+      id: ripngRte
+      fields:
+        - id: ripngPrefix
+          name: IPv6 Prefix
+          type: { kind: int, bits: 128 }
+          category: addressing
+          doc: "128-bit IPv6 destination prefix. The significant bits are those covered by the Prefix Length field; the remaining low-order bits MUST be zero. [RFC 2080 §2.1]"
+
+        - id: ripngRouteTag
+          name: Route Tag
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: "Route tag used to distinguish internal RIPng routes from external routes redistributed from other protocols (e.g., OSPFv3 or BGP). Analogous to the RIPv2 route tag. [RFC 2080 §2.1]"
+
+        - id: ripngPrefixLen
+          name: Prefix Length
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Number of significant bits in the IPv6 Prefix field. Valid range is 0–128. Together with the Prefix field, forms the IPv6 CIDR destination. [RFC 2080 §2.1]"
+
+        - id: ripngMetric
+          name: Metric
+          type: { kind: int, bits: 8 }
+          category: variable
+          doc: "Hop count metric for the route. Valid values are 1–15; 16 (infinity) means the destination is unreachable and triggers route poisoning / split-horizon with poisoned reverse. [RFC 2080 §2.1]"

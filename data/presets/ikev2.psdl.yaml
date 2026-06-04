@@ -1,0 +1,174 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IKEv2 Message
+rowBits: 32
+byteOrder: BE
+description: "Internet Key Exchange version 2 (IKEv2) message (RFC 7296, obsoletes RFC 4306). Evolved from ISAKMP (RFC 2408) and IKEv1 (RFC 2409). A fixed 28-byte IKE header — Initiator SPI (8 bytes), Responder SPI (8 bytes), Next Payload type, Major/Minor Version (each 4 bits), Exchange Type (IKE_SA_INIT=34, IKE_AUTH=35, CREATE_CHILD_SA=36, INFORMATIONAL=37), Flags byte (R=Response, I=Initiator), Message ID, and total Length — followed by a chain of Generic Payload Headers each carrying a type-length-value payload. IKEv2 runs over UDP port 500 (or 4500 when NAT-traversal is active) and replaces the complex and ambiguous IKEv1 negotiation with a simpler, mandatory EAP-compatible exchange. All multi-byte integers are big-endian (network byte order) per RFC 7296 §1."
+
+body:
+  - id: ikev2InitiatorSPI
+    name: Initiator SPI
+    type: { kind: int, bits: 64 }
+    category: identifier
+    doc: "64-bit Security Parameter Index chosen by the initiator to identify an IKE SA. Set to a unique random value by the initiator in the first IKE_SA_INIT request; echoed by the responder in all subsequent messages on that SA. MUST NOT be zero in a Request. Derived from ISAKMP cookie concept (RFC 2408 §3.1). [RFC 7296 §3.1]"
+
+  - id: ikev2ResponderSPI
+    name: Responder SPI
+    type: { kind: int, bits: 64 }
+    category: identifier
+    doc: "64-bit Security Parameter Index chosen by the responder to identify an IKE SA. Set to zero in the first IKE_SA_INIT request (before the responder has generated its SPI); filled in by the responder in its IKE_SA_INIT response and echoed in all subsequent messages. [RFC 7296 §3.1]"
+
+  - id: ikev2NextPayload
+    name: Next Payload
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "No Next Payload"
+        33: "SA (Security Association)"
+        34: "KE (Key Exchange)"
+        35: "IDi (Identification - Initiator)"
+        36: "IDr (Identification - Responder)"
+        37: "CERT (Certificate)"
+        38: "CERTREQ (Certificate Request)"
+        39: "AUTH (Authentication)"
+        40: "Ni/Nr (Nonce)"
+        41: "N (Notify)"
+        42: "D (Delete)"
+        43: "V (Vendor ID)"
+        44: "TSi (Traffic Selector - Initiator)"
+        45: "TSr (Traffic Selector - Responder)"
+        46: "SK (Encrypted and Authenticated)"
+        47: "CP (Configuration)"
+        48: "EAP (Extensible Authentication)"
+    category: type
+    doc: "Payload type of the first payload that immediately follows the IKE header. A value of 0 indicates no payload follows. Payload types 1–32 are reserved (inherited from IKEv1/ISAKMP); types 33–48 are defined by IKEv2; types 49–127 are reserved; 128–255 are private use. [RFC 7296 §3.1 / §3.2]"
+
+  - kind: group
+    id: ikev2Version
+    name: Version
+    children:
+      - id: ikev2MajorVersion
+        name: Maj
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 2
+        doc: "Major version of the IKE protocol in use. MUST be 2 for IKEv2. A packet with a higher Major Version MUST be rejected with a NOTIFY of type INVALID_MAJOR_VERSION. A packet with a lower Major Version MUST be rejected and a response sent with this field set to 2 and the response flag set. [RFC 7296 §3.1]"
+      - id: ikev2MinorVersion
+        name: Min
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 0
+        doc: "Minor version of the IKE protocol in use. MUST be 0 for IKEv2 as specified in RFC 7296. Implementations MUST ignore the Minor Version number; the field is included for potential future extensibility. [RFC 7296 §3.1]"
+
+  - id: ikev2ExchangeType
+    name: Exchange Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        34: "IKE_SA_INIT"
+        35: "IKE_AUTH"
+        36: "CREATE_CHILD_SA"
+        37: "INFORMATIONAL"
+    category: type
+    doc: "Identifies the type of IKE exchange. 34=IKE_SA_INIT: initial exchange to negotiate IKE SA cryptographic algorithms and exchange nonces and Diffie-Hellman values. 35=IKE_AUTH: authenticates the exchange partners and establishes the first Child SA. 36=CREATE_CHILD_SA: creates additional Child SAs or rekeying of IKE/Child SAs. 37=INFORMATIONAL: carries control messages such as NOTIFY and DELETE payloads. Values 0–33 and 38–239 are reserved; 240–255 are private use. [RFC 7296 §3.1]"
+
+  - kind: group
+    id: ikev2Flags
+    name: Flags
+    children:
+      - id: ikev2FlagsReserved2
+        name: rr
+        type: { kind: int, bits: 2 }
+        category: reserved
+        doc: "Reserved bits [7:6] of the Flags byte. MUST be sent as zero and MUST be ignored on receipt. [RFC 7296 §3.1]"
+      - id: ikev2FlagResponse
+        name: R
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Response (R) flag. Set to 1 to indicate that this message is a response to a message containing the same Message ID. An IKE endpoint MUST NOT generate a response to a message that itself has the R flag set. [RFC 7296 §3.1]"
+      - id: ikev2FlagVersion
+        name: V
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Version (V) flag. Set to 1 by a sender to indicate that the sender is capable of speaking a higher major version of the IKE protocol. Implementations that receive a packet with a higher Major Version and this flag set MUST send a response with the R flag set and the Major Version field set to the current version. [RFC 7296 §3.1]"
+      - id: ikev2FlagInitiator
+        name: I
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Initiator (I) flag. Set to 1 in messages sent by the original initiator of the IKE SA, and cleared in messages sent by the original responder. Used with the SPI fields to distinguish the two IKE SA endpoints when message IDs wrap or when multiple SAs exist between the same peers. [RFC 7296 §3.1]"
+      - id: ikev2FlagsReserved3
+        name: rrr
+        type: { kind: int, bits: 3 }
+        category: reserved
+        doc: "Reserved bits [2:0] of the Flags byte. MUST be sent as zero and MUST be ignored on receipt. [RFC 7296 §3.1]"
+
+  - id: ikev2MessageID
+    name: Message ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "32-bit monotonically increasing counter used to order messages and match requests with responses within an IKE SA. Each request increments the counter; each response carries the same value as the request it answers. The initiator's and responder's counters are independent. Replay protection is provided by refusing to accept a request whose Message ID has already been processed. [RFC 7296 §3.1]"
+
+  - id: ikev2Length
+    name: Length
+    type: { kind: int, bits: 32 }
+    category: length
+    doc: "Total length of the IKE message in bytes, including the 28-byte fixed IKE header and all payloads. The receiver uses this to determine the end of the message when the transport does not provide message boundaries (e.g., TCP encapsulation per RFC 8229). [RFC 7296 §3.1]"
+
+  - kind: repeat
+    id: ikev2Payloads
+    name: Generic Payload Headers
+    category: variable
+    element:
+      id: ikev2PayloadRecord
+      fields:
+        - id: ikev2PayloadNextPayload
+          name: Next Payload
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              0: "No Next Payload"
+              33: "SA (Security Association)"
+              34: "KE (Key Exchange)"
+              35: "IDi (Identification - Initiator)"
+              36: "IDr (Identification - Responder)"
+              37: "CERT (Certificate)"
+              38: "CERTREQ (Certificate Request)"
+              39: "AUTH (Authentication)"
+              40: "Ni/Nr (Nonce)"
+              41: "N (Notify)"
+              42: "D (Delete)"
+              43: "V (Vendor ID)"
+              44: "TSi (Traffic Selector - Initiator)"
+              45: "TSr (Traffic Selector - Responder)"
+              46: "SK (Encrypted and Authenticated)"
+              47: "CP (Configuration)"
+              48: "EAP (Extensible Authentication)"
+          category: type
+          doc: "Payload type of the next payload in the chain, or 0 if this is the last payload. Forms a linked list through the entire IKE message. Each Generic Payload Header's Next Payload field points to the type of the following payload. [RFC 7296 §3.2]"
+        - kind: group
+          id: ikev2PayloadCritical
+          name: C / Reserved
+          children:
+            - id: ikev2PayloadCritical
+              name: C
+              type: { kind: int, bits: 1 }
+              category: flags
+              doc: "Critical (C) flag. If set to 1, the sender indicates that the payload is critical; if the receiver does not understand the payload type, it MUST reject the message with a NOTIFY payload of type UNSUPPORTED_CRITICAL_PAYLOAD. If 0, the receiver MAY ignore an unknown payload type. [RFC 7296 §3.2]"
+            - id: ikev2PayloadReserved
+              name: Reserved
+              type: { kind: int, bits: 7 }
+              category: reserved
+              doc: "Reserved bits in the second byte of the Generic Payload Header. MUST be sent as zero and MUST be ignored on receipt. [RFC 7296 §3.2]"
+        - id: ikev2PayloadLength
+          name: Payload Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Length in bytes of this payload, including the 4-byte Generic Payload Header itself. The next payload (if any) immediately follows at the offset indicated by this length. The minimum value is 4 (an empty payload body). [RFC 7296 §3.2]"
+        - id: ikev2PayloadData
+          name: Payload Data
+          type: { kind: bytes, n: { kind: ref, field: ikev2PayloadDataLen } }
+          category: variable
+          doc: "Payload-type-specific data, ikev2PayloadDataLen bytes long (= Payload Length - 4). Format varies by payload type: SA contains proposals and transforms, KE contains a DH public value, Nonce contains random data, AUTH contains authentication data, NOTIFY carries notification codes and data, etc. [RFC 7296 §3.2]"
+    count: { kind: ref, field: ikev2PayloadCount }

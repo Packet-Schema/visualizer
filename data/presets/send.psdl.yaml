@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SEND (Secure Neighbor Discovery)
+rowBits: 32
+byteOrder: BE
+description: "SEND Secure Neighbor Discovery option (RFC 3971). SEND extends the NDP option chain (RFC 4861) to cryptographically protect NDP messages against spoofing and replay attacks. Each SEND option shares the standard NDP two-byte Type/Length header (Type 8 bits, Length 8 bits in units of 8 octets including the header itself) followed by a type-specific body selected by a Switch on the Type field. The four main option types are: 11 RSA Signature (a 16-bit reserved field, a 128-bit Key Hash, and a variable-length RSA-SHA1 digital signature covering the NDP message), 12 Timestamp (48 reserved bits plus a 64-bit NTP Timestamp protecting against replay), 13 Nonce (a variable-length random nonce preventing replay in bidirectional flows), and 15 CGA Parameters (a PadLength byte, a reserved byte, and the variable-length CGA Parameters data structure from RFC 3972 used to verify address ownership). An unrecognised option Type is captured by the default case with an opaque Value of sendOptLength*8 - 2 octets. [RFC 3971 / RFC 3972 / RFC 4861]"
+
+body:
+  - id: sendOptType
+    name: Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        11: RSA Signature
+        12: Timestamp
+        13: Nonce
+        15: CGA Parameters
+    category: type
+    doc: "NDP option type identifying the SEND option. 11=RSA Signature, 12=Timestamp, 13=Nonce, 15=CGA Parameters. Options with unrecognised types MUST be silently ignored by receivers. [RFC 3971 §5 / RFC 4861 §4.6]"
+  - id: sendOptLength
+    name: Length
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Option length in units of 8 octets, including the 2-byte Type+Length header. A value of 0 is invalid and the option MUST be silently discarded. For RSA Signature the minimum is 3 (24 octets = 2 header + 2 reserved + 16 key hash + 4 padding); for Timestamp always 2 (16 octets); for Nonce at least 1; for CGA Parameters at least 1. [RFC 3971 §5 / RFC 4861 §4.6]"
+  - kind: switch
+    id: sendOptBody
+    name: Option Body
+    on: { kind: ref, field: sendOptType }
+    cases:
+      "11":
+        id: sendOptRsaSig
+        name: RSA Signature Option Body
+        fields:
+          - { id: rsaReserved, name: Reserved, type: { kind: bits, n: 16 }, category: reserved, doc: "Reserved (16 bits) in the RSA Signature option. Sent as zero by the sender and ignored by the receiver; reserved for future standards action. [RFC 3971 §5.2]" }
+          - { id: rsaKeyHash, name: Key Hash, type: { kind: bits, n: 128 }, category: identifier, doc: "128-bit SHA-1 hash (leftmost 128 bits) of the ASN.1 DER encoding of the public key used to create the digital signature. Recipients use the Key Hash to locate the correct public key certificate before verifying the signature. [RFC 3971 §5.2]" }
+          - id: rsaDigitalSignature
+            name: Digital Signature
+            type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: sendOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 20 } } }
+            category: variable
+            doc: "Variable-length RSA digital signature (RSASSA-PKCS1-v1_5 with SHA-1) over the NDP message with the Signature field zeroed. Length = sendOptLength*8 - 20 octets (total option size minus 2-byte header, 2-byte reserved, and 16-byte Key Hash). The signature covers the IPv6 pseudo-header, the ICMPv6 message with the Signature field set to zero, and all options before the RSA Signature option. [RFC 3971 §5.2]"
+      "12":
+        id: sendOptTimestamp
+        name: Timestamp Option Body
+        fields:
+          - { id: tsReserved, name: Reserved, type: { kind: bits, n: 48 }, category: reserved, doc: "Reserved (48 bits) in the Timestamp option. Sent as zero by the sender and ignored by the receiver. Pads the option to the 64-bit alignment required before the NTP timestamp. [RFC 3971 §5.3.2]" }
+          - { id: tsTimestamp, name: Timestamp, type: { kind: int, bits: 64 }, category: variable, doc: "64-bit NTP timestamp (seconds since 1 Jan 1900 in the high 32 bits, fractional seconds in the low 32 bits) at the time the NDP message is sent. Recipients reject messages whose Timestamp differs from local time by more than a configured fuzz factor (default 1 second) or that replay a previously accepted Timestamp, protecting against replay attacks. [RFC 3971 §5.3.2]" }
+      "13":
+        id: sendOptNonce
+        name: Nonce Option Body
+        fields:
+          - id: nonce
+            name: Nonce
+            type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: sendOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }
+            category: variable
+            doc: "Variable-length cryptographically random nonce chosen by the sender. Length = sendOptLength*8 - 2 octets (total option size minus the 2-byte Type+Length header). Nonces protect against replay attacks in solicitation/advertisement exchanges where Timestamps are not applicable; the solicitor picks a fresh nonce and the advertiser echoes it. Recommended minimum nonce length is 6 bytes (48 bits). [RFC 3971 §5.3.1]"
+      "15":
+        id: sendOptCga
+        name: CGA Parameters Option Body
+        fields:
+          - { id: cgaPadLength, name: Pad Length, type: { kind: int, bits: 8 }, category: length, doc: "Number of padding octets appended after the CGA Parameters data to align the option to an 8-octet boundary. The padding octets (value 0) are not part of the CGA Parameters structure and must be excluded when parsing or verifying the CGA. [RFC 3971 §5.1]" }
+          - { id: cgaReserved, name: Reserved, type: { kind: bits, n: 8 }, category: reserved, doc: "Reserved (8 bits) in the CGA Parameters option. Sent as zero by the sender and ignored by the receiver. [RFC 3971 §5.1]" }
+          - id: cgaParams
+            name: CGA Parameters
+            type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: sendOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 4 } }, b: { kind: ref, field: cgaPadLength } } }
+            category: variable
+            doc: "Variable-length CGA Parameters data structure (RFC 3972) used to verify that the sender owns the source IPv6 address. Length = sendOptLength*8 - 4 - cgaPadLength octets. The CGA Parameters structure contains the modifier (128 bits), subnet prefix (64 bits), collision count (8 bits), and the ASN.1 DER-encoded public key, plus optional extension fields. Recipients verify CGA ownership by hashing the Parameters with the claimed prefix and comparing to the interface identifier of the source address. [RFC 3971 §5.1 / RFC 3972]"
+    default:
+      id: sendOptUnknown
+      name: Unknown SEND Option Body
+      fields:
+        - id: sendOptValue
+          name: Value
+          type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: sendOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }
+          category: variable
+          doc: "Opaque value field for a SEND option type not modelled by this preset. Length = sendOptLength*8 - 2 octets (total option size minus the 2-byte Type+Length header). Receivers MUST silently ignore options with unrecognised types. [RFC 3971 §5 / RFC 4861 §4.6]"

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: UDP-Lite Header
+rowBits: 32
+byteOrder: BE
+description: UDP-Lite header (RFC 3828) — fixed 8 bytes. Replaces UDP Length with Checksum Coverage to support partial-checksum protection of datagrams.
+body:
+  - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing, doc: "Source port number identifying the sending application [RFC 3828 §4]." }
+  - { id: dstPort, name: Destination Port, type: { kind: int, bits: 16 }, category: addressing, doc: "Destination port number identifying the receiving application [RFC 3828 §4]." }
+  - { id: checksumCoverage, name: Checksum Coverage, type: { kind: int, bits: 16 }, category: length, doc: "Number of bytes covered by the checksum starting from the first byte of the UDP-Lite header. Value 0 means the entire datagram is covered; values 1-7 are illegal; value 8 means the header only is covered [RFC 3828 §3.1]." }
+  - { id: checksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum, doc: "One's complement checksum computed over the pseudo-header, UDP-Lite header, and the portion of the payload indicated by Checksum Coverage. Must not be zero [RFC 3828 §3.1]." }

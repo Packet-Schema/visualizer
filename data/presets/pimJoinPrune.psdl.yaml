@@ -1,0 +1,236 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PIM Join/Prune
+rowBits: 32
+byteOrder: BE
+description: PIM Join/Prune message (RFC 7761 §4.9.5, message type 3). Sent by a PIM router to its upstream neighbor to join or prune multicast distribution trees. Carries one or more group records, each listing source addresses to be joined (included in the distribution tree) and pruned (removed from the tree). Transmitted over IP protocol 103 to the ALL-PIM-ROUTERS group (224.0.0.13) or unicast to the upstream neighbor. The Upstream Neighbor field identifies the router to which the Join/Prune applies; only that router acts on the message, while other routers on the LAN use it for assert-state maintenance.
+body:
+  - id: pimVersion
+    name: Version
+    type: { kind: int, bits: 4 }
+    category: type
+    defaultValue: 2
+    doc: PIM protocol version number. Always 2 for PIM-SM as defined in RFC 7761. [RFC 7761 §4.9]
+  - id: pimType
+    name: Type
+    type: { kind: int, bits: 4 }
+    category: type
+    defaultValue: 3
+    doc: >-
+      PIM message type. 3 = Join/Prune (this preset). Other values: 0=Hello, 1=Register, 2=Register-Stop, 4=Bootstrap, 5=Assert, 8=Candidate-RP-Advertisement. [RFC 7761 §4.9]
+  - id: pimReserved
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: Reserved bits; MUST be set to zero on transmission and ignored on receipt. [RFC 7761 §4.9]
+  - id: pimChecksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: One's-complement checksum computed over the entire PIM message (header and body) with the Checksum field set to zero. A receiver MUST verify the checksum and silently discard the message if it fails. [RFC 7761 §4.9]
+  - kind: group
+    id: upstreamNeighbor
+    name: Upstream Neighbor Address
+    children:
+      - id: upstreamAddrFamily
+        name: Addr Family
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 1
+        doc: Address family of the upstream neighbor address. 1 = IPv4, 2 = IPv6. Defined by IANA "Address Family Numbers" registry. [RFC 7761 §4.9.1]
+      - id: upstreamEncodingType
+        name: Encoding Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 0
+        doc: Encoding type for the unicast address that follows. 0 = native encoding for the address family specified in Addr Family. [RFC 7761 §4.9.1]
+      - id: upstreamUnicastAddr
+        name: Unicast Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 unicast address of the upstream PIM neighbor to which this Join/Prune message is directed. Only the router whose primary address matches this field processes the join and prune lists; other routers on the LAN observe the message for assert-state upkeep. [RFC 7761 §4.9.5]
+  - id: pimJpReserved
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: Reserved bits immediately preceding the Num Groups field; MUST be zero on transmit and ignored on receipt. [RFC 7761 §4.9.5]
+  - id: pimGroupCount
+    name: Num Groups
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: Number of multicast group records that follow in this message. Each group record contains a multicast group address together with its joined and pruned source lists. A value of 0 is legal but unusual; a value above 255 is not possible in a single message. [RFC 7761 §4.9.5]
+  - id: pimHoldTime
+    name: Hold Time
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 210
+    doc: Time in seconds for which the receiver MUST keep the Join/Prune state alive in the absence of further Join/Prune messages. 0 means the state should be cancelled immediately (equivalent to sending only Prune entries). The typical default is 210 seconds (3.5 × Join/Prune Interval of 60 s). 0xFFFF means infinity. [RFC 7761 §4.9.5]
+  - kind: repeat
+    id: pimGroupRecords
+    name: Group Records
+    category: variable
+    count: { kind: ref, field: pimGroupCount }
+    element:
+      id: pimGroupRecord
+      fields:
+        - id: grpAddrFamily
+          name: Addr Family
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 1
+          doc: Address family of the encoded group address. 1 = IPv4, 2 = IPv6. [RFC 7761 §4.9.1]
+        - id: grpEncodingType
+          name: Encoding Type
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 0
+          doc: Encoding type for the group address. 0 = native encoding for the specified address family. [RFC 7761 §4.9.1]
+        - kind: group
+          id: grpFlags
+          name: Group Flags
+          children:
+            - id: grpB
+              name: B
+              type: { kind: bits, n: 1 }
+              category: flags
+              doc: Bidirectional PIM (BIDIR-PIM) bit. When set, the group uses bidirectional trees; joined sources are interpreted as Rendezvous Point addresses. 0 for standard PIM-SM. [RFC 7761 §4.9.1]
+            - id: grpReserved
+              name: Reserved
+              type: { kind: bits, n: 6 }
+              category: reserved
+              doc: Reserved flag bits; MUST be zero on transmit and ignored on receipt. [RFC 7761 §4.9.1]
+            - id: grpZ
+              name: Z
+              type: { kind: bits, n: 1 }
+              category: flags
+              doc: Admin Scope Zone bit. When set, indicates the group address is an administratively scoped boundary; used with BIDIR-PIM scope zones. 0 for standard PIM-SM. [RFC 7761 §4.9.1]
+        - id: grpMaskLen
+          name: Mask Len
+          type: { kind: int, bits: 8 }
+          category: length
+          defaultValue: 32
+          doc: Length in bits of the group address mask. For IPv4 multicast groups this is typically 32 (host route); smaller values denote a range of groups. [RFC 7761 §4.9.1]
+        - id: grpMulticastAddr
+          name: Group Multicast Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: IPv4 multicast group address (in the range 224.0.0.0/4). Together with Mask Len, identifies the multicast group or group prefix to which the joined and pruned source lists apply. [RFC 7761 §4.9.1]
+        - id: grpNumJoined
+          name: Number of Joined Sources
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Number of Encoded-Source addresses in the Joined Sources list that immediately follows. A router adds these source addresses to the distribution tree for the specified group. 0 means no sources are being joined (a pure Prune message for this group). [RFC 7761 §4.9.5]
+        - id: grpNumPruned
+          name: Number of Pruned Sources
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Number of Encoded-Source addresses in the Pruned Sources list following the Joined Sources list. A router removes these source addresses from the distribution tree for the specified group. 0 means no sources are being pruned. [RFC 7761 §4.9.5]
+        - kind: repeat
+          id: grpJoinedSources
+          name: Joined Sources
+          category: variable
+          count: { kind: ref, field: grpNumJoined }
+          element:
+            id: joinedSourceRecord
+            fields:
+              - id: jSrcAddrFamily
+                name: Addr Family
+                type: { kind: int, bits: 8 }
+                category: type
+                defaultValue: 1
+                doc: Address family of the joined source address. 1 = IPv4. [RFC 7761 §4.9.1]
+              - id: jSrcEncodingType
+                name: Encoding Type
+                type: { kind: int, bits: 8 }
+                category: type
+                defaultValue: 0
+                doc: Encoding type for the source address. 0 = native encoding for the specified address family. [RFC 7761 §4.9.1]
+              - kind: group
+                id: jSrcFlags
+                name: Source Flags
+                children:
+                  - id: jSrcReserved
+                    name: Reserved
+                    type: { kind: bits, n: 5 }
+                    category: reserved
+                    doc: Reserved source flag bits; MUST be zero on transmit and ignored on receipt. [RFC 7761 §4.9.1]
+                  - id: jSrcS
+                    name: S
+                    type: { kind: bits, n: 1 }
+                    category: flags
+                    doc: Sparse bit. When set, the source is on a PIM-SM (sparse-mode) tree. MUST be 1 in all PIM-SM Join/Prune messages. [RFC 7761 §4.9.1]
+                  - id: jSrcW
+                    name: W
+                    type: { kind: bits, n: 1 }
+                    category: flags
+                    doc: Wildcard bit. When set, the source address is the Rendezvous Point (RP), and the join/prune applies to the (*,G) shared tree rather than an (S,G) source-specific tree. [RFC 7761 §4.9.1]
+                  - id: jSrcR
+                    name: R
+                    type: { kind: bits, n: 1 }
+                    category: flags
+                    doc: RPT (Rendezvous Point Tree) bit. When set together with W=1, this is a (*,G) join on the shared RPT; when set without W, it is an (S,G,rpt) prune that suppresses traffic from a specific source on the shared tree. [RFC 7761 §4.9.1]
+              - id: jSrcMaskLen
+                name: Mask Len
+                type: { kind: int, bits: 8 }
+                category: length
+                defaultValue: 32
+                doc: Length in bits of the source address mask. Typically 32 for a host source address in IPv4. [RFC 7761 §4.9.1]
+              - id: jSrcAddr
+                name: Source Address
+                type: { kind: int, bits: 32 }
+                category: addressing
+                doc: IPv4 unicast address of the multicast source (or RP address when W=1) to be joined. The receiving upstream router adds the (S,G) or (*,G) state accordingly. [RFC 7761 §4.9.5]
+        - kind: repeat
+          id: grpPrunedSources
+          name: Pruned Sources
+          category: variable
+          count: { kind: ref, field: grpNumPruned }
+          element:
+            id: prunedSourceRecord
+            fields:
+              - id: pSrcAddrFamily
+                name: Addr Family
+                type: { kind: int, bits: 8 }
+                category: type
+                defaultValue: 1
+                doc: Address family of the pruned source address. 1 = IPv4. [RFC 7761 §4.9.1]
+              - id: pSrcEncodingType
+                name: Encoding Type
+                type: { kind: int, bits: 8 }
+                category: type
+                defaultValue: 0
+                doc: Encoding type for the source address. 0 = native encoding for the specified address family. [RFC 7761 §4.9.1]
+              - kind: group
+                id: pSrcFlags
+                name: Source Flags
+                children:
+                  - id: pSrcReserved
+                    name: Reserved
+                    type: { kind: bits, n: 5 }
+                    category: reserved
+                    doc: Reserved source flag bits; MUST be zero on transmit and ignored on receipt. [RFC 7761 §4.9.1]
+                  - id: pSrcS
+                    name: S
+                    type: { kind: bits, n: 1 }
+                    category: flags
+                    doc: Sparse bit. When set, the source is on a PIM-SM sparse-mode tree. MUST be 1 in PIM-SM Join/Prune messages. [RFC 7761 §4.9.1]
+                  - id: pSrcW
+                    name: W
+                    type: { kind: bits, n: 1 }
+                    category: flags
+                    doc: Wildcard bit. When set, the prune applies to the (*,G) shared tree (RP-tree); the source address field carries the RP address. [RFC 7761 §4.9.1]
+                  - id: pSrcR
+                    name: R
+                    type: { kind: bits, n: 1 }
+                    category: flags
+                    doc: RPT bit. When set, the prune is an (S,G,rpt) or (*,G) RPT prune, preventing forwarding of traffic from this source on the shared Rendezvous Point Tree. [RFC 7761 §4.9.1]
+              - id: pSrcMaskLen
+                name: Mask Len
+                type: { kind: int, bits: 8 }
+                category: length
+                defaultValue: 32
+                doc: Length in bits of the source address mask. Typically 32 for a host source address in IPv4. [RFC 7761 §4.9.1]
+              - id: pSrcAddr
+                name: Source Address
+                type: { kind: int, bits: 32 }
+                category: addressing
+                doc: IPv4 unicast address of the multicast source (or RP address when W=1) to be pruned. The receiving upstream router removes the corresponding (S,G) or (*,G) state. [RFC 7761 §4.9.5]

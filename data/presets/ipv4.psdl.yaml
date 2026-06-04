@@ -20,40 +20,62 @@ _ipv4_option_variants: &ipv4_option_variants
     id: recordRoute
     name: Record Route
     fields:
-      - { id: type, name: "Type=7", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=15", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr2, name: "Addr 3", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: type, name: "Type=7", type: { kind: bits, n: 8 }, category: type, doc: "RFC 791 §3.1 — Record Route option (type 7); routers append their outgoing IPv4 address." }
+      - { id: length, name: "Len", type: { kind: bits, n: 8 }, category: length, doc: "RFC 791 §3.1 — total option length in bytes, including type/length/pointer (3) plus the route address area." }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier, doc: "RFC 791 §3.1 — pointer (1-based) to the next free slot in the route data, relative to option start." }
+      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — recorded IPv4 address; one entry per 4 bytes of the option payload." }
+      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — recorded IPv4 address; one entry per 4 bytes of the option payload." }
+      - { id: addr2, name: "Addr 3", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — recorded IPv4 address; one entry per 4 bytes of the option payload." }
   "131":
     id: looseSourceRoute
     name: Loose Source Route
     fields:
-      - { id: type, name: "Type=131", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: type, name: "Type=131", type: { kind: bits, n: 8 }, category: type, doc: "RFC 791 §3.1 — Loose Source and Record Route (LSRR, type 131); packet must visit the listed routers but may take any path between them." }
+      - { id: length, name: "Len", type: { kind: bits, n: 8 }, category: length, doc: "RFC 791 §3.1 — total option length in bytes (type/length/pointer = 3 plus the route address area)." }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier, doc: "RFC 791 §3.1 — pointer (1-based) to the next source-route address to process, relative to option start." }
+      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — IPv4 address in the loose source route list; one entry per 4 bytes." }
+      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — IPv4 address in the loose source route list; one entry per 4 bytes." }
   "137":
     id: strictSourceRoute
     name: Strict Source Route
     fields:
-      - { id: type, name: "Type=137", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing }
-      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing }
+      - { id: type, name: "Type=137", type: { kind: bits, n: 8 }, category: type, doc: "RFC 791 §3.1 — Strict Source and Record Route (SSRR, type 137); packet must traverse exactly the listed routers in order." }
+      - { id: length, name: "Len", type: { kind: bits, n: 8 }, category: length, doc: "RFC 791 §3.1 — total option length in bytes (type/length/pointer = 3 plus the route address area)." }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier, doc: "RFC 791 §3.1 — pointer (1-based) to the next source-route address to process, relative to option start." }
+      - { id: addr0, name: "Addr 1", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — IPv4 address in the strict source route list; one entry per 4 bytes." }
+      - { id: addr1, name: "Addr 2", type: { kind: int, bits: 32 }, category: addressing, doc: "RFC 791 §3.1 — IPv4 address in the strict source route list; one entry per 4 bytes." }
   "68":
     id: timestamp
     name: Timestamp
     fields:
-      - { id: type, name: "Type=68", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=12", type: { kind: bits, n: 8 }, category: length }
-      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier }
-      - { id: oflwflg, name: "Oflw/Flg", type: { kind: bits, n: 8 }, category: flags }
-      - { id: ts0, name: "TS 1", type: { kind: int, bits: 32 }, category: identifier }
-      - { id: ts1, name: "TS 2", type: { kind: int, bits: 32 }, category: identifier }
+      - { id: type, name: "Type=68", type: { kind: bits, n: 8 }, category: type, doc: "RFC 791 §3.1 — Internet Timestamp option (type 68); records timestamps (and optionally addresses) along the path." }
+      - { id: length, name: "Len", type: { kind: bits, n: 8 }, category: length, doc: "RFC 791 §3.1 — total option length in bytes, including the 4-byte type/length/pointer/overflow-flag header." }
+      - { id: pointer, name: "Ptr", type: { kind: bits, n: 8 }, category: identifier, doc: "RFC 791 §3.1 — pointer (1-based) to the next free timestamp slot, relative to option start." }
+      - { id: oflwflg, name: "Oflw/Flg", type: { kind: bits, n: 8 }, category: flags, doc: "RFC 791 §3.1 — high nibble = overflow count (hops that could not record); low nibble = flag (0 ts-only, 1 addr+ts, 3 prespecified addrs)." }
+      - { id: ts0, name: "TS 1", type: { kind: int, bits: 32 }, category: identifier, doc: "RFC 791 §3.1 — 32-bit timestamp entry (milliseconds since UTC midnight); one entry per 4 bytes of the data area." }
+      - { id: ts1, name: "TS 2", type: { kind: int, bits: 32 }, category: identifier, doc: "RFC 791 §3.1 — 32-bit timestamp entry (milliseconds since UTC midnight); one entry per 4 bytes of the data area." }
+  "148":
+    id: routerAlert
+    name: Router Alert
+    fields:
+      - { id: type, name: "Type=148", type: { kind: bits, n: 8 }, category: type, doc: "RFC 2113 — Router Alert option (type 148, 0x94); signals routers to examine this packet more closely. Used by IGMP and RSVP." }
+      - { id: length, name: "Len=4", type: { kind: bits, n: 8 }, category: length, doc: "RFC 2113 — fixed option length of 4 bytes (type, length, and a 2-byte value)." }
+      - { id: value, name: "Value", type: { kind: int, bits: 16 }, category: identifier, doc: "RFC 2113 — 0 means router shall examine the packet; other values reserved." }
+  "130":
+    id: security
+    name: Security
+    fields:
+      - { id: type, name: "Type=130", type: { kind: bits, n: 8 }, category: type, doc: "RFC 1108 — (Basic) Security option (type 130); carries DoD security classification/handling for the datagram." }
+      - { id: length, name: "Len=11", type: { kind: bits, n: 8 }, category: length, doc: "RFC 1108 — total option length in bytes (commonly 11), including the 2-byte type/length header." }
+      - { id: classification, name: "Classification", type: { kind: bits, n: 8 }, category: payload-marker, doc: "RFC 1108 — classification level (e.g. Unclassified, Confidential, Secret, Top Secret)." }
+      - { id: protAuth, name: "Prot. Authority", type: { kind: int, bits: 16 }, category: payload-marker, doc: "RFC 1108 — protection authority flags identifying the rule set under which the datagram is handled." }
+  "136":
+    id: streamId
+    name: Stream ID
+    fields:
+      - { id: type, name: "Type=136", type: { kind: bits, n: 8 }, category: type, doc: "RFC 791 §3.1 — Stream Identifier option (type 136); carries a SATNET stream identifier across networks not supporting streams." }
+      - { id: length, name: "Len=4", type: { kind: bits, n: 8 }, category: length, doc: "RFC 791 §3.1 — fixed option length of 4 bytes (type, length, and a 2-byte stream ID)." }
+      - { id: streamId, name: "Stream ID", type: { kind: int, bits: 16 }, category: identifier, doc: "RFC 791 §3.1 — 16-bit SATNET stream identifier." }
 
 body:
   - { id: version, name: Version, type: { kind: bits, n: 4 }, category: type, defaultValue: 4 }

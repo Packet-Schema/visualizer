@@ -1,0 +1,158 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NetFlow v5
+rowBits: 32
+byteOrder: BE
+description: Cisco NetFlow v5 export packet format. Consists of a 24-byte header followed by 1–30 flow records of 48 bytes each. Widely used for IP traffic accounting and capacity planning. [Cisco NetFlow v5 documentation]
+body:
+  - id: version
+    name: Version
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: NetFlow export format version number. Always 5 for NetFlow v5. [Cisco NetFlow v5 export format]
+  - id: netflowRecordCount
+    name: Count
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Number of flow records in this export packet. Valid range 1–30 for v5; used to bound parsing of the trailing record array. [Cisco NetFlow v5 export format]
+  - id: sysUptime
+    name: SysUptime
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: Time in milliseconds since the exporting router last booted. Used together with First/Last timestamps in each record to compute absolute flow start/end times. [Cisco NetFlow v5 export format]
+  - id: unixSecs
+    name: Unix Seconds
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: Seconds since Unix epoch (00:00:00 UTC, 1 January 1970) at the time the export packet was sent. [Cisco NetFlow v5 export format]
+  - id: unixNsecs
+    name: Unix Nanoseconds
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: Residual nanoseconds since the last full second expressed in unixSecs; provides sub-second export timestamp resolution. [Cisco NetFlow v5 export format]
+  - id: flowSequence
+    name: Flow Sequence
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: Cumulative count of flows exported by this device since its last reboot. Receivers use this to detect dropped export packets (gaps in sequence). [Cisco NetFlow v5 export format]
+  - id: engineType
+    name: Engine Type
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: Type of flow-switching engine generating the export. 0=RP, 1=VIP/Linecard. Identifies the hardware component that performed the flow accounting. [Cisco NetFlow v5 export format]
+  - id: engineId
+    name: Engine ID
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: Slot number of the flow-switching engine when multiple line cards are present; allows correlation of flows to a specific forwarding ASIC. [Cisco NetFlow v5 export format]
+  - id: samplingInterval
+    name: Sampling Interval
+    type: { kind: int, bits: 16 }
+    category: variable
+    doc: First 2 bits encode the sampling mode (00=no sampling, 01=random, 10=systematic); remaining 14 bits carry the sampling interval value. Zero means all packets are exported. [Cisco NetFlow v5 export format]
+  - kind: repeat
+    id: flowRecords
+    name: Flow Records
+    count: { kind: ref, field: netflowRecordCount }
+    element:
+      id: flowRecord
+      fields:
+        - id: srcAddr
+          name: Source Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: Source IPv4 address of the flow. Combined with srcPort, dstAddr, dstPort, and prot this forms the classic 5-tuple that uniquely identifies a flow. [Cisco NetFlow v5 export format]
+        - id: dstAddr
+          name: Destination Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: Destination IPv4 address of the flow. Identifies where the traffic is destined; used for traffic matrix and capacity planning analysis. [Cisco NetFlow v5 export format]
+        - id: nextHop
+          name: Next-Hop Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: IPv4 address of the next-hop router as determined by the routing table at export time. 0.0.0.0 if no next-hop information is available. [Cisco NetFlow v5 export format]
+        - id: input
+          name: Input Interface
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: SNMP ifIndex of the interface on which the flow was received (ingress). Used to attribute traffic volumes to physical or logical interfaces. [Cisco NetFlow v5 export format]
+        - id: output
+          name: Output Interface
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: SNMP ifIndex of the interface through which the flow was forwarded (egress). Zero if the flow was dropped before forwarding. [Cisco NetFlow v5 export format]
+        - id: dPkts
+          name: Packet Count
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: Total number of IP packets in the flow during the measurement interval. Wraps at 2^32; collectors should handle counter roll-over for long-lived high-rate flows. [Cisco NetFlow v5 export format]
+        - id: dOctets
+          name: Octet Count
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: Total number of Layer-3 octets (IP header + payload) in the flow. Excludes Layer-2 framing overhead; wraps at 2^32. [Cisco NetFlow v5 export format]
+        - id: first
+          name: Flow Start
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: SysUptime value (milliseconds since router boot) at the time the first packet of the flow was observed. Subtract from sysUptime and add unixSecs to obtain wall-clock start time. [Cisco NetFlow v5 export format]
+        - id: last
+          name: Flow End
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: SysUptime value (milliseconds since router boot) at the time the last packet of the flow was observed. Duration = last - first (milliseconds). [Cisco NetFlow v5 export format]
+        - id: srcPort
+          name: Source Port
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: TCP or UDP source port number. For ICMP flows the upper byte is the ICMP type and the lower byte is the ICMP code. Zero for other protocols. [Cisco NetFlow v5 export format]
+        - id: dstPort
+          name: Destination Port
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: TCP or UDP destination port number. Together with srcPort and prot this identifies the application-layer service (e.g. port 80 = HTTP). [Cisco NetFlow v5 export format]
+        - id: pad1
+          name: Pad1
+          type: { kind: int, bits: 8 }
+          category: reserved
+          doc: Unused alignment byte; must be zero on export. Pads the record to a 32-bit boundary between the port fields and the TCP flags octet. [Cisco NetFlow v5 export format]
+        - id: tcpFlags
+          name: TCP Flags
+          type: { kind: int, bits: 8 }
+          category: flags
+          doc: Cumulative OR of all TCP control bits (URG, ACK, PSH, RST, SYN, FIN) seen across all packets in the flow. Non-zero only when prot=6 (TCP). [Cisco NetFlow v5 export format]
+        - id: prot
+          name: IP Protocol
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: IP protocol number of the flow. 6=TCP, 17=UDP, 1=ICMP. Together with srcPort/dstPort this uniquely identifies the transport service. [RFC 790, Cisco NetFlow v5 export format]
+        - id: tos
+          name: Type of Service
+          type: { kind: int, bits: 8 }
+          category: flags
+          doc: IP Type-of-Service byte from the first packet of the flow, reflecting the DSCP/ECN markings applied by the source host or a policy node upstream. [RFC 791, Cisco NetFlow v5 export format]
+        - id: srcAS
+          name: Source AS Number
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: BGP autonomous system number of the source address, derived from the routing table at export time. Zero if AS path information is unavailable. [RFC 1930, Cisco NetFlow v5 export format]
+        - id: dstAS
+          name: Destination AS Number
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: BGP autonomous system number of the destination address, derived from the routing table at export time. Zero if AS path information is unavailable. [RFC 1930, Cisco NetFlow v5 export format]
+        - id: srcMask
+          name: Source Mask
+          type: { kind: int, bits: 8 }
+          category: addressing
+          doc: Source address prefix length (CIDR mask bits) of the best-matching route for the source address. Enables aggregation of flows into prefixes for traffic analysis. [Cisco NetFlow v5 export format]
+        - id: dstMask
+          name: Destination Mask
+          type: { kind: int, bits: 8 }
+          category: addressing
+          doc: Destination address prefix length (CIDR mask bits) of the best-matching route for the destination address. Used with dstAddr and dstAS to reconstruct the BGP prefix. [Cisco NetFlow v5 export format]
+        - id: pad2
+          name: Pad2
+          type: { kind: int, bits: 16 }
+          category: reserved
+          doc: Unused alignment field; must be zero on export. Pads each 48-byte flow record to a 32-bit boundary for efficient memory access. [Cisco NetFlow v5 export format]

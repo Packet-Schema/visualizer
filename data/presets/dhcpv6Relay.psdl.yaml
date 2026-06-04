@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DHCPv6 Relay (Relay-forw / Relay-repl)
+rowBits: 32
+byteOrder: BE
+description: DHCPv6 Relay-forward (msg-type 12) and Relay-reply (msg-type 13) message format (RFC 8415 §9). Relay agents insert themselves between clients and servers to forward DHCPv6 messages across IPv6 subnet boundaries. The fixed header carries the message type, a hop-count guard, and the link-address and peer-address IPv6 fields, followed by a variable-length Options section. The Relay-Message option (option-code 9) is mandatory and encapsulates the relayed client or server message in its entirety, enabling nested relay chains. Carried over UDP port 547 (server/relay) and 546 (client).
+body:
+  - id: msgType
+    name: Message Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        12: RELAY-FORW
+        13: RELAY-REPL
+    category: type
+    doc: "Relay message type. 12 = Relay-forw (relay agent forwarding a client message toward a server), 13 = Relay-repl (server or relay agent returning a reply toward the client). Non-relay message types (1–11) MUST NOT appear in this header. [RFC 8415 §7.1, §9.1]"
+  - id: hopCount
+    name: Hop Count
+    type:
+      kind: int
+      bits: 8
+    category: identifier
+    doc: "Number of relay agents that have already forwarded this message. The first relay agent sets this to 0 (Relay-forw from a client) or copies the value from the Relay-Message option when relaying an inner Relay-forw. A relay agent MUST discard a Relay-forw whose hop-count has reached or exceeds HOP_COUNT_LIMIT (32). [RFC 8415 §9.1, §19.1.2]"
+  - id: linkAddress
+    name: Link Address
+    type:
+      kind: bits
+      n: 128
+    category: addressing
+    doc: "Global or site-local unicast IPv6 address (128 bits) that identifies the link on which the client is located. The relay agent populates this field so the server can select the correct address pool even when the server is not directly attached to the client's link. May be :: (all-zeros) when the relay can determine the link from context. [RFC 8415 §9.1]"
+  - id: peerAddress
+    name: Peer Address
+    type:
+      kind: bits
+      n: 128
+    category: addressing
+    doc: "IPv6 address (128 bits) of the client or relay agent from which the message was received. Used by the server or outer relay to route the Relay-repl back toward the originator without maintaining per-client state. Typically the client's link-local address in the first relay hop. [RFC 8415 §9.1]"
+  - kind: repeat
+    id: options
+    name: Options
+    category: variable
+    element:
+      id: option
+      fields:
+        - id: dhcpv6RelayOptCode
+          name: Option Code
+          type:
+            kind: int
+            bits: 16
+          category: type
+          doc: "16-bit option type code. Option 1 = CLIENTID, 2 = SERVERID, 9 = Relay-Message (mandatory in Relay-forw/Relay-repl, encapsulates the relayed DHCPv6 message), 18 = Interface-Id, 37 = Remote-Id. [RFC 8415 §21, §21.10]"
+        - id: dhcpv6RelayOptDataLen
+          name: Option Length
+          type:
+            kind: int
+            bits: 16
+          category: length
+          doc: "Length of the option-data field in octets. For Relay-Message (option 9) this equals the byte length of the encapsulated DHCPv6 message. For Interface-Id (option 18) it is the byte length of the opaque interface identifier. [RFC 8415 §21.1, §21.10]"
+        - id: dhcpv6RelayOptData
+          name: Option Data
+          type:
+            kind: bytes
+            n:
+              kind: ref
+              field: dhcpv6RelayOptDataLen
+          category: payload-marker
+          doc: "Variable-length option data whose interpretation depends on the option code. For option 9 (Relay-Message) this field contains the complete relayed DHCPv6 message, which may itself be a Relay-forw allowing relay chains up to HOP_COUNT_LIMIT deep. [RFC 8415 §21.10]"
+    count:
+      kind: ref
+      field: dhcpv6RelayOptCount

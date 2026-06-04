@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MACsec SecTAG (IEEE 802.1AE)
+rowBits: 32
+byteOrder: BE
+description: "MACsec Security TAG (SecTAG) as defined by IEEE 802.1AE-2018. Inserted after the source MAC address in an Ethernet frame when MACsec protection is active. Fixed 8 bytes (no SCI) or 16 bytes (with SCI). The EtherType field 0x88E5 identifies the presence of the SecTAG; the TCI byte carries per-frame control bits including SC (SCI present), E (encrypted), and C (changed). PN is a monotonically increasing counter used for anti-replay protection and IV construction. The optional 64-bit SCI identifies the Secure Channel and is present only when the SC bit is set."
+body:
+  - id: etherType
+    name: EtherType
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: MACsec EtherType 0x88E5 — marks the start of a SecTAG in an Ethernet frame. A receiver that encounters this value knows a SecTAG follows and that the payload is MACsec-protected. [IEEE 802.1AE-2018 clause 9.5]
+  - kind: group
+    id: tciAn
+    name: TCI/AN
+    children:
+      - id: macsecV
+        name: V (Version)
+        type:
+          kind: bits
+          n: 1
+        category: flags
+        doc: Version bit — must be zero in IEEE 802.1AE-2018; a non-zero value indicates a future version of the SecTAG format. Receivers that do not support the version should discard the frame. [IEEE 802.1AE-2018 clause 9.6]
+      - id: macsecEs
+        name: ES (End Station)
+        type:
+          kind: bits
+          n: 1
+        category: flags
+        doc: End Station bit — when set indicates the SecTAG originates from an end station rather than a network device. Used in combination with SC to determine implicit versus explicit SCI formation rules. [IEEE 802.1AE-2018 clause 9.6]
+      - id: macsecSci
+        name: SC (SCI Present)
+        type:
+          kind: bits
+          n: 1
+        category: flags
+        doc: Secure Channel Identifier present bit — when set, the explicit 64-bit SCI field is appended after the Packet Number, extending the SecTAG to 16 bytes. When clear the SCI is implicit (derived from the source MAC and port). [IEEE 802.1AE-2018 clause 9.6]
+      - id: macsecScb
+        name: SCB (Single Copy Broadcast)
+        type:
+          kind: bits
+          n: 1
+        category: flags
+        doc: Single Copy Broadcast bit — used by provider bridges to indicate that only one copy of a multicast or broadcast frame should be encrypted and forwarded per port. [IEEE 802.1AE-2018 clause 9.6]
+      - id: macsecE
+        name: E (Encrypted)
+        type:
+          kind: bits
+          n: 1
+        category: flags
+        doc: Encryption bit — when set the frame payload (user data) is encrypted. When clear only integrity protection (ICV) is applied; the payload remains in plaintext. Defines the encryption boundary within the MACsec frame. [IEEE 802.1AE-2018 clause 9.6]
+      - id: macsecC
+        name: C (Changed)
+        type:
+          kind: bits
+          n: 1
+        category: flags
+        doc: Changed Text bit — when set indicates that one or more octets of the protected user data (including the destination/source address region) have been modified by the MACsec frame protect process. Normally set together with E. [IEEE 802.1AE-2018 clause 9.6]
+      - id: macsecAn
+        name: AN (Association Number)
+        type:
+          kind: bits
+          n: 2
+        category: identifier
+        doc: 2-bit Association Number (0–3) — identifies which Secure Association Key (SAK) within the Secure Channel was used to protect this frame. Allows keyroll-over without interrupting traffic. [IEEE 802.1AE-2018 clause 9.6]
+  - id: macsecSl
+    name: SL (Short Length)
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Short Length — when non-zero, indicates the number of octets of user data that are genuinely part of the payload (1–47). A value of zero means the full frame payload participates in protection. Allows short frames to be padded to the Ethernet minimum without obscuring the true data length. [IEEE 802.1AE-2018 clause 9.7]
+  - id: macsecPn
+    name: PN (Packet Number)
+    type:
+      kind: int
+      bits: 32
+    category: identifier
+    doc: 32-bit Packet Number — a per-Secure-Association monotonically increasing counter. Combined with the SCI to form the IV for the GCM-AES cipher. Also used by receivers for anti-replay detection; frames with PN below the replay window are discarded. Must never wrap; the SA must be rekeyed before PN reaches 0xFFFFFFFF. [IEEE 802.1AE-2018 clause 9.8]
+  - kind: optional
+    when: { kind: ref, field: macsecSci }
+    field:
+      id: sci
+      name: SCI (Secure Channel Identifier)
+      type:
+        kind: bits
+        n: 64
+      category: identifier
+      doc: "64-bit Secure Channel Identifier — globally unique identifier of the transmitting Secure Channel. Encoded as the 48-bit source MAC address concatenated with a 16-bit Port Identifier (big-endian). Present only when the SC flag (bit 2 of TCI/AN) is set. Used by the receiver to look up the correct SA and keying material for decryption and integrity verification. [IEEE 802.1AE-2018 clause 9.9]"

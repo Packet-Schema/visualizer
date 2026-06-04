@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: EDNS0 OPT Pseudo-RR
+rowBits: 32
+byteOrder: BE
+description: EDNS(0) OPT pseudo-resource-record (RFC 6891). Placed in the Additional section of a DNS message to advertise extended capabilities — larger UDP payload sizes, DNSSEC OK signalling, and a wider Response Code space. The record re-purposes the CLASS and TTL wire fields to carry per-requestor options; it has no owner name beyond the root label (0x00). The RDATA section carries zero or more options as code-length-value triples.
+body:
+  - id: ednsName
+    name: Name (root label)
+    type: { kind: bits, n: 8 }
+    category: identifier
+    doc: "Owner name of the OPT pseudo-RR — always 0x00, the zero-length root label. A non-zero value is a FORMERR. [RFC 6891 §6.1.2]"
+
+  - id: ednsType
+    name: Type
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        41: OPT
+    category: type
+    doc: "Resource record type code — MUST be 41 (OPT). Any other value means this is not an EDNS0 OPT record. [RFC 6891 §6.1.2]"
+
+  - id: ednsUdpPayloadSize
+    name: UDP Payload Size
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Requestor's maximum UDP payload size in bytes (re-uses the CLASS wire field). Values below 512 SHOULD be treated as 512 per RFC 6891. Allows DNS responses larger than the original 512-byte UDP limit — modern resolvers commonly advertise 1232 or 4096. [RFC 6891 §6.1.2, §6.2.3]"
+
+  - kind: group
+    id: ednsExtTtl
+    name: Extended RCODE and Flags
+    children:
+      - id: ednsExtendedRcode
+        name: Extended RCODE
+        type: { kind: bits, n: 8 }
+        category: flags
+        doc: "Upper 8 bits of the extended 12-bit response code (re-uses the high TTL byte). Concatenated with the 4-bit RCODE in the DNS message header flags to form a 12-bit RCODE value, allowing codes beyond the original 0–15 range (e.g. 16=BADSIG, 17=BADKEY). MUST be 0 in queries. [RFC 6891 §6.1.3]"
+
+      - id: ednsVersion
+        name: Version
+        type: { kind: bits, n: 8 }
+        category: identifier
+        doc: "EDNS version number. MUST be 0 for EDNS(0) as defined by RFC 6891. A responder that receives a higher version it does not support MUST reply with RCODE BADVERS (16). [RFC 6891 §6.1.3]"
+
+      - id: ednsDoBit
+        name: DO (DNSSEC OK)
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "DNSSEC OK bit — when set to 1, signals that the requestor understands and wishes to receive DNSSEC resource records (RRSIG, NSEC, DNSKEY, etc.). Resolvers that do not set DO will not receive DNSSEC records even if the zone is signed. [RFC 6891 §6.1.4, RFC 4035 §3.2.1]"
+
+      - id: ednsZ
+        name: Z (reserved)
+        type: { kind: bits, n: 15 }
+        category: reserved
+        doc: "Reserved for future use — MUST be zero on transmission; MUST be ignored on receipt. Senders that set any of these bits risk interoperability failures with strict implementations. [RFC 6891 §6.1.4]"
+
+  - id: ednsRdLength
+    name: RDLENGTH
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Total length in octets of the RDATA (options) that follows. A value of 0 means no options are present. Each option is at least 4 bytes (2-byte code + 2-byte length), so the value equals the sum of (4 + OptionLength) for all options. [RFC 6891 §6.1.2]"
+
+  - kind: repeat
+    id: ednsOptions
+    name: Options
+    category: variable
+    count: eos
+    element:
+      id: ednsOption
+      name: Option
+      fields:
+        - id: ednsOptionCode
+          name: Option Code
+          type: { kind: bits, n: 16 }
+          category: type
+          doc: "Identifies the option type. Defined codes include: 3=NSID (Name Server ID, RFC 5001), 8=ECS (EDNS Client Subnet, RFC 7871), 9=EXPIRE (RFC 7314), 10=COOKIE (RFC 7873), 11=Keepalive (RFC 7828), 12=Padding (RFC 7830). Unknown codes MUST be ignored. [RFC 6891 §6.1.2, IANA EDNS Option Codes registry]"
+
+        - id: ednsOptionLength
+          name: Option Length
+          type: { kind: bits, n: 16 }
+          category: length
+          doc: "Length in octets of the following OptionData for this option. May be 0 for options with no data payload. Allows a parser to skip unrecognised options without interpreting them. [RFC 6891 §6.1.2]"
+
+        - id: ednsOptionData
+          name: Option Data
+          type: { kind: bytes, n: { kind: ref, field: ednsOptionLength } }
+          category: variable
+          doc: "Option-specific data, exactly OptionLength bytes long. Encoding depends on the Option Code — for example ECS (code 8) carries a 2-byte ADDRESS-FAMILY, 1-byte SOURCE PREFIX-LENGTH, 1-byte SCOPE PREFIX-LENGTH and a variable-length ADDRESS. [RFC 6891 §6.1.2, RFC 7871 §6]"

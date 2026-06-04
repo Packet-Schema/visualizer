@@ -1,0 +1,171 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IP-in-IP Encapsulation
+rowBits: 32
+byteOrder: BE
+description: IP-in-IP Encapsulation (RFC 2003). An IPv4 datagram is transmitted inside another IPv4 datagram by prepending an outer IPv4 header. The outer header's Protocol field is set to 4 (IP-in-IP), allowing routers along the delivery path to treat the tunnel packet as a normal IPv4 datagram. The encapsulating node (tunnel entry-point) constructs the outer header; the decapsulating node (tunnel exit-point) strips it and delivers the inner datagram to the normal IP receive process. The outer header is a standard 20-byte IPv4 header (IHL=5, no options in this preset); the inner datagram follows immediately.
+body:
+  - kind: group
+    id: outerIpv4Header
+    name: Outer IPv4 Header
+    children:
+      - id: outerVersion
+        name: Version
+        type: { kind: bits, n: 4 }
+        category: type
+        doc: IP version of the outer header — always 4 for IP-in-IP encapsulation as defined in RFC 2003. [RFC 2003 §3, RFC 791 §3.1]
+      - id: outerIhl
+        name: IHL
+        type: { kind: bits, n: 4 }
+        category: length
+        doc: "Internet Header Length in 32-bit words. Minimum (and typical for tunnel packets) value is 5, meaning a 20-byte outer header with no options. [RFC 791 §3.1, RFC 2003 §3]"
+      - id: outerTos
+        name: TOS
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "Type of Service octet of the outer header. RFC 2003 §3 specifies that the encapsulating node copies the DS/ECN bits from the inner header's TOS field into this field (tunnel-mode TOS copy); the exact policy is implementation-defined. [RFC 791 §3.1, RFC 2003 §3.1]"
+      - id: outerTotalLength
+        name: Total Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: Total length in bytes of the outer datagram (outer IPv4 header + inner IP datagram). The encapsulating node sets this to the inner datagram length plus the size of the outer header (IHL × 4). [RFC 791 §3.1, RFC 2003 §3]
+      - id: outerIdentification
+        name: Identification
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Identification field of the outer header, used for fragment reassembly. The encapsulating node assigns an independent ID for each outer datagram; it is unrelated to the inner datagram's Identification. [RFC 791 §3.1, RFC 2003 §3]
+      - kind: group
+        id: outerFlagsBits
+        name: Flags
+        children:
+          - id: outerFlags_reserved
+            name: R
+            type: { kind: bits, n: 1 }
+            category: reserved
+            doc: Reserved bit of the outer Flags field; MUST be zero. [RFC 791 §3.1]
+          - id: outerFlags_df
+            name: DF
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: "Don't Fragment bit of the outer header. RFC 2003 §3 recommends that the encapsulating node copy the DF bit from the inner header; if the inner DF=1, the tunnel packet should also set DF=1 so that PMTUD signals propagate correctly. [RFC 791 §3.1, RFC 2003 §3]"
+          - id: outerFlags_mf
+            name: MF
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: More Fragments bit of the outer header. Set on all but the last fragment when the outer datagram is fragmented in transit. Fragmentation of tunnel packets is strongly discouraged; use PMTUD instead. [RFC 791 §3.1, RFC 2003 §3]
+      - id: outerFragOffset
+        name: Fragment Offset
+        type: { kind: bits, n: 13 }
+        category: identifier
+        doc: Offset (in 8-byte units) of this fragment's data relative to the start of the original outer datagram. Zero for unfragmented tunnel packets. [RFC 791 §3.1]
+      - id: outerTtl
+        name: TTL
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: "Time To Live of the outer header. The encapsulating node sets a fresh TTL (default 64 or the platform TTL) for the outer header; the inner datagram's TTL is decremented independently by the decapsulating node before forwarding. [RFC 791 §3.1, RFC 2003 §3]"
+      - id: outerProtocol
+        name: Protocol
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            "4": "IP-in-IP (4)"
+        category: type
+        doc: "Protocol field of the outer IPv4 header. RFC 2003 assigns Protocol number 4 to IP-in-IP encapsulation, identifying that the payload is itself an IPv4 datagram. [RFC 2003 §1, IANA Protocol Numbers]"
+      - id: outerHeaderChecksum
+        name: Header Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: One's-complement checksum over the outer IPv4 header only. The encapsulating node computes this afresh; the inner datagram's header checksum is unaffected by the encapsulation. [RFC 791 §3.1, RFC 2003 §3]
+      - id: outerSrcAddr
+        name: Source Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 address of the encapsulating node (tunnel entry-point). This is the address of the interface from which the tunnel packet is transmitted, not the inner datagram's source. [RFC 791 §3.1, RFC 2003 §3]
+      - id: outerDstAddr
+        name: Destination Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 address of the decapsulating node (tunnel exit-point). The outer datagram is routed to this address; upon arrival, the node strips the outer header and processes the inner IP datagram. [RFC 791 §3.1, RFC 2003 §3]
+  - kind: group
+    id: innerIpv4Header
+    name: Inner IPv4 Header
+    children:
+      - id: innerVersion
+        name: Version
+        type: { kind: bits, n: 4 }
+        category: type
+        doc: IP version of the encapsulated (inner) datagram. Always 4 in a basic IP-in-IP tunnel as defined in RFC 2003. (IPv6-in-IPv4 is handled by Protocol 41 per RFC 2473, not RFC 2003.) [RFC 2003 §1, RFC 791 §3.1]
+      - id: innerIhl
+        name: IHL
+        type: { kind: bits, n: 4 }
+        category: length
+        doc: Internet Header Length of the inner IPv4 header in 32-bit words; minimum 5 (20 bytes). Together with the inner Total Length field, the decapsulating node uses this to locate the inner payload. [RFC 791 §3.1, RFC 2003 §4]
+      - id: innerTos
+        name: TOS
+        type: { kind: bits, n: 8 }
+        category: type
+        doc: "Type of Service octet of the inner datagram, as set by the original source. RFC 2003 §3.1 discusses optional TOS-copy from the inner to the outer header; the inner field itself is never modified during encapsulation. [RFC 791 §3.1, RFC 2003 §3.1]"
+      - id: innerTotalLength
+        name: Total Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: Total length (header + data) of the inner IPv4 datagram in bytes. The outer Total Length equals this value plus the outer header length (typically 20 bytes). [RFC 791 §3.1, RFC 2003 §3]
+      - id: innerIdentification
+        name: Identification
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Identification field of the inner datagram, used to reassemble inner fragments. Unmodified by the encapsulating node; independent of the outer Identification. [RFC 791 §3.1, RFC 2003 §3]
+      - kind: group
+        id: innerFlagsBits
+        name: Flags
+        children:
+          - id: innerFlags_reserved
+            name: R
+            type: { kind: bits, n: 1 }
+            category: reserved
+            doc: Reserved bit of the inner datagram's Flags field; MUST be zero. [RFC 791 §3.1]
+          - id: innerFlags_df
+            name: DF
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: "Don't Fragment bit of the inner datagram. The encapsulating node may propagate this to the outer DF bit so that an ICMP 'fragmentation needed' error generated on the outer path can be used to shrink the effective inner MTU (tunnel PMTUD). [RFC 791 §3.1, RFC 2003 §3]"
+          - id: innerFlags_mf
+            name: MF
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: More Fragments bit of the inner datagram. Indicates that the inner datagram is itself fragmented; the decapsulating node reassembles inner fragments after stripping the outer header. [RFC 791 §3.1]
+      - id: innerFragOffset
+        name: Fragment Offset
+        type: { kind: bits, n: 13 }
+        category: identifier
+        doc: Fragment offset (in 8-byte units) within the inner original datagram. Zero for a non-fragmented or first-fragment inner datagram. [RFC 791 §3.1]
+      - id: innerTtl
+        name: TTL
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: "Time To Live of the inner datagram. Decremented by the decapsulating node (acting as a router) before forwarding; if it reaches zero, the decapsulating node discards the packet and sends an ICMP Time Exceeded to the inner source. [RFC 791 §3.1, RFC 2003 §4]"
+      - id: innerProtocol
+        name: Protocol
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "Protocol number of the inner datagram's payload (e.g. 6=TCP, 17=UDP, 1=ICMP). Determines how the decapsulating node (or next-hop router) processes the inner payload after the outer header is stripped. [RFC 791 §3.1, IANA Protocol Numbers]"
+      - id: innerHeaderChecksum
+        name: Header Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: One's-complement checksum of the inner IPv4 header. Unchanged by the encapsulating node; the decapsulating node verifies it after stripping the outer header. [RFC 791 §3.1, RFC 2003 §4]
+      - id: innerSrcAddr
+        name: Source Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 source address of the original inner datagram, as set by the original sender. Not modified during encapsulation; used by the ultimate destination to identify the true sender. [RFC 791 §3.1, RFC 2003 §3]
+      - id: innerDstAddr
+        name: Destination Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: IPv4 destination address of the inner datagram. After the decapsulating node strips the outer header, the inner datagram is forwarded toward this address. [RFC 791 §3.1, RFC 2003 §3]
+  - id: innerPayload
+    name: Inner Payload
+    type: { kind: bytes, n: { kind: ref, field: innerPayloadBytes } }
+    category: payload-marker
+    doc: "Payload of the inner IPv4 datagram (e.g. TCP segment, UDP datagram, ICMP message), starting immediately after the inner IPv4 header. Length = inner Total Length − (inner IHL × 4). Not parsed in this preset; use the appropriate protocol preset for the inner Protocol value. [RFC 2003 §3, RFC 791 §3.1]"

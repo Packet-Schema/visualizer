@@ -1,0 +1,95 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MLDv2 Membership Report
+rowBits: 32
+byteOrder: BE
+description: MLDv2 Version 2 Multicast Listener Report message (RFC 3810 §5.2). Sent by an IPv6 host to report multicast group membership state to multicast routers on the attached link. This is the IPv6 equivalent of the IGMPv3 Membership Report (RFC 3376 §4.2). Carried as ICMPv6 (Next Header = 58) with Type = 143, IPv6 Hop Limit = 1, and the Router Alert Hop-by-Hop option, addressed to ff02::16 (All MLDv2-capable Routers). Contains one or more Multicast Address Records, each describing the listener's filter mode and source list for a specific multicast group.
+body:
+  - id: type
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 143
+    doc: ICMPv6 message type. 143 = Version 2 Multicast Listener Report (this preset). 130 = Multicast Listener Query (MLDv1/v2). 131 = Multicast Listener Report (MLDv1). 132 = Multicast Listener Done (MLDv1). [RFC 3810 §5.2][RFC 4443 §2.1]
+  - id: reserved0
+    name: Reserved
+    type: { kind: bits, n: 8 }
+    category: reserved
+    doc: Reserved field occupying the ICMPv6 Code byte. MUST be zero on transmission; ignored on receipt for MLD messages. [RFC 3810 §5.2]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: 16-bit one's-complement checksum over the MLD message plus an IPv6 pseudo-header (source address, destination address, upper-layer packet length, next header = 58). MUST be verified by receivers; messages with invalid checksums MUST be silently discarded. [RFC 3810 §5.2][RFC 4443 §2.3]
+  - id: reserved1
+    name: Reserved
+    type: { kind: bits, n: 16 }
+    category: reserved
+    doc: Reserved field. MUST be zero on transmission; ignored on receipt. [RFC 3810 §5.2]
+  - id: mldv2RecCount
+    name: Number of Mcast Address Records
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: The number of Multicast Address Records present in this Report. Each record describes the sender's membership state for one multicast group. A single Report MAY contain multiple records to report state changes for several groups simultaneously. [RFC 3810 §5.2.1]
+  - kind: repeat
+    id: mcastAddrRecords
+    name: Multicast Address Records
+    category: variable
+    doc: List of Multicast Address Records. Each record reports the listener's filter mode (include/exclude) and source list for one IPv6 multicast group. A router processes each record to update its multicast forwarding state for the link. [RFC 3810 §5.2]
+    element:
+      id: mcastAddrRecord
+      fields:
+        - id: recordType
+          name: Record Type
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: "MODE_IS_INCLUDE"
+              2: "MODE_IS_EXCLUDE"
+              3: "CHANGE_TO_INCLUDE_MODE"
+              4: "CHANGE_TO_EXCLUDE_MODE"
+              5: "ALLOW_NEW_SOURCES"
+              6: "BLOCK_OLD_SOURCES"
+          category: type
+          doc: "Record type indicating the listener's current or changed filter mode for the multicast group. 1=MODE_IS_INCLUDE (current-state, source list is the include set). 2=MODE_IS_EXCLUDE (current-state, source list is the exclude set). 3=CHANGE_TO_INCLUDE_MODE (filter-mode change or leave, source list is new include set). 4=CHANGE_TO_EXCLUDE_MODE (filter-mode change or join, source list is new exclude set). 5=ALLOW_NEW_SOURCES (source-list change, add listed sources). 6=BLOCK_OLD_SOURCES (source-list change, remove listed sources). [RFC 3810 §5.2.5]"
+        - id: mldv2AuxLen
+          name: Aux Data Len
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: Length of the Auxiliary Data field at the end of this record, expressed in units of 32-bit words. MUST be zero in all current record types (1–6); a non-zero value is reserved for future use. Receivers MUST ignore auxiliary data but MUST NOT discard the record because of a non-zero value. [RFC 3810 §5.2.6]
+        - id: mldv2SrcCount
+          name: Number of Sources
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: The number of unicast IPv6 source addresses present in this Multicast Address Record. Zero for MODE_IS_EXCLUDE records that apply to all sources. The source address list that follows contains exactly this many 16-byte IPv6 addresses. [RFC 3810 §5.2.7]
+        - id: multicastAddress
+          name: Multicast Address
+          type: { kind: bits, n: 128 }
+          category: addressing
+          doc: The IPv6 multicast address to which this record pertains. MUST be a valid IPv6 multicast address (prefix ff00::/8). Each Multicast Address Record in a Report MUST reference a distinct multicast address. [RFC 3810 §5.2.4]
+        - kind: repeat
+          id: sourceList
+          name: Source List
+          category: variable
+          doc: List of unicast IPv6 source addresses associated with this record. Interpretation depends on Record Type — for INCLUDE records these are the sources to listen from; for EXCLUDE records these are the sources to suppress. Empty (zero entries) when Number of Sources is 0. [RFC 3810 §5.2.8]
+          element:
+            id: sourceRecord
+            fields:
+              - id: sourceAddress
+                name: Source Address
+                type: { kind: bits, n: 128 }
+                category: addressing
+                doc: A unicast IPv6 source address in the filter source list for this multicast group record. Each address is 16 bytes in network byte order. [RFC 3810 §5.2.8]
+          count: { kind: ref, field: mldv2SrcCount }
+        - id: auxData
+          name: Auxiliary Data
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "*"
+              a: { kind: ref, field: mldv2AuxLen }
+              b: { kind: lit, value: 4 }
+          category: variable
+          doc: Auxiliary data appended to this record. Length is Aux Data Len × 4 bytes. MUST be zero length (Aux Data Len = 0) for all currently defined record types; reserved for future extensions. Receivers MUST silently ignore any auxiliary data present. [RFC 3810 §5.2.6]
+    count: { kind: ref, field: mldv2RecCount }

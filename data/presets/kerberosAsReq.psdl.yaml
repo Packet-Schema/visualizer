@@ -1,0 +1,253 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: Kerberos AS-REQ
+rowBits: 32
+byteOrder: BE
+description: "Kerberos Authentication Service Request (AS-REQ, RFC 4120) — ASN.1 DER encoded, used to obtain an initial Ticket-Granting Ticket (TGT) from the KDC. AS-REQ ::= [APPLICATION 10] KDC-REQ. KDC-REQ ::= SEQUENCE { pvno [1] INTEGER (=5), msg-type [2] INTEGER (=10), padata [3] SEQUENCE OF PA-DATA OPTIONAL, req-body [4] KDC-REQ-BODY }. The outermost frame is an APPLICATION-tagged (tag 0x6A = class Application + constructed + tag 10) TLV whose content is a SEQUENCE wrapping the four context-tagged fields. Each field carries a context-specific tag (0xA1–0xA4), a BER length, and a nested TLV for the actual value. All lengths use BER short/long form (kind: berLength). The pre-authentication data (padata) is optional and absent by default; it carries PA-ENC-TIMESTAMP (padata-type 2) or FAST armour (padata-type 136) in deployments that require it. req-body contains the cipher-suite selection (etype list), client/server principal names, realm, and ticket validity window. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+
+body:
+  # ── Outermost APPLICATION [10] frame ──────────────────────────────────────
+  - kind: group
+    id: appWrapper
+    name: APPLICATION [10] Frame
+    children:
+      - id: appTag
+        name: APPLICATION [10] Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 106
+        doc: "ASN.1 APPLICATION class, constructed, tag number 10 — encoded as 0x6A (0b01101010). Marks this TLV as an AS-REQ per the Kerberos application tag table. The KDC identifies the message type from this tag before inspecting msg-type. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.2]"
+      - id: appLength
+        name: APPLICATION [10] Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the APPLICATION [10] contents (the inner SEQUENCE TLV). Short form for messages up to 127 bytes; long form (0x82 followed by two big-endian length octets) for typical AS-REQ messages which are 100–400 bytes. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+
+  # ── KDC-REQ SEQUENCE ──────────────────────────────────────────────────────
+  - kind: group
+    id: kdcReqSequence
+    name: KDC-REQ SEQUENCE
+    children:
+      - id: seqTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag 0x30 (decimal 48) enclosing the four KDC-REQ fields: pvno, msg-type, optional padata, and req-body. All Kerberos message bodies are wrapped in an inner SEQUENCE inside the APPLICATION frame. [RFC 4120 §5.4.1 / ITU-T X.690 §8.9]"
+      - id: seqLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the KDC-REQ SEQUENCE contents (sum of all four context-tagged field TLVs). [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+
+  # ── pvno [1] INTEGER (=5) ─────────────────────────────────────────────────
+  - kind: group
+    id: pvnoField
+    name: pvno [1] INTEGER
+    children:
+      - id: pvnoCtxTag
+        name: pvno Context Tag [1]
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 161
+        doc: "ASN.1 context-specific [1], constructed tag — 0xA1 (0b10100001). Wraps the pvno INTEGER value. The explicit context tag is required because Kerberos uses EXPLICIT tagging throughout KDC-REQ. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.2]"
+      - id: pvnoCtxLength
+        name: pvno Context Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER length of the pvno [1] wrapper contents (the nested INTEGER TLV); always 3 bytes for pvno value 5 (0x02 0x01 0x05). [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+      - id: pvnoIntTag
+        name: pvno INTEGER Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: "ASN.1 universal INTEGER tag 0x02 for the pvno value field. [RFC 4120 §5.4.1 / ITU-T X.690 §8.3]"
+      - id: pvnoIntLength
+        name: pvno INTEGER Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER length of the pvno integer value bytes; always 0x01 since the Kerberos protocol version number 5 fits in one octet. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+      - id: pvnoValue
+        name: pvno Value
+        type: { kind: bytes, n: { kind: ref, field: pvnoIntLength } }
+        category: identifier
+        doc: "Kerberos protocol version number. MUST be 5 (0x05) for Kerberos Version 5. The KDC MUST reject any message whose pvno is not 5 with KRB_AP_ERR_BADVERSION. [RFC 4120 §5.4.1 / §7.5.9]"
+
+  # ── msg-type [2] INTEGER (=10) ────────────────────────────────────────────
+  - kind: group
+    id: msgTypeField
+    name: msg-type [2] INTEGER
+    children:
+      - id: msgTypeCtxTag
+        name: msg-type Context Tag [2]
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 162
+        doc: "ASN.1 context-specific [2], constructed tag — 0xA2 (0b10100010). Wraps the msg-type INTEGER value indicating the Kerberos message type. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.2]"
+      - id: msgTypeCtxLength
+        name: msg-type Context Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER length of the msg-type [2] wrapper contents (the nested INTEGER TLV); always 3 bytes for msg-type value 10 (0x02 0x01 0x0A). [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+      - id: msgTypeIntTag
+        name: msg-type INTEGER Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: "ASN.1 universal INTEGER tag 0x02 for the msg-type value field. [RFC 4120 §5.4.1 / ITU-T X.690 §8.3]"
+      - id: msgTypeIntLength
+        name: msg-type INTEGER Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER length of the msg-type integer value bytes; always 0x01 since msg-type 10 fits in a single octet. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+      - id: msgTypeValue
+        name: msg-type Value
+        type: { kind: bytes, n: { kind: ref, field: msgTypeIntLength } }
+        category: type
+        doc: "Kerberos message type discriminator. Value 10 (0x0A) identifies AS-REQ; 11=AS-REP, 12=TGS-REQ, 13=TGS-REP, 14=AP-REQ, 15=AP-REP, 20=TGT-REQ (PKINIT), 30=KRB-ERROR. The KDC dispatches messages to the AS or TGS handler based on this field. [RFC 4120 §5.4.1 / §7.5.7]"
+
+  # ── padata [3] SEQUENCE OF PA-DATA OPTIONAL ───────────────────────────────
+  - kind: optional
+    when: { kind: ref, field: kerberosHasPadata }
+    field:
+      id: padataCtxTag
+      name: padata Context Tag [3]
+      type: { kind: int, bits: 8 }
+      category: type
+      defaultValue: 163
+      doc: "ASN.1 context-specific [3], constructed tag — 0xA3 (0b10100011). Present only when pre-authentication data is included (kerberosHasPadata non-zero). padata carries PA-ENC-TIMESTAMP (type 2, encrypted timestamp for pre-auth), ETYPE-INFO2 (type 19, supported cipher list), or FAST armour/request (type 136/137, RFC 6113). Absent in initial anonymous AS-REQ exchanges where the client first probes for enctype information. [RFC 4120 §5.2.7 / RFC 6113 §5.4]"
+
+  - kind: optional
+    when: { kind: ref, field: kerberosHasPadata }
+    field:
+      id: padataCtxLength
+      name: padata Context Length
+      type: { kind: berLength }
+      category: length
+      doc: "BER length of the padata [3] wrapper contents (the SEQUENCE OF PA-DATA TLV and its elements). Present only when kerberosHasPadata is non-zero. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+
+  - kind: optional
+    when: { kind: ref, field: kerberosHasPadata }
+    field:
+      id: padataSeqTag
+      name: padata SEQUENCE Tag
+      type: { kind: int, bits: 8 }
+      category: type
+      defaultValue: 48
+      doc: "ASN.1 universal SEQUENCE tag 0x30 for the SEQUENCE OF PA-DATA list. Each PA-DATA element is itself a SEQUENCE containing padata-type INTEGER and padata-value OCTET STRING. Present only when kerberosHasPadata is non-zero. [RFC 4120 §5.2.7 / ITU-T X.690 §8.9]"
+
+  - kind: optional
+    when: { kind: ref, field: kerberosHasPadata }
+    field:
+      id: padataSeqLength
+      name: padata SEQUENCE Length
+      type: { kind: berLength }
+      category: length
+      doc: "BER length of the SEQUENCE OF PA-DATA contents in octets. Present only when kerberosHasPadata is non-zero. [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.3]"
+
+  - kind: repeat
+    id: padataList
+    name: PA-DATA Elements
+    category: variable
+    doc: "SEQUENCE OF PA-DATA pre-authentication data records. Each record is a SEQUENCE { padata-type [1] Int32, padata-value [2] OCTET STRING }. Common padata-type values: 1=PA-TGS-REQ (TGS ticket), 2=PA-ENC-TIMESTAMP (encrypted timestamp, most common AS pre-auth), 11=PA-ETYPE-INFO, 19=PA-ETYPE-INFO2, 128=PA-PAC-REQUEST (MS extension), 136=PA-FX-FAST-REQUEST (FAST, RFC 6113). The count is driven by a ref to padataCount (default 0 so an empty AS-REQ renders correctly). [RFC 4120 §5.2.7 / §7.5.2]"
+    element:
+      id: padataRecord
+      fields:
+        - id: padataRecTag
+          name: PA-DATA SEQUENCE Tag
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 48
+          doc: "ASN.1 universal SEQUENCE tag 0x30 opening a single PA-DATA element consisting of padata-type and padata-value. [RFC 4120 §5.2.7 / ITU-T X.690 §8.9]"
+        - id: padataRecLength
+          name: PA-DATA SEQUENCE Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER length of this PA-DATA SEQUENCE's contents (padata-type TLV + padata-value TLV). [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.3]"
+        - id: padataTypeCtxTag
+          name: padata-type Context Tag [1]
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 161
+          doc: "ASN.1 context-specific [1], constructed tag 0xA1 wrapping the padata-type INTEGER. [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.2]"
+        - id: padataTypeCtxLen
+          name: padata-type Context Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER length of the padata-type [1] wrapper (the INTEGER TLV inside). [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.3]"
+        - id: padataTypeIntTag
+          name: padata-type INTEGER Tag
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 2
+          doc: "ASN.1 universal INTEGER tag 0x02 for the padata-type value. [RFC 4120 §5.2.7 / ITU-T X.690 §8.3]"
+        - id: padataTypeIntLen
+          name: padata-type INTEGER Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER length of the padata-type integer value bytes; typically 1 or 2 octets. [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.3]"
+        - id: padataTypeValue
+          name: padata-type Value
+          type: { kind: bytes, n: { kind: ref, field: padataTypeIntLen } }
+          category: type
+          doc: "Pre-authentication data type code (Int32). Assigned by IANA Kerberos Pre-authentication and Typed Data registry. Key values: 1=PA-TGS-REQ, 2=PA-ENC-TIMESTAMP, 11=PA-ETYPE-INFO, 19=PA-ETYPE-INFO2, 128=PA-PAC-REQUEST (Microsoft), 136=PA-FX-FAST-REQUEST (RFC 6113 FAST). [RFC 4120 §5.2.7 / §7.5.2 / RFC 6113 §5.4]"
+        - id: padataValueCtxTag
+          name: padata-value Context Tag [2]
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 162
+          doc: "ASN.1 context-specific [2], constructed tag 0xA2 wrapping the padata-value OCTET STRING. [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.2]"
+        - id: padataValueCtxLen
+          name: padata-value Context Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER length of the padata-value [2] wrapper (the OCTET STRING TLV inside). [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.3]"
+        - id: padataValueOctetTag
+          name: padata-value OCTET STRING Tag
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 4
+          doc: "ASN.1 universal OCTET STRING tag 0x04 for the padata-value payload. The value bytes are interpreted according to padata-type: for PA-ENC-TIMESTAMP (type 2) the value is an EncryptedData SEQUENCE; for PA-ETYPE-INFO2 (type 19) it is a SEQUENCE OF ETYPE-INFO2-ENTRY. [RFC 4120 §5.2.7]"
+        - id: padataValueOctetLen
+          name: padata-value OCTET STRING Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER length of the padata-value octet string contents in octets. [RFC 4120 §5.2.7 / ITU-T X.690 §8.1.3]"
+        - id: padataValueData
+          name: padata-value Data
+          type: { kind: bytes, n: { kind: ref, field: padataValueOctetLen } }
+          category: variable
+          doc: "Pre-authentication payload bytes whose semantics are defined by padata-type. For PA-ENC-TIMESTAMP (type 2): DER-encoded EncryptedData ::= SEQUENCE { etype [0] Int32, kvno [1] UInt32 OPTIONAL, cipher [2] OCTET STRING } where cipher is the AES/DES3 CBC encryption of PA-ENC-TS-ENC (timestamp + usec) under the client key. For PA-ETYPE-INFO2 (type 19): SEQUENCE OF ETYPE-INFO2-ENTRY each containing etype and optional salt. [RFC 4120 §5.2.7 / §5.4.1]"
+    count: { kind: ref, field: padataCount }
+
+  # ── req-body [4] KDC-REQ-BODY ─────────────────────────────────────────────
+  - kind: group
+    id: reqBodyField
+    name: req-body [4] KDC-REQ-BODY
+    children:
+      - id: reqBodyCtxTag
+        name: req-body Context Tag [4]
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 164
+        doc: "ASN.1 context-specific [4], constructed tag — 0xA4 (0b10100100). Wraps the KDC-REQ-BODY SEQUENCE containing all ticket request parameters: kdc-options, cname, realm, sname, from, till, rtime, nonce, etype list, and optional addresses/enc-authorization-data/additional-tickets. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.2]"
+      - id: reqBodyCtxLength
+        name: req-body Context Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER length of the req-body [4] wrapper contents (the KDC-REQ-BODY SEQUENCE TLV). Typically 60–200 octets depending on principal name lengths, realm string, and number of requested encryption types. [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+      - id: reqBodySeqTag
+        name: KDC-REQ-BODY SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag 0x30 for KDC-REQ-BODY ::= SEQUENCE { kdc-options [0] KDCOptions, cname [1] PrincipalName OPTIONAL, realm [2] Realm, sname [3] PrincipalName OPTIONAL, from [4] KerberosTime OPTIONAL, till [5] KerberosTime, rtime [6] KerberosTime OPTIONAL, nonce [7] UInt32, etype [8] SEQUENCE OF Int32, addresses [9] HostAddresses OPTIONAL, enc-authorization-data [10] EncryptedData OPTIONAL, additional-tickets [11] SEQUENCE OF Ticket OPTIONAL }. [RFC 4120 §5.4.1 / ITU-T X.690 §8.9]"
+      - id: reqBodySeqLength
+        name: KDC-REQ-BODY SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER length of the KDC-REQ-BODY SEQUENCE contents. Encompasses all mandatory and present optional fields (kdc-options through etype, plus any optional host addresses or additional tickets). [RFC 4120 §5.4.1 / ITU-T X.690 §8.1.3]"
+      - id: reqBodyData
+        name: KDC-REQ-BODY Data
+        type: { kind: bytes, n: { kind: ref, field: reqBodySeqLength } }
+        category: variable
+        doc: "DER-encoded contents of KDC-REQ-BODY SEQUENCE. Includes: kdc-options [0] BIT STRING (32 bits — forwardable, proxiable, renewable, renewable-ok, etc.), cname [1] PrincipalName OPTIONAL (client name type + name-string SEQUENCE OF GeneralString), realm [2] GeneralString (client's realm, e.g. EXAMPLE.COM), sname [3] PrincipalName (service principal, e.g. krbtgt/REALM for AS-REQ), till [5] GeneralizedTime (requested end time), nonce [7] UInt32 (random nonce for replay prevention), etype [8] SEQUENCE OF Int32 (preferred cipher suite list: 18=AES256-CTS-HMAC-SHA1-96, 17=AES128-CTS-HMAC-SHA1-96, 23=RC4-HMAC). Optional fields (from, rtime, addresses, enc-authorization-data, additional-tickets) are present only when non-default values are needed. [RFC 4120 §5.4.1 / §5.2 / §5.2.6]"

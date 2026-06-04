@@ -1,0 +1,209 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: L2TP Control (RFC 2661)
+rowBits: 32
+byteOrder: BE
+description: "Layer Two Tunneling Protocol version 2 (L2TPv2) Control Message (RFC 2661). L2TPv2 establishes, maintains, and tears down PPP tunnels between a LAC (L2TP Access Concentrator) and an LNS (L2TP Network Server) over UDP port 1701. Every control message begins with a 16-bit Flags+Version word (T=1 mandatory, L=1 mandatory, S=1 mandatory, O=0 mandatory, Ver=2), followed by a 16-bit Length, the 16-bit Tunnel ID, the 16-bit Session ID, the 16-bit Ns (send sequence number), and the 16-bit Nr (receive sequence number). The fixed 12-byte header is followed by zero or more Attribute Value Pairs (AVPs), each consisting of a 16-bit Flags+Length word (Mandatory M-bit, Hidden H-bit, 4 reserved bits, 10-bit length), a 16-bit Vendor ID (0 = IETF), a 16-bit Attribute Type, and a variable-length Attribute Value. AVP Attribute Type 0 (Message Type) identifies the control message: 1=SCCRQ, 2=SCCRP, 3=SCCCN, 4=StopCCN, 6=HELLO, 7=OCRQ, 8=OCRP, 9=OCCN, 10=ICRQ, 11=ICRP, 12=ICCN, 14=CDN, 15=WEN, 16=SLI."
+
+body:
+  - kind: group
+    id: l2tpFlagsVer
+    name: Flags / Ver
+    children:
+      - id: l2tpTypeFlag
+        name: T
+        type: { kind: int, bits: 1 }
+        category: type
+        defaultValue: 1
+        doc: "Type bit. MUST be 1 in all L2TPv2 Control Messages. Distinguishes control messages (T=1) from data messages (T=0). A receiver that sees T=0 on the control channel MUST silently discard the packet. [RFC 2661 §3.1]"
+
+      - id: l2tpLengthFlag
+        name: L
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 1
+        doc: "Length flag. MUST be 1 in all control messages, indicating that the Length field is present immediately after this word. When L=0 the Length field is absent; L=0 is only valid in data messages. [RFC 2661 §3.1]"
+
+      - id: l2tpReserved1
+        name: Reserved
+        type: { kind: int, bits: 2 }
+        category: reserved
+        doc: "Two reserved bits following the L flag. MUST be set to zero by the sender and ignored by the receiver. [RFC 2661 §3.1]"
+
+      - id: l2tpSequenceFlag
+        name: S
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 1
+        doc: "Sequence flag. MUST be 1 in all control messages, indicating that the Ns and Nr sequence-number fields are present. Sequence numbers provide reliable, ordered delivery of control messages over the unreliable UDP transport. [RFC 2661 §3.1]"
+
+      - id: l2tpReserved2
+        name: Reserved
+        type: { kind: int, bits: 1 }
+        category: reserved
+        doc: "One reserved bit between the S flag and the O flag position. MUST be set to zero by the sender and ignored by the receiver. [RFC 2661 §3.1]"
+
+      - id: l2tpOffsetFlag
+        name: O
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Offset flag. MUST be 0 in all L2TPv2 control messages; an Offset Size field and padding are only valid in L2TPv2 data messages. A control message receiver MUST silently discard a control packet with O=1. [RFC 2661 §3.1]"
+
+      - id: l2tpPriorityFlag
+        name: P
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Priority bit. When set to 1 in a data message, the packet is given preferential processing in the transmit queue. Typically set to 0 in control messages, which are already handled at high priority by the control channel. [RFC 2661 §3.1]"
+
+      - id: l2tpReserved3
+        name: Reserved
+        type: { kind: int, bits: 4 }
+        category: reserved
+        doc: "Four reserved bits following the P flag and preceding the 4-bit Ver field. MUST be set to zero by the sender and ignored by the receiver. [RFC 2661 §3.1]"
+
+      - id: l2tpVersion
+        name: Ver
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            2: "L2TPv2"
+        category: type
+        defaultValue: 2
+        doc: "L2TP version number. MUST be 2 for L2TPv2 as defined in RFC 2661. A receiver MUST discard any packet whose Ver field is not 2. L2TPv3 (RFC 3931) uses Ver=3 over a different encapsulation. [RFC 2661 §3.1]"
+
+  - id: l2tpLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length in octets of the L2TP message including the header and all AVPs, but excluding any UDP or IP headers. Present in all control messages (L-bit=1). Used by the receiver to delimit the message within the UDP payload and to validate completeness. [RFC 2661 §3.1]"
+
+  - id: l2tpTunnelId
+    name: Tunnel ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Identifies the local L2TP tunnel context. The Tunnel ID is assigned during the Start-Control-Connection (SCC) exchange: the SCCRQ originator places 0 here and the peer assigns the actual ID in the SCCRP response. Subsequent control messages on the tunnel use the peer-assigned value. [RFC 2661 §3.1, §5.4]"
+
+  - id: l2tpSessionId
+    name: Session ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Identifies the individual PPP session (call) within the tunnel. Set to 0 in tunnel-level control messages (SCCRQ, SCCRP, SCCCN, StopCCN, HELLO). Assigned during the Incoming/Outgoing Call Request (ICRQ/OCRQ) exchange and used in all subsequent call-level control messages. [RFC 2661 §3.1, §5.4]"
+
+  - id: l2tpNs
+    name: Ns
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Send sequence number of this control message. Starts at 0 for the first message on a new tunnel or session and increments by 1 for each subsequent control message transmitted. The sequence space is modulo 2^16; arithmetic comparisons MUST use modular arithmetic. [RFC 2661 §3.1, §5.8]"
+
+  - id: l2tpNr
+    name: Nr
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Receive sequence number — the Ns value of the next control message expected from the peer. Acknowledges all messages with Ns < Nr. The peer MUST retransmit unacknowledged control messages. Nr in a ZLB (Zero-Length Body) ACK packet carries the acknowledgment without any AVPs. [RFC 2661 §3.1, §5.8]"
+
+  - kind: repeat
+    id: l2tpAvps
+    name: AVPs
+    category: variable
+    count: { kind: ref, field: l2tpAvpCount }
+    element:
+      id: l2tpAvp
+      fields:
+        - kind: group
+          id: l2tpAvpFlagsLen
+          name: Flags / Length
+          children:
+            - id: l2tpAvpMandatory
+              name: M
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 1
+              doc: "Mandatory (M) bit. When set to 1, the receiving peer MUST understand this AVP; if it does not, it MUST terminate the associated tunnel or session with a StopCCN or CDN error. When 0, the AVP may be silently ignored if unrecognised. All IETF-defined AVPs that are required for correct operation have M=1. [RFC 2661 §4.1]"
+
+            - id: l2tpAvpHidden
+              name: H
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 0
+              doc: "Hidden (H) bit. When set to 1, the Attribute Value is encrypted using a shared secret (as negotiated via the Random Vector AVP) to prevent disclosure of sensitive data such as passwords over an untrusted network path. When 0 the value is transmitted in clear. [RFC 2661 §4.1, §4.3]"
+
+            - id: l2tpAvpReserved
+              name: Reserved
+              type: { kind: int, bits: 4 }
+              category: reserved
+              doc: "Four reserved bits within the AVP Flags+Length word. MUST be set to zero by the sender and ignored by the receiver. [RFC 2661 §4.1]"
+
+            - id: l2tpAvpLength
+              name: Length
+              type: { kind: int, bits: 10 }
+              category: length
+              doc: "Total length in octets of this AVP including the 6-byte fixed header (Flags+Length word + Vendor ID + Attribute Type) and the variable-length Attribute Value. The minimum valid value is 6 (empty value); the maximum is 1023. [RFC 2661 §4.1]"
+
+        - id: l2tpAvpVendorId
+          name: Vendor ID
+          type: { kind: int, bits: 16 }
+          category: identifier
+          defaultValue: 0
+          doc: "IANA-assigned enterprise number identifying the vendor that defined this AVP. 0 indicates an IETF-standard AVP as defined in RFC 2661. Non-zero values are vendor-specific extensions; receivers that do not recognise a vendor-specific mandatory AVP MUST terminate the tunnel. [RFC 2661 §4.1]"
+
+        - id: l2tpAvpAttributeType
+          name: Attribute Type
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              0: "Message Type"
+              1: "Result Code"
+              2: "Protocol Version"
+              3: "Framing Capabilities"
+              4: "Bearer Capabilities"
+              5: "Tie Breaker"
+              6: "Firmware Revision"
+              7: "Host Name"
+              8: "Vendor Name"
+              9: "Assigned Tunnel ID"
+              10: "Receive Window Size"
+              11: "Challenge"
+              12: "Q.931 Cause Code"
+              13: "Challenge Response"
+              14: "Assigned Session ID"
+              15: "Call Serial Number"
+              16: "Minimum BPS"
+              17: "Maximum BPS"
+              18: "Bearer Type"
+              19: "Framing Type"
+              21: "Called Number"
+              22: "Calling Number"
+              23: "Sub-Address"
+              24: "TX Connect Speed"
+              25: "Physical Channel ID"
+              26: "Initial Received LCP CONFREQ"
+              27: "Last Sent LCP CONFREQ"
+              28: "Last Received LCP CONFREQ"
+              29: "Proxy Authen Type"
+              30: "Proxy Authen Name"
+              31: "Proxy Authen Challenge"
+              32: "Proxy Authen ID"
+              33: "Proxy Authen Response"
+              34: "Call Errors"
+              35: "ACCM"
+              36: "Random Vector"
+              37: "Private Group ID"
+              38: "RX Connect Speed"
+              39: "Sequencing Required"
+          category: type
+          doc: "16-bit attribute type code identifying the meaning of the AVP value. Type 0=Message Type (identifies the control message: 1=SCCRQ, 2=SCCRP, 3=SCCCN, 4=StopCCN, 6=HELLO, 7=OCRQ, 8=OCRP, 9=OCCN, 10=ICRQ, 11=ICRP, 12=ICCN, 14=CDN, 15=WEN, 16=SLI). Types 1–39 cover result codes, protocol capabilities, tunnel parameters, call parameters, proxy authentication, and error reporting. The full IANA registry is maintained under the L2TP Attribute Value Pairs namespace. [RFC 2661 §4.1, §5.4]"
+
+        - id: l2tpAvpValue
+          name: Attribute Value
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: l2tpAvpLength }
+              b: { kind: lit, value: 6 }
+          category: variable
+          doc: "Variable-length attribute value whose interpretation is determined by the Attribute Type field. Length is (AVP Length - 6) bytes accounting for the 6-byte fixed AVP header. When H=1 the value is encrypted with the shared secret and a preceding Random Vector AVP. Examples: Message Type AVP carries a 2-byte type code; Host Name AVP carries a UTF-8 string; Receive Window Size AVP carries a 2-byte count of control messages the sender is willing to buffer. [RFC 2661 §4.1, §4.3]"

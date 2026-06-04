@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SLP v2 Header
+rowBits: 32
+byteOrder: BE
+description: "Service Location Protocol version 2 (SLP v2) common header (RFC 2608). SLP provides a scalable framework for the discovery and selection of network services; user agents (UAs) query service agents (SAs) or directory agents (DAs) without requiring prior knowledge of service locations. The 14-byte fixed header is followed by a variable-length Language Tag and a variable-length function-specific body. Function IDs include: SrvRqst(1), SrvRply(2), SrvReg(3), SrvDereg(6), AttrRqst(8), AttrRply(9), DAAdvert(11), SrvTypeRqst(9), SrvTypeRply(10). SLP operates over UDP/TCP port 427."
+
+body:
+  - kind: group
+    id: slpVerFunc
+    name: Ver / Function-ID
+    children:
+      - id: slpVersion
+        name: Version
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: "SLP protocol version. MUST be 2 for SLPv2; implementations MUST silently discard packets with any other version. [RFC 2608 §8]"
+      - id: slpFunctionID
+        name: Function-ID
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: "SrvRqst"
+            2: "SrvRply"
+            3: "SrvReg"
+            4: "SrvDereg"
+            5: "SrvAck"
+            6: "AttrRqst"
+            7: "AttrRply"
+            8: "DAAdvert"
+            9: "SrvTypeRqst"
+            10: "SrvTypeRply"
+            11: "SAAdvert"
+        category: type
+        defaultValue: 1
+        doc: "Identifies the SLP message type carried in the body. 1=SrvRqst (service request), 2=SrvRply (service reply), 3=SrvReg (service registration), 4=SrvDereg (service deregistration), 5=SrvAck (acknowledgement), 6=AttrRqst (attribute request), 7=AttrRply (attribute reply), 8=DAAdvert (DA advertisement), 9=SrvTypeRqst, 10=SrvTypeRply, 11=SAAdvert. [RFC 2608 §8]"
+
+  - id: slpLength
+    name: Length
+    type: { kind: int, bits: 24 }
+    category: length
+    defaultValue: 14
+    doc: "Total length of the SLP message in bytes, including the 14-byte common header, the Language Tag, and the function-specific body. Receivers MUST NOT rely on lower-layer length information; this field is authoritative. [RFC 2608 §8]"
+
+  - kind: group
+    id: slpFlagsGroup
+    name: Flags
+    children:
+      - id: slpFlagOverflow
+        name: O
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Overflow (O) flag. Set to 1 when the message exceeds the MTU and cannot fit in a single UDP datagram; the full reply is available via TCP on port 427. [RFC 2608 §8]"
+      - id: slpFlagFresh
+        name: F
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Fresh (F) flag. Set to 1 in SrvReg messages that register a service for the first time rather than update an existing registration. MUST be 0 in all other message types. [RFC 2608 §8]"
+      - id: slpFlagReqMulticast
+        name: R
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Request Multicast (R) flag. Set to 1 in requests sent via multicast or broadcast; used by DAs to suppress duplicate unicast replies. MUST be 0 in unicast messages. [RFC 2608 §8]"
+      - id: slpFlagsReserved
+        name: Reserved
+        type: { kind: bits, n: 13 }
+        category: reserved
+        doc: "Reserved flag bits. MUST be transmitted as zero and MUST be ignored on receipt. [RFC 2608 §8]"
+
+  - id: slpNextExtOffset
+    name: Next Ext Offset
+    type: { kind: int, bits: 24 }
+    category: variable
+    defaultValue: 0
+    doc: "Byte offset from the start of the SLP message to the first extension, or zero if no extensions are present. Extensions provide optional capabilities beyond the base protocol. [RFC 2608 §8]"
+
+  - kind: group
+    id: slpXidLang
+    name: XID / Lang Tag Len
+    children:
+      - id: slpXID
+        name: XID
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: "Transaction ID (XID). A 16-bit value chosen by the sender to correlate a request with its reply. Replies MUST echo the XID of the corresponding request unchanged. Set to 0 in DAAdvert and SAAdvert messages. [RFC 2608 §8]"
+      - id: slpLangLen
+        name: Lang Tag Length
+        type: { kind: int, bits: 16 }
+        category: length
+        defaultValue: 0
+        doc: "Length in bytes of the Language Tag field that immediately follows. The Language Tag is an IETF language tag (e.g. 'en', 'de') conforming to RFC 1766. A value of 0 is not valid in practice but serves as the default for visualisation. [RFC 2608 §8]"
+
+  - id: slpLangTag
+    name: Lang Tag
+    type: { kind: bytes, n: { kind: ref, field: slpLangLen } }
+    category: variable
+    doc: "IETF language tag string (RFC 1766) indicating the natural language used in string fields of the function-specific body (e.g. service-type strings, attribute strings). Length is given by Lang Tag Length. [RFC 2608 §8]"
+
+  - id: slpBody
+    name: Body
+    type: { kind: bytes, n: { kind: ref, field: slpBodyBytes } }
+    category: payload-marker
+    doc: "Function-specific message body whose structure depends on Function-ID. For SrvRqst: PR-list, service-type, scope-list, predicate, SLP SPI. For SrvRply: error code + URL entries. For SrvReg: URL entry + service-type + scope-list + attr-list + attr-auths. The byte count is supplied by slpBodyBytes, an external length reference. [RFC 2608 §9-§10]"

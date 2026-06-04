@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NSH (Network Service Header)
+rowBits: 32
+byteOrder: BE
+description: "Network Service Header (NSH, RFC 8300) — a header used in Service Function Chaining (SFC) to steer packets along an ordered sequence of Service Functions (SFs) within a Service Function Path (SFP). NSH is inserted between the outer transport header and the original packet payload. It consists of a fixed 8-byte base (Base Header + Service Path Header) followed by variable-length Context Headers whose size is derived from the Length field. MDType=1 carries four fixed 32-bit context words (16 bytes context); MDType=2 carries variable-length TLV metadata (0 or more bytes); other MDType values are reserved. The Next Protocol field indicates the encapsulated payload: 1=IPv4, 2=IPv6, 3=Ethernet, 4=NSH (nested), 5=MPLS. [RFC 8300]"
+
+body:
+  - kind: group
+    id: nshBaseHeader
+    name: Base Header
+    children:
+      - id: nshVer
+        name: Version
+        type: { kind: int, bits: 2 }
+        category: type
+        doc: "NSH version number. MUST be set to 0x0 by the sender; receivers that do not recognise the version MUST discard the packet. Provides forward compatibility for future NSH revisions. [RFC 8300 §2.2]"
+
+      - id: nshO
+        name: O (OAM)
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "OAM (Operations, Administration, and Maintenance) bit. When set to 1 the packet is an NSH OAM packet; Service Functions MUST examine the payload and act accordingly. When 0 the packet carries normal user data. [RFC 8300 §2.2]"
+
+      - id: nshU
+        name: U (Unassigned)
+        type: { kind: int, bits: 1 }
+        category: reserved
+        doc: "Unassigned bit. MUST be set to 0 by the sender and ignored by the receiver. Reserved for future use by the IETF. [RFC 8300 §2.2]"
+
+      - id: nshTtl
+        name: TTL
+        type: { kind: int, bits: 6 }
+        category: identifier
+        doc: "Time-to-Live (TTL) for the NSH header. Decremented by 1 at each Service Function Forwarder (SFF). When the TTL reaches 0 the packet MUST be dropped to prevent forwarding loops within the service function chain. Initial value is set by the NSH-aware classifier. [RFC 8300 §2.2]"
+
+      - id: nshLength
+        name: Length
+        type: { kind: int, bits: 6 }
+        category: length
+        doc: "Total length of the NSH header in 4-byte words, including the Base Header, Service Path Header, and all Context Headers. The minimum value is 2 (8 bytes: Base Header + Service Path Header with no context); MDType=1 requires a value of 6 (24 bytes). Used by receivers to locate the encapsulated payload immediately following the NSH header. [RFC 8300 §2.2]"
+
+      - id: nshMdType
+        name: MD Type
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            0: "Reserved"
+            1: "Fixed-Length Context Headers"
+            2: "Variable-Length Context Headers"
+            255: "Experimental"
+        category: type
+        doc: "Metadata (MD) Type. Specifies the format and semantics of the Context Headers following the Service Path Header. 1=Fixed-Length (four mandatory 32-bit context words, total NSH header = 24 bytes); 2=Variable-Length (zero or more TLV context items whose aggregate length is derived from the Length field); 0 and 255 are reserved. [RFC 8300 §2.2, §2.5, §2.6]"
+
+      - id: nshNextProtocol
+        name: Next Protocol
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: "IPv4"
+            2: "IPv6"
+            3: "Ethernet"
+            4: "NSH"
+            5: "MPLS"
+        category: type
+        doc: "Protocol type of the payload encapsulated immediately after the NSH header. 1=IPv4, 2=IPv6, 3=Ethernet (used when NSH is carried in an Ethernet-based SFC overlay), 4=NSH (nested NSH), 5=MPLS. Enables Service Function Forwarders to correctly decapsulate and deliver the inner packet after NSH processing. [RFC 8300 §2.2, §7]"
+
+  - kind: group
+    id: nshServicePathHeader
+    name: Service Path Header
+    children:
+      - id: nshSpi
+        name: Service Path Identifier (SPI)
+        type: { kind: int, bits: 24 }
+        category: identifier
+        doc: "Service Path Identifier (SPI). A 24-bit value that uniquely identifies the Service Function Path (SFP) along which this packet must travel. Together with the Service Index (SI) it forms the Service Path Header that drives forwarding decisions at each Service Function Forwarder (SFF). Assigned by the control plane. [RFC 8300 §2.3]"
+
+      - id: nshSi
+        name: Service Index (SI)
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: "Service Index (SI). An 8-bit unsigned integer indicating the next Service Function to be applied in the service chain identified by the SPI. Decremented by 1 after each Service Function or Service Function Forwarder processes the packet. When SI reaches 0 after the final SF, the packet leaves the service chain. [RFC 8300 §2.3]"
+
+  - id: nshContextHeaders
+    name: Context Headers
+    type: { kind: bytes, n: { kind: ref, field: nshContextBytes } }
+    category: variable
+    doc: "Context Headers carrying metadata for Service Functions within the Service Function Chain. For MDType=1 this is always 16 bytes (four fixed 32-bit context words defined by the control plane). For MDType=2 this contains zero or more variable-length TLV (Type-Length-Value) context items. The byte count nshContextBytes is derived externally as (Length - 2) * 4. [RFC 8300 §2.5, §2.6]"

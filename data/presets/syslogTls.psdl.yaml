@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: Syslog over TLS (RFC 5425)
+rowBits: 32
+byteOrder: BE
+description: "Syslog transport sender protocol over TLS (RFC 5425). RFC 5425 mandates octet-counting framing (defined in RFC 6587 §3.4.1) for syslog-over-TLS: each frame is an ASCII decimal MSGLEN value (the byte count of the following SYSLOG-MSG), a single SP (0x20) separator, and then the SYSLOG-MSG payload. TLS provides confidentiality, integrity, and mutual-authentication of the underlying TCP stream; the framing layer sits on top of TLS and is responsible solely for record boundary detection. The MSGLEN field is a variable-length ASCII digit string (1–9 digits per RFC 5424, no leading zeros except the value '0' itself), followed by one 0x20 SP byte, followed by the RFC 5424 syslog message. This PSDL model represents the MSGLEN string as a byte array whose length is given by the syslogTlsLenDigits hint field, the SP separator as a fixed 8-bit field, and the SYSLOG-MSG body as a byte array whose length is given by syslogTlsMsgBytes. The hint fields (syslogTlsLenDigits, syslogTlsMsgBytes) are PSDL-level annotations not present on the wire; they are supplied by the parser/visualizer to demarcate the variable-length fields. [RFC 5425, RFC 6587 §3.4.1, RFC 5424]"
+
+body:
+  - id: syslogTlsLenDigits
+    name: MSGLEN Digit Count
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: number of ASCII digit bytes in the MSGLEN field that follows. RFC 5425 / RFC 6587 §3.4.1 encode MSGLEN as a non-zero-padded ASCII decimal integer (e.g. '472' is 3 bytes). Valid range is 1–9 digits (max value 999999999 bytes). Not a wire field; supplied by the parser. [RFC 5425 §4.3, RFC 6587 §3.4.1]"
+
+  - id: syslogTlsMsgLen
+    name: MSGLEN
+    type: { kind: bytes, n: { kind: ref, field: syslogTlsLenDigits } }
+    category: length
+    doc: "ASCII decimal representation of the byte count of the SYSLOG-MSG that follows the SP separator. Encoded as printable ASCII digits with no leading zeros (per RFC 6587 §3.4.1). The numeric value tells the TLS receiver exactly how many octets constitute the next syslog message, enabling exact record boundary reconstruction without scanning for a newline. [RFC 5425 §4.3, RFC 6587 §3.4.1]"
+
+  - id: syslogTlsSp
+    name: SP Separator
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 32
+    doc: "Single space octet (0x20) that separates the MSGLEN from the SYSLOG-MSG. This separator is mandatory in the octet-counting framing defined by RFC 6587 §3.4.1 and referenced by RFC 5425 §4.3. A receiver that encounters any byte other than 0x20 here MUST treat the frame as malformed and SHOULD close the TLS session. [RFC 5425 §4.3, RFC 6587 §3.4.1]"
+
+  - id: syslogTlsMsgBytes
+    name: SYSLOG-MSG Byte Count
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the SYSLOG-MSG payload field that follows. This value MUST equal the numeric integer encoded in the preceding MSGLEN ASCII field. Providing it as a separate integer field allows the PSDL bytes() type to reference it via {kind:ref}. Not a wire field; supplied by the parser after decoding MSGLEN. [RFC 5425 §4.3, RFC 6587 §3.4.1]"
+
+  - id: syslogTlsMsg
+    name: SYSLOG-MSG
+    type: { kind: bytes, n: { kind: ref, field: syslogTlsMsgBytes } }
+    category: payload-marker
+    doc: "The syslog message payload, exactly MSGLEN bytes long. Formatted per RFC 5424: PRI part '<Priority>', VERSION '1', SP, TIMESTAMP, SP, HOSTNAME, SP, APP-NAME, SP, PROCID, SP, MSGID, SP, STRUCTURED-DATA, and optional MSG. Transmitted in full inside the TLS record stream; the TLS layer provides confidentiality and integrity so no additional checksum is required at this framing layer. [RFC 5425 §4.3, RFC 5424 §6]"

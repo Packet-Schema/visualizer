@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TURN ChannelData
+rowBits: 32
+byteOrder: BE
+description: "TURN ChannelData message format as defined in RFC 5766 §11.4. A lightweight 4-byte header — ChannelNumber and Length — followed by the application data payload and zero-to-three padding bytes to align the message to a 4-byte boundary. ChannelData provides lower overhead than Send/Data Indications (which carry STUN framing and TLV attributes) and is used after a channel binding has been established with a ChannelBind request. Valid channel numbers occupy 0x4000–0x7FFF; all other values are reserved or used by STUN. TURN operates over UDP, TCP, or TLS/TCP, relaying data between a WebRTC/ICE client and a peer via the TURN server."
+
+body:
+  - id: turnChannelNumber
+    name: Channel Number
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Channel number bound by a prior ChannelBind transaction. Valid range is 0x4000–0x7FFF; values 0x0000–0x3FFF are reserved for STUN, and 0x8000–0xFFFF are unassigned. The receiver uses this field to demultiplex ChannelData messages from STUN messages on the same 5-tuple. [RFC 5766 §11.4]"
+
+  - id: turnDataLen
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Length in bytes of the Application Data field, not including any padding. When sent over TCP or TLS/TCP, the ChannelData message (header + application data + padding) MUST be padded to a multiple of 4 bytes; over UDP the padding is optional but recommended. [RFC 5766 §11.4]"
+
+  - id: turnApplicationData
+    name: Application Data
+    type: { kind: bytes, n: { kind: ref, field: turnDataLen } }
+    category: payload-marker
+    doc: "Opaque application data of turnDataLen bytes relayed between the TURN client and the peer. The content is delivered verbatim; TURN does not interpret it. When turnDataLen is 0 the field is absent. [RFC 5766 §11.4]"
+
+  - kind: optional
+    when: { kind: ref, field: turnDataLen }
+    field:
+      id: turnPadding
+      name: Padding
+      type: { kind: bytes, n: { kind: lit, value: 0 } }
+      category: reserved
+      doc: "Zero-to-three zero-valued padding bytes appended after Application Data to align the total message length to a 4-byte boundary. The padding byte count equals (4 - (turnDataLen % 4)) % 4. Over TCP/TLS the padding MUST be present; over UDP it is RECOMMENDED. Padding bytes MUST be ignored by the receiver. [RFC 5766 §11.4]"

@@ -1,0 +1,117 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SMB2 Header
+rowBits: 32
+byteOrder: BE
+description: SMB2/SMB3 fixed 64-byte protocol header (MS-SMB2 §2.2.1). Precedes every SMB2 command request and response. The header is always exactly 512 bits (64 bytes); variable-length command payloads follow it.
+body:
+  - id: protocolId
+    name: Protocol ID
+    type:
+      kind: bits
+      n: 32
+    category: identifier
+    doc: 4-byte protocol magic. The first byte is 0xFE followed by the ASCII characters 'S', 'M', 'B' (0x53 0x4D 0x42). Distinguishes SMB2/SMB3 frames from legacy SMB1 frames (which begin with 0xFF 'SMB'). [MS-SMB2 §2.2.1]
+  - id: structureSize
+    name: Structure Size
+    type:
+      kind: int
+      bits: 16
+    category: length
+    doc: Size of the SMB2 header structure in bytes. MUST be set to 64 by the sender and MUST be validated to be 64 by the receiver. [MS-SMB2 §2.2.1]
+  - id: creditCharge
+    name: Credit Charge
+    type:
+      kind: int
+      bits: 16
+    category: identifier
+    doc: Number of credits consumed by this request or response. Used in the SMB2 credit management system to govern the number of simultaneous outstanding requests. 0 for NEGOTIATE; otherwise at least 1. [MS-SMB2 §2.2.1, §3.2.5.1.4]
+  - id: status
+    name: Status / Channel Sequence
+    type:
+      kind: bits
+      n: 32
+    category: type
+    doc: In a response, an NT_STATUS code indicating success or an error (e.g. 0x00000000 = STATUS_SUCCESS, 0xC0000022 = STATUS_ACCESS_DENIED). In a request using SMB2 dialect 3.x, the lower 16 bits carry the ChannelSequence and the upper 16 bits are Reserved and MUST be zero. [MS-SMB2 §2.2.1]
+  - id: command
+    name: Command
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        0: NEGOTIATE
+        1: SESSION_SETUP
+        2: LOGOFF
+        3: TREE_CONNECT
+        4: TREE_DISCONNECT
+        5: CREATE
+        6: CLOSE
+        7: FLUSH
+        8: READ
+        9: WRITE
+        10: LOCK
+        11: IOCTL
+        12: CANCEL
+        13: ECHO
+        14: QUERY_DIRECTORY
+        15: CHANGE_NOTIFY
+        16: QUERY_INFO
+        17: SET_INFO
+        18: OPLOCK_BREAK
+    category: type
+    doc: SMB2 command code identifying the operation carried in the message body. 0=NEGOTIATE, 1=SESSION_SETUP, 5=CREATE, 8=READ, 9=WRITE, etc. [MS-SMB2 §2.2.1]
+  - id: creditReqResp
+    name: Credit Request / Credit Response
+    type:
+      kind: int
+      bits: 16
+    category: identifier
+    doc: In a request, the number of credits the client is requesting from the server. In a response, the number of credits the server is granting to the client. Credits control flow and the number of concurrent outstanding requests. [MS-SMB2 §2.2.1, §3.2.5.1.4]
+  - id: flags
+    name: Flags
+    type:
+      kind: bits
+      n: 32
+    category: flags
+    doc: Bitmask of processing flags. Bit 0 (SMB2_FLAGS_SERVER_TO_REDIR=0x00000001) indicates server-to-client direction. Bit 1 (ASYNC_COMMAND=0x00000002) indicates asynchronous processing; AsyncId replaces the Reserved+TreeId fields. Bit 2 (RELATED_OPERATIONS=0x00000004) marks a compounded chained request. Bit 3 (SIGNED=0x00000008) means the Signature field is valid. Bit 28 (PRIORITY_MASK) carries I/O priority in SMB 3.1.1. [MS-SMB2 §2.2.1]
+  - id: nextCommand
+    name: Next Command
+    type:
+      kind: int
+      bits: 32
+    category: length
+    doc: Byte offset from the start of this header to the start of the next SMB2 header in a compounded message chain. 0 means this is the last (or only) message in the compound. [MS-SMB2 §2.2.1]
+  - id: messageId
+    name: Message ID
+    type:
+      kind: bits
+      n: 64
+    category: identifier
+    doc: Unique 64-bit value assigned by the client to identify each request. The server echoes the same MessageId in the corresponding response so the client can match replies to pending requests. For cancel, the MessageId targets the outstanding request being cancelled. [MS-SMB2 §2.2.1]
+  - id: reserved
+    name: Reserved / Process ID
+    type:
+      kind: bits
+      n: 32
+    category: reserved
+    doc: In synchronous requests, the lower 16 bits optionally carry a client process identifier (ProcessId) for diagnostics; the upper 16 bits are reserved and MUST be zero. When the ASYNC_COMMAND flag is set, this field and TreeId together form the 64-bit AsyncId. In responses this field MUST be set to zero by the server. [MS-SMB2 §2.2.1]
+  - id: treeId
+    name: Tree ID
+    type:
+      kind: bits
+      n: 32
+    category: identifier
+    doc: Identifies the tree connection (share) within the session. Assigned by the server in a TREE_CONNECT response. Ignored in NEGOTIATE, SESSION_SETUP, LOGOFF, and ECHO messages. When ASYNC_COMMAND is set in Flags, this field forms the upper 32 bits of the 64-bit AsyncId. [MS-SMB2 §2.2.1]
+  - id: sessionId
+    name: Session ID
+    type:
+      kind: bits
+      n: 64
+    category: identifier
+    doc: Identifies the authenticated client session. Assigned by the server during SESSION_SETUP exchange. Zero in NEGOTIATE requests and in the first SESSION_SETUP request. All subsequent requests on an authenticated session MUST include the correct SessionId. [MS-SMB2 §2.2.1]
+  - id: signature
+    name: Signature
+    type:
+      kind: bits
+      n: 128
+    category: checksum
+    doc: 16-byte cryptographic signature over the message when the SIGNED flag (bit 3) is set in Flags. Computed using HMAC-SHA256 (SMB 2.x) or AES-128-CMAC (SMB 3.x). Zero when signing is not in effect. The signature covers the entire message with this field set to zero during computation. [MS-SMB2 §2.2.1, §3.1.5.1]

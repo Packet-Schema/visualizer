@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LLMNR Header
+rowBits: 32
+byteOrder: BE
+description: "Link-Local Multicast Name Resolution (LLMNR) message header (RFC 4795). 12 bytes; shares the DNS wire format (RFC 1035) but is carried over IPv4 multicast 224.0.0.252 / IPv6 multicast FF02::1:3 on UDP port 5355. The Flags field adds two LLMNR-specific bits — C (Conflict) and T (Tentative) — in place of the DNS AA and RD fields. Recursion is not supported; RA and RD are always 0."
+
+body:
+  - id: llmnrId
+    name: ID
+    type: { kind: bits, n: 16 }
+    category: identifier
+    doc: "Transaction ID — a 16-bit random value set by the sender and echoed unchanged in the response, allowing a resolver to correlate replies with outstanding queries. [RFC 4795 §2.1.1]"
+
+  - kind: group
+    id: llmnrFlags
+    name: Flags
+    children:
+      - id: llmnrQr
+        name: QR
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Query/Response bit — 0 means the message is a query sent by the initiating host; 1 means the message is a response from the responder. [RFC 4795 §2.1.1]"
+      - id: llmnrOpcode
+        name: Opcode
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Opcode — MUST be 0 (standard query) in all LLMNR messages; packets with any other opcode MUST be silently discarded. Matches the DNS Opcode field position. [RFC 4795 §2.1.1]"
+      - id: llmnrC
+        name: C
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Conflict (C) bit — set to 1 in a response to indicate that the responder has detected a conflict for the name being queried (i.e. another host on the link also claims ownership of that name). Absent in queries (MUST be 0). [RFC 4795 §2.1.1]"
+      - id: llmnrTc
+        name: TC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "TrunCation (TC) bit — set to 1 when the response was truncated because it was too large for the UDP datagram. The sender SHOULD retransmit the query over TCP (port 5355) to obtain the full answer. [RFC 4795 §2.1.1]"
+      - id: llmnrT
+        name: T
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Tentative (T) bit — set to 1 in a response when the responder is in the process of uniqueness verification for the name and has not yet confirmed its ownership. A tentative responder MUST NOT send more than one such response per query. [RFC 4795 §2.1.1]"
+      - id: llmnrZ
+        name: Z
+        type: { kind: bits, n: 4 }
+        category: reserved
+        doc: "Reserved bits — MUST be set to zero by the sender and ignored by the receiver. These four bits occupy the positions corresponding to DNS RA, Z (3 bits), in the 16-bit Flags word. [RFC 4795 §2.1.1]"
+      - id: llmnrRcode
+        name: RCODE
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            0: "NOERROR"
+            1: "FORMERR"
+            2: "SERVFAIL"
+            3: "NXDOMAIN"
+            4: "NOTIMP"
+            5: "REFUSED"
+        category: flags
+        doc: "Response Code — 0=NOERROR (success), 1=FORMERR (format error), 2=SERVFAIL, 3=NXDOMAIN (name does not exist on the link), 4=NOTIMP, 5=REFUSED. MUST be 0 in queries. [RFC 4795 §2.1.1]"
+
+  - id: llmnrQdCount
+    name: QDCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of question entries in the Question section — MUST be 1 in a query (LLMNR does not support multi-question queries); MUST be 1 in the corresponding response so the querier can identify which name was resolved. [RFC 4795 §2.1.1]"
+
+  - id: llmnrAnCount
+    name: ANCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of resource records in the Answer section. Zero in queries; one or more in responses that carry the resolved name-to-address (or address-to-name) mappings. [RFC 4795 §2.1.1]"
+
+  - id: llmnrNsCount
+    name: NSCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of records in the Authority section. Typically zero in LLMNR because there is no delegated zone authority on the link; included for DNS wire-format compatibility. [RFC 4795 §2.1.1]"
+
+  - id: llmnrArCount
+    name: ARCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of records in the Additional section. May carry glue or additional address records relevant to the answer; included for DNS wire-format compatibility. [RFC 4795 §2.1.1]"

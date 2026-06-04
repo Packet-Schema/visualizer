@@ -1,0 +1,101 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PCP Request (MAP)
+rowBits: 32
+byteOrder: BE
+description: "Port Control Protocol (PCP) request packet (RFC 6887). PCP allows IPv4/IPv6 hosts behind NAT or firewall devices to control inbound mappings — enabling a client to open a port, retrieve the external IP:port, and set a mapping lifetime. The common header (24 bytes) contains version, opcode, requested lifetime, and the client's IP address, followed by opcode-specific data. This preset shows the MAP opcode body (36 bytes) that establishes an inbound port mapping for NAT traversal."
+
+body:
+  - kind: group
+    id: pcpVersionOpcode
+    name: Version / R / Opcode
+    children:
+      - id: pcpVersion
+        name: Version
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "PCP protocol version. MUST be 2; a server MUST silently discard packets with version != 2. [RFC 6887 §7.1]"
+      - id: pcpR
+        name: R
+        type:
+          kind: enum
+          bits: 1
+          variants:
+            0: "Request"
+            1: "Response"
+        category: flags
+        doc: "Request/Response bit. 0 in a request sent by a PCP client; 1 in a response sent by a PCP server. [RFC 6887 §7.1]"
+      - id: pcpOpcode
+        name: Opcode
+        type:
+          kind: enum
+          bits: 7
+          variants:
+            0: "ANNOUNCE"
+            1: "MAP"
+            2: "PEER"
+        category: type
+        doc: "Identifies the PCP operation. 0=ANNOUNCE (solicit unsolicited response), 1=MAP (create inbound NAT mapping), 2=PEER (create peer-initiated mapping for flows initiated by external host). [RFC 6887 §§13, 11, 12]"
+
+  - id: pcpReserved
+    name: Reserved
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "Reserved; MUST be set to 0 by the sender and MUST be ignored by the receiver. [RFC 6887 §7.1]"
+
+  - id: pcpRequestedLifetime
+    name: Requested Lifetime
+    type: { kind: int, bits: 32 }
+    category: variable
+    doc: "Requested lifetime of the mapping in seconds. 0 deletes an existing mapping. The server MAY grant a different lifetime and returns the actual value in the response. [RFC 6887 §7.1]"
+
+  - id: pcpClientIPAddress
+    name: Client IP Address
+    type: { kind: bits, n: 128 }
+    category: addressing
+    doc: "The IPv6 address of the PCP client, or an IPv4-mapped IPv6 address (::ffff:0:0/96) when the client is IPv4-only. Allows a PCP server behind a multi-homed NAT to select the correct mapping table. [RFC 6887 §7.1]"
+
+  - kind: switch
+    id: pcpOpcodeBody
+    on: { kind: ref, field: pcpOpcode }
+    cases:
+      "1":
+        id: pcpMapBody
+        fields:
+          - id: pcpMappingNonce
+            name: Mapping Nonce
+            type: { kind: bits, n: 96 }
+            category: identifier
+            doc: "Random 96-bit value chosen by the client to correlate a request with its response and to provide a weak security check. The server echoes this value unchanged in its response. [RFC 6887 §11.1]"
+          - id: pcpProtocol
+            name: Protocol
+            type: { kind: int, bits: 8 }
+            category: type
+            doc: "IANA Internet protocol number for the mapped flow. 6=TCP, 17=UDP, 0=all protocols (wildcard). [RFC 6887 §11.1]"
+          - id: pcpMapReserved
+            name: Reserved
+            type: { kind: bits, n: 24 }
+            category: reserved
+            doc: "Reserved; MUST be set to 0 by the sender and MUST be ignored by the receiver. [RFC 6887 §11.1]"
+          - id: pcpInternalPort
+            name: Internal Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Internal port number on the PCP client's side of the NAT. 0 is a wildcard that requests mappings for all ports of the given protocol. [RFC 6887 §11.1]"
+          - id: pcpSuggestedExternalPort
+            name: Suggested External Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Port number the client suggests for the external (NAT-public) side of the mapping. 0 means no preference; the server selects an available port. [RFC 6887 §11.1]"
+          - id: pcpSuggestedExternalIP
+            name: Suggested External IP Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "External IPv6 address (or IPv4-mapped IPv6) the client suggests for the NAT public side. All-zeros means no preference. The server returns the actual assigned address in the response. [RFC 6887 §11.1]"
+    default:
+      id: pcpOpcodeData
+      fields:
+        - id: pcpOpcodeBytes
+          name: Opcode-Specific Data
+          type: { kind: bytes, n: { kind: lit, value: 0 } }
+          category: payload-marker
+          doc: "Opcode-specific data whose format depends on the Opcode field. 0 bytes shown as the default; actual length is determined by the opcode (ANNOUNCE has no body, PEER body is 56 bytes). [RFC 6887 §§11, 12, 13]"

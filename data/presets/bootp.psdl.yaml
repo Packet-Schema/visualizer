@@ -1,0 +1,129 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BOOTP
+rowBits: 32
+byteOrder: BE
+description: "Bootstrap Protocol (BOOTP) packet (RFC 951). The predecessor to DHCP, BOOTP allows a diskless client to obtain an IP address and boot file information from a server using UDP ports 67 (server) and 68 (client). The packet is a fixed 300 bytes: a 236-byte header followed by a 64-byte vendor-specific area. DHCP (RFC 2131) later extended this format by redefining the Vend field as DHCP options."
+
+body:
+  - id: op
+    name: Op
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "BOOTREQUEST"
+        2: "BOOTREPLY"
+    category: type
+    doc: "Message op code / message type. 1=BOOTREQUEST (client to server), 2=BOOTREPLY (server to client). Determines the direction of the exchange; a client sets this to 1 and the server echoes back a packet with 2. [RFC 951 §3]"
+
+  - id: htype
+    name: HType
+    type:
+      kind: int
+      bits: 8
+    category: type
+    doc: "Hardware address type, using the same values as the ARP Hardware Type field (IANA ARP parameters). 1=Ethernet (10Mb), the overwhelmingly common value. Tells the receiver how to interpret the CHAddr field. [RFC 951 §3, RFC 1340]"
+
+  - id: hlen
+    name: HLen
+    type:
+      kind: int
+      bits: 8
+    category: length
+    doc: "Hardware address length in bytes. 6 for Ethernet MAC addresses. Together with HType, lets a receiver correctly extract the client hardware address from the fixed 16-byte CHAddr field. [RFC 951 §3]"
+
+  - id: hops
+    name: Hops
+    type:
+      kind: int
+      bits: 8
+    category: variable
+    doc: "Hop count, set to 0 by the client. Optionally incremented by BOOTP relay agents (described in RFC 951 §3) as the packet crosses network boundaries, allowing servers on distant networks to track relay depth. [RFC 951 §3]"
+
+  - id: xid
+    name: XID
+    type:
+      kind: int
+      bits: 32
+    category: identifier
+    doc: "Transaction ID. A random 32-bit number chosen by the client to match this BOOTREQUEST with subsequent BOOTREPLYs. Without a session concept at the transport layer, XID is the only way to correlate request and reply packets. [RFC 951 §3]"
+
+  - id: secs
+    name: Secs
+    type:
+      kind: int
+      bits: 16
+    category: variable
+    doc: "Seconds elapsed since the client began trying or renewing its boot/address acquisition process. Filled in by the client; a server may use this to prioritise clients that have been waiting longer. [RFC 951 §3]"
+
+  - id: flags
+    name: Flags
+    type:
+      kind: int
+      bits: 16
+    category: flags
+    doc: "Flags field. In RFC 951 this field was unused and set to zero. RFC 1542 later defined bit 15 (the most-significant bit) as the Broadcast flag (B): when set, the server and relay agents are instructed to broadcast the reply rather than unicast it. Bits 0–14 are reserved and MUST be zero. [RFC 951 §3, RFC 1542 §2.1]"
+
+  - id: ciaddr
+    name: CIAddr
+    type:
+      kind: int
+      bits: 32
+    category: addressing
+    doc: "Client IP address. Filled in by the client only if it already has a confirmed IP address that it can use during the current bootstrap sequence (e.g., on a RENEWING or REBINDING client). Otherwise zero. [RFC 951 §3]"
+
+  - id: yiaddr
+    name: YIAddr
+    type:
+      kind: int
+      bits: 32
+    category: addressing
+    doc: "'Your' (client) IP address. Filled in by the server with the IP address being offered or assigned to the client. The client uses this as its own address for the duration of the lease. [RFC 951 §3]"
+
+  - id: siaddr
+    name: SIAddr
+    type:
+      kind: int
+      bits: 32
+    category: addressing
+    doc: "Server IP address. The address of the next server to use in the bootstrap sequence, e.g., the TFTP server from which the client should fetch its boot file. Filled in by the server. [RFC 951 §3]"
+
+  - id: giaddr
+    name: GIAddr
+    type:
+      kind: int
+      bits: 32
+    category: addressing
+    doc: "Gateway IP address, also called the relay agent address. Set by a BOOTP relay agent to its own interface address before forwarding to a server, allowing the server to select the correct address pool and route the reply back through the same relay. Zero if no relay is involved. [RFC 951 §3, RFC 1542]"
+
+  - id: chaddr
+    name: CHAddr
+    type:
+      kind: bytes
+      n: { kind: lit, value: 16 }
+    category: addressing
+    doc: "Client hardware address, padded with zeros to the full 16 bytes. The first HLen bytes are the actual address (e.g., 6 bytes for Ethernet MAC). Used by the server to identify the requesting client and to direct the reply. [RFC 951 §3]"
+
+  - id: sname
+    name: SName
+    type:
+      kind: bytes
+      n: { kind: lit, value: 64 }
+    category: variable
+    doc: "Optional server host name, a null-terminated ASCII string. The server fills this in if known; clients may use it to choose among multiple BOOTP servers. 64 bytes, zero-padded. May be overloaded by DHCP option overloading (RFC 2132 §9.3). [RFC 951 §3]"
+
+  - id: file
+    name: File
+    type:
+      kind: bytes
+      n: { kind: lit, value: 128 }
+    category: variable
+    doc: "Boot file name, a null-terminated ASCII string specifying the path on the boot server from which the client should download its boot image (e.g., via TFTP). 128 bytes, zero-padded. May be overloaded by DHCP option overloading (RFC 2132 §9.3). [RFC 951 §3]"
+
+  - id: vend
+    name: Vend
+    type:
+      kind: bytes
+      n: { kind: lit, value: 64 }
+    category: variable
+    doc: "Vendor-specific area, 64 bytes. In original BOOTP, the first 4 bytes are optionally the 'magic cookie' 99.130.83.99 (0x63825363) followed by vendor extensions. DHCP (RFC 2131) renamed this field 'options' and extended the magic-cookie-tagged option encoding defined in RFC 1497/RFC 2132. [RFC 951 §3, RFC 1497, RFC 2131]"

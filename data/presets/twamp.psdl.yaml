@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TWAMP-Test (Sender)
+rowBits: 32
+byteOrder: BE
+description: "Two-Way Active Measurement Protocol (TWAMP) Test packet — Sender format, unauthenticated mode (RFC 5357). TWAMP provides two-way IP performance measurements (delay, jitter, packet loss) by combining a control session (TWAMP-Control, TCP port 862) with one-way test streams (TWAMP-Test, UDP). In unauthenticated mode the Sender packet contains a 32-bit Sequence Number, a 64-bit NTP Timestamp, a 16-bit Error Estimate, 16 bits of MBZ (Must Be Zero), and zero or more padding bytes whose count is supplied externally via twampPadBytes. The Reflector echoes this data together with additional timestamp and TTL fields (not shown here)."
+
+body:
+  - id: twampSeqNumber
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Per-stream sequence number, starting at 0 and incremented by 1 for each transmitted Test packet. Used by the receiver to detect loss and reordering, and to correlate reflected packets with originals. [RFC 5357 §4.1.2]"
+
+  - kind: group
+    id: twampTimestampGroup
+    name: Timestamp
+    children:
+      - id: twampTimestampSec
+        name: Timestamp (Seconds)
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: "Integer part of the NTP timestamp (seconds since 1 January 1900 UTC) recording when the Sender transmitted this packet. Combined with Timestamp Fraction, forms a 64-bit NTP timestamp as specified by RFC 5905. [RFC 5357 §4.1.2]"
+      - id: twampTimestampFrac
+        name: Timestamp (Fraction)
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: "Fractional part of the NTP timestamp, in units of 2^-32 seconds (~233 ps resolution). Combined with Timestamp Seconds, forms a 64-bit NTP timestamp. A value of 0 indicates that sub-second resolution is unavailable. [RFC 5357 §4.1.2]"
+
+  - id: twampErrorEstimate
+    name: Error Estimate
+    type: { kind: int, bits: 16 }
+    category: variable
+    doc: "Estimate of the error and uncertainty of the associated timestamp. Bit 15 (S) selects the timescale (1=NTP, 0=PTP/other); bit 14 (Z) MUST be zero; bits 13-8 carry a base-2 scale exponent; bits 7-0 carry a multiplier. The product of multiplier and 2^scale gives the estimated one-way error in seconds. [RFC 5357 §4.1.2]"
+
+  - id: twampMBZ
+    name: MBZ
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "Must Be Zero (MBZ). These 16 bits MUST be set to zero by the Sender and MUST be ignored by the Reflector. Reserved for future use in unauthenticated mode. [RFC 5357 §4.1.2]"
+
+  - id: twampPadding
+    name: Padding
+    type: { kind: bytes, n: { kind: ref, field: twampPadBytes } }
+    category: payload-marker
+    doc: "Zero-filled padding bytes appended after the fixed fields to reach the desired test packet size. The count twampPadBytes is supplied externally from the Session-Sender port configuration negotiated during TWAMP-Control setup. When zero, no padding is present and the packet is exactly 14 bytes. [RFC 5357 §4.1.2]"

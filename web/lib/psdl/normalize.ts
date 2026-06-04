@@ -52,7 +52,11 @@ export function typeBits(type: Type, env: PacketEnv, fieldId?: string): number {
     case "bits":
       return type.n;
     case "bytes":
-      return evalExpr(type.n, env) * 8;
+      // A byte field can never be negative: when the length expression
+      // subtracts a fixed header size from a ref that defaults to 0 (e.g. the
+      // all-refs-zero env), the result can go negative. Clamp at 0, matching
+      // the `Math.max(0, ...)` guards used for repeat counts and wireBits.
+      return Math.max(0, Math.trunc(evalExpr(type.n, env))) * 8;
     case "varint": {
       if (fieldId !== undefined) {
         const v = env.get(fieldId);

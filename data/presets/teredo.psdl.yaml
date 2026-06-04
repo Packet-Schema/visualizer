@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: Teredo Tunnel
+rowBits: 32
+byteOrder: BE
+description: "Teredo IPv6-over-UDP encapsulation indicators (RFC 4380). Teredo tunnels IPv6 datagrams through UDP/IPv4 for hosts behind NAT. A UDP payload begins with zero or more optional Indicators in type-length-value form: an Origin Indicator (Type=0x0000, 8 bytes) carries the obfuscated UDP source port and obfuscated IPv4 source address used for NAT traversal; an Authentication Indicator (Type=0x0001, variable length) carries client identity, HMAC-SHA1 authentication data, a nonce, and a confirmation byte for relay-server authentication. Both Indicators are optional and may appear in either order, though Origin typically precedes Authentication. After all Indicators the remainder of the UDP payload is the encapsulated IPv6 packet. PSDL note: because the two indicators are independently optional and their presence cannot be inferred from a single flag (RFC 4380 §4 determines presence by inspecting the 16-bit Type field in-stream), they are modelled as separate optional groups gated by external boolean refs (teredoHasOrigin, teredoHasAuth)."
+
+body:
+  # ── Origin Indicator (RFC 4380 §4, optional) ──────────────────────────────
+  - kind: optional
+    when: { kind: ref, field: teredoHasOrigin }
+    field:
+      id: originIndicatorType
+      name: Origin Indicator Type
+      type: { kind: int, bits: 16 }
+      category: type
+      defaultValue: 0
+      doc: "Origin Indicator type code. Always 0x0000. Signals that the following 6 bytes carry the obfuscated UDP source port and obfuscated IPv4 source address of the Teredo client. A receiver MUST silently discard any Origin Indicator whose Type is not 0x0000. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasOrigin }
+    field:
+      id: originObfuscatedPort
+      name: Obfuscated UDP Port
+      type: { kind: int, bits: 16 }
+      category: addressing
+      doc: "Obfuscated UDP source port of the Teredo client. Computed by XOR-ing the true port with 0xFFFF. The receiver reverses this by applying the same XOR to recover the original port number. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasOrigin }
+    field:
+      id: originObfuscatedAddr
+      name: Obfuscated Origin IPv4
+      type: { kind: int, bits: 32 }
+      category: addressing
+      doc: "Obfuscated IPv4 source address of the Teredo client. Computed by XOR-ing each octet of the true address with 0xFF (i.e. bitwise NOT). The receiver reverses this to obtain the NAT-mapped public IPv4 address. [RFC 4380 §4]"
+
+  # ── Authentication Indicator (RFC 4380 §4, optional) ──────────────────────
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authIndicatorType
+      name: Auth Indicator Type
+      type: { kind: int, bits: 16 }
+      category: type
+      defaultValue: 1
+      doc: "Authentication Indicator type code. Always 0x0001. Signals that the following variable-length section carries Teredo relay/server authentication data including a client identifier, an HMAC-SHA1 authentication value, a nonce, and a confirmation byte. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authClientIdLength
+      name: Client ID Length
+      type: { kind: int, bits: 8 }
+      category: length
+      doc: "Length in octets of the ClientIdentifier field that immediately follows. A value of 0 indicates that no ClientIdentifier is present. The maximum length is not specified by RFC 4380 but is practically bounded by the UDP MTU. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authDataLength
+      name: Auth Data Length
+      type: { kind: int, bits: 8 }
+      category: length
+      doc: "Length in octets of the AuthenticationValue (HMAC-SHA1) field that follows the ClientIdentifier. RFC 4380 specifies a 20-byte HMAC-SHA1 value; this field allows for future algorithm agility. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authClientId
+      name: Client Identifier
+      type: { kind: bytes, n: { kind: ref, field: authClientIdLength } }
+      category: identifier
+      doc: "Variable-length client identifier assigned by the Teredo server. Carried verbatim from the server's reply so that the relay can verify the client's identity. Length is given by the Client ID Length field; absent when that field is zero. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authValue
+      name: Authentication Value
+      type: { kind: bytes, n: { kind: ref, field: authDataLength } }
+      category: variable
+      doc: "HMAC-SHA1 authentication value computed over the nonce and other indicator fields using a shared key established during Teredo server qualification. Length is given by the Auth Data Length field; typically 20 bytes (SHA1 output). [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authNonce
+      name: Nonce
+      type: { kind: int, bits: 64 }
+      category: identifier
+      doc: "8-byte random nonce generated by the Teredo client during the qualification procedure. Echoed by the server and relay so that the client can detect replay attacks and correlate responses to its qualification requests. [RFC 4380 §4]"
+
+  - kind: optional
+    when: { kind: ref, field: teredoHasAuth }
+    field:
+      id: authConfirmation
+      name: Confirmation
+      type: { kind: int, bits: 8 }
+      category: flags
+      doc: "1-byte confirmation field set to 0 by the client in qualification packets. The Teredo server or relay sets this to a non-zero value to indicate a NAT mapping conflict or error condition. A value of 0 means the qualification succeeded without issue. [RFC 4380 §4]"
+
+  # ── Encapsulated IPv6 packet ───────────────────────────────────────────────
+  - id: ipv6Payload
+    name: IPv6 Packet
+    type: { kind: bytes, n: { kind: ref, field: ipv6PayloadBytes } }
+    category: payload-marker
+    doc: "Encapsulated IPv6 datagram beginning immediately after all Indicators. The first byte of this field is always 0x60 (IPv6 version nibble = 6). The length is determined by the UDP datagram length minus the header and all Indicator bytes consumed; ipv6PayloadBytes is supplied by the transport layer. Teredo uses this mechanism to tunnel IPv6 packets through NAT-traversing UDP/IPv4 paths. [RFC 4380 §2 / §4]"

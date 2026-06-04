@@ -1,0 +1,387 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BMP (BGP Monitoring Protocol)
+rowBits: 32
+byteOrder: BE
+description: "BGP Monitoring Protocol (BMP) message (RFC 7854). BMP enables a router (monitoring station client) to stream BGP session state to a passive collector without affecting the BGP peering itself. Every BMP message begins with a 3-byte Common Header (Version=3, 4-byte Length, 1-byte MsgType). Types 0–4 (Route Monitoring, Statistics Report, Peer Down, Peer Up, Initiation) and type 6 (Route Mirroring) are defined; type 5 (Termination) carries no Per-Peer Header. Types that carry per-peer context include a 48-byte Per-Peer Header (PeerType, PeerFlags, Peer Distinguisher, Peer Address, Peer AS, Peer BGP ID, Timestamp seconds + microseconds) immediately after the Common Header. The remaining payload is captured as raw bytes whose length is derived from the Common Header Length field."
+
+body:
+  - kind: group
+    id: bmpCommonHeader
+    name: BMP Common Header
+    children:
+      - id: bmpVersion
+        name: Version
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 3
+        doc: "BMP protocol version. MUST be 3 for this specification (earlier versions 1 and 2 are obsolete). A monitoring station that receives an unrecognised version SHOULD close the TCP connection. [RFC 7854 §4.1]"
+
+      - id: bmpLength
+        name: Message Length
+        type: { kind: int, bits: 32 }
+        category: length
+        doc: "Total length of the BMP message in bytes, including this 6-byte Common Header. Allows a collector to frame messages within a TCP stream without parsing the body. The minimum value is 6 (header only, e.g. Termination with no TLVs). [RFC 7854 §4.1]"
+
+      - id: bmpMsgType
+        name: Msg Type
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            0: "Route Monitoring"
+            1: "Statistics Report"
+            2: "Peer Down"
+            3: "Peer Up"
+            4: "Initiation"
+            5: "Termination"
+            6: "Route Mirroring"
+        category: type
+        defaultValue: 0
+        doc: "BMP message type. 0=Route Monitoring (BGP UPDATE encapsulation), 1=Statistics Report (counter telemetry), 2=Peer Down (session termination notification), 3=Peer Up (session establishment notification with OPEN messages), 4=Initiation (session-open information TLVs), 5=Termination (session-close information TLVs), 6=Route Mirroring (verbatim BGP message copy). Types 0–3 and 6 include a Per-Peer Header. [RFC 7854 §4.1]"
+
+  - kind: switch
+    id: bmpBody
+    on: { kind: ref, field: bmpMsgType }
+    cases:
+      "0":
+        id: bmpRouteMonitoring
+        name: Route Monitoring
+        fields:
+          - id: rm_peerType
+            name: Peer Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                0: "Global Instance Peer"
+                1: "RD Instance Peer"
+                2: "Local Instance Peer"
+            category: type
+            doc: "Identifies the type of BGP peer from which the route was learned. 0=Global Instance Peer (default BGP table), 1=RD Instance Peer (VPN/L3VPN with Route Distinguisher), 2=Local Instance Peer (peer in a non-default routing instance). [RFC 7854 §4.2]"
+          - id: rm_peerFlags
+            name: Peer Flags
+            type: { kind: bits, n: 8 }
+            category: flags
+            doc: "Per-peer flags byte. Bit 7 (V): set if peer address is IPv6; clear for IPv4. Bit 6 (L): set if the route is from the post-policy Adj-RIB-Out; clear for pre-policy Adj-RIB-In. Bit 5 (A): set if 2-octet AS_PATH encoding is not in use (AS4_PATH). Bits 4–0: reserved, MUST be zero. [RFC 7854 §4.2]"
+          - id: rm_peerDistinguisher
+            name: Peer Distinguisher
+            type: { kind: bits, n: 64 }
+            category: identifier
+            doc: "8-byte Route Distinguisher uniquely identifying the peer's routing context. Set to all zeros for Global Instance peers; for RD Instance peers it carries the VPN Route Distinguisher as defined in RFC 4364. [RFC 7854 §4.2]"
+          - id: rm_peerAddress
+            name: Peer Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "IP address of the monitored BGP peer. For IPv4 peers the lower 32 bits carry the IPv4 address and the upper 96 bits are zeroed. For IPv6 peers (Peer Flags bit V=1) the full 128 bits carry the IPv6 address. [RFC 7854 §4.2]"
+          - id: rm_peerAS
+            name: Peer AS
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "4-octet Autonomous System Number of the monitored peer. Always encoded as a 4-byte value; 2-octet ASNs are zero-extended. Corresponds to the ASN in the peer's BGP OPEN message. [RFC 7854 §4.2]"
+          - id: rm_peerBgpId
+            name: Peer BGP ID
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "BGP Identifier (Router-ID) of the monitored peer as a 4-byte IPv4-format value. Taken from the BGP Identifier field of the peer's OPEN message. [RFC 7854 §4.2]"
+          - id: rm_timestampSec
+            name: Timestamp (s)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Seconds component of the timestamp at which the encapsulated BGP UPDATE was received, expressed as seconds since the Unix epoch (1 January 1970 00:00:00 UTC). Set to zero if no timestamp is available. [RFC 7854 §4.2]"
+          - id: rm_timestampMicro
+            name: Timestamp (μs)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Microseconds component of the timestamp corresponding to rm_timestampSec. Provides sub-second resolution. Set to zero if no timestamp is available or if the clock lacks microsecond precision. [RFC 7854 §4.2]"
+          - id: rm_body
+            name: Route Monitoring Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "Encapsulated BGP PDU — typically a BGP UPDATE message (RFC 4271 §4.3) as received from the monitored peer, preceded by the BGP 16-byte marker, 2-byte length, and 1-byte type fields. The byte count is derived externally as bmpLength minus the Common Header (6 B) and Per-Peer Header (48 B). [RFC 7854 §4.3]"
+
+      "1":
+        id: bmpStatisticsReport
+        name: Statistics Report
+        fields:
+          - id: sr_peerType
+            name: Peer Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                0: "Global Instance Peer"
+                1: "RD Instance Peer"
+                2: "Local Instance Peer"
+            category: type
+            doc: "Type of BGP peer from which statistics are collected. Same encoding as the Route Monitoring Per-Peer Header Peer Type field. [RFC 7854 §4.2]"
+          - id: sr_peerFlags
+            name: Peer Flags
+            type: { kind: bits, n: 8 }
+            category: flags
+            doc: "Per-peer flags. Bit 7 (V): IPv6 peer address when set. Bit 6 (L): post-policy Adj-RIB-Out source when set. Bit 5 (A): AS4_PATH in use when set. Bits 4–0: reserved, MUST be zero. [RFC 7854 §4.2]"
+          - id: sr_peerDistinguisher
+            name: Peer Distinguisher
+            type: { kind: bits, n: 64 }
+            category: identifier
+            doc: "Route Distinguisher for the peer's routing instance. All-zeros for Global Instance peers; VPN RD for RD Instance peers. [RFC 7854 §4.2]"
+          - id: sr_peerAddress
+            name: Peer Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "IP address of the BGP peer being reported on. Lower 32 bits used for IPv4 (upper 96 bits zero); full 128 bits for IPv6 (Peer Flags V=1). [RFC 7854 §4.2]"
+          - id: sr_peerAS
+            name: Peer AS
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "4-byte ASN of the BGP peer from which statistics are gathered. 2-octet ASNs are zero-extended to 4 bytes. [RFC 7854 §4.2]"
+          - id: sr_peerBgpId
+            name: Peer BGP ID
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "BGP Identifier (Router-ID) of the monitored peer as 4-byte IPv4-format value. Taken from the peer's BGP OPEN message. [RFC 7854 §4.2]"
+          - id: sr_timestampSec
+            name: Timestamp (s)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Seconds since Unix epoch at which the statistics snapshot was taken. Zero if no timestamp is available. [RFC 7854 §4.2]"
+          - id: sr_timestampMicro
+            name: Timestamp (μs)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Microseconds component of the statistics snapshot timestamp. Zero when timing is unavailable or sub-second resolution is not supported. [RFC 7854 §4.2]"
+          - id: sr_statsCount
+            name: Stats Count
+            type: { kind: int, bits: 32 }
+            category: length
+            doc: "Number of Statistics TLV records that follow in the Statistics Report body. Each record carries a 2-byte Stat Type, 2-byte Stat Len, and Stat Len bytes of value. [RFC 7854 §4.7]"
+          - id: sr_body
+            name: Statistics Report Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "Sequence of Statistics TLV records. Each TLV: Stat Type (2 B) + Stat Len (2 B) + Stat Data (Stat Len B). Example types: 0=prefixes rejected by inbound policy, 1=duplicate prefix advertisements, 6=number of routes in Adj-RIBs-In, 7=number of routes in Loc-RIB. bmpBodyBytes is derived externally. [RFC 7854 §4.7]"
+
+      "2":
+        id: bmpPeerDown
+        name: Peer Down
+        fields:
+          - id: pd_peerType
+            name: Peer Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                0: "Global Instance Peer"
+                1: "RD Instance Peer"
+                2: "Local Instance Peer"
+            category: type
+            doc: "Type of BGP peer whose session has gone down. Same encoding as the Route Monitoring Per-Peer Header Peer Type field. [RFC 7854 §4.2]"
+          - id: pd_peerFlags
+            name: Peer Flags
+            type: { kind: bits, n: 8 }
+            category: flags
+            doc: "Per-peer flags for the peer whose session ended. Bit 7 (V): IPv6 address; Bit 6 (L): post-policy; Bit 5 (A): AS4_PATH. Bits 4–0: reserved. [RFC 7854 §4.2]"
+          - id: pd_peerDistinguisher
+            name: Peer Distinguisher
+            type: { kind: bits, n: 64 }
+            category: identifier
+            doc: "Route Distinguisher of the peer that went down. All-zeros for Global Instance peers. [RFC 7854 §4.2]"
+          - id: pd_peerAddress
+            name: Peer Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "IP address of the peer whose BGP session terminated. IPv4 peers use lower 32 bits (upper 96 zeroed); IPv6 peers use all 128 bits. [RFC 7854 §4.2]"
+          - id: pd_peerAS
+            name: Peer AS
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "4-byte ASN of the peer that went down. [RFC 7854 §4.2]"
+          - id: pd_peerBgpId
+            name: Peer BGP ID
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "BGP Identifier of the peer that went down, as a 4-byte IPv4-format value. [RFC 7854 §4.2]"
+          - id: pd_timestampSec
+            name: Timestamp (s)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Seconds since Unix epoch at which the session went down. Zero if no timestamp is available. [RFC 7854 §4.2]"
+          - id: pd_timestampMicro
+            name: Timestamp (μs)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Microseconds component of the peer-down event timestamp. Zero when unavailable. [RFC 7854 §4.2]"
+          - id: pd_reason
+            name: Reason
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                1: "Local system closed: NOTIFICATION"
+                2: "Local system closed: FSM Event"
+                3: "Remote system closed: NOTIFICATION"
+                4: "Remote system closed: no data"
+                5: "Peer de-configured"
+            category: type
+            doc: "Reason code for the session going down. 1=local system sent NOTIFICATION (body follows), 2=local FSM event caused close (no body), 3=remote system sent NOTIFICATION (body follows), 4=remote system closed without NOTIFICATION (no data), 5=peer was de-configured (no body). [RFC 7854 §4.9]"
+          - id: pd_body
+            name: Peer Down Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "Optional body dependent on Reason: for reasons 1 and 3, a BGP NOTIFICATION PDU (RFC 4271 §4.5) is present; for reasons 2 and 4 through 5, this field may be absent or contain a minimal FSM event code. bmpBodyBytes is derived externally. [RFC 7854 §4.9]"
+
+      "3":
+        id: bmpPeerUp
+        name: Peer Up
+        fields:
+          - id: pu_peerType
+            name: Peer Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                0: "Global Instance Peer"
+                1: "RD Instance Peer"
+                2: "Local Instance Peer"
+            category: type
+            doc: "Type of BGP peer whose session has been established. Same encoding as the Route Monitoring Per-Peer Header Peer Type field. [RFC 7854 §4.2]"
+          - id: pu_peerFlags
+            name: Peer Flags
+            type: { kind: bits, n: 8 }
+            category: flags
+            doc: "Per-peer flags. Bit 7 (V): IPv6 peer address; Bit 6 (L): post-policy Adj-RIB-Out; Bit 5 (A): AS4_PATH. Bits 4–0: reserved, MUST be zero. [RFC 7854 §4.2]"
+          - id: pu_peerDistinguisher
+            name: Peer Distinguisher
+            type: { kind: bits, n: 64 }
+            category: identifier
+            doc: "Route Distinguisher of the peer that came up. All-zeros for Global Instance peers; VPN RD for RD Instance peers. [RFC 7854 §4.2]"
+          - id: pu_peerAddress
+            name: Peer Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "IP address of the peer whose BGP session was established. IPv4: lower 32 bits (upper 96 zeroed); IPv6: all 128 bits. [RFC 7854 §4.2]"
+          - id: pu_peerAS
+            name: Peer AS
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "4-byte ASN of the peer that established a session. [RFC 7854 §4.2]"
+          - id: pu_peerBgpId
+            name: Peer BGP ID
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "BGP Identifier of the peer that came up, as a 4-byte IPv4-format value. [RFC 7854 §4.2]"
+          - id: pu_timestampSec
+            name: Timestamp (s)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Seconds since Unix epoch at which the BGP session was established. Zero if no timestamp is available. [RFC 7854 §4.2]"
+          - id: pu_timestampMicro
+            name: Timestamp (μs)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Microseconds component of the session-establishment timestamp. Zero when unavailable or sub-second resolution is not supported. [RFC 7854 §4.2]"
+          - id: pu_localAddress
+            name: Local Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "Local IP address used for the BGP TCP session. For IPv4, the lower 32 bits carry the address and upper 96 bits are zero. For IPv6 the full 128 bits are used. [RFC 7854 §4.8]"
+          - id: pu_localPort
+            name: Local Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Local TCP port number of the BGP session. Set to 0 if the session was not established over TCP or if the port is unavailable. [RFC 7854 §4.8]"
+          - id: pu_remotePort
+            name: Remote Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Remote TCP port number of the BGP session (typically 179 for standard BGP). Set to 0 if unavailable. [RFC 7854 §4.8]"
+          - id: pu_body
+            name: Peer Up Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "Concatenation of the OPEN message sent to the peer and the OPEN message received from the peer, each a complete BGP PDU (RFC 4271 §4.2), followed by optional Information TLVs (e.g. VRF/Table name). bmpBodyBytes is derived externally as bmpLength minus Common Header (6 B), Per-Peer Header (48 B), and the fixed Peer Up fields above (32 B). [RFC 7854 §4.8]"
+
+      "4":
+        id: bmpInitiation
+        name: Initiation
+        fields:
+          - id: init_body
+            name: Initiation Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "One or more Information TLVs sent when the BMP session is first established. Each TLV: Type (2 B) + Length (2 B) + Value (Length B). Type 0=string (free-form UTF-8), Type 1=sysDescr (SNMP sysDescr), Type 2=sysName (SNMP sysName). No Per-Peer Header precedes this body. bmpBodyBytes is derived externally as bmpLength minus 6 B Common Header. [RFC 7854 §4.4]"
+
+      "5":
+        id: bmpTermination
+        name: Termination
+        fields:
+          - id: term_body
+            name: Termination Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "One or more Information TLVs sent when the BMP session is closed. Each TLV: Type (2 B) + Length (2 B) + Value (Length B). Type 0=string (free-form UTF-8 reason), Type 1=Reason (2-B code: 0=Admin close, 1=Unspecified, 2=Out of resources, 3=Redundant connection, 4=Permanently Administratively Closed). No Per-Peer Header precedes this body. bmpBodyBytes = bmpLength - 6. [RFC 7854 §4.5]"
+
+      "6":
+        id: bmpRouteMirroring
+        name: Route Mirroring
+        fields:
+          - id: mir_peerType
+            name: Peer Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                0: "Global Instance Peer"
+                1: "RD Instance Peer"
+                2: "Local Instance Peer"
+            category: type
+            doc: "Type of BGP peer from which the mirrored PDU was received. Same encoding as Route Monitoring. [RFC 7854 §4.2]"
+          - id: mir_peerFlags
+            name: Peer Flags
+            type: { kind: bits, n: 8 }
+            category: flags
+            doc: "Per-peer flags for the mirroring peer. Bit 7 (V): IPv6 address; Bit 6 (L): post-policy; Bit 5 (A): AS4_PATH. Bits 4–0: reserved. [RFC 7854 §4.2]"
+          - id: mir_peerDistinguisher
+            name: Peer Distinguisher
+            type: { kind: bits, n: 64 }
+            category: identifier
+            doc: "Route Distinguisher of the mirroring peer's routing instance. All-zeros for Global Instance peers. [RFC 7854 §4.2]"
+          - id: mir_peerAddress
+            name: Peer Address
+            type: { kind: bits, n: 128 }
+            category: addressing
+            doc: "IP address of the BGP peer from which the message is being mirrored. Lower 32 bits for IPv4 (upper 96 zeroed); full 128 bits for IPv6. [RFC 7854 §4.2]"
+          - id: mir_peerAS
+            name: Peer AS
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "4-byte ASN of the BGP peer from which the message is being mirrored. [RFC 7854 §4.2]"
+          - id: mir_peerBgpId
+            name: Peer BGP ID
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "BGP Identifier of the mirroring peer as a 4-byte IPv4-format value. [RFC 7854 §4.2]"
+          - id: mir_timestampSec
+            name: Timestamp (s)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Seconds since Unix epoch at which the mirrored BGP PDU was received. Zero if unavailable. [RFC 7854 §4.2]"
+          - id: mir_timestampMicro
+            name: Timestamp (μs)
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Microseconds component of the mirrored PDU receipt timestamp. Zero when unavailable. [RFC 7854 §4.2]"
+          - id: mir_body
+            name: Route Mirroring Body
+            type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+            category: payload-marker
+            doc: "One or more Route Mirroring TLVs. Each TLV: Type (2 B) + Length (2 B) + Value (Length B). Type 0=BGP Message (verbatim BGP PDU copy, including 16-byte marker), Type 1=Information (2-B code indicating message loss or incomplete mirroring). bmpBodyBytes is derived externally. [RFC 7854 §4.6]"
+
+    default:
+      id: bmpUnknown
+      name: Unknown BMP Body
+      fields:
+        - id: bmp_unknownBody
+          name: Unknown Body
+          type: { kind: bytes, n: { kind: ref, field: bmpBodyBytes } }
+          category: payload-marker
+          doc: "Raw body bytes for an unrecognised BMP message type. bmpBodyBytes is derived externally as bmpLength minus the 6-byte Common Header. [RFC 7854 §4.1]"

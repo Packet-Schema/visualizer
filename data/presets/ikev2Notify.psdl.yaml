@@ -1,0 +1,131 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IKEv2 Notify Payload
+rowBits: 32
+byteOrder: BE
+description: "IKEv2 Notify Payload (RFC 7296 §3.10). Carries informational or error messages as part of an IKEv2 exchange. Consists of the standard 4-byte Generic Payload Header (Next Payload, Critical flag, Reserved, Payload Length), followed by a 1-byte Protocol ID identifying which SA the notification concerns (0 = IKE, 1 = AH, 3 = ESP), a 1-byte SPI Size indicating the length of the Security Parameter Index that follows (0 for IKE notifications, 4 for AH/ESP), a 2-byte Notify Message Type, an optional variable-length SPI field, and a variable-length Notification Data field. Notify Message Types below 16384 are error notifications (UNSUPPORTED_CRITICAL_PAYLOAD=1, INVALID_IKE_SPI=4, INVALID_MAJOR_VERSION=5, INVALID_SYNTAX=7, INVALID_MESSAGE_ID=9, INVALID_SPI=11, NO_PROPOSAL_CHOSEN=14, INVALID_KE_PAYLOAD=17, AUTHENTICATION_FAILED=24, SINGLE_PAIR_REQUIRED=34, NO_ADDITIONAL_SAS=35, INTERNAL_ADDRESS_FAILURE=36, FAILED_CP_REQUIRED=37, TS_UNACCEPTABLE=38, INVALID_SELECTORS=39, TEMPORARY_FAILURE=43, CHILD_SA_NOT_FOUND=44); types 16384 and above are status notifications (INITIAL_CONTACT=16384, SET_WINDOW_SIZE=16385, ADDITIONAL_TS_POSSIBLE=16386, IPCOMP_SUPPORTED=16387, NAT_DETECTION_SOURCE_IP=16388, NAT_DETECTION_DESTINATION_IP=16389, COOKIE=16390, USE_TRANSPORT_MODE=16391, HTTP_CERT_LOOKUP_SUPPORTED=16392, REKEY_SA=16393, ESP_TFC_PADDING_NOT_SUPPORTED=16394, NON_FIRST_FRAGMENTS_ALSO=16395). All integers are big-endian (network byte order). [RFC 7296 §3.10]"
+
+body:
+  - kind: group
+    id: ikev2NotifyGenericHeader
+    name: Generic Payload Header
+    children:
+      - id: ikev2NotifyNextPayload
+        name: Next Payload
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            0: "No Next Payload"
+            33: "SA (Security Association)"
+            34: "KE (Key Exchange)"
+            35: "IDi (Identification - Initiator)"
+            36: "IDr (Identification - Responder)"
+            37: "CERT (Certificate)"
+            38: "CERTREQ (Certificate Request)"
+            39: "AUTH (Authentication)"
+            40: "Ni/Nr (Nonce)"
+            41: "N (Notify)"
+            42: "D (Delete)"
+            43: "V (Vendor ID)"
+            44: "TSi (Traffic Selector - Initiator)"
+            45: "TSr (Traffic Selector - Responder)"
+            46: "SK (Encrypted and Authenticated)"
+            47: "CP (Configuration)"
+            48: "EAP (Extensible Authentication)"
+        category: type
+        doc: "Payload type of the next payload in the IKEv2 payload chain, or 0 if this Notify payload is the last. The value 41 (N) would indicate another Notify payload follows. Payload type codes 33–48 are defined by IKEv2; types 1–32 are reserved (inherited from IKEv1/ISAKMP); 128–255 are private use. [RFC 7296 §3.2]"
+
+      - kind: group
+        id: ikev2NotifyCriticalGroup
+        name: C / Reserved
+        children:
+          - id: ikev2NotifyCritical
+            name: C
+            type: { kind: int, bits: 1 }
+            category: flags
+            doc: "Critical (C) flag. If set to 1 and the receiver does not understand this payload type, the message MUST be rejected with a NOTIFY of type UNSUPPORTED_CRITICAL_PAYLOAD. If 0, an unknown payload type MAY be silently ignored. For Notify payloads (type 41) this bit is always 0 since the type is well-known. [RFC 7296 §3.2]"
+          - id: ikev2NotifyReserved
+            name: Reserved
+            type: { kind: int, bits: 7 }
+            category: reserved
+            doc: "Reserved bits [6:0] of the second byte of the Generic Payload Header. MUST be sent as zero and MUST be ignored on receipt. [RFC 7296 §3.2]"
+
+      - id: ikev2NotifyPayloadLength
+        name: Payload Length
+        type: { kind: int, bits: 16 }
+        category: length
+        defaultValue: 8
+        doc: "Total length in bytes of this Notify payload, including the 4-byte Generic Payload Header, the 4-byte fixed Notify fields (Protocol ID + SPI Size + Notify Message Type), the SPI field (SPI Size bytes), and the Notification Data field. Minimum value is 8 when SPI Size is 0 and there is no Notification Data. [RFC 7296 §3.10]"
+
+  - id: ikev2NotifyProtocolID
+    name: Protocol ID
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "IKE"
+        1: "AH"
+        3: "ESP"
+    category: identifier
+    doc: "Identifies the SA to which the notification applies. 0 = IKE SA (used for IKE-level notifications such as INVALID_MAJOR_VERSION or AUTHENTICATION_FAILED). 1 = AH (Authentication Header, RFC 4302). 3 = ESP (Encapsulating Security Payload, RFC 4303). When Protocol ID is 0 (IKE), SPI Size MUST be 0; when it refers to a Child SA (AH or ESP), SPI Size is 4. Value 2 (now retired) was formerly used for IPCOMP; only 0, 1, and 3 are valid in IKEv2. [RFC 7296 §3.10]"
+
+  - id: ikev2NotifySpiLen
+    name: SPI Size
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "Length in bytes of the SPI field that immediately follows the Notify Message Type. For IKE SA notifications (Protocol ID 0) this MUST be 0 and the SPI field is absent. For AH or ESP Child SA notifications (Protocol ID 1 or 3) this is 4 (the 32-bit Child SA SPI). Values other than 0 and 4 are not defined by RFC 7296 and MUST NOT be used for the protocol IDs defined therein. [RFC 7296 §3.10]"
+
+  - id: ikev2NotifyMessageType
+    name: Notify Message Type
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        1: "UNSUPPORTED_CRITICAL_PAYLOAD"
+        4: "INVALID_IKE_SPI"
+        5: "INVALID_MAJOR_VERSION"
+        7: "INVALID_SYNTAX"
+        9: "INVALID_MESSAGE_ID"
+        11: "INVALID_SPI"
+        14: "NO_PROPOSAL_CHOSEN"
+        17: "INVALID_KE_PAYLOAD"
+        24: "AUTHENTICATION_FAILED"
+        34: "SINGLE_PAIR_REQUIRED"
+        35: "NO_ADDITIONAL_SAS"
+        36: "INTERNAL_ADDRESS_FAILURE"
+        37: "FAILED_CP_REQUIRED"
+        38: "TS_UNACCEPTABLE"
+        39: "INVALID_SELECTORS"
+        43: "TEMPORARY_FAILURE"
+        44: "CHILD_SA_NOT_FOUND"
+        16384: "INITIAL_CONTACT"
+        16385: "SET_WINDOW_SIZE"
+        16386: "ADDITIONAL_TS_POSSIBLE"
+        16387: "IPCOMP_SUPPORTED"
+        16388: "NAT_DETECTION_SOURCE_IP"
+        16389: "NAT_DETECTION_DESTINATION_IP"
+        16390: "COOKIE"
+        16391: "USE_TRANSPORT_MODE"
+        16392: "HTTP_CERT_LOOKUP_SUPPORTED"
+        16393: "REKEY_SA"
+        16394: "ESP_TFC_PADDING_NOT_SUPPORTED"
+        16395: "NON_FIRST_FRAGMENTS_ALSO"
+    category: type
+    doc: "16-bit code identifying the notification type. Values 1–16383 are error notifications that indicate a problem with the IKE exchange or a Child SA request: values include UNSUPPORTED_CRITICAL_PAYLOAD(1), INVALID_IKE_SPI(4), INVALID_MAJOR_VERSION(5), INVALID_SYNTAX(7), INVALID_MESSAGE_ID(9), INVALID_SPI(11), NO_PROPOSAL_CHOSEN(14), INVALID_KE_PAYLOAD(17), AUTHENTICATION_FAILED(24), SINGLE_PAIR_REQUIRED(34), NO_ADDITIONAL_SAS(35), INTERNAL_ADDRESS_FAILURE(36), FAILED_CP_REQUIRED(37), TS_UNACCEPTABLE(38), INVALID_SELECTORS(39), TEMPORARY_FAILURE(43), CHILD_SA_NOT_FOUND(44). Values 16384–65535 are status notifications that convey supplemental information: INITIAL_CONTACT(16384), SET_WINDOW_SIZE(16385), ADDITIONAL_TS_POSSIBLE(16386), IPCOMP_SUPPORTED(16387), NAT_DETECTION_SOURCE_IP(16388), NAT_DETECTION_DESTINATION_IP(16389), COOKIE(16390), USE_TRANSPORT_MODE(16391), HTTP_CERT_LOOKUP_SUPPORTED(16392), REKEY_SA(16393), ESP_TFC_PADDING_NOT_SUPPORTED(16394), NON_FIRST_FRAGMENTS_ALSO(16395). Values 0 and 40–16383 (excluding those listed) are reserved. Private use: 40960–65535. [RFC 7296 §3.10 / Appendix A]"
+
+  - id: ikev2NotifySpi
+    name: SPI
+    type:
+      kind: bytes
+      n: { kind: ref, field: ikev2NotifySpiLen }
+    category: identifier
+    doc: "Security Parameter Index of the SA to which this notification applies. Present only when SPI Size is non-zero (i.e., Protocol ID is 1 or 3). For AH or ESP Child SAs, this is the 4-byte SPI value allocated by the SA's owner. Absent (0 bytes) for IKE SA notifications where Protocol ID is 0. [RFC 7296 §3.10]"
+
+  - id: ikev2NotifyData
+    name: Notification Data
+    type:
+      kind: bytes
+      n: { kind: ref, field: ikev2NotifyDataLen }
+    category: variable
+    doc: "Type-specific data providing additional context for the notification. Length is ikev2NotifyDataLen bytes (= Payload Length - 8 - SPI Size). For many error notifications (e.g. INVALID_MAJOR_VERSION, NO_PROPOSAL_CHOSEN) this field is empty. For COOKIE it carries the cookie value (8–64 bytes, RFC 7296 §2.6). For SET_WINDOW_SIZE it carries a 4-byte window size. For NAT_DETECTION_SOURCE_IP and NAT_DETECTION_DESTINATION_IP it carries a 20-byte SHA-1 hash of the SPIs and IP/port. For IPCOMP_SUPPORTED it carries a 2-byte CPI and a 1-byte transform ID. Content MUST be interpreted according to the Notify Message Type. [RFC 7296 §3.10]"

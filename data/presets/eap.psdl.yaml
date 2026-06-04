@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: EAP Packet
+rowBits: 32
+byteOrder: BE
+description: Extensible Authentication Protocol (EAP) packet (RFC 3748). A 4-byte fixed header carries Code (1=Request, 2=Response, 3=Success, 4=Failure), Identifier, and Length (total packet length in octets including the header). For Request and Response packets a 1-byte Type field follows, identifying the authentication method (1=Identity, 4=MD5-Challenge, 13=EAP-TLS, 25=PEAP), and then a variable-length Type-Data field running to the end of the packet. Success and Failure packets carry no body beyond the 4-byte header.
+
+body:
+  - id: eapCode
+    name: Code
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: Request
+        2: Response
+        3: Success
+        4: Failure
+    category: type
+    doc: "Identifies the EAP packet type. 1=Request (authenticator sends an authentication challenge), 2=Response (peer replies to a Request), 3=Success (authenticator signals successful authentication), 4=Failure (authenticator signals failed authentication). Values 0 and 5..255 are unassigned or reserved. [RFC 3748 §4]"
+  - id: eapIdentifier
+    name: Identifier
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "One-octet identifier used to match Responses with Requests. The authenticator assigns a new Identifier for each Request; the peer copies the Identifier from the Request into the corresponding Response. For Success and Failure packets the Identifier MUST match that of the last Request sent. [RFC 3748 §4]"
+  - id: eapLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length of the EAP packet in octets, including the Code, Identifier, Length, and (for Request/Response) Type and Type-Data fields. Minimum value is 4 (header only, for Success/Failure). Octets outside the indicated length MUST be treated as padding and ignored on reception. [RFC 3748 §4]"
+  - kind: switch
+    id: byCode
+    on: { kind: ref, field: eapCode }
+    doc: "Dispatch on Code. Codes 1 (Request) and 2 (Response) carry a Type byte and Type-Data payload; codes 3 (Success) and 4 (Failure) carry no additional fields. [RFC 3748 §4]"
+    cases:
+      "1":
+        id: eapRequest
+        name: Request Body
+        fields:
+          - id: eapType
+            name: Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                1: Identity
+                2: Notification
+                3: Nak (Response only)
+                4: MD5-Challenge
+                5: One-Time Password (OTP)
+                6: Generic Token Card (GTC)
+                13: EAP-TLS
+                25: PEAP
+                26: MS-EAP-Authentication
+                254: Expanded Types
+                255: Experimental
+            category: type
+            doc: "EAP method type for this Request. 1=Identity (peer sends its identity string), 2=Notification (human-readable message), 3=Nak (legacy, Response only), 4=MD5-Challenge (CHAP-like MD5 authentication, RFC 3748 §5.4), 13=EAP-TLS (TLS handshake over EAP, RFC 5216), 25=PEAP (Protected EAP, draft-josefsson-pppext-eap-tls-eap), 254=Expanded Types (vendor-specific, RFC 3748 §5.7). [RFC 3748 §5]"
+          - id: eapTypeData
+            name: Type-Data
+            type:
+              kind: bytes
+              n:
+                kind: op
+                op: "-"
+                a: { kind: ref, field: eapLength }
+                b: { kind: lit, value: 5 }
+            category: variable
+            doc: "Method-specific data whose format depends on the Type field. For Type=1 (Identity) this is a UTF-8 identity string. For Type=4 (MD5-Challenge) it is a 1-byte value-size, an MD5 challenge or response value, and an optional Name. For Type=13 (EAP-TLS) and Type=25 (PEAP) it carries TLS record data. Length = eapLength - 5 (total packet length minus 4-byte header minus 1-byte Type). [RFC 3748 §5]"
+      "2":
+        id: eapResponse
+        name: Response Body
+        fields:
+          - id: eapType
+            name: Type
+            type:
+              kind: enum
+              bits: 8
+              variants:
+                1: Identity
+                2: Notification
+                3: Nak (Response only)
+                4: MD5-Challenge
+                5: One-Time Password (OTP)
+                6: Generic Token Card (GTC)
+                13: EAP-TLS
+                25: PEAP
+                26: MS-EAP-Authentication
+                254: Expanded Types
+                255: Experimental
+            category: type
+            doc: "EAP method type for this Response. 1=Identity (peer's identity string), 2=Notification (acknowledgement), 3=Nak (peer requests an alternative method — only valid in Responses; the Type-Data contains a list of desired method types), 4=MD5-Challenge (peer's MD5-hashed response), 13=EAP-TLS, 25=PEAP. [RFC 3748 §5]"
+          - id: eapTypeData
+            name: Type-Data
+            type:
+              kind: bytes
+              n:
+                kind: op
+                op: "-"
+                a: { kind: ref, field: eapLength }
+                b: { kind: lit, value: 5 }
+            category: variable
+            doc: "Method-specific response data. For Type=1 (Identity) this is the peer's UTF-8 identity string (e.g. user@realm). For Type=3 (Nak) this is one or more desired authentication Type bytes. For Type=4 (MD5-Challenge) it is value-size (1 B), the 16-byte MD5 hash, and an optional peer name. Length = eapLength - 5 (total packet length minus 4-byte header minus 1-byte Type). [RFC 3748 §5]"
+    default:
+      id: eapNoBody
+      name: No Body (Success / Failure)
+      fields: []

@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: EAPOL (IEEE 802.1X)
+rowBits: 32
+byteOrder: BE
+description: EAP over LAN frame (IEEE 802.1X-2020, RFC 3748). EAPOL is the layer-2 encapsulation that carries Extensible Authentication Protocol (EAP) messages between a supplicant and an authenticator on the same LAN segment. The fixed 4-byte header consists of a Protocol Version, a Packet Type code, and a 16-bit body length; it is followed by an opaque body whose content and length depend on the Packet Type.
+body:
+  - id: eapolVersion
+    name: Protocol Version
+    type:
+      kind: int
+      bits: 8
+    category: type
+    doc: "EAPOL protocol version. 1 = IEEE 802.1X-2001, 2 = IEEE 802.1X-2004, 3 = IEEE 802.1X-2010. Receivers SHOULD process frames with a version they do not recognise, using the semantics of the highest version they support. [IEEE 802.1X-2020 §11.3]"
+  - id: eapolPacketType
+    name: Packet Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: EAP-Packet
+        1: EAPOL-Start
+        2: EAPOL-Logoff
+        3: EAPOL-Key
+        4: EAPOL-Encapsulated-ASF-Alert
+    category: type
+    doc: "Identifies the content carried in the EAPOL body. 0=EAP-Packet (an EAP message per RFC 3748 transported transparently by the authenticator); 1=EAPOL-Start (supplicant requests authentication); 2=EAPOL-Logoff (supplicant terminates session); 3=EAPOL-Key (key material distribution); 4=EAPOL-Encapsulated-ASF-Alert (SNMP alert from ASF device). [IEEE 802.1X-2020 §11.3, RFC 3748 §3.1]"
+  - id: eapolBodyLen
+    name: Packet Body Length
+    type:
+      kind: int
+      bits: 16
+    category: length
+    doc: "Length in bytes of the EAPOL body field that follows this header. A value of zero indicates no body is present. For EAP-Packet frames this equals the EAP message Length field; for EAPOL-Start and EAPOL-Logoff it is typically zero. [IEEE 802.1X-2020 §11.3, RFC 3748 §4]"
+  - id: eapolBody
+    name: Packet Body
+    type:
+      kind: bytes
+      n: { kind: ref, field: eapolBodyLen }
+    category: variable
+    doc: "Variable-length body whose structure depends on Packet Type. For EAP-Packet (type 0): a complete EAP message beginning with Code / Identifier / Length / Data as defined in RFC 3748 §4. For EAPOL-Key (type 3): key descriptor per IEEE 802.1X Annex C / WPA2 4-way handshake (IEEE 802.11-2020 §12.7). For EAPOL-Start and EAPOL-Logoff the body is usually absent (length=0). [IEEE 802.1X-2020 §11.3, RFC 3748 §4]"

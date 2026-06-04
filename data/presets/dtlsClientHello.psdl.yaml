@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DTLS ClientHello
+rowBits: 32
+byteOrder: BE
+description: "DTLS 1.2 ClientHello handshake message (RFC 6347 §4.2.1). Carried inside a DTLS Handshake header which extends the TLS 1.2 Handshake header (RFC 5246 §7.4) with three additional fields: message_seq for deduplication across retransmissions, fragment_offset and fragment_length to support fragmentation of large messages. The ClientHello body begins with client_version=0xFEFD (DTLS 1.2), a 32-byte client random, a legacy session ID, a cookie field added by DTLS as a stateless DoS countermeasure (RFC 6347 §4.2.1 / §4.2.2), and then the cipher suites and compression methods vectors identical to TLS."
+
+body:
+  # ---- Handshake Header ----
+  - id: dtlsChHsType
+    name: Handshake Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "ClientHello"
+        2: "ServerHello"
+        3: "HelloVerifyRequest"
+        11: "Certificate"
+        12: "ServerKeyExchange"
+        13: "CertificateRequest"
+        14: "ServerHelloDone"
+        15: "CertificateVerify"
+        16: "ClientKeyExchange"
+        20: "Finished"
+    category: type
+    defaultValue: 1
+    doc: "One-byte HandshakeType. For a ClientHello this MUST be 1. DTLS adds value 3 (HelloVerifyRequest) to the TLS 1.2 set (RFC 5246 §7.4) to carry the stateless cookie that prevents amplification attacks. [RFC 6347 §4.2.1]"
+
+  - id: dtlsChHsLength
+    name: Length
+    type: { kind: int, bits: 24 }
+    category: length
+    doc: "24-bit big-endian total length of the complete (unfragmented) ClientHello message body in bytes, independent of fragmentation. Receivers allocate reassembly buffers based on this field. [RFC 6347 §4.2.2]"
+
+  - id: dtlsChMsgSeq
+    name: Message Seq
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 0
+    doc: "16-bit message sequence number, held constant across all retransmissions of this message. Starts at 0 for the first ClientHello; incremented only when a new, distinct handshake message is sent. Allows the receiver to deduplicate retransmitted messages. [RFC 6347 §4.2.2]"
+
+  - id: dtlsChFragmentOffset
+    name: Fragment Offset
+    type: { kind: int, bits: 24 }
+    category: variable
+    defaultValue: 0
+    doc: "24-bit byte offset within the complete handshake message body at which this fragment begins. Zero for an unfragmented ClientHello. Together with Fragment Length it defines the byte range [offset, offset+fragment_length) present in this record. [RFC 6347 §4.2.2]"
+
+  - id: dtlsChFragmentLength
+    name: Fragment Length
+    type: { kind: int, bits: 24 }
+    category: length
+    doc: "24-bit length in bytes of the fragment body carried in this record. Equals Length when the message is not fragmented. When fragmented, the sum of all fragment_length values across the non-retransmitted fragments equals Length. [RFC 6347 §4.2.2]"
+
+  # ---- ClientHello Body ----
+  - id: dtlsChClientVersion
+    name: Client Version
+    type: { kind: int, bits: 16 }
+    category: type
+    defaultValue: 0xFEFD
+    doc: "DTLS protocol version advertised by the client. 0xFEFD = DTLS 1.2, 0xFEFF = DTLS 1.0. DTLS version numbers are inverted relative to TLS: a lower wire value means a newer version. The server selects the highest mutually supported version. [RFC 6347 §4.2.1]"
+
+  - id: dtlsChRandom
+    name: Random
+    type: { kind: int, bits: 256 }
+    category: identifier
+    doc: "32 bytes of client randomness: a 4-byte Unix timestamp followed by 28 cryptographically random bytes. Mixed into the handshake key derivation to prevent replay attacks and ensure forward secrecy per session. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"
+
+  - id: dtlsSidLen
+    name: Session ID Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "Length in bytes of the legacy session_id field that follows. Zero indicates no session resumption is requested. Non-zero values (1–32) identify a previously established session whose security parameters the client wishes to reuse. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"
+
+  - id: dtlsChSessionId
+    name: Session ID
+    type: { kind: bytes, n: { kind: ref, field: dtlsSidLen } }
+    category: identifier
+    doc: "Variable-length legacy session identifier, dtlsSidLen bytes long. Empty (0 bytes) when dtlsSidLen is zero. Used for abbreviated handshake resumption; absent in the initial ClientHello sent before any session is established. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"
+
+  - id: dtlsCookieLen
+    name: Cookie Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "Length in bytes of the Cookie field that follows. Zero in the initial ClientHello (before a HelloVerifyRequest has been received). Non-zero (up to 255) after the server issues a HelloVerifyRequest; the client echoes the cookie verbatim to prove its address and prevent UDP amplification attacks. [RFC 6347 §4.2.1]"
+
+  - id: dtlsChCookie
+    name: Cookie
+    type: { kind: bytes, n: { kind: ref, field: dtlsCookieLen } }
+    category: variable
+    doc: "Opaque cookie value, dtlsCookieLen bytes long. Empty in the initial ClientHello. Echoed verbatim from the server's HelloVerifyRequest in the retransmitted ClientHello as a stateless DoS countermeasure: the server can verify address reachability without allocating per-client state. [RFC 6347 §4.2.1]"
+
+  - id: dtlsCsBytes
+    name: Cipher Suites Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Length in bytes of the cipher_suites vector that follows. Must be even and at least 2 (one suite). Each 2-byte entry is a cipher suite code point from the IANA TLS Cipher Suites registry, listed in the client's preference order. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"
+
+  - id: dtlsChCipherSuites
+    name: Cipher Suites
+    type: { kind: bytes, n: { kind: ref, field: dtlsCsBytes } }
+    category: type
+    doc: "Ordered list of 16-bit cipher suite identifiers, dtlsCsBytes bytes in total. Each pair of bytes encodes one suite (e.g. 0xC02B = TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256). The server selects one suite from this list; if none matches it MUST abort with a handshake_failure alert. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"
+
+  - id: dtlsCmBytes
+    name: Compression Methods Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 1
+    doc: "Length in bytes of the compression_methods vector that follows. Must be at least 1 to include the mandatory null (0x00) method. TLS 1.2 forbids compression in practice; DTLS inherits this field for wire-format compatibility. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"
+
+  - id: dtlsChCompressionMethods
+    name: Compression Methods
+    type: { kind: bytes, n: { kind: ref, field: dtlsCmBytes } }
+    category: reserved
+    doc: "List of compression method identifiers, dtlsCmBytes bytes long. MUST include 0x00 (null compression). All other values are legacy; DTLS implementations MUST select null compression because TLS-level compression is prohibited due to CRIME-class attacks. [RFC 6347 §4.2.1, RFC 5246 §7.4.1.2]"

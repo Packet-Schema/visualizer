@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LwM2M Registration (TLV)
+rowBits: 32
+byteOrder: BE
+description: "OMA LwM2M Registration payload (OMA-TS-LightweightM2M-V1_1). An LwM2M client registers itself with an LwM2M Server by sending a CoAP POST to the /rd resource (RFC 6690 Resource Directory). The registration payload is a sequence of TLV (Type-Length-Value) records that enumerate the Object Instances available on the device. Each TLV record carries an 8-bit compound Type byte (bit 7..6 = Type of Identifier, bit 5 = ID Length, bit 4..3 = Type of Length, bits 2..0 = Value Length if short), an 8- or 16-bit Identifier, a 0-, 8-, 16-, or 24-bit Length field, and a variable-length Value. Records repeat until end of payload. CoAP Content-Format 11542 (application/vnd.oma.lwm2m+tlv) signals this encoding. The registration request also carries CoAP Uri-Query options for endpoint name (ep=), lifetime (lt=), binding mode (b=), and LwM2M version (lwm2m=). [OMA-TS-LightweightM2M-V1_1 §6.4.3 / §5.3]"
+
+body:
+  - kind: repeat
+    id: tlvRecords
+    name: TLV Records
+    category: variable
+    doc: "Sequence of LwM2M TLV records, one per Object Instance (or Resource) reported by the client during registration. The repeat runs until end-of-stream (count=eos). Each record consists of a 1-byte Type byte, an 8- or 16-bit Identifier (length selected by bit 5 of the Type byte), a 0-, 8-, 16-, or 24-bit Length field (width selected by bits 4..3 of the Type byte, unless the 3-bit short length in bits 2..0 is non-zero), and a variable-length Value blob. [OMA-TS-LightweightM2M-V1_1 §6.4.3]"
+    element:
+      id: tlvRecord
+      fields:
+        - kind: group
+          id: tlvTypeByte
+          name: Type Byte
+          children:
+            - id: tlvTypeOfId
+              name: Type of Identifier
+              type:
+                kind: enum
+                bits: 2
+                variants:
+                  0: "Object Instance"
+                  1: "Resource Instance"
+                  2: "Multiple Resource"
+                  3: "Resource with Value"
+              category: type
+              doc: "Bits 7..6 of the TLV Type byte. Identifies what the Identifier field refers to: 0=Object Instance, 1=Resource Instance (inside a Multiple Resource), 2=Multiple Resource (container), 3=Resource with Value. A registration payload typically contains Object Instance TLVs (type=0). [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+            - id: tlvIdLen
+              name: ID Length
+              type:
+                kind: enum
+                bits: 1
+                variants:
+                  0: "8-bit Identifier"
+                  1: "16-bit Identifier"
+              category: length
+              doc: "Bit 5 of the TLV Type byte. Controls the width of the Identifier field that follows the Type byte. 0=the Identifier is 1 byte (values 0..255), 1=the Identifier is 2 bytes big-endian (values 0..65535). Object and Resource IDs above 255 require a 16-bit Identifier. [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+            - id: tlvTypeOfLength
+              name: Type of Length
+              type:
+                kind: enum
+                bits: 2
+                variants:
+                  0: "No Length field (use Value Length bits)"
+                  1: "8-bit Length"
+                  2: "16-bit Length"
+                  3: "24-bit Length"
+              category: length
+              doc: "Bits 4..3 of the TLV Type byte. Determines whether an explicit Length field is present and its width. 0=no separate Length field (value length is encoded in the 3 LSBs of the Type byte), 1=1 additional byte for length (0..255), 2=2 additional bytes for length (0..65535), 3=3 additional bytes for length (0..16777215). [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+            - id: tlvShortValueLen
+              name: Value Length (3-bit)
+              type: { kind: int, bits: 3 }
+              category: length
+              doc: "Bits 2..0 of the TLV Type byte. When Type of Length = 0 this field carries the actual byte length of the Value (0..7). When Type of Length is 1, 2, or 3 this field MUST be set to 0b000 and the length is carried in the separate Length field. [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+        - kind: switch
+          id: byIdLen
+          on: { kind: ref, field: tlvIdLen }
+          doc: "Switch on the ID Length bit (bit 5 of the Type byte) to emit either an 8-bit or 16-bit Identifier. The identifier denotes the Object ID, Object Instance ID, Resource ID, or Resource Instance ID depending on tlvTypeOfId. [OMA-TS-LightweightM2M-V1_1 §6.4.3]"
+          cases:
+            "1":
+              id: id16Case
+              name: 16-bit Identifier
+              fields:
+                - id: tlvIdentifier16
+                  name: Identifier (16-bit)
+                  type: { kind: int, bits: 16 }
+                  category: identifier
+                  doc: "16-bit big-endian Object/Resource/Instance identifier. Used when tlvIdLen=1 (bit 5 of the Type byte). Allows addressing Objects and Resources whose numeric ID exceeds 255. Common LwM2M Object IDs: 0=LwM2M Security, 1=LwM2M Server, 3=Device, 4=Connectivity Monitoring, 5=Firmware Update. [OMA-TS-LightweightM2M-V1_1 §6.4.3 / OMNA LwM2M Registry]"
+          default:
+            id: id8Case
+            name: 8-bit Identifier
+            fields:
+              - id: tlvIdentifier8
+                name: Identifier (8-bit)
+                type: { kind: int, bits: 8 }
+                category: identifier
+                doc: "8-bit Object/Resource/Instance identifier. Used when tlvIdLen=0 (bit 5 of the Type byte is clear). Covers the most common LwM2M Objects and Resources whose IDs fit in a single byte (0..255). [OMA-TS-LightweightM2M-V1_1 §6.4.3 / OMNA LwM2M Registry]"
+        - kind: switch
+          id: byTypeOfLength
+          on: { kind: ref, field: tlvTypeOfLength }
+          doc: "Switch on bits 4..3 of the Type byte to decode the explicit Length field, if present. When tlvTypeOfLength=0 the length is already known from tlvShortValueLen and no further length bytes are emitted; cases 1/2/3 emit 1, 2, or 3 additional length bytes respectively. [OMA-TS-LightweightM2M-V1_1 §6.4.3]"
+          cases:
+            "1":
+              id: len8Case
+              name: 8-bit Length
+              fields:
+                - id: tlvLength8
+                  name: Length (8-bit)
+                  type: { kind: int, bits: 8 }
+                  category: length
+                  doc: "Explicit 1-byte Value length field, present when tlvTypeOfLength=1. Carries the byte length of the immediately following Value field (0..255). [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+                - id: tlvValue8
+                  name: Value
+                  type: { kind: bytes, n: { kind: ref, field: tlvLength8 } }
+                  category: variable
+                  doc: "TLV Value blob, exactly tlvLength8 bytes. For Object Instance TLVs the value contains nested TLV records for the Resources of that instance. For leaf Resource TLVs the encoding depends on the data type defined in the Object specification (string, integer, float, boolean, opaque, time, objlnk). [OMA-TS-LightweightM2M-V1_1 §6.4.3 / §6.4.4]"
+            "2":
+              id: len16Case
+              name: 16-bit Length
+              fields:
+                - id: tlvLength16
+                  name: Length (16-bit)
+                  type: { kind: int, bits: 16 }
+                  category: length
+                  doc: "Explicit 2-byte big-endian Value length field, present when tlvTypeOfLength=2. Carries the byte length of the immediately following Value field (0..65535). Used for Resource values exceeding 255 bytes, such as X.509 certificates in the LwM2M Security Object (ID 0). [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+                - id: tlvValue16
+                  name: Value
+                  type: { kind: bytes, n: { kind: ref, field: tlvLength16 } }
+                  category: variable
+                  doc: "TLV Value blob, exactly tlvLength16 bytes. For Object Instance TLVs the value contains nested TLV records describing that instance's Resources. For leaf Resources this is the raw encoded value (string UTF-8, integer big-endian, opaque, etc.). [OMA-TS-LightweightM2M-V1_1 §6.4.3 / §6.4.4]"
+            "3":
+              id: len24Case
+              name: 24-bit Length
+              fields:
+                - id: tlvLength24
+                  name: Length (24-bit)
+                  type: { kind: int, bits: 24 }
+                  category: length
+                  doc: "Explicit 3-byte big-endian Value length field, present when tlvTypeOfLength=3. Carries the byte length of the immediately following Value field (0..16777215). Used for very large opaque values, e.g. firmware images delivered via the Firmware Update Object (ID 5) during FOTA. [OMA-TS-LightweightM2M-V1_1 §6.4.3 Table 1]"
+                - id: tlvValue24
+                  name: Value
+                  type: { kind: bytes, n: { kind: ref, field: tlvLength24 } }
+                  category: variable
+                  doc: "TLV Value blob, exactly tlvLength24 bytes. Supports Resource values up to 16 MiB; primarily used for firmware objects. For nested structures the value contains a sequence of inner TLV records. [OMA-TS-LightweightM2M-V1_1 §6.4.3 / §6.4.4]"
+          default:
+            id: len0Case
+            name: Length in Type byte (0-bit explicit)
+            fields:
+              - id: tlvValueShort
+                name: Value
+                type: { kind: bytes, n: { kind: ref, field: tlvShortValueLen } }
+                category: variable
+                doc: "TLV Value blob, exactly tlvShortValueLen bytes (0..7). Present when tlvTypeOfLength=0; no separate Length field is emitted. Optimises encoding of small leaf Resources such as boolean flags, short integers, and single Object Links common in LwM2M Device Object (ID 3) Resources. [OMA-TS-LightweightM2M-V1_1 §6.4.3 / §6.4.4]"
+    count: eos

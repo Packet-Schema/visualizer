@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MPLS PW Control Word
+rowBits: 32
+byteOrder: BE
+description: "MPLS Pseudowire Emulation Edge-to-Edge (PWE3) Control Word (RFC 4385). A mandatory 4-byte header prepended to pseudowire payloads to provide fragmentation/reassembly and sequencing across the MPLS network. The layout is: 4 reserved zero bits, 4 flag bits, 2 fragmentation bits, 6 length bits, and a 16-bit sequence number. When the Length field is non-zero it gives the actual payload byte count, allowing padding to be stripped at the far end; a zero Length means the payload fills the remainder of the MPLS packet. The Sequence Number enables ordered delivery; a value of zero disables sequencing for that pseudowire. [RFC 4385]"
+
+body:
+  - kind: group
+    id: pwCwFirstOctet
+    name: Zeros / Flags
+    children:
+      - id: pwCwZeros
+        name: Zeros
+        type: { kind: int, bits: 4 }
+        category: reserved
+        doc: "Must Be Zero (MBZ) field. These 4 bits MUST be set to 0 by the transmitter and MUST be checked by the receiver; a non-zero value indicates the packet is not a PWE3 Control Word and MUST be discarded. This allows coexistence with IP payloads whose first nibble is 4 (IPv4) or 6 (IPv6). [RFC 4385 §3]"
+
+      - id: pwCwFlags
+        name: Flags
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Four generic channel flags (bits 4–7). Semantics are pseudowire-type specific and defined by individual PW type specifications; unrecognised bits MUST be ignored. Provides per-PW signalling without requiring additional headers. [RFC 4385 §3]"
+
+  - kind: group
+    id: pwCwFrgLen
+    name: FRG / Length
+    children:
+      - id: pwCwFrg
+        name: FRG
+        type:
+          kind: enum
+          bits: 2
+          variants:
+            0: "Unfragmented"
+            1: "First Fragment"
+            2: "Last Fragment"
+            3: "Middle Fragment"
+        category: flags
+        doc: "Fragmentation bits (bits 8–9). Indicate whether this Control Word carries a complete payload (00) or a fragment: 01=first fragment, 10=last fragment, 11=middle fragment. Fragmentation allows large payloads to be split across multiple MPLS packets and reassembled at the egress PE using the Sequence Number. [RFC 4385 §3]"
+
+      - id: pwCwLength
+        name: Length
+        type: { kind: int, bits: 6 }
+        category: length
+        doc: "Payload length field (bits 10–15). When non-zero, specifies the length of the pseudowire payload in bytes, enabling the receiver to strip any padding appended by the transmitter to meet minimum MTU requirements. When zero, the payload extends to the end of the MPLS packet and no padding is present. [RFC 4385 §3]"
+
+  - id: pwCwSequenceNumber
+    name: Sequence Number
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "16-bit sequence number (bits 16–31). Incremented by 1 for each packet sent on the pseudowire; wraps from 0xFFFF back to 0x0001. A value of 0 disables in-order delivery for this packet, allowing the receiver to accept it regardless of ordering state. Used for reordering detection and optional ordered delivery at the egress PE. [RFC 4385 §3]"

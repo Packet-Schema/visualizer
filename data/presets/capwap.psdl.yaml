@@ -1,0 +1,165 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: CAPWAP (Control And Provisioning of Wireless Access Points)
+rowBits: 32
+byteOrder: BE
+description: "Control And Provisioning of Wireless Access Points (CAPWAP) transport header (RFC 5415). CAPWAP provides a UDP-based tunnel between a Wireless LAN Controller (WLC) and one or more Access Points (APs), carrying both control-plane messages (port 5246) and data-plane traffic (port 5247). Every CAPWAP packet begins with an 8-bit Preamble (upper 4 bits = Version, lower 4 bits = Type: 0=CAPWAP, 1=CAPWAP-DTLS). The Transport Header then carries: a 5-bit Header Length (HLEN, units of 4 bytes), a 5-bit Radio ID (RID) identifying the AP radio, a 5-bit Wireless Binding ID (WBID, e.g. 1=IEEE 802.11), and several 1-bit control flags (T=native frame type, F=fragment, L=last fragment, W=wireless specific info present, M=MAC address present, K=keep-alive). A 16-bit Fragment ID and a 13-bit Fragment Offset (units of 8 bytes) support fragmentation of large CAPWAP messages across the UDP transport. An optional MAC address field (6 bytes) and an optional Wireless Specific Information field follow when M and W flags are set respectively. The payload bytes complete the packet."
+
+body:
+  - kind: group
+    id: capwapPreamble
+    name: Preamble
+    children:
+      - id: capwapVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 0
+        doc: "CAPWAP protocol version. MUST be 0 for this specification; receivers that do not recognise the version MUST silently discard the packet. Occupies the high-order 4 bits of the Preamble octet. [RFC 5415 §4.3]"
+
+      - id: capwapPreambleType
+        name: Type
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            0: "CAPWAP"
+            1: "CAPWAP-DTLS"
+        category: type
+        defaultValue: 0
+        doc: "Preamble type field occupying the low-order 4 bits of the Preamble octet. 0=plain CAPWAP header follows, 1=DTLS-encapsulated CAPWAP (the remainder of the packet is a DTLS record). Used by receivers to select the appropriate decapsulation path. [RFC 5415 §4.3]"
+
+  - kind: group
+    id: capwapHlenRidWbid
+    name: HLEN / RID / WBID / Flags
+    children:
+      - id: capwapHlen
+        name: HLEN
+        type: { kind: int, bits: 5 }
+        category: length
+        defaultValue: 2
+        doc: "Header Length in 4-byte words. A value of 2 indicates the minimum 8-byte header (Preamble + this 32-bit word). Larger values indicate optional MAC or Wireless Specific Information fields are present. Receivers use HLEN to locate the start of the payload. [RFC 5415 §4.3]"
+
+      - id: capwapRid
+        name: RID
+        type: { kind: int, bits: 5 }
+        category: identifier
+        defaultValue: 0
+        doc: "Radio ID. Identifies the specific radio interface on the Access Point to which this packet applies. A value of 0 is used for control messages not associated with a particular radio. Values 1–31 identify individual AP radios. [RFC 5415 §4.3]"
+
+      - id: capwapWbid
+        name: WBID
+        type:
+          kind: enum
+          bits: 5
+          variants:
+            0: "Reserved"
+            1: "IEEE 802.11"
+            2: "IEEE 802.16e"
+        category: type
+        defaultValue: 1
+        doc: "Wireless Binding ID. Identifies the wireless technology carried by this CAPWAP tunnel. 1=IEEE 802.11 (Wi-Fi), 2=IEEE 802.16e (WiMAX). Determines the format of the optional Wireless Specific Information field when the W flag is set. [RFC 5415 §4.3, RFC 5416 §2.1]"
+
+      - id: capwapFlagT
+        name: T
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Type (T) flag. When 0, the payload is a CAPWAP control or IEEE 802.3 data frame. When 1, the payload is a native wireless frame whose format is determined by the WBID field (e.g. IEEE 802.11 frame). Used on the data channel to distinguish native wireless frames from bridged Ethernet frames. [RFC 5415 §4.3]"
+
+      - id: capwapFlagF
+        name: F
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Fragment (F) flag. Set to 1 when this packet is a fragment of a larger CAPWAP message. When set, the Fragment ID and Fragment Offset fields identify the fragment's position within the original message. When 0, the packet is not fragmented. [RFC 5415 §4.3]"
+
+      - id: capwapFlagL
+        name: L
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Last Fragment (L) flag. Set to 1 on the final fragment of a fragmented CAPWAP message (F=1). When 0 with F=1, more fragments follow. Ignored when F=0. Receivers use L together with Fragment Offset to reassemble the original message. [RFC 5415 §4.3]"
+
+      - id: capwapFlagW
+        name: W
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Wireless Specific Information (W) flag. When set to 1, a Wireless Specific Information field is present immediately after the optional MAC address field (or after the fixed header if M=0). Its format is determined by WBID. When 0, no Wireless Specific Information field is present. [RFC 5415 §4.3]"
+
+      - id: capwapFlagM
+        name: M
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "MAC Address (M) flag. When set to 1, a 6-byte wireless client MAC address field is present immediately following the Fragment Offset word, padded to a 4-byte boundary. When 0, no MAC address field is present. Used on the data channel to identify the originating wireless client. [RFC 5415 §4.3]"
+
+      - id: capwapFlagK
+        name: K
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Keep-Alive (K) flag. When set to 1, this packet is a data-channel keep-alive used to verify UDP path liveness and NAT binding maintenance between the WLC and AP. The payload is a keep-alive message element block rather than subscriber data. [RFC 5415 §4.3]"
+
+      - id: capwapFlagsReserved
+        name: Reserved Flags
+        type: { kind: int, bits: 3 }
+        category: reserved
+        doc: "Reserved flag bits in the CAPWAP Transport Header. MUST be set to zero by the sender and ignored by the receiver. These bits are reserved for future protocol extensions. [RFC 5415 §4.3]"
+
+  - id: capwapFragmentId
+    name: Fragment ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 0
+    doc: "Fragment Identifier. All fragments belonging to the same original CAPWAP message share the same Fragment ID value. The transmitting WLC or AP increments this counter for each new message that requires fragmentation. Meaningless when the F flag is 0 but MUST still be transmitted. [RFC 5415 §4.3]"
+
+  - kind: group
+    id: capwapFragmentOffsetGroup
+    name: Fragment Offset / Reserved
+    children:
+      - id: capwapFragmentOffset
+        name: Fragment Offset
+        type: { kind: int, bits: 13 }
+        category: variable
+        defaultValue: 0
+        doc: "Fragment Offset in units of 8 bytes, indicating the position of this fragment's payload within the original unfragmented CAPWAP message. A value of 0 identifies the first (or only) fragment. Used together with the Fragment ID and L flag to reassemble the original message at the receiver. [RFC 5415 §4.3]"
+
+      - id: capwapOffsetReserved
+        name: Reserved
+        type: { kind: int, bits: 3 }
+        category: reserved
+        doc: "Reserved bits following the Fragment Offset field. MUST be set to zero by the sender and ignored by the receiver. Reserved for future use. [RFC 5415 §4.3]"
+
+  - kind: optional
+    when: { kind: ref, field: capwapFlagM }
+    field:
+      id: capwapMacAddress
+      name: MAC Address
+      type: { kind: bits, n: 48 }
+      category: addressing
+      doc: "Wireless client MAC address (6 bytes). Present only when the M flag is set. Identifies the wireless client station that originated (uplink) or is the destination of (downlink) the encapsulated data frame. Followed by a 2-byte padding field to restore 4-byte alignment. [RFC 5415 §4.3]"
+
+  - kind: optional
+    when: { kind: ref, field: capwapFlagM }
+    field:
+      id: capwapMacPadding
+      name: MAC Padding
+      type: { kind: int, bits: 16 }
+      category: reserved
+      doc: "2-byte padding field appended after the 6-byte MAC Address to restore 32-bit alignment of the header. MUST be set to zero by the sender and ignored by the receiver. Present only when the M flag is set. [RFC 5415 §4.3]"
+
+  - kind: optional
+    when: { kind: ref, field: capwapFlagW }
+    field:
+      id: capwapWirelessInfo
+      name: Wireless Specific Information
+      type: { kind: bytes, n: { kind: ref, field: capwapWirelessInfoBytes } }
+      category: variable
+      doc: "Wireless Specific Information field whose length and format depend on the WBID. For IEEE 802.11 (WBID=1) this carries the 802.11 radio-specific header including RSSI, SNR, and data rate information as defined in RFC 5416. The byte count capwapWirelessInfoBytes is supplied externally. Present only when the W flag is set. [RFC 5415 §4.3, RFC 5416 §2.1]"
+
+  - id: capwapPayload
+    name: Payload
+    type: { kind: bytes, n: { kind: ref, field: capwapBodyBytes } }
+    category: payload-marker
+    doc: "CAPWAP payload. On the control channel (UDP port 5246): encapsulated CAPWAP control message consisting of Message Type, Sequence Number, Message Length, and Message Element TLVs. On the data channel (UDP port 5247): an IEEE 802.3 Ethernet frame (T=0) or a native wireless frame (T=1) for the identified wireless client. When K=1, carries keep-alive message elements. The byte count capwapBodyBytes is supplied externally from the UDP payload length minus the parsed header size. [RFC 5415 §4.3, §4.4]"

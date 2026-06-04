@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PIM Hello
+rowBits: 32
+byteOrder: BE
+description: PIM Hello message (RFC 7761). Sent periodically by PIM routers to discover and maintain neighbor relationships; carries a variable number of TLV options.
+body:
+  - { id: pimVersion, name: Version, type: { kind: int, bits: 4 }, category: type, doc: "PIM version number; must be 2." }
+  - { id: pimType, name: Type, type: { kind: int, bits: 4 }, category: type, doc: "PIM message type; 0 for Hello." }
+  - { id: pimReserved, name: Reserved, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved bits; must be set to zero on transmit and ignored on receipt." }
+  - { id: pimChecksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum, doc: "Standard IP checksum computed over the entire PIM message." }
+  - kind: repeat
+    id: pimHelloOptions
+    count: eos
+    element:
+      id: pimHelloOption
+      fields:
+        - { id: pimOptType, name: Option Type, type: { kind: int, bits: 16 }, category: type, doc: "TLV option type code (e.g., 1=Holdtime, 19=DR Priority, 20=Generation ID, 24=Address List)." }
+        - { id: pimOptLen, name: Option Length, type: { kind: int, bits: 16 }, category: length, doc: "Length in bytes of the Option Value field that follows." }
+        - { id: pimOptValue, name: Option Value, type: { kind: bytes, n: { kind: ref, field: pimOptLen } }, category: payload-marker, doc: "Variable-length option value; interpretation depends on Option Type." }

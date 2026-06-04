@@ -99,6 +99,117 @@ _sctp_chunk_variants: &sctp_chunk_variants
       - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.8]" }
       - { id: chunkLength, name: "Length=8", type: { kind: int, bits: 16 }, category: length, defaultValue: 8 }
       - { id: shutdown_cumulativeTsnAck, name: Cumulative TSN Ack, type: { kind: int, bits: 32 }, category: identifier, doc: "Largest TSN the sender has received cumulatively; mirrors the SACK field. Lets the peer know which DATA chunks may still be in-flight before the association is fully closed. [RFC 9260 §3.3.8]" }
+  "2":
+    id: initAckChunk
+    name: INIT-ACK (Type=2)
+    fields:
+      - { id: chunkType, name: "Type=2", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved (all bits MUST be zero) in INIT-ACK. [RFC 9260 §3.3.3]" }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: initAck_initiateTag, name: Initiate Tag, type: { kind: int, bits: 32 }, category: identifier, defaultValue: 1, doc: "Random 32-bit Verification Tag the responder wants its peer to use on every subsequent packet (MUST NOT be zero). [RFC 9260 §3.3.3]" }
+      - { id: initAck_arwnd, name: a_rwnd, type: { kind: int, bits: 32 }, category: length, doc: "Advertised Receiver Window Credit in bytes (MUST be ≥ 1500). [RFC 9260 §3.3.3]" }
+      - { id: initAck_numOutboundStreams, name: "# Outbound Streams", type: { kind: int, bits: 16 }, category: length, doc: "Number of outbound streams the responder wishes to create on this association (1..65535). [RFC 9260 §3.3.3]" }
+      - { id: initAck_numInboundStreams, name: "# Inbound Streams", type: { kind: int, bits: 16 }, category: length, doc: "Maximum number of inbound streams the responder is willing to accept (1..65535). [RFC 9260 §3.3.3]" }
+      - { id: initAck_initialTsn, name: Initial TSN, type: { kind: int, bits: 32 }, category: identifier, doc: "First TSN the responder will use for DATA chunks. [RFC 9260 §3.3.3]" }
+      - id: initAck_parameters
+        name: Optional/Variable-Length Parameters
+        type: { kind: bytes, n: { kind: ref, field: sctpInitAckParamBytes } }
+        category: variable
+        doc: Chain of parameter TLVs. An INIT-ACK MUST include a State Cookie parameter (Type=7) that the peer echoes back in COOKIE-ECHO; it may also carry IPv4/IPv6 Address (5/6), Unrecognized Parameter (8), and the supported-extensions parameters. Format is identical to a Chunk TLV. [RFC 9260 §3.3.3]
+  "5":
+    id: heartbeatAckChunk
+    name: HEARTBEAT-ACK (Type=5)
+    fields:
+      - { id: chunkType, name: "Type=5", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.6]" }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: heartbeatAck_paramType, name: "Param Type=1", type: { kind: int, bits: 16 }, category: type, defaultValue: 1, doc: "Heartbeat Info Parameter type (1). The HEARTBEAT-ACK echoes the Heartbeat Info Parameter received in the HEARTBEAT verbatim. [RFC 9260 §3.3.6 / §3.3.5.1]" }
+      - { id: heartbeatAck_paramLength, name: Param Length, type: { kind: int, bits: 16 }, category: length, doc: "Length of the Heartbeat Info Parameter TLV (4 + length of the Heartbeat Info field). [RFC 9260 §3.3.6]" }
+      - id: heartbeatAck_info
+        name: Heartbeat Info
+        type: { kind: bytes, n: { kind: ref, field: sctpHbInfoBytes } }
+        category: variable
+        doc: Sender-specific Heartbeat Info copied verbatim from the matching HEARTBEAT chunk (timestamp + address index) so the original sender can validate the response and compute path RTT. [RFC 9260 §3.3.6 / §3.3.5.1]
+  "8":
+    id: shutdownAckChunk
+    name: SHUTDOWN-ACK (Type=8)
+    fields:
+      - { id: chunkType, name: "Type=8", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.9]" }
+      - { id: chunkLength, name: "Length=4", type: { kind: int, bits: 16 }, category: length, defaultValue: 4, doc: "Fixed at 4 — SHUTDOWN-ACK carries no value, only the 4-byte chunk header. [RFC 9260 §3.3.9]" }
+  "9":
+    id: errorChunk
+    name: ERROR (Type=9)
+    fields:
+      - { id: chunkType, name: "Type=9", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.10]" }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - kind: repeat
+        id: error_causes
+        name: Error Causes
+        category: variable
+        doc: One or more Error Cause parameters (TLVs) describing the error condition(s). Cause codes include 1 (Invalid Stream Identifier), 3 (Stale Cookie Error), 6 (Unrecognized Chunk Type), 9 (No User Data), etc. [RFC 9260 §3.3.10 / §3.3.10.1]
+        element:
+          id: errorCause
+          fields:
+            - { id: error_causeCode, name: Cause Code, type: { kind: int, bits: 16 }, category: type, doc: "Identifies the error condition (IANA-registered Cause Code). [RFC 9260 §3.3.10]" }
+            - { id: error_causeLength, name: Cause Length, type: { kind: int, bits: 16 }, category: length, doc: "Length in bytes of the Error Cause TLV including Cause Code, Cause Length, and Cause-Specific Information (excludes trailing padding). [RFC 9260 §3.3.10]" }
+            - id: error_causeInfo
+              name: Cause-Specific Information
+              type: { kind: bytes, n: { kind: ref, field: sctpErrCauseBytes } }
+              category: variable
+              doc: Cause-specific detail; length = causeLength - 4. [RFC 9260 §3.3.10]
+        count: { kind: ref, field: sctpErrCauseCount }
+  "10":
+    id: cookieEchoChunk
+    name: COOKIE-ECHO (Type=10)
+    fields:
+      - { id: chunkType, name: "Type=10", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.11]" }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - id: cookieEcho_cookie
+        name: Cookie
+        type: { kind: bytes, n: { kind: ref, field: sctpCookieBytes } }
+        category: identifier
+        doc: The exact State Cookie received in the INIT-ACK's State Cookie parameter (Type=7), echoed back unmodified to complete the four-way handshake. [RFC 9260 §3.3.11]
+  "11":
+    id: cookieAckChunk
+    name: COOKIE-ACK (Type=11)
+    fields:
+      - { id: chunkType, name: "Type=11", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.12]" }
+      - { id: chunkLength, name: "Length=4", type: { kind: int, bits: 16 }, category: length, defaultValue: 4, doc: "Fixed at 4 — COOKIE-ACK carries no value, only the 4-byte chunk header. [RFC 9260 §3.3.12]" }
+  "14":
+    id: shutdownCompleteChunk
+    name: SHUTDOWN-COMPLETE (Type=14)
+    fields:
+      - { id: chunkType, name: "Type=14", type: { kind: int, bits: 8 }, category: type }
+      - kind: group
+        id: shutdownCompleteFlags
+        name: Flags
+        children:
+          - { id: shutdownComplete_reserved, name: Rsvd, type: { kind: bits, n: 7 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 9260 §3.3.13]" }
+          - { id: shutdownComplete_t, name: T, type: { kind: bits, n: 1 }, category: flags, doc: "Verification Tag Reflected — when set, this SHUTDOWN-COMPLETE reuses the Verification Tag of the packet that triggered it (sent in response to an OOTB SHUTDOWN-ACK). [RFC 9260 §3.3.13]" }
+      - { id: chunkLength, name: "Length=4", type: { kind: int, bits: 16 }, category: length, defaultValue: 4, doc: "Fixed at 4 — SHUTDOWN-COMPLETE carries no value, only the 4-byte chunk header. [RFC 9260 §3.3.13]" }
+  "192":
+    id: forwardTsnChunk
+    name: FORWARD-TSN (Type=192)
+    fields:
+      - { id: chunkType, name: "Type=192", type: { kind: int, bits: 8 }, category: type }
+      - { id: chunkFlags, name: Flags, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved; transmitted as zero. [RFC 3758 §3.2]" }
+      - { id: chunkLength, name: Length, type: { kind: int, bits: 16 }, category: length }
+      - { id: forwardTsn_newCumulativeTsn, name: New Cumulative TSN, type: { kind: int, bits: 32 }, category: identifier, doc: "Latest cumulative TSN the sender is advancing the receiver's cumulative ack point to; all skipped (abandoned) TSNs up to this value are no longer expected. [RFC 3758 §3.2]" }
+      - kind: repeat
+        id: forwardTsn_streams
+        name: Stream Entries
+        category: identifier
+        doc: One entry per affected stream, giving the largest Stream Sequence Number the receiver should treat as delivered when advancing past the abandoned messages. [RFC 3758 §3.2]
+        element:
+          id: forwardTsnStream
+          fields:
+            - { id: forwardTsn_streamId, name: Stream Identifier, type: { kind: int, bits: 16 }, category: identifier, doc: "Stream affected by the forward-TSN. [RFC 3758 §3.2]" }
+            - { id: forwardTsn_streamSeq, name: Stream Sequence Number, type: { kind: int, bits: 16 }, category: identifier, doc: "Largest Stream Sequence Number in this stream that the receiver should consider delivered. [RFC 3758 §3.2]" }
+        count: { kind: ref, field: sctpFwdTsnStreamCount }
 
 body:
   - id: srcPort

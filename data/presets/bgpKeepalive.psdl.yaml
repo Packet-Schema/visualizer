@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-4 KEEPALIVE Message
+rowBits: 32
+byteOrder: BE
+description: BGP-4 KEEPALIVE message (RFC 4271 §4.4) — the smallest possible BGP message, consisting solely of the 19-byte BGP Common Header (§4.1) with no message-specific body. Sent periodically to prevent the Hold Timer from expiring; a peer that does not receive a KEEPALIVE or UPDATE within the negotiated Hold Time (established during OPEN exchange) will close the session with a NOTIFICATION Error Code 4 (Hold Timer Expired). Fixed total length is always 19 octets (Marker 16 B + Length 2 B + Type 1 B).
+body:
+  - kind: group
+    id: bgpCommonHeader
+    name: BGP Common Header
+    children:
+      - id: bgpMarker
+        name: Marker
+        type: { kind: bits, n: 128 }
+        category: identifier
+        doc: 16 octets. Must be set to all ones (0xFFFF…FFFF) on transmission. Used for message boundary synchronisation in the TCP byte stream; historically reserved for optional authentication, but in BGP-4 the all-ones value is mandatory. [RFC 4271 §4.1]
+      - id: bgpLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        defaultValue: 19
+        doc: Total length of the BGP message in octets, including this 19-byte Common Header. For KEEPALIVE this field is always 19 — there is no message body. Must not exceed 4096. [RFC 4271 §4.1 §4.4]
+      - id: bgpType
+        name: Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 4
+        doc: BGP message type. 1 = OPEN, 2 = UPDATE, 3 = NOTIFICATION, 4 = KEEPALIVE (this preset). Sent at intervals no greater than the Hold Time negotiated in OPEN to keep the session alive and reset the peer's Hold Timer. [RFC 4271 §4.1 §4.4]

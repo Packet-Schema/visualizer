@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OSCORE Option Value
+rowBits: 32
+byteOrder: BE
+description: "Object Security for Constrained RESTful Environments (OSCORE) Option Value (RFC 8613). OSCORE provides end-to-end application-layer security for CoAP messages using COSE (RFC 8152). The OSCORE CoAP Option (option number 9) carries a compact binary encoding: a 1-byte Flags octet whose upper 5 bits are reserved (MUST be zero), bit 2 (h) indicates a KID Context is present, bit 1 (k) indicates a KID field is present, and bits 2-0 (n, 3 bits) encode the length of the Partial IV in bytes (0 = no Partial IV). The Partial IV follows directly (n bytes), then optionally a 1-byte KID Context Length followed by that many KID Context bytes, and finally the KID field running to the end of the option value. An empty option value (all zero flags, n=0, k=0, h=0) is a valid OSCORE option for responses that mirror the request context."
+
+body:
+  - kind: group
+    id: oscoreFlags
+    name: OSCORE Flags
+    children:
+      - id: oscoreFlagsReserved
+        name: Reserved
+        type: { kind: int, bits: 5 }
+        category: reserved
+        defaultValue: 0
+        doc: "Upper 5 bits of the Flags byte. MUST be set to zero by senders and MUST be ignored by receivers. Reserved for future extensions to the OSCORE option format. [RFC 8613 §6.1]"
+      - id: oscoreH
+        name: h (KID Context)
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "KID Context present flag. When set to 1, a 1-byte KID Context Length field and the corresponding KID Context bytes follow the Partial IV. The KID Context is used to help the recipient identify the correct security context, for example to distinguish partial-IV wrap-around situations. [RFC 8613 §6.1]"
+      - id: oscoreK
+        name: k (KID)
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "KID present flag. When set to 1, a KID (Key ID) field is present at the end of the option value, after any Partial IV and KID Context. In requests the KID identifies the sender's security context; it is omitted from responses (k=0) because the response reuses the request's context. [RFC 8613 §6.1]"
+      - id: oscorePivLen
+        name: n (Partial IV Length)
+        type: { kind: int, bits: 3 }
+        category: length
+        defaultValue: 0
+        doc: "Length in bytes of the Partial IV field that immediately follows the Flags byte. Valid range 0..5 (values 6 and 7 are reserved). When n=0 no Partial IV bytes are present, which is the case for responses. The Partial IV is used to construct the AEAD nonce and to protect against replay attacks. [RFC 8613 §6.1]"
+
+  - id: oscorePartialIV
+    name: Partial IV
+    type: { kind: bytes, n: { kind: ref, field: oscorePivLen } }
+    category: identifier
+    doc: "Partial Initialization Vector. Exactly n bytes (n comes from the Flags 'n' field). Encoded as a big-endian integer with leading zero bytes removed. Combined with the sender's ID and the Common IV from the security context to form the per-message AEAD nonce. Monotonically increasing per sender; the recipient maintains a replay window to detect reuse. [RFC 8613 §6.1 / §5.2]"
+
+  - kind: optional
+    when: { kind: ref, field: oscoreH }
+    field:
+      id: oscoreKidContextLen
+      name: KID Context Length
+      type: { kind: int, bits: 8 }
+      category: length
+      doc: "Length in bytes of the KID Context field that immediately follows. Present only when the h flag is 1. Allows a receiver to locate the KID Context within the option value before reading the trailing KID. [RFC 8613 §6.1]"
+
+  - kind: optional
+    when: { kind: ref, field: oscoreH }
+    field:
+      id: oscoreKidContext
+      name: KID Context
+      type: { kind: bytes, n: { kind: ref, field: oscoreKidContextLen } }
+      category: identifier
+      doc: "Key ID Context. Present only when the h flag is 1. An opaque byte string of length given by KID Context Length. Provides additional context to disambiguate the security context identified by KID — for example when the Partial IV counter has wrapped around or when a Group OSCORE group is identified. [RFC 8613 §6.1]"
+
+  - kind: optional
+    when: { kind: ref, field: oscoreK }
+    field:
+      id: oscoreKid
+      name: KID (Key ID)
+      type: { kind: bytes, n: { kind: ref, field: oscoreKidLen } }
+      category: identifier
+      doc: "Key Identifier. Present only when the k flag is 1 (normally in requests). An opaque byte string that identifies the sender's OSCORE security context to the recipient, allowing the recipient to locate the correct AEAD key and algorithm. The length oscoreKidLen is determined by the remaining option bytes after the Flags, Partial IV, and any KID Context. [RFC 8613 §6.1]"

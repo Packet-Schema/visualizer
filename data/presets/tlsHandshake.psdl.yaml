@@ -1,0 +1,153 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TLS Handshake
+rowBits: 32
+byteOrder: BE
+description: TLS Handshake Protocol common header and body (RFC 8446 §4). Every handshake message begins with a 1-byte HandshakeType followed by a 3-byte body length; the body that follows is dispatched by type. This preset covers all eight message types defined in TLS 1.3 — ClientHello(1), ServerHello(2), NewSessionTicket(4), EncryptedExtensions(8), Certificate(11), CertificateRequest(13), CertificateVerify(15), and Finished(20) — and provides an opaque-bytes frame for each so the body can be layered on top.
+body:
+  - id: handshakeType
+    name: Handshake Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "ClientHello"
+        2: "ServerHello"
+        4: "NewSessionTicket"
+        8: "EncryptedExtensions"
+        11: "Certificate"
+        13: "CertificateRequest"
+        15: "CertificateVerify"
+        20: "Finished"
+    category: type
+    doc: Identifies the specific handshake message type. One-byte field present at the head of every Handshake struct. Values 1–20 are assigned in RFC 8446 §4; all other values are reserved. [RFC 8446 §4]
+  - id: tlsHandshakeBodyLen
+    name: Length
+    type:
+      kind: int
+      bits: 24
+    category: length
+    doc: 24-bit big-endian length of the handshake message body that immediately follows this field, in bytes. Maximum value is 2^24-1 (~16 MiB); in practice bodies are much smaller. [RFC 8446 §4]
+  - kind: switch
+    id: tlsHandshakeBody
+    name: Handshake Body
+    on:
+      kind: ref
+      field: handshakeType
+    cases:
+      "1":
+        id: tlsHandshakeClientHello
+        name: ClientHello Body
+        fields:
+          - id: clientHelloBody
+            name: ClientHello (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: ClientHello message body. Contains legacy_version (2 B, frozen 0x0303), random (32 B), legacy_session_id (1 B length + up to 32 B), cipher_suites (2 B length + list of 2-byte codes), legacy_compression_methods (1 B length + 0x00), and extensions (2 B length + TLV list). [RFC 8446 §4.1.2]
+      "2":
+        id: tlsHandshakeServerHello
+        name: ServerHello Body
+        fields:
+          - id: serverHelloBody
+            name: ServerHello (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: ServerHello message body. Contains legacy_version (2 B, 0x0303), random (32 B), legacy_session_id_echo (1 B length + up to 32 B), cipher_suite (2 B), legacy_compression_method (1 B, 0x00), and extensions (2 B length + TLV list including supported_versions and key_share). [RFC 8446 §4.1.3]
+      "4":
+        id: tlsHandshakeNewSessionTicket
+        name: NewSessionTicket Body
+        fields:
+          - id: newSessionTicketBody
+            name: NewSessionTicket (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: NewSessionTicket message body. Sent by server after Finished to enable 0-RTT and session resumption. Contains ticket_lifetime (4 B), ticket_age_add (4 B), ticket_nonce (1 B length + nonce), ticket (2 B length + opaque bytes), and extensions (2 B length + TLV list). [RFC 8446 §4.6.1]
+      "8":
+        id: tlsHandshakeEncryptedExtensions
+        name: EncryptedExtensions Body
+        fields:
+          - id: encryptedExtensionsBody
+            name: EncryptedExtensions (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: EncryptedExtensions message body. First encrypted handshake message sent by the server; carries extensions that do not need to be available before keys are established (e.g. ALPN, max_fragment_length). Contains extensions (2 B length + TLV list). [RFC 8446 §4.3.1]
+      "11":
+        id: tlsHandshakeCertificate
+        name: Certificate Body
+        fields:
+          - id: certificateBody
+            name: Certificate (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: Certificate message body. Carries the endpoint's certificate chain. Contains certificate_request_context (1 B length + context bytes) and cert_list (4 B length + sequence of CertificateEntry, each with cert_data (3 B length + DER bytes) and extensions (2 B length + TLV list)). [RFC 8446 §4.4.2]
+      "13":
+        id: tlsHandshakeCertificateRequest
+        name: CertificateRequest Body
+        fields:
+          - id: certificateRequestBody
+            name: CertificateRequest (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: CertificateRequest message body. Sent by the server to request client authentication. Contains certificate_request_context (1 B length + context bytes) and extensions (2 B length + TLV list including signature_algorithms). [RFC 8446 §4.3.2]
+      "15":
+        id: tlsHandshakeCertificateVerify
+        name: CertificateVerify Body
+        fields:
+          - id: certificateVerifyBody
+            name: CertificateVerify (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: CertificateVerify message body. Proves possession of the private key corresponding to the certificate sent in the Certificate message. Contains algorithm (2 B SignatureScheme, e.g. 0x0804=rsa_pss_rsae_sha256) and signature (2 B length + opaque bytes). [RFC 8446 §4.4.3]
+      "20":
+        id: tlsHandshakeFinished
+        name: Finished Body
+        fields:
+          - id: finishedBody
+            name: Finished (opaque)
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: tlsHandshakeBodyLen
+            category: variable
+            doc: Finished message body. Final message of the TLS authentication block; its value is an HMAC over the entire handshake using the finished_key derived from the handshake traffic secret. Length equals the HMAC output size of the negotiated cipher suite hash (e.g. 32 B for SHA-256, 48 B for SHA-384). [RFC 8446 §4.4.4]
+    default:
+      id: tlsHandshakeUnknown
+      name: Unknown Handshake Body
+      fields:
+        - id: unknownHandshakeBody
+          name: Unknown Body (opaque)
+          type:
+            kind: bytes
+            n:
+              kind: ref
+              field: tlsHandshakeBodyLen
+          category: variable
+          doc: Opaque body for a HandshakeType not enumerated above. Treated as raw bytes of length indicated by the 24-bit Length field. Implementations MUST ignore unrecognised handshake message types if they appear in a legal context. [RFC 8446 §4]

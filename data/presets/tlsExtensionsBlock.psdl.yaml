@@ -40,6 +40,125 @@ body:
                       kind: ref
                       field: serverNameListLength
                   category: addressing
+            "5":
+              id: statusRequestExt
+              fields:
+                - id: extensionType
+                  name: extension_type=5
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: status_request extension (RFC 6066 §8) carrying a CertificateStatusRequest.
+                - id: statusRequestLength
+                  name: status_request length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 6066 §8).
+                - id: certificateStatusType
+                  name: CertificateStatusType
+                  type:
+                    kind: bits
+                    n: 8
+                  category: type
+                  doc: CertificateStatusType; 1 = ocsp (RFC 6066 §8).
+                - id: statusRequestBody
+                  name: responder_id_list + request_extensions
+                  type:
+                    kind: bytes
+                    n:
+                      kind: op
+                      op: "-"
+                      a:
+                        kind: ref
+                        field: statusRequestLength
+                      b:
+                        kind: lit
+                        value: 1
+                  category: payload-marker
+                  doc: OCSPStatusRequest body (responder_id_list and request_extensions) per RFC 6066 §8.
+            "11":
+              id: ecPointFormatsExt
+              fields:
+                - id: extensionType
+                  name: extension_type=11
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: ec_point_formats extension (RFC 8422 §5.1.2).
+                - id: ecPointFormatsExtLength
+                  name: ec_point_formats extension length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 8422 §5.1.2).
+                - id: ecPointFormatsListLength
+                  name: ec_point_format_list length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length in bytes of the ECPointFormat list (RFC 8422 §5.1.2).
+                - id: ecPointFormats
+                  name: ec_point_format_list
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: ecPointFormatsListLength
+                  category: type
+                  doc: Vector of ECPointFormat values; 0 = uncompressed (RFC 8422 §5.1.2).
+            "13":
+              id: signatureAlgorithmsExt
+              fields:
+                - id: extensionType
+                  name: extension_type=13
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: signature_algorithms extension (RFC 8446 §4.2.3).
+                - id: signatureAlgorithmsExtLength
+                  name: signature_algorithms extension length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 8446 §4.2.3).
+                - id: supportedSignatureAlgorithmsLength
+                  name: supported_signature_algorithms length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: Length in bytes of the SignatureScheme list (RFC 8446 §4.2.3).
+                - kind: repeat
+                  id: signatureSchemes
+                  name: supported_signature_algorithms
+                  category: type
+                  element:
+                    id: signatureSchemeEntry
+                    fields:
+                      - id: signatureScheme
+                        name: SignatureScheme
+                        type:
+                          kind: bits
+                          n: 16
+                        category: type
+                        doc: A SignatureScheme value, e.g. 0x0403 ecdsa_secp256r1_sha256 (RFC 8446 §4.2.3).
+                  count:
+                    kind: op
+                    op: "/"
+                    a:
+                      kind: ref
+                      field: supportedSignatureAlgorithmsLength
+                    b:
+                      kind: lit
+                      value: 2
             "16":
               id: alpnExt
               fields:
@@ -109,6 +228,252 @@ body:
                       kind: ref
                       field: clientSharesLength
                   category: identifier
+            "21":
+              id: paddingExt
+              fields:
+                - id: extensionType
+                  name: extension_type=21
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: padding extension (RFC 7685).
+                - id: paddingLength
+                  name: padding length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes; the padding payload that follows (RFC 7685).
+                - id: paddingZeros
+                  name: zeros
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: paddingLength
+                  category: reserved
+                  doc: All-zero padding octets; MUST be set to zero by senders (RFC 7685).
+            "23":
+              id: extendedMasterSecretExt
+              fields:
+                - id: extensionType
+                  name: extension_type=23
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: extended_master_secret extension (RFC 7627).
+                - id: extendedMasterSecretLength
+                  name: extended_master_secret length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length; always 0 for this extension (RFC 7627 §5.1).
+            "35":
+              id: sessionTicketExt
+              fields:
+                - id: extensionType
+                  name: extension_type=35
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: session_ticket (SessionTicket TLS) extension (RFC 5077).
+                - id: sessionTicketLength
+                  name: session_ticket length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes; the opaque ticket that follows (RFC 5077 §3.2).
+                - id: sessionTicket
+                  name: ticket
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: sessionTicketLength
+                  category: identifier
+                  doc: Opaque session ticket issued by the server (RFC 5077 §3.3).
+            "41":
+              id: preSharedKeyExt
+              fields:
+                - id: extensionType
+                  name: extension_type=41
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: pre_shared_key extension carrying an OfferedPsks struct (RFC 8446 §4.2.11).
+                - id: preSharedKeyLength
+                  name: pre_shared_key length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 8446 §4.2.11).
+                - id: pskIdentitiesLength
+                  name: identities length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: Length in bytes of the PskIdentity list (RFC 8446 §4.2.11).
+                - id: pskIdentities
+                  name: identities
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: pskIdentitiesLength
+                  category: identifier
+                  doc: Vector of PskIdentity entries (identity opaque<1..2^16-1> + obfuscated_ticket_age uint32) per RFC 8446 §4.2.11.
+                - id: pskBindersLength
+                  name: binders length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: Length in bytes of the PskBinderEntry list (RFC 8446 §4.2.11).
+                - id: pskBinders
+                  name: binders
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: pskBindersLength
+                  category: checksum
+                  doc: Vector of PskBinderEntry HMAC values binding the PSK to the handshake (RFC 8446 §4.2.11).
+            "42":
+              id: earlyDataExt
+              fields:
+                - id: extensionType
+                  name: extension_type=42
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: early_data extension (RFC 8446 §4.2.10).
+                - id: earlyDataLength
+                  name: early_data length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length; 0 in ClientHello/EncryptedExtensions, 4 in NewSessionTicket (RFC 8446 §4.2.10).
+                - kind: optional
+                  when:
+                    kind: ref
+                    field: earlyDataLength
+                  field:
+                    id: maxEarlyDataSize
+                    name: max_early_data_size
+                    type:
+                      kind: bits
+                      n: 32
+                    category: length
+                    doc: Maximum amount of 0-RTT data the client may send, present only in NewSessionTicket (RFC 8446 §4.2.10).
+            "44":
+              id: cookieExt
+              fields:
+                - id: extensionType
+                  name: extension_type=44
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: cookie extension (RFC 8446 §4.2.2).
+                - id: cookieExtLength
+                  name: cookie extension length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 8446 §4.2.2).
+                - id: cookieLength
+                  name: cookie length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: Length in bytes of the cookie that follows (RFC 8446 §4.2.2).
+                - id: cookie
+                  name: cookie
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: cookieLength
+                  category: identifier
+                  doc: Opaque cookie echoed from a HelloRetryRequest (RFC 8446 §4.2.2).
+            "45":
+              id: pskKeyExchangeModesExt
+              fields:
+                - id: extensionType
+                  name: extension_type=45
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: psk_key_exchange_modes extension (RFC 8446 §4.2.9).
+                - id: pskKeyExchangeModesExtLength
+                  name: psk_key_exchange_modes extension length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 8446 §4.2.9).
+                - id: kexModesLength
+                  name: ke_modes length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length in bytes of the PskKeyExchangeMode list (RFC 8446 §4.2.9).
+                - id: kexModes
+                  name: ke_modes
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: kexModesLength
+                  category: type
+                  doc: Vector of PskKeyExchangeMode values; 0 = psk_ke, 1 = psk_dhe_ke (RFC 8446 §4.2.9).
+            "65281":
+              id: renegotiationInfoExt
+              fields:
+                - id: extensionType
+                  name: extension_type=65281
+                  type:
+                    kind: bits
+                    n: 16
+                  category: type
+                  doc: renegotiation_info extension (RFC 5746 §3.2).
+                - id: renegotiationInfoLength
+                  name: renegotiation_info length
+                  type:
+                    kind: bits
+                    n: 16
+                  category: length
+                  doc: extension_data length in bytes (RFC 5746 §3.2).
+                - id: renegotiatedConnectionLength
+                  name: renegotiated_connection length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length in bytes of the renegotiated_connection field; 0 on initial handshake (RFC 5746 §3.2).
+                - id: renegotiatedConnection
+                  name: renegotiated_connection
+                  type:
+                    kind: bytes
+                    n:
+                      kind: ref
+                      field: renegotiatedConnectionLength
+                  category: checksum
+                  doc: Saved client_verify_data (and server_verify_data) from the prior handshake (RFC 5746 §3.2).
     count:
       kind: ref
       field: tlsExtensionsBlock_extensions_count

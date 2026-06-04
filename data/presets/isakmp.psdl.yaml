@@ -1,0 +1,169 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ISAKMP
+rowBits: 32
+byteOrder: BE
+description: "Internet Security Association and Key Management Protocol (ISAKMP) header and generic payload chain (RFC 2408). The fixed 28-byte ISAKMP Header carries two 8-byte cookies (Initiator Cookie and Responder Cookie) that together form the ISAKMP Security Association Identifier (ISAK_SAI) and uniquely identify the Security Association (SA); these were called 'cookies' to provide weak replay protection before ISAKMP proper. Following fields are: Next Payload (first payload type in the chain), Major/Minor Version (1.0 for IKEv1), Exchange Type identifying the ISAKMP exchange (e.g. 2=Identity Protection / Main Mode, 4=Aggressive, 5=Informational), Flags byte (Encryption, Commit, Authentication-Only), Message ID (random 32-bit value distinguishing simultaneous exchanges), and total Length. After the header zero or more Generic Payloads follow, each with a common 4-byte Generic Payload Header (Next Payload, Reserved, Payload Length) and opaque payload data. Note: IKEv2 (RFC 7296) replaces ISAKMP entirely — it redefines the header (drops Responder Cookie for SPIr, replaces Exchange Type coding, adds Response/Version/Initiator flags), changes payload type numbering, and mandates encrypted payloads; IKEv1 and IKEv2 are not interoperable at the wire level."
+
+body:
+  - id: isakmpInitiatorCookie
+    name: Initiator Cookie
+    type: { kind: bits, n: 64 }
+    category: identifier
+    doc: "64-bit Initiator Cookie (ICOOKIE). Chosen by the initiating entity to uniquely identify this ISAKMP negotiation. Together with the Responder Cookie it forms the ISAK_SAI that identifies the Security Association throughout its lifetime. Must be chosen pseudo-randomly; MUST NOT be zero. In IKEv2 (RFC 7296) this field is redefined as the Initiator SPI (Security Parameter Index). [RFC 2408 §3.1]"
+
+  - id: isakmpResponderCookie
+    name: Responder Cookie
+    type: { kind: bits, n: 64 }
+    category: identifier
+    doc: "64-bit Responder Cookie (RCOOKIE). Chosen by the responding entity; set to zero in the first message of any exchange because the responder has not yet generated its cookie. Together with the Initiator Cookie it forms the ISAK_SAI. In IKEv2 (RFC 7296) this field is redefined as the Responder SPI. [RFC 2408 §3.1]"
+
+  - id: isakmpNextPayload
+    name: Next Payload
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "None (last payload)"
+        1: "Security Association (SA)"
+        2: "Proposal"
+        3: "Transform"
+        4: "Key Exchange (KE)"
+        5: "Identification (ID)"
+        6: "Certificate (CERT)"
+        7: "Certificate Request (CR)"
+        8: "Hash"
+        9: "Signature (SIG)"
+        10: "Nonce (NONCE)"
+        11: "Notification (N)"
+        12: "Delete (D)"
+        13: "Vendor ID (VID)"
+    category: type
+    doc: "Type of the first ISAKMP payload immediately following this header (0 = no payload follows). Each payload's own Generic Header also carries a Next Payload field forming a singly-linked payload chain; the chain ends when Next Payload = 0. IKEv2 (RFC 7296) renumbers many payload types (e.g. SA=33, KE=34, IDi=35) and adds new ones; IKEv1 and IKEv2 payload codes are not compatible. [RFC 2408 §3.1]"
+
+  - kind: group
+    id: isakmpVersion
+    name: Version
+    children:
+      - id: isakmpMajorVersion
+        name: Maj
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 1
+        doc: "Major version of the ISAKMP protocol. MUST be 1 for IKEv1 / ISAKMP as defined in RFC 2408. A peer receiving a higher Major Version MUST reply with an INVALID-MAJOR-VERSION notification and discard the message. IKEv2 (RFC 7296) sets Major Version to 2. [RFC 2408 §3.1]"
+      - id: isakmpMinorVersion
+        name: Min
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 0
+        doc: "Minor version of the ISAKMP protocol. MUST be 0 for the base RFC 2408 specification. Implementations MUST ignore the minor version number of received packets — it is retained purely for informational negotiation. [RFC 2408 §3.1]"
+
+  - id: isakmpExchangeType
+    name: Exchange Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "None"
+        1: "Base"
+        2: "Identity Protection (Main Mode)"
+        3: "Authentication Only"
+        4: "Aggressive"
+        5: "Informational"
+        32: "Quick Mode (DOI-specific)"
+        33: "New Group Mode (DOI-specific)"
+    category: type
+    doc: "Identifies the type of exchange being used, which determines the message and payload ordering for this negotiation. 2=Identity Protection (Main Mode) provides identity protection via six messages; 4=Aggressive compresses the handshake to three messages at the cost of identity exposure; 5=Informational carries notification or deletion payloads outside of a negotiation. Values 32–255 are DOI-specific (e.g. IPsec DOI RFC 2407 defines 32=Quick Mode and 33=New Group Mode). IKEv2 (RFC 7296) uses a completely different exchange numbering (IKE_SA_INIT=34, IKE_AUTH=35, CREATE_CHILD_SA=36, INFORMATIONAL=37). [RFC 2408 §3.1]"
+
+  - kind: group
+    id: isakmpFlags
+    name: Flags
+    children:
+      - id: isakmpFlagEncryption
+        name: E
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Encryption (E) flag. When set, all payloads following the ISAKMP header are encrypted using the negotiated encryption algorithm and key. The encryption covers everything after the fixed 28-byte header. In IKEv2 (RFC 7296) this bit position is replaced by the Response (R) flag and encryption is mandatory for all payloads after IKE_SA_INIT. [RFC 2408 §3.1]"
+      - id: isakmpFlagCommit
+        name: C
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Commit (C) flag. Used to ensure that encrypted material (e.g. a session key) is not used before the SA that protects it has been fully established. When set, the receiver must send a CONNECTED notification before the sender may use the SA. [RFC 2408 §3.1]"
+      - id: isakmpFlagAuthOnly
+        name: A
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Authentication Only (A) flag. Indicates that no encryption is performed but authentication/integrity protection is applied. Defined for use with the Authentication Only exchange type (value 3). Not present in IKEv2 (RFC 7296). [RFC 2408 §3.1]"
+      - id: isakmpFlagReserved
+        name: Reserved
+        type: { kind: int, bits: 5 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bits (5 bits). MUST be set to zero by the sender and MUST be ignored by the receiver. [RFC 2408 §3.1]"
+
+  - id: isakmpMessageId
+    name: Message ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "A pseudo-random 32-bit value used to uniquely identify the protocol state during the ISAKMP negotiation. Set to zero for Phase 1 (ISAKMP SA establishment) exchanges. For Phase 2 (e.g. Quick Mode) each simultaneous negotiation uses a distinct, randomly chosen non-zero Message ID to allow multiplexing multiple Quick Mode exchanges over a single Phase 1 SA. [RFC 2408 §3.1]"
+
+  - id: isakmpLength
+    name: Length
+    type: { kind: int, bits: 32 }
+    category: length
+    doc: "Total length of the ISAKMP message in octets, including the 28-byte fixed header and all following payloads (encrypted or not). The receiver uses this field to determine the end of the ISAKMP message within the UDP datagram (ISAKMP uses UDP port 500; NAT-T uses port 4500 per RFC 3947). [RFC 2408 §3.1]"
+
+  - kind: repeat
+    id: isakmpPayloads
+    name: Generic Payloads
+    category: variable
+    element:
+      id: isakmpPayloadEntry
+      fields:
+        - id: isakmpPayloadNextPayload
+          name: Next Payload
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              0: "None (last payload)"
+              1: "Security Association (SA)"
+              2: "Proposal"
+              3: "Transform"
+              4: "Key Exchange (KE)"
+              5: "Identification (ID)"
+              6: "Certificate (CERT)"
+              7: "Certificate Request (CR)"
+              8: "Hash"
+              9: "Signature (SIG)"
+              10: "Nonce (NONCE)"
+              11: "Notification (N)"
+              12: "Delete (D)"
+              13: "Vendor ID (VID)"
+          category: type
+          doc: "Type of the NEXT payload in the chain (0 = this is the last payload). All ISAKMP payloads are linked via this field, forming a singly-linked list. The first element's type is given by the ISAKMP Header's Next Payload field. IKEv2 (RFC 7296) uses different type codes. [RFC 2408 §3.2]"
+        - id: isakmpPayloadReserved
+          name: Reserved
+          type: { kind: int, bits: 8 }
+          category: reserved
+          defaultValue: 0
+          doc: "Reserved byte in the Generic Payload Header. MUST be set to zero by the sender and MUST be ignored by the receiver. [RFC 2408 §3.2]"
+        - id: isakmpPayloadLen
+          name: Payload Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Total length of this payload in octets, including this 4-byte Generic Payload Header and the payload data that follows. The minimum value is 4 (header only, zero-length data). The receiver advances isakmpPayloadLen - 4 bytes to reach the next payload in the chain. [RFC 2408 §3.2]"
+        - id: isakmpPayloadData
+          name: Payload Data
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: isakmpPayloadLen }
+              b: { kind: lit, value: 4 }
+          category: payload-marker
+          doc: "Opaque payload body, exactly (Payload Length - 4) bytes. Internal structure depends on the payload type identified by the preceding Next Payload field: SA payloads carry DOI, Situation, and nested Proposal/Transform sub-payloads; KE payloads carry a Diffie-Hellman public value; Hash/Signature payloads carry authentication data; Nonce payloads carry random data for freshness. When the Encryption (E) flag is set in the ISAKMP header, the payload data in all payloads is the ciphertext, and the generic header fields above are still in cleartext. [RFC 2408 §3.2–§3.15]"
+    count: { kind: ref, field: isakmpPayloadCount }

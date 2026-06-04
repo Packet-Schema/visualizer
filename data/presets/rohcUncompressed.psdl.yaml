@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ROHC Uncompressed
+rowBits: 32
+byteOrder: BE
+description: "Robust Header Compression (ROHC) Uncompressed profile packet (RFC 5795). ROHC is a framework for compressing headers of IP and upper-layer protocols over links with limited bandwidth. Profile 0x0000 (Uncompressed) passes packets through without compression, making it a baseline and fallback profile. A ROHC packet stream may begin with optional Padding octets (0xE0), an optional Add-CID octet for small CIDs (0x00–0x0F prefix nibble 0), followed by a Packet Type Indicator byte, a Profile byte identifying the compression profile, a CRC byte for integrity, and the uncompressed headers payload. The rohcPaddingPresent and rohcAddCidPresent control flags must be provided externally to enable the optional leading fields."
+
+body:
+  - kind: optional
+    when: { kind: ref, field: rohcPaddingPresent }
+    field:
+      id: rohcPaddingOctets
+      name: Padding Octets
+      type: { kind: bytes, n: { kind: ref, field: rohcPaddingLen } }
+      category: reserved
+      doc: "Zero or more Padding octets, each with value 0xE0, prepended to the ROHC packet to satisfy alignment requirements of the underlying link layer. The number of padding octets is conveyed externally via rohcPaddingLen. Padding MUST be stripped before parsing the remainder of the packet. [RFC 5795 §5.2.6]"
+
+  - kind: optional
+    when: { kind: ref, field: rohcAddCidPresent }
+    field:
+      id: rohcAddCid
+      name: Add-CID Octet
+      type: { kind: int, bits: 8 }
+      category: identifier
+      doc: "Add-CID octet encoding a small CID (0–15) for the channel on which this packet is sent. The upper nibble is 0xE (1110b) and the lower nibble carries the CID value. Used only when the ROHC channel is configured for small CIDs (1 byte); for large CIDs the CID is carried inside the packet header instead. [RFC 5795 §5.2.1]"
+
+  - id: rohcPacketType
+    name: Packet Type Indicator
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        253: "IR (Initialisation and Refresh)"
+        252: "IR-DYN (Dynamic Chain Refresh)"
+        0: "Normal (Uncompressed)"
+    category: type
+    doc: "ROHC packet type byte indicating the packet's role in the compression context lifecycle. 0xFD (253)=IR packet carrying full static and dynamic header chains; 0xFC (252)=IR-DYN packet carrying only the dynamic chain; 0x00=Normal packet carrying uncompressed headers for profile 0x0000. [RFC 5795 §5.2.2 §5.2.3 §5.7.1]"
+
+  - id: rohcProfile
+    name: Profile
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "Uncompressed (0x0000)"
+        1: "RTP/UDP/IP"
+        2: "UDP/IP"
+        3: "ESP/IP"
+        4: "IP"
+    category: identifier
+    doc: "ROHC compression profile identifier (low byte of the 16-bit profile number). Profile 0x00 corresponds to the Uncompressed profile (0x0000), which transfers packets without header compression and serves as a universal fallback. Other profiles indicate the type of header chain being compressed. [RFC 5795 §8 Table 1]"
+
+  - id: rohcCrc
+    name: CRC
+    type: { kind: int, bits: 8 }
+    category: checksum
+    doc: "8-bit CRC computed over the ROHC packet header fields (Packet Type, Profile, and context-dependent fields) using the CRC-8 polynomial 0x07 (x^8 + x^2 + x + 1). Protects the header chain against transmission errors that could corrupt decompressor state. [RFC 5795 §5.9]"
+
+  - id: rohcUncompressedHeaders
+    name: Uncompressed Headers
+    type: { kind: bytes, n: { kind: ref, field: rohcHeaderBytes } }
+    category: payload-marker
+    doc: "Verbatim uncompressed protocol headers (e.g., IP + UDP + RTP) passed through without modification under the Uncompressed profile (0x0000). The byte count is provided externally via rohcHeaderBytes and represents all header octets up to but not including the payload. [RFC 5795 §5.7.1]"

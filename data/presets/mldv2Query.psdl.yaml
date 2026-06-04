@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MLDv2 Membership Query
+rowBits: 32
+byteOrder: BE
+description: MLDv2 Membership Query message (RFC 3810 §5.1). Sent by a multicast router to discover which multicast groups have listeners on the attached IPv6 link. A General Query (Multicast Address = ::) asks about all groups; a Multicast-Address-Specific Query targets one group; a Multicast-Address-and-Source-Specific Query additionally specifies a source list. Carried as ICMPv6 (Next Header = 58) with Type = 130, IPv6 Hop Limit = 1, and the Router Alert Hop-by-Hop option, addressed to ff02::1 (All Nodes) for General Queries or to the queried multicast address otherwise.
+body:
+  - id: type
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 130
+    doc: ICMPv6 message type. 130 = Multicast Listener Query (this preset). 131 = Multicast Listener Report (MLDv1). 132 = Multicast Listener Done (MLDv1). 143 = Version 2 Multicast Listener Report (MLDv2). [RFC 3810 §5.1][RFC 4443 §2.1]
+  - id: code
+    name: Code
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: ICMPv6 Code. MUST be zero on transmission; ignored on receipt for MLD messages. [RFC 3810 §5.1]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: 16-bit one's-complement checksum over the MLD message plus an IPv6 pseudo-header (source address, destination address, upper-layer packet length, next header = 58). MUST be verified by receivers; messages with invalid checksums MUST be silently discarded. [RFC 3810 §5.1][RFC 4443 §2.3]
+  - id: maxRespCode
+    name: Max Resp Code
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Maximum Response Code — specifies the maximum time (in milliseconds) allowed before sending a responding Report. If Max Resp Code < 32768 it is the literal response time in milliseconds; otherwise it is a floating-point value encoded as 1-bit exp flag, 3-bit mantissa, 11-bit fraction (Exp/Mant format). Zero is used in MLDv1 backwards-compatibility contexts. Typical value: 10000 (= 10 seconds). [RFC 3810 §5.1.3]"
+  - id: reserved
+    name: Reserved
+    type: { kind: bits, n: 16 }
+    category: reserved
+    doc: Reserved field. MUST be zero on transmission; ignored on receipt. [RFC 3810 §5.1]
+  - id: multicastAddress
+    name: Multicast Address
+    type: { kind: bits, n: 128 }
+    category: addressing
+    doc: "IPv6 multicast address being queried. Set to :: (all zeros) in a General Query (queries all multicast groups). Set to the specific multicast address in a Multicast-Address-Specific or Multicast-Address-and-Source-Specific Query. MUST be a valid IPv6 multicast address (prefix ff00::/8) in non-General Queries. [RFC 3810 §5.1.4]"
+  - kind: group
+    id: flagsByte
+    name: Flags / QRV / QQIC
+    children:
+      - id: resv
+        name: Resv
+        type: { kind: bits, n: 4 }
+        category: reserved
+        doc: Reserved. MUST be zero on transmission; ignored on receipt. [RFC 3810 §5.1.5]
+      - id: s
+        name: S
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Suppress Router-Side Processing flag. When set to 1, multicast routers receiving this Query MUST NOT update their timers upon processing the Query, even if the querier's parameters differ from the router's current settings — prevents a low-value query from prematurely aging out multicast listener state. [RFC 3810 §5.1.5]
+      - id: qrv
+        name: QRV
+        type: { kind: bits, n: 3 }
+        category: identifier
+        doc: Querier's Robustness Variable. Encodes the robustness variable used by the querier, which controls how many times protocol messages are retransmitted to compensate for packet loss. If non-zero, receivers update their Robustness Variable to this value. Zero means the querier uses the default (typically 2). [RFC 3810 §5.1.6]
+  - id: qqic
+    name: QQIC
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Querier's Query Interval Code. Encodes the Query Interval (in seconds) used by the querier. If QQIC < 128 the interval is QQIC seconds; otherwise it is floating-point (same Exp/Mant encoding as Max Resp Code but 8-bit). Receivers update their Other Querier Present Interval based on this value. Typical default: 125 seconds. [RFC 3810 §5.1.7]"
+  - id: mldv2SrcCount
+    name: Number of Sources
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: The number of unicast IPv6 source addresses present in a Multicast-Address-and-Source-Specific Query. 0 for General Queries and Multicast-Address-Specific Queries. The source list that follows contains exactly this many 16-byte IPv6 unicast addresses. [RFC 3810 §5.1.8]
+  - kind: repeat
+    id: sourceList
+    name: Source List
+    category: variable
+    doc: List of unicast IPv6 source addresses for a Multicast-Address-and-Source-Specific Query. Empty (zero entries) for General Queries and Multicast-Address-Specific Queries. Each address is 16 bytes in network byte order. [RFC 3810 §5.1.9]
+    element:
+      id: sourceRecord
+      fields:
+        - id: sourceAddress
+          name: Source Address
+          type: { kind: bits, n: 128 }
+          category: addressing
+          doc: A unicast IPv6 source address in the source list. The receiving node MUST send a Multicast Listener Report if it is listening to traffic from this source for the specified multicast address. [RFC 3810 §5.1.9]
+    count: { kind: ref, field: mldv2SrcCount }

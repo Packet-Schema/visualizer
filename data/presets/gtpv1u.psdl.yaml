@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: GTP-U v1
+rowBits: 32
+byteOrder: BE
+description: "GPRS Tunnelling Protocol User Plane (GTP-U) version 1 header (3GPP TS 29.281). Used in mobile core networks to carry user-plane IP packets between eNodeB/gNodeB and the S-GW/UPF over UDP port 2152. The mandatory 8-byte header — flags byte (Version=1, PT, Reserved, E, S, PN), Message Type, Length, and TEID — is optionally followed by a 4-byte extension block (Sequence Number, N-PDU Number, Next Extension Header Type) when any of the E, S, or PN flag bits is set. A TEID (Tunnel Endpoint ID) of 32 bits uniquely identifies the GTP tunnel at the receiving entity. G-PDU (Message Type 0xFF) carries an encapsulated T-PDU (typically IPv4/IPv6) as the tunnel payload."
+
+body:
+  - kind: group
+    id: gtpFlags
+    name: Flags
+    children:
+      - id: gtpVersion
+        name: Version
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 1
+        doc: "GTP version. MUST be 1 (binary 001) for GTP-U v1. Receivers MUST discard packets with Version != 1. [3GPP TS 29.281 §5.1]"
+      - id: gtpPT
+        name: PT
+        type:
+          kind: enum
+          bits: 1
+          variants:
+            0: "GTP' (charging)"
+            1: "GTP (user plane)"
+        category: type
+        defaultValue: 1
+        doc: "Protocol Type flag. 1 indicates GTP (user-plane or control-plane); 0 indicates GTP' (charging). For GTP-U packets PT MUST be 1. [3GPP TS 29.281 §5.1]"
+      - id: gtpReserved
+        name: Reserved
+        type: { kind: int, bits: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit. MUST be set to 0 by the sender and ignored by the receiver. [3GPP TS 29.281 §5.1]"
+      - id: gtpE
+        name: E
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Extension Header flag. Set to 1 when the optional fields (Sequence Number, N-PDU Number, Next Extension Header Type) are present and the Next Extension Header Type is non-zero. When E=1, S, and PN are all 0 the optional 4-byte block is still present with a Next Extension Header Type of 0x00 (No More Extension Headers). [3GPP TS 29.281 §5.1]"
+      - id: gtpS
+        name: S
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Sequence Number flag. Set to 1 when the Sequence Number field in the optional block carries a meaningful value. Even when S=0 the optional 4-byte block is present if E=1 or PN=1. [3GPP TS 29.281 §5.1]"
+      - id: gtpPN
+        name: PN
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "N-PDU Number flag. Set to 1 when the N-PDU Number field in the optional block carries a meaningful value. Even when PN=0 the optional 4-byte block is present if E=1 or S=1. [3GPP TS 29.281 §5.1]"
+
+  - id: gtpMessageType
+    name: Message Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Echo Request"
+        2: "Echo Response"
+        26: "Error Indication"
+        31: "Supported Extension Headers Notification"
+        255: "G-PDU (T-PDU)"
+    category: type
+    defaultValue: 255
+    doc: "Message Type octet identifying the GTP-U message. 0xFF (255) = G-PDU, which carries an encapsulated T-PDU (user data packet, typically IPv4 or IPv6). Other values — Echo Request (1), Echo Response (2), Error Indication (26), Supported Extension Headers Notification (31) — are used for path management. [3GPP TS 29.281 §5.1 / Table 5.2.1-3]"
+
+  - id: gtpLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 0
+    doc: "Total length in bytes of the GTP packet excluding the mandatory 8-byte header (Version through TEID). The value therefore covers the optional 4-byte extension block (when present) plus the T-PDU payload. [3GPP TS 29.281 §5.1]"
+
+  - id: gtpTEID
+    name: TEID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    defaultValue: 0
+    doc: "Tunnel Endpoint Identifier. A 32-bit value that unambiguously identifies the GTP tunnel at the receiving end. Assigned during tunnel setup (e.g. via GTP-C Create Session or NG-AP PDU Session messages) and used by the receiving entity to demultiplex incoming G-PDU packets to the correct bearer/PDU session. [3GPP TS 29.281 §5.1]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpOptPresent }
+    field:
+      id: gtpSeqNum
+      name: Sequence Number
+      type: { kind: int, bits: 16 }
+      category: identifier
+      doc: "Sequence Number. Present when any of E, S, or PN flags is set (gtpOptPresent). Used for ordered delivery and duplicate detection when S=1. When S=0 this field SHOULD be set to 0 by the sender and ignored by the receiver. [3GPP TS 29.281 §5.1]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpOptPresent }
+    field:
+      id: gtpNPDUNumber
+      name: N-PDU Number
+      type: { kind: int, bits: 8 }
+      category: identifier
+      doc: "N-PDU Number. Present when any of E, S, or PN flags is set (gtpOptPresent). Carries the SNDCP N-PDU sequence number when PN=1 (used in 2G/3G SGSN-GGSN path for in-order delivery). When PN=0 this field SHOULD be set to 0 and ignored. [3GPP TS 29.281 §5.1]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpOptPresent }
+    field:
+      id: gtpNextExtHdrType
+      name: Next Ext Header Type
+      type:
+        kind: enum
+        bits: 8
+        variants:
+          0: "No More Extension Headers"
+          1: "Reserved"
+          32: "UDP Port"
+          133: "PDU Session Container"
+          192: "Long PDCP PDU Number (DL)"
+          193: "Long PDCP PDU Number (UL)"
+          194: "NR RAN Container"
+      category: type
+      doc: "Next Extension Header Type. Present when any of E, S, or PN flags is set (gtpOptPresent). 0x00 = no extension header follows. Non-zero values indicate the type of the first GTP Extension Header that immediately follows this field; each extension header in turn carries its own Next Extension Header Type. Common values: 0x85=PDU Session Container (5G UP, TS 38.415), 0xC0/0xC1=Long PDCP PDU Number, 0x20=UDP Port. [3GPP TS 29.281 §5.2]"

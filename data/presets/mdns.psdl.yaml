@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: mDNS Header
+rowBits: 32
+byteOrder: BE
+description: "Multicast DNS (mDNS) message header (RFC 6762). Wire format is identical to the 12-byte DNS header (RFC 1035 §4.1.1), but mDNS operates over multicast — IPv4 224.0.0.251 or IPv6 ff02::fb — on UDP port 5353. It enables zero-configuration link-local name resolution (the .local pseudo-TLD) without a central DNS server. Key differences from unicast DNS: the ID field SHOULD be zero in queries, the AA (Authoritative Answer) flag is set in responses to indicate cache-flush eligibility of included records, RD and RA are normally zero, and the top bit (cache-flush bit) of the CLASS field in resource records signals that cached entries for that name/type should be flushed before caching the new record."
+
+body:
+  - id: mdnsId
+    name: Identification
+    type: { kind: bits, n: 16 }
+    category: identifier
+    doc: "16-bit message ID. In mDNS queries this field SHOULD be set to zero; in responses it is copied from the query. Implementations MUST silently ignore any mDNS message whose ID is non-zero in a query context. [RFC 6762 §18.1]"
+
+  - kind: group
+    id: mdnsFlags
+    name: Flags
+    children:
+      - id: mdnsFlagsQr
+        name: QR
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Query/Response — 0 = the message is an mDNS query, 1 = the message is an mDNS response. Responses are sent to the multicast group so all nodes on the link may cache the answer. [RFC 6762 §18.2]"
+      - id: mdnsFlagsOpcode
+        name: Opcode
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Operation code. MUST be 0 (QUERY) for standard mDNS messages; a message with any other Opcode MUST be silently ignored. Values mirror DNS: 0=QUERY, 1=IQUERY (obsolete), 2=STATUS. [RFC 6762 §18.3, RFC 1035 §4.1.1]"
+      - id: mdnsFlagsAa
+        name: AA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Authoritative Answer. In mDNS responses this bit MUST be set to 1, indicating the sender is the authority for the records it is announcing. A set AA bit also implies that the cache-flush bit in each RR CLASS field may be honored by receivers. [RFC 6762 §18.4]"
+      - id: mdnsFlagsTc
+        name: TC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "TrunCation. Set to 1 when the response is truncated and more records are available; the remaining records will be sent as additional Known-Answer packets shortly after. Unlike unicast DNS, TCP fallback is not used for mDNS truncation. [RFC 6762 §18.5]"
+      - id: mdnsFlagsRd
+        name: RD
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Recursion Desired. MUST be zero in mDNS messages; mDNS does not support recursive resolution — every node is its own authoritative responder for its own names. [RFC 6762 §18.6]"
+      - id: mdnsFlagsRa
+        name: RA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Recursion Available. MUST be zero in mDNS messages; mDNS resolvers do not provide recursive resolution service. [RFC 6762 §18.7]"
+      - id: mdnsFlagsZ
+        name: Z
+        type: { kind: bits, n: 3 }
+        category: reserved
+        doc: "Reserved bits — MUST be zero on transmission and MUST be ignored on reception. Correspond to the DNS Z/AD/CD bits; DNSSEC semantics do not apply to mDNS. [RFC 6762 §18.8, RFC 1035 §4.1.1]"
+      - id: mdnsFlagsRcode
+        name: RCODE
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Response Code. MUST be zero in mDNS messages; a non-zero RCODE has no defined meaning in mDNS and such messages MUST be silently ignored. Values mirror DNS: 0=NOERROR, 3=NXDOMAIN, etc. [RFC 6762 §18.9, RFC 1035 §4.1.1]"
+
+  - id: mdnsQdCount
+    name: QDCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of question entries in the Question section. In mDNS queries this is typically 1; responses MAY include questions to allow receivers to suppress duplicate answers (Known-Answer Suppression). [RFC 6762 §6, §18.10]"
+
+  - id: mdnsAnCount
+    name: ANCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of resource records in the Answer section. In mDNS responses each RR CLASS field carries a cache-flush bit (top bit) to indicate stale entries for that name/type should be removed from caches. [RFC 6762 §11.3, §18.11]"
+
+  - id: mdnsNsCount
+    name: NSCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of records in the Authority section. In mDNS this section is used during Probing (conflict resolution): a host announces the records it intends to claim so that simultaneous probers may detect and resolve conflicts before committing to a name. [RFC 6762 §8.2, §18.12]"
+
+  - id: mdnsArCount
+    name: ARCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of records in the Additional section. mDNS responders use this section for Additionals — records the querier is likely to need next (e.g. address records alongside a PTR answer for service discovery), reducing subsequent query round-trips. [RFC 6762 §11, §18.13]"

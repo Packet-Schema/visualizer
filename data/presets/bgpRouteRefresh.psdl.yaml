@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-4 ROUTE-REFRESH Message
+rowBits: 32
+byteOrder: BE
+description: >-
+  BGP-4 ROUTE-REFRESH message (RFC 2918) — sent by a BGP speaker to request its peer to re-advertise routes for the specified Address Family Identifier (AFI) and Subsequent Address Family Identifier (SAFI). Consists of the 19-byte BGP Common Header (§4.1 of RFC 4271) followed by a 4-byte body: AFI (2 B) + Reserved (1 B) + SAFI (1 B). Total fixed length is always 23 octets. RFC 7313 extends this mechanism with Enhanced Route Refresh (Capability Code 70) to add begin/end-of-RIB ORR markers using the Reserved byte as a subtype field.
+body:
+  - kind: group
+    id: bgpCommonHeader
+    name: BGP Common Header
+    children:
+      - id: bgpMarker
+        name: Marker
+        type: { kind: bits, n: 128 }
+        category: identifier
+        doc: 16 octets. Must be set to all ones (0xFFFF…FFFF) on transmission. Used for message boundary synchronisation in the TCP byte stream; historically reserved for optional authentication, but in BGP-4 the all-ones value is mandatory. [RFC 4271 §4.1]
+      - id: bgpLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        defaultValue: 23
+        doc: Total length of the BGP message in octets, including this 19-byte Common Header. For ROUTE-REFRESH this field is always 23 (19-byte header + 4-byte body). Must not exceed 4096. [RFC 4271 §4.1; RFC 2918 §3]
+      - id: bgpType
+        name: Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 5
+        doc: BGP message type. 1 = OPEN, 2 = UPDATE, 3 = NOTIFICATION, 4 = KEEPALIVE, 5 = ROUTE-REFRESH (this preset). A BGP speaker MUST NOT send ROUTE-REFRESH unless the peer has advertised the Route Refresh capability (Capability Code 2) in its OPEN message. [RFC 2918 §3; RFC 4271 §4.1]
+  - id: afi
+    name: Address Family Identifier
+    type: { kind: int, bits: 16 }
+    category: type
+    doc: Address Family Identifier (AFI) of the address family for which the sender requests route re-advertisement. Defined values include 1 = IPv4, 2 = IPv6, 25 = L2VPN, etc. Upon receipt, the peer should re-send Adj-RIB-Out for all routes in the specified AFI/SAFI. [RFC 2918 §3; IANA AFI registry]
+  - id: reserved
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: >-
+      Reserved. Must be set to zero on transmission and ignored on receipt per RFC 2918. RFC 7313 (Enhanced Route Refresh) repurposes this byte as a subtype field to signal ORR markers: 0 = normal Route Refresh request, 1 = Demarcation of the beginning of a route refresh (BoRR), 2 = Demarcation of the ending of a route refresh (EoRR). [RFC 2918 §3; RFC 7313 §2]
+  - id: safi
+    name: Subsequent Address Family Identifier
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: Subsequent Address Family Identifier (SAFI) qualifying the address family. Together with AFI it identifies the specific NLRI type for which route re-advertisement is requested. Defined values include 1 = unicast, 2 = multicast, 4 = MPLS-labeled unicast, 128 = MPLS-labeled VPN, etc. [RFC 2918 §3; IANA SAFI registry]

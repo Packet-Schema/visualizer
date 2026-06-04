@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TLS Certificate
+rowBits: 32
+byteOrder: BE
+description: "TLS 1.3 Certificate handshake message (RFC 8446 §4.4.2). Sent by both server (always) and client (when requested). Begins with a Handshake header (Type=11, 24-bit Length), followed by a certificate_request_context (echo of the context from CertificateRequest or empty for server), then a cert_list: a sequence of CertificateEntry structs each holding a DER-encoded X.509 certificate and a per-certificate extensions block. The cert_list forms the certificate chain — leaf first, then intermediates up to (but not including) the trust anchor."
+body:
+  - id: handshakeType
+    name: Handshake Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        11: "Certificate"
+    category: type
+    doc: Handshake message type — fixed value 11 (0x0B) for the Certificate message. Identifies this Handshake struct body as a certificate chain payload. [RFC 8446 §4, §4.4.2]
+  - id: handshakeLength
+    name: Handshake Length
+    type:
+      kind: int
+      bits: 24
+    category: length
+    doc: Total length in bytes of the Certificate message body that follows this field (from certificate_request_context_length through the end of cert_list). 24-bit big-endian integer per TLS presentation language. [RFC 8446 §4]
+  - id: tlsCertCtxLen
+    name: certificate_request_context Length
+    type:
+      kind: int
+      bits: 8
+    category: length
+    doc: Length in bytes of the certificate_request_context field that follows. Zero when the Certificate message is sent by the server spontaneously; echoes the context from CertificateRequest when sent in response to a client authentication request. [RFC 8446 §4.4.2]
+  - id: tlsCertCtx
+    name: certificate_request_context
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: tlsCertCtxLen
+    category: variable
+    doc: Opaque context value copied verbatim from the CertificateRequest.certificate_request_context field. Empty (zero bytes) in the server Certificate message. Allows the client to associate a Certificate with the specific CertificateRequest that triggered it. [RFC 8446 §4.4.2]
+  - id: tlsCertListLen
+    name: cert_list Length
+    type:
+      kind: int
+      bits: 24
+    category: length
+    doc: Total length in bytes of the cert_list vector that follows. The vector holds a sequence of CertificateEntry structs; an empty list (value 0) means the sender has no certificate to offer (valid for client authentication). [RFC 8446 §4.4.2]
+  - id: tlsCertEntryCount
+    name: CertificateEntry Count
+    type:
+      kind: int
+      bits: 8
+    category: length
+    doc: Number of CertificateEntry elements in the cert_list. Derived from parsing; not transmitted on the wire — declared here so the repeat container can reference it. In the wire format the count is implicit from tlsCertListLen. Leaf certificate is first; intermediate CA certificates follow in order toward the trust anchor. [RFC 8446 §4.4.2]
+  - kind: repeat
+    id: tlsCertList
+    name: cert_list (CertificateEntry[])
+    category: variable
+    element:
+      id: tlsCertEntry
+      fields:
+        - id: tlsCertDataLen
+          name: cert_data Length
+          type:
+            kind: int
+            bits: 24
+          category: length
+          doc: Length in bytes of the DER-encoded X.509 certificate (cert_data) that immediately follows. 24-bit big-endian per TLS vector encoding. Each entry carries exactly one certificate. [RFC 8446 §4.4.2]
+        - id: tlsCertData
+          name: cert_data
+          type:
+            kind: bytes
+            n:
+              kind: ref
+              field: tlsCertDataLen
+          category: variable
+          doc: DER-encoded X.509v3 certificate (ASN.1 DER format). The first entry is the end-entity (leaf) certificate; subsequent entries are intermediate CA certificates ordered toward the trust anchor. Trust anchors SHOULD NOT be transmitted. [RFC 8446 §4.4.2; RFC 5280]
+        - id: tlsCertExtLen
+          name: extensions Length
+          type:
+            kind: int
+            bits: 16
+          category: length
+          doc: Length in bytes of the per-CertificateEntry extensions block that follows. Zero means no extensions are present for this entry. Extensions applicable to Certificate messages include status_request (OCSP stapling) and signed_certificate_timestamp. [RFC 8446 §4.4.2]
+        - id: tlsCertExt
+          name: extensions
+          type:
+            kind: bytes
+            n:
+              kind: ref
+              field: tlsCertExtLen
+          category: variable
+          doc: Per-certificate TLS extensions as a sequence of ExtensionType (2 B) + length (2 B) + data TLV records. Most commonly carries status_request (type 5) for OCSP stapling or signed_certificate_timestamp (type 18) for Certificate Transparency. Empty when tlsCertExtLen is zero. [RFC 8446 §4.4.2; RFC 6960; RFC 6962]
+    count:
+      kind: ref
+      field: tlsCertEntryCount

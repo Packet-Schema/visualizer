@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-4 NOTIFICATION Message
+rowBits: 32
+byteOrder: BE
+description: BGP-4 NOTIFICATION message (RFC 4271 §4.5) — sent to report an error condition before closing the BGP session. Consists of the 19-byte BGP Common Header (§4.1) followed by a 1-octet Error Code, a 1-octet Error Subcode, and a variable-length Data field carrying additional diagnostic information.
+body:
+  - kind: group
+    id: bgpCommonHeader
+    name: BGP Common Header
+    children:
+      - id: bgpMarker
+        name: Marker
+        type: { kind: bits, n: 128 }
+        category: identifier
+        doc: 16 octets. Must be set to all ones (0xFFFF…FFFF) on transmission. Used for message boundary synchronisation in the TCP byte stream; historically reserved for authentication. [RFC 4271 §4.1]
+      - id: bgpLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        defaultValue: 21
+        doc: Total length of the BGP message in octets, including this 19-byte Common Header. For a NOTIFICATION with no Data field the minimum value is 21 (19 + 2). Must not exceed 4096. [RFC 4271 §4.1]
+      - id: bgpType
+        name: Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 3
+        doc: BGP message type. 1 = OPEN, 2 = UPDATE, 3 = NOTIFICATION (this preset), 4 = KEEPALIVE. [RFC 4271 §4.1]
+  - id: errorCode
+    name: Error Code
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "Indicates the type of NOTIFICATION. Defined values: 1 = Message Header Error (malformed header — Bad Message Length, Bad Message Type, etc.), 2 = OPEN Message Error (problem in OPEN — Unsupported Version Number, Bad Peer AS, Bad BGP Identifier, etc.), 3 = UPDATE Message Error (malformed UPDATE — Malformed Attribute List, Unrecognized Well-known Attribute, Missing Well-known Attribute, etc.), 4 = Hold Timer Expired (the Hold Timer expired before a KEEPALIVE or UPDATE was received), 5 = Finite State Machine Error (unexpected event in the BGP FSM), 6 = Cease (administrative shutdown or max-prefix limit reached; subcodes defined in RFC 4486). [RFC 4271 §4.5 / §6]"
+  - id: errorSubcode
+    name: Error Subcode
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "Provides more specific information about the error. Interpretation depends on Error Code. For Error Code 1 (Message Header Error): 1 = Connection Not Synchronized, 2 = Bad Message Length, 3 = Bad Message Type. For Error Code 2 (OPEN Message Error): 1 = Unsupported Version Number, 2 = Bad Peer AS, 3 = Bad BGP Identifier, 4 = Unsupported Optional Parameter, 5 = [deprecated], 6 = Unacceptable Hold Time. For Error Code 3 (UPDATE Message Error): 1 = Malformed Attribute List, 2 = Unrecognized Well-known Attribute, 3 = Missing Well-known Attribute, 4 = Attribute Flags Error, 5 = Attribute Length Error, 6 = Invalid ORIGIN Attribute, 7 = [deprecated], 8 = Invalid NEXT_HOP Attribute, 9 = Optional Attribute Error, 10 = Invalid Network Field, 11 = Malformed AS_PATH. For Error Codes 4 and 5: 0 = Unspecific. For Error Code 6 (Cease): subcodes 1–9 are defined by RFC 4486 (e.g. 1 = Maximum Number of Prefixes Reached, 2 = Administrative Shutdown, 4 = Administrative Reset, 6 = Other Configuration Change, 8 = Hard Reset). [RFC 4271 §4.5 / §6; RFC 4486]"
+  - id: data
+    name: Data
+    type:
+      kind: bytes
+      n:
+        kind: op
+        op: "-"
+        a: { kind: ref, field: bgpLength }
+        b: { kind: lit, value: 21 }
+    category: variable
+    doc: Variable-length field containing additional error-diagnostic data. Its content and format depend on the Error Code and Subcode. For example, for Error Code 2 / Subcode 1 (Unsupported Version Number) it carries the 2-octet largest locally supported version number. May be zero length when no additional information is available. Length is computed as bgpLength − 21 (total message length minus the 19-byte Common Header and the 2-byte Error Code/Subcode). [RFC 4271 §4.5]

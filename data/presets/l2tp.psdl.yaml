@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: L2TP v2 Data Message Header
+rowBits: 32
+byteOrder: BE
+description: L2TP version 2 data message header (RFC 2661 §3.1). Minimum fixed fields are 48 bits (6 bytes) when L=0, S=0, O=0.
+body:
+  - kind: group
+    id: flagsVersion
+    children:
+      - { id: t, name: "T (Type)", type: { kind: int, bits: 1 }, category: type, doc: "Message type bit: 0 = Data Message, 1 = Control Message." }
+      - { id: l, name: "L (Length Present)", type: { kind: int, bits: 1 }, category: flags, doc: "Length field present bit: 1 indicates the Length field is present." }
+      - { id: reserved1, name: "Reserved", type: { kind: int, bits: 2 }, category: reserved, doc: "Reserved bits, must be zero." }
+      - { id: s, name: "S (Sequence Present)", type: { kind: int, bits: 1 }, category: flags, doc: "Sequence numbers present bit: 1 indicates Ns and Nr fields are present." }
+      - { id: reserved2, name: "Reserved", type: { kind: int, bits: 1 }, category: reserved, doc: "Reserved bit, must be zero." }
+      - { id: o, name: "O (Offset Present)", type: { kind: int, bits: 1 }, category: flags, doc: "Offset Size field present bit: 1 indicates the Offset Size field is present." }
+      - { id: p, name: "P (Priority)", type: { kind: int, bits: 1 }, category: flags, doc: "Priority bit: 1 indicates this data message should be processed before other queued data messages." }
+      - { id: reserved3, name: "Reserved", type: { kind: int, bits: 4 }, category: reserved, doc: "Reserved bits, must be zero." }
+      - { id: version, name: "Ver", type: { kind: int, bits: 4 }, category: type, doc: "Version of the L2TP protocol. Must be 2 for L2TPv2." }
+  - kind: optional
+    when: { kind: ref, field: "l" }
+    field: { id: msgLength, name: "Message Length", type: { kind: int, bits: 16 }, category: length, doc: "Total length in bytes of the L2TP message, including all headers. Present only when L=1." }
+  - { id: tunnelId, name: "Tunnel ID", type: { kind: int, bits: 16 }, category: identifier, doc: "Identifies the control connection (tunnel) between the two L2TP peers." }
+  - { id: sessionId, name: "Session ID", type: { kind: int, bits: 16 }, category: identifier, doc: "Identifies the session within the tunnel to which this data message belongs." }
+  - kind: optional
+    when: { kind: ref, field: "s" }
+    field: { id: ns, name: "Ns (Send)", type: { kind: int, bits: 16 }, category: identifier, doc: "Sequence number of this data message. Present only when S=1." }
+  - kind: optional
+    when: { kind: ref, field: "s" }
+    field: { id: nr, name: "Nr (Recv)", type: { kind: int, bits: 16 }, category: identifier, doc: "Sequence number of the next message expected to be received. Present only when S=1." }
+  - kind: optional
+    when: { kind: ref, field: "o" }
+    field: { id: offsetSize, name: "Offset Size", type: { kind: int, bits: 16 }, category: length, doc: "Number of bytes past the L2TP header at which the payload data starts. Present only when O=1." }

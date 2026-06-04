@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RADIUS
+rowBits: 32
+byteOrder: BE
+description: RADIUS (Remote Authentication Dial-In User Service) packet format as defined in RFC 2865. Used for authentication, authorization, and accounting in network access scenarios.
+body:
+  - { id: code, name: Code, type: { kind: int, bits: 8 }, category: type, doc: "Identifies the type of RADIUS packet: 1=Access-Request, 2=Access-Accept, 3=Access-Reject, 4=Accounting-Request, 5=Accounting-Response, 11=Access-Challenge." }
+  - { id: identifier, name: Identifier, type: { kind: int, bits: 8 }, category: identifier, doc: "Used to match requests and replies; incremented by the client for each new request." }
+  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Total length of the RADIUS packet including the header and all attributes." }
+  - { id: authenticator, name: Authenticator, type: { kind: bytes, n: { kind: lit, value: 16 } }, category: checksum, doc: "16-byte field used for authentication; contains the Request Authenticator in Access-Request packets and the Response Authenticator in reply packets." }
+  - kind: repeat
+    id: attributes
+    element:
+      id: attr
+      fields:
+        - { id: attrType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Identifies the attribute type: 1=User-Name, 2=User-Password, 4=NAS-IP-Address, 5=NAS-Port, 6=Service-Type, 8=Framed-IP-Address, 11=Filter-Id, 18=Reply-Message, 24=State, 25=Class, 32=NAS-Identifier." }
+        - { id: attrLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Total length of the attribute including the Type, Length, and Value fields." }
+        - { id: attrValue, name: Value, type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: "attrLength" }, b: { kind: lit, value: 2 } } }, category: payload-marker, doc: "Variable-length value of the attribute; length is attrLength minus 2 bytes for the Type and Length fields." }
+    count: eos

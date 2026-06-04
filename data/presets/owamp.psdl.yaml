@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OWAMP-Test (Unauthenticated)
+rowBits: 32
+byteOrder: BE
+description: One-Way Active Measurement Protocol (OWAMP) Test packet, unauthenticated mode (RFC 4656). Sent by the Session-Sender to the Session-Reflector (or to a passive collector) over UDP. The fixed portion consists of a 32-bit Sequence Number, a 64-bit NTP Timestamp, and a 16-bit Error Estimate (S/Z flags + scale + multiplier). A variable-length Padding field of owampPadBytes bytes follows; the padding length is negotiated during OWAMP-Control session setup (OWAMP-Control Request-Session message) and is typically 27 bytes for IPv4 to pad the packet to 41 bytes total, ensuring minimal interference from header compression.
+
+body:
+  - id: sequenceNumber
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Monotonically increasing counter that identifies each Test packet within a session. The Session-Sender increments this value by 1 for every packet sent. The receiver uses it to detect loss, reordering, and duplication. Wraps to zero after 2^32-1. [RFC 4656 §4.1.2]"
+
+  - kind: group
+    id: timestamp
+    name: Timestamp
+    children:
+      - id: timestampSeconds
+        name: Timestamp Seconds
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: "Seconds part of the 64-bit NTP timestamp at which the packet was sent, expressed as unsigned seconds since 1 January 1900 (NTP era 0). Combined with Timestamp Fraction to form a 64-bit NTP timestamp as specified in RFC 1305. [RFC 4656 §4.1.2]"
+      - id: timestampFraction
+        name: Timestamp Fraction
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: "Fractional seconds part of the 64-bit NTP timestamp. The 32-bit value represents the binary fraction of a second (1 LSB ≈ 232 picoseconds). Combined with Timestamp Seconds this forms the NTP-format Send Timestamp recorded immediately before transmitting the UDP datagram. [RFC 4656 §4.1.2]"
+
+  - kind: group
+    id: errorEstimate
+    name: Error Estimate
+    children:
+      - id: errorEstimateS
+        name: S (Synchronized)
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Synchronized flag. Set to 1 when the sender's clock is synchronized to UTC via a traceability mechanism such as NTP or GPS PPS. When 0 the timestamp is not synchronized and SHOULD be treated as an estimate. [RFC 4656 §4.1.2]"
+      - id: errorEstimateZ
+        name: Z (Zero)
+        type: { kind: int, bits: 1 }
+        category: reserved
+        doc: "Reserved bit, MUST be transmitted as zero and ignored on receipt. Originally reserved for future use in the Error Estimate field. [RFC 4656 §4.1.2]"
+      - id: errorEstimateScale
+        name: Scale
+        type: { kind: int, bits: 6 }
+        category: variable
+        doc: "Binary scale factor for the timestamp error. The effective error bound is Multiplier × 2^Scale seconds (NTP short format). Scale values 0–62 are defined; scale 63 is reserved. A scale of 0 with multiplier 1 represents approximately 15 nanoseconds precision. [RFC 4656 §4.1.2]"
+      - id: errorEstimateMultiplier
+        name: Multiplier
+        type: { kind: int, bits: 8 }
+        category: variable
+        doc: "Unsigned multiplier for the timestamp error estimate. The effective error bound is Multiplier × 2^Scale seconds. A value of 1 with scale 0 encodes approximately 15 ns; a value of 0 means the error estimate is not available (the sender SHOULD avoid transmitting this). [RFC 4656 §4.1.2]"
+
+  - id: padding
+    name: Padding
+    type:
+      kind: bytes
+      n: { kind: ref, field: owampPadBytes }
+    category: payload-marker
+    doc: "Variable-length padding appended to bring the Test packet to the negotiated size. The number of padding bytes (owampPadBytes) is agreed during OWAMP-Control session setup in the Request-Session message. Typical values: 27 bytes for IPv4 (total 41 bytes) or 0 bytes when no padding is required. Contents MUST be ignored by the receiver. [RFC 4656 §4.1.2]"

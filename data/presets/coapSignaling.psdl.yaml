@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: CoAP Signaling (RFC 8323)
+rowBits: 32
+byteOrder: BE
+description: "CoAP Signaling messages over reliable transports — TCP and WebSocket (RFC 8323). Unlike UDP CoAP (RFC 7252), signaling messages carry no Message ID field; framing and deduplication are handled by the underlying reliable transport. The 1-byte header packs Len (4 bits) and TKL (4 bits); Extended Length fields (0, 1, 2, or 4 bytes) allow message bodies up to ~4 GiB; the Code byte encodes Signaling codes — 7.01 CSM (Capabilities and Settings Message), 7.02 Ping, 7.03 Pong, 7.04 Release, 7.05 Abort; a Token of TKL bytes follows; the remainder of the message body is Options and optional Payload as in RFC 7252. The PSDL model uses a switch on the Len nibble to decode the four Extended Length variants, then represents Token and Options+Payload as variable-length byte sequences."
+
+body:
+  - kind: group
+    id: coapSigLenTkl
+    name: Len / TKL
+    children:
+      - id: coapSigLen
+        name: Len
+        type: { kind: int, bits: 4 }
+        category: length
+        defaultValue: 0
+        doc: "4-bit length indicator. 0..12: the message body length in bytes (no Extended Length field). 13: a 1-byte Extended Length follows; actual body length = extended byte + 13. 14: a 2-byte Extended Length follows; actual body length = extended 16-bit value + 269. 15: a 4-byte Extended Length follows; actual body length = extended 32-bit value + 65805. [RFC 8323 §3.2]"
+      - id: coapSigTkl
+        name: TKL
+        type: { kind: int, bits: 4 }
+        category: length
+        defaultValue: 0
+        doc: "Token Length in bytes. Valid range 0..8; values 9..15 are reserved and MUST be treated as a message format error by the receiver. Identical semantics to TKL in RFC 7252, but carried in the low nibble of the first byte rather than a shared byte with Ver and T (which do not exist in RFC 8323 signaling). [RFC 8323 §3.2]"
+
+  - kind: switch
+    id: coapSigExtLen
+    on: { kind: ref, field: coapSigLen }
+    cases:
+      "13":
+        id: coapSigExtLen1
+        name: Extended Length (1 byte)
+        fields:
+          - id: coapSigExtLenByte
+            name: Extended Length
+            type: { kind: int, bits: 8 }
+            category: length
+            doc: "1-byte unsigned Extended Length. Actual message body length = this value + 13, covering the range 13..268 bytes. Present only when the Len nibble is 13. [RFC 8323 §3.2]"
+      "14":
+        id: coapSigExtLen2
+        name: Extended Length (2 bytes)
+        fields:
+          - id: coapSigExtLenWord
+            name: Extended Length
+            type: { kind: int, bits: 16 }
+            category: length
+            doc: "2-byte big-endian unsigned Extended Length. Actual message body length = this value + 269, covering the range 269..65804 bytes. Present only when the Len nibble is 14. [RFC 8323 §3.2]"
+      "15":
+        id: coapSigExtLen4
+        name: Extended Length (4 bytes)
+        fields:
+          - id: coapSigExtLenDword
+            name: Extended Length
+            type: { kind: int, bits: 32 }
+            category: length
+            doc: "4-byte big-endian unsigned Extended Length. Actual message body length = this value + 65805, supporting very large messages up to ~4 GiB. Present only when the Len nibble is 15. [RFC 8323 §3.2]"
+    default:
+      id: coapSigNoExtLen
+      name: No Extended Length
+      fields: []
+
+  - kind: group
+    id: coapSigCode
+    name: Code (7.dd)
+    children:
+      - id: coapSigCodeClass
+        name: Class
+        type:
+          kind: enum
+          bits: 3
+          variants:
+            7: "Signaling"
+        category: type
+        defaultValue: 7
+        doc: "Upper 3 bits of the Code byte. For Signaling messages defined by RFC 8323 the class is always 7. The full code is conventionally written as c.dd (e.g. 7.01 = CSM). Classes 0–6 follow RFC 7252 request/response semantics; class 7 is reserved exclusively for Signaling over reliable transports. [RFC 8323 §5.1]"
+      - id: coapSigCodeDetail
+        name: Detail
+        type:
+          kind: enum
+          bits: 5
+          variants:
+            1: "CSM (Capabilities and Settings)"
+            2: "Ping"
+            3: "Pong"
+            4: "Release"
+            5: "Abort"
+        category: type
+        defaultValue: 1
+        doc: "Lower 5 bits of the Code byte — detail within Signaling class 7. 01=CSM (7.01): exchange capabilities and settings at connection setup; 02=Ping (7.02): test liveness of the connection; 03=Pong (7.03): response to a Ping, echoes the Token; 04=Release (7.04): orderly connection teardown with optional diagnostic options; 05=Abort (7.05): unrecoverable error, connection will be closed immediately. Values other than 01–05 are unassigned. [RFC 8323 §5.2–5.6]"
+
+  - id: coapSigToken
+    name: Token
+    type: { kind: bytes, n: { kind: ref, field: coapSigTkl } }
+    category: identifier
+    doc: "Token value, exactly TKL bytes (0..8). For Ping/Pong the server echoes the Token verbatim in the Pong response so the sender can correlate the reply. For CSM, Release, and Abort messages the Token is typically zero length (TKL=0). Identical correlation semantics to RFC 7252 §5.3, but without the Message ID deduplication that UDP CoAP uses. [RFC 8323 §3.2 / §5.2–5.5]"
+
+  - id: coapSigBody
+    name: Options / Payload
+    type: { kind: bytes, n: { kind: ref, field: coapSigBodyBytes } }
+    category: variable
+    doc: "Remaining message body containing Signaling Options (TLV-encoded, delta-numbered as in RFC 7252 §3.1) and an optional 0xFF Payload Marker followed by a Payload. Each Signaling code defines its own option set: CSM options include Max-Message-Size (2) and Block-Wise-Transfer (4); Release includes Alt-Address (2) and Hold-Off (4); Abort includes Bad-CSM-Option (2). The byte count coapSigBodyBytes is computed from the Len/Extended-Length fields and must be supplied externally. [RFC 8323 §5.2–5.6 / §5.7]"

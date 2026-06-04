@@ -1,0 +1,177 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OSPFv2 Database Description Packet
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first).
+description: OSPFv2 Database Description packet (RFC 2328 Appendix A.3.3, packet type 2). 24-byte OSPF common header followed by the DD-specific body. DD packets are exchanged while an adjacency is being initialized to describe the contents of the link-state database; each carries the LSA headers (20 bytes each) of the database, and the I/M/MS bits drive the master/slave negotiation and sequencing of the Database Exchange.
+body:
+  - id: version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 2
+    doc: OSPF protocol version. Always 2 for OSPFv2 (OSPFv3 for IPv6 uses a separate packet format). [RFC 2328 §A.3.1]
+  - id: packetType
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 2
+    doc: OSPF packet type. 1=Hello, 2=Database Description (this preset), 3=Link State Request, 4=Link State Update, 5=Link State Acknowledgment. [RFC 2328 §A.3.1]
+  - id: packetLength
+    name: Packet Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Length of the OSPF packet in bytes, including the 24-byte common header. For a DD packet with N LSA headers = 24 + 8 + 20 × N. [RFC 2328 §A.3.1]
+  - id: routerId
+    name: Router ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the originating router. Written in dotted-quad form like an IPv4 address; conventionally chosen as the largest IP address configured on the router, or a manually assigned value. Must be unique within the OSPF routing domain. [RFC 2328 §A.3.1]
+  - id: areaId
+    name: Area ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the OSPF area this packet belongs to. 0.0.0.0 is the backbone area. Two routers will only exchange databases if their Area IDs match. [RFC 2328 §A.3.1]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: Standard IP checksum (one's complement of one's-complement 16-bit sum) over the entire OSPF packet excluding the 64-bit Authentication field. [RFC 2328 §A.3.1]
+  - id: authType
+    name: Authentication Type
+    type: { kind: int, bits: 16 }
+    category: type
+    defaultValue: 0
+    doc: Authentication scheme applied per-interface. 0=Null (no authentication), 1=Simple password, 2=Cryptographic (MD5/HMAC). [RFC 2328 §D.1]
+  - id: authentication
+    name: Authentication
+    type: { kind: bits, n: 64 }
+    category: identifier
+    doc: 64-bit authentication payload whose meaning is set by Authentication Type. Null→zero; Simple→ASCII password padded with zeros; Cryptographic→2-byte reserved (0) || 1-byte Key ID || 1-byte Auth Data Length || 4-byte cryptographic sequence number, with the actual MAC appended after the packet. [RFC 2328 §D.3]
+  - id: interfaceMtu
+    name: Interface MTU
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 1500
+    doc: Size in bytes of the largest IP datagram that can be sent out the associated interface without fragmentation. Set to 0 in DD packets sent over a virtual link. A neighbor rejects DD packets whose Interface MTU exceeds the MTU of the receiving interface. [RFC 2328 §A.3.3]
+  - kind: group
+    id: optionsBits
+    name: Options
+    children:
+      - id: opt_dn1
+        name: "*"
+        type: { kind: bits, n: 1 }
+        category: reserved
+        doc: Unused bit (high-order). Transmitted as zero, ignored on receipt. [RFC 2328 §A.2]
+      - id: opt_dn0
+        name: "*"
+        type: { kind: bits, n: 1 }
+        category: reserved
+        doc: Unused bit. Transmitted as zero, ignored on receipt. [RFC 2328 §A.2]
+      - id: opt_dc
+        name: DC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Demand Circuit support — router handles demand-driven (e.g. dial-up) circuits and the associated LSA suppression. [RFC 1793]
+      - id: opt_ea
+        name: EA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: External-Attributes-LSA support. Originally proposed for BGP-via-OSPF redistribution; in practice always 0. [RFC 2328 §A.2]
+      - id: opt_np
+        name: N/P
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: When set, indicates the router supports Type-7 (NSSA) LSAs. Carried in Database Description packets to negotiate NSSA behaviour; both ends must agree for the adjacency to form. [RFC 1587]
+      - id: opt_mc
+        name: MC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Multicast Capability — router forwards IP multicast datagrams per the MOSPF specification. [RFC 1584]
+      - id: opt_e
+        name: E
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: External Routing capability — router can flood AS-external-LSAs. Must be reset for stub areas; DD packets carrying mismatched E-bit values prevent the adjacency from forming. [RFC 2328 §A.2]
+      - id: opt_t
+        name: T
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: TOS capability — router supports the historical TOS-based routing of RFC 1583. Deprecated; transmitted as zero in modern deployments. [RFC 1583]
+  - kind: group
+    id: ddFlags
+    name: Flags
+    children:
+      - id: dd_reserved
+        name: "*"
+        type: { kind: bits, n: 5 }
+        category: reserved
+        doc: Five high-order bits of the DD flags octet. Reserved; transmitted as zero and ignored on receipt. [RFC 2328 §A.3.3]
+      - id: dd_i
+        name: I
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Init bit. When set, this packet is the first in the sequence of Database Description packets. [RFC 2328 §A.3.3]
+      - id: dd_m
+        name: M
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: More bit. When set, indicates that additional Database Description packets follow this one. [RFC 2328 §A.3.3]
+      - id: dd_ms
+        name: MS
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Master/Slave bit. When set, the router is the master in the Database Exchange; when clear, it is the slave. The master controls the DD Sequence Number progression. [RFC 2328 §A.3.3]
+  - id: ddSequenceNumber
+    name: DD Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: Used to sequence the collection of Database Description packets. The master sets the initial value (typically a unique, increasing number) in the first I-bit packet and increments it for each subsequent packet; the slave echoes the master's number. Guarantees reliable, ordered exchange. [RFC 2328 §A.3.3]
+  - kind: repeat
+    id: lsaHeaders
+    name: LSA Header List
+    category: variable
+    doc: Zero or more 20-byte LSA headers describing the contents of the originator's link-state database. The header alone is sufficient to identify an LSA and decide whether the receiver's copy is up to date during the Database Exchange. [RFC 2328 §A.3.3 / §A.4.1]
+    element:
+      id: lsaHeaderRecord
+      fields:
+        - id: lsAge
+          name: LS Age
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: Time in seconds since the LSA was originated. Used together with the LS Sequence Number to determine which of two instances is more recent. [RFC 2328 §A.4.1]
+        - id: lsaOptions
+          name: Options
+          type: { kind: int, bits: 8 }
+          category: flags
+          doc: Optional capabilities supported by the described portion of the routing domain, encoded with the same bit assignments as the common Options field. [RFC 2328 §A.4.1]
+        - id: lsType
+          name: LS Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: LSA type. 1=Router-LSA, 2=Network-LSA, 3=Summary-LSA (IP network), 4=Summary-LSA (ASBR), 5=AS-external-LSA. [RFC 2328 §A.4.1]
+        - id: linkStateId
+          name: Link State ID
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Identifies the portion of the routing domain being described by the LSA; its exact meaning depends on the LS Type (e.g. Router ID for Router-LSAs, IP network number for Summary-LSAs). [RFC 2328 §A.4.1]
+        - id: advertisingRouter
+          name: Advertising Router
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Router ID of the router that originated the LSA (dotted-quad on the wire). [RFC 2328 §A.4.1]
+        - id: lsSeqNum
+          name: LS Sequence Number
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Signed 32-bit number incremented each time the LSA is re-originated, used to detect old or duplicate instances. Larger numbers are more recent. [RFC 2328 §A.4.1]
+        - id: lsChecksum
+          name: LS Checksum
+          type: { kind: int, bits: 16 }
+          category: checksum
+          doc: Fletcher checksum over the complete contents of the LSA excluding the LS Age field. [RFC 2328 §A.4.1]
+        - id: lsaLength
+          name: Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Length in bytes of the LSA, including the 20-byte LSA header. [RFC 2328 §A.4.1]
+    count: { kind: ref, field: ospfLsaHeaderCount }

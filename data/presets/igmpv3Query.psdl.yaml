@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IGMPv3 Membership Query
+rowBits: 32
+byteOrder: BE
+description: IGMPv3 Membership Query message (RFC 3376 §4.1). Sent by a multicast router to discover which multicast groups have listeners on the attached link. A General Query (Group Address = 0.0.0.0) asks about all groups; a Group-Specific Query targets one group; a Group-and-Source-Specific Query additionally specifies a source list. Carried directly inside IPv4 (Protocol = 2) with IP TTL = 1 and the Router Alert option, addressed to 224.0.0.1 (All Hosts) for General Queries or to the queried group address otherwise.
+body:
+  - id: type
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 17
+    doc: IGMP message type. 0x11 (decimal 17) = Membership Query (this preset). 0x12 = IGMPv1 Membership Report. 0x16 = IGMPv2 Membership Report. 0x17 = Leave Group. 0x22 = IGMPv3 Membership Report. A router sets Type = 0x11; hosts respond with Type = 0x22. [RFC 3376 §4.1]
+  - id: maxRespCode
+    name: Max Resp Code
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Maximum Response Code — specifies the maximum time (in units of 1/10 second) allowed before sending a responding Report. If Max Resp Code < 128 it is the literal response time; otherwise it is a floating-point value (1-bit exp flag, 3-bit mantissa, 4-bit fraction). A value of 0 is used for IGMPv1 backwards compatibility where no response time is defined. Typical value: 100 (= 10 seconds). [RFC 3376 §4.1.1]"
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: 16-bit one's-complement checksum over the entire IGMP message (header + source list). A receiver MUST verify the checksum and discard the message silently if it fails. Computed with the Checksum field set to zero. [RFC 3376 §4.1.2]
+  - id: groupAddress
+    name: Group Address
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: "Multicast group address. 0.0.0.0 in a General Query (queries all groups). Set to the specific group address in a Group-Specific or Group-and-Source-Specific Query. The corresponding IPv4 destination address is 224.0.0.1 for General Queries or the group address itself for Group-Specific Queries. [RFC 3376 §4.1.3]"
+  - kind: group
+    id: flagsByte
+    name: Flags / QRV / QQIC
+    children:
+      - id: resv
+        name: Resv
+        type: { kind: bits, n: 4 }
+        category: reserved
+        doc: Reserved. MUST be zero on transmission; ignored on receipt. [RFC 3376 §4.1.4]
+      - id: s
+        name: S
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Suppress Router-Side Processing. When set to 1, multicast routers receiving this Query MUST NOT update their timers, even if the Query's Robustness Variable or Query Interval are lower than the router's current settings — prevents a low-value query from prematurely aging out group state. [RFC 3376 §4.1.4]
+      - id: qrv
+        name: QRV
+        type: { kind: bits, n: 3 }
+        category: identifier
+        doc: Querier's Robustness Variable. Allows tuning against packet loss — the robustness variable controls how many times messages are retransmitted. If non-zero, receivers update their Robustness Variable to this value. Zero means the querier uses the default (typically 2). [RFC 3376 §4.1.5]
+  - id: qqic
+    name: QQIC
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Querier's Query Interval Code. Encodes the Query Interval used by the querier. If QQIC < 128 the interval is QQIC seconds; otherwise it is floating-point (same encoding as Max Resp Code). Receivers update their Other Querier Present Interval based on this value. Typical default: 125 seconds. [RFC 3376 §4.1.6]"
+  - id: numSources
+    name: Number of Sources
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: The number of source addresses present in a Group-and-Source-Specific Query. 0 for General Queries and Group-Specific Queries. The source list that follows contains exactly this many 4-byte IPv4 unicast addresses. [RFC 3376 §4.1.7]
+  - kind: repeat
+    id: sourceList
+    name: Source List
+    category: variable
+    doc: List of source IPv4 addresses for a Group-and-Source-Specific Query. Empty (zero entries) for General Queries and Group-Specific Queries. Each address is 4 bytes in network byte order. [RFC 3376 §4.1.8]
+    element:
+      id: sourceRecord
+      fields:
+        - id: sourceAddress
+          name: Source Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: A unicast IPv4 source address in the source list. The receiving host MUST send a Membership Report if it is listening to any traffic from this source in the specified group. [RFC 3376 §4.1.8]
+    count: { kind: ref, field: numSources }

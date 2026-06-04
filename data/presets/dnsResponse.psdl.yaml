@@ -1,0 +1,337 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DNS Message
+rowBits: 16
+byteOrder: Network byte order (big-endian, MSB-first). All multi-byte integers (ID, counts, TYPE/CLASS/TTL/RDLENGTH and the type-specific fixed fields) are big-endian. Domain names are encoded as a sequence of length-prefixed labels terminated by a zero-length label; this preset assumes uncompressed names and does not model the 0xC0 compression pointer except where noted.
+description: Full Domain Name System message (RFC 1035) — the 12-byte header followed by Question and Answer (Resource Record) sections expanded label-by-label. Counts in the header (QDCOUNT/ANCOUNT/...) drive the Repeat containers, and the RR RDATA is unpacked per record TYPE with a Switch (A/AAAA/CNAME/NS/PTR/MX/SOA/TXT/SRV). PSDL 0.4 has no comparison operator and does not model DNS name compression, so each domain name is rendered as an explicit chain of length-prefixed labels (uncompressed); compressed names (0xC0 pointers) are represented as opaque RDATA where they would otherwise appear.
+
+# Shared QTYPE / TYPE catalog. QTYPE (Question) is a superset of TYPE (RR), so the
+# same enum variant set is reused for both via this YAML anchor. [RFC 1035 §3.2.2/§3.2.3]
+_dns_type_variants: &dns_type_variants
+  1: A (IPv4 host address)
+  2: NS (authoritative name server)
+  5: CNAME (canonical name / alias)
+  6: SOA (start of authority)
+  12: PTR (domain name pointer)
+  15: MX (mail exchange)
+  16: TXT (text strings)
+  28: AAAA (IPv6 host address)
+  33: SRV (service location)
+  41: OPT (EDNS0 pseudo-RR)
+  257: CAA (certification authority authorization)
+
+body:
+  # ---- Header (12 bytes, RFC 1035 §4.1.1) -------------------------------------
+  - id: dnsId
+    name: Identification
+    type: { kind: bits, n: 16 }
+    category: identifier
+    doc: "Random 16-bit ID echoed in the response — lets the resolver match a reply to its outstanding query and helps mitigate spoofing. [RFC 1035 §4.1.1, RFC 5452]"
+  - kind: group
+    id: dnsFlags
+    name: Flags
+    children:
+      - id: dnsFlagsQr
+        name: QR
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Query/Response — 0 = the message is a query from a client, 1 = the message is a server's response. [RFC 1035 §4.1.1]"
+      - id: dnsFlagsOpcode
+        name: Opcode
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Kind of operation: 0=QUERY (the normal lookup), 1=IQUERY (obsolete inverse query), 2=STATUS, 4=NOTIFY (zone change), 5=UPDATE (dynamic DNS). [RFC 1035 §4.1.1]"
+      - id: dnsFlagsAa
+        name: AA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Authoritative Answer — set when the responder is authoritative for the queried zone (e.g. an answer direct from ns1.example.com for example.com). [RFC 1035 §4.1.1]"
+      - id: dnsFlagsTc
+        name: TC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "TrunCation — set when the response was cut off because it didn't fit the transport (typically a 512-byte UDP limit). The client should retry over TCP. [RFC 1035 §4.1.1]"
+      - id: dnsFlagsRd
+        name: RD
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Recursion Desired — client asks the server to chase the query through the DNS hierarchy on its behalf rather than just returning a referral. [RFC 1035 §4.1.1]"
+      - id: dnsFlagsRa
+        name: RA
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Recursion Available — server advertises whether it supports recursive resolution. Public resolvers like 8.8.8.8 set this; authoritative-only servers do not. [RFC 1035 §4.1.1]"
+      - id: dnsFlagsZ
+        name: Z
+        type: { kind: bits, n: 3 }
+        category: reserved
+        doc: "Reserved bits — must be zero in queries and responses. Two of these were later repurposed by DNSSEC as AD (Authentic Data) and CD (Checking Disabled). [RFC 1035 §4.1.1, RFC 4035]"
+      - id: dnsFlagsRcode
+        name: RCODE
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: "Response Code — 0=NOERROR, 1=FORMERR (bad query), 2=SERVFAIL, 3=NXDOMAIN (name does not exist), 4=NOTIMP, 5=REFUSED. [RFC 1035 §4.1.1]"
+  - id: dnsQdCount
+    name: QDCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of question entries that follow the header — usually 1. Drives the Question Repeat container below. [RFC 1035 §4.1.1]"
+  - id: dnsAnCount
+    name: ANCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of resource records in the Answer section — for an A query, the IP addresses returned for the name. Drives the Answer RR Repeat container below. [RFC 1035 §4.1.1]"
+  - id: dnsNsCount
+    name: NSCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of NS records in the Authority section — points the client at authoritative servers, often used in delegation responses. (Authority section RRs are not expanded by this preset.) [RFC 1035 §4.1.1]"
+  - id: dnsArCount
+    name: ARCOUNT
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Number of records in the Additional section — typically glue (A/AAAA records for the NS hostnames in the Authority section) or an OPT pseudo-RR for EDNS0. (Additional section RRs are not expanded by this preset.) [RFC 1035 §4.1.1]"
+
+  # ---- Question section (RFC 1035 §4.1.2) -------------------------------------
+  - kind: repeat
+    id: dnsQuestions
+    name: Question Section
+    category: variable
+    count: { kind: ref, field: dnsQdCount }
+    doc: "QDCOUNT question entries, each a QNAME followed by QTYPE and QCLASS. Empty by default (QDCOUNT=0). [RFC 1035 §4.1.2]"
+    element:
+      id: dnsQuestion
+      name: Question
+      fields:
+        - kind: repeat
+          id: dnsQNameLabels
+          name: QNAME (labels)
+          category: variable
+          count: { kind: ref, field: dnsQNameLabelCount }
+          doc: "QNAME as a sequence of length-prefixed labels (uncompressed). Each label is a 1-byte length followed by that many octets; the name ends with a zero-length label which is not modeled as a repeat element. Compression pointers (0xC0) are not supported here — names are assumed uncompressed. [RFC 1035 §3.1, §4.1.2]"
+          element:
+            id: dnsQNameLabel
+            name: Label
+            fields:
+              - id: dnsLabelLen
+                name: Label Length
+                type: { kind: bits, n: 8 }
+                category: length
+                doc: "Length of the label that follows, in octets (1..63). The top two bits being 00 indicates a normal label; 11 (0xC0) would indicate a compression pointer, which this preset does not model. A length of 0 terminates the name. [RFC 1035 §3.1]"
+              - id: dnsLabel
+                name: Label
+                type: { kind: bytes, n: { kind: ref, field: dnsLabelLen } }
+                category: variable
+                doc: "The label octets — one component of the domain name (e.g. \"www\"), exactly `dnsLabelLen` bytes long. Conventionally restricted to letters, digits and hyphen. [RFC 1035 §3.1]"
+        - id: dnsQType
+          name: QTYPE
+          type:
+            kind: enum
+            bits: 16
+            variants: *dns_type_variants
+          category: type
+          doc: "Question record type — the kind of record being requested. A QTYPE may also be a query-only meta value such as 255 (ANY) or 252 (AXFR). [RFC 1035 §3.2.2, §3.2.3]"
+        - id: dnsQClass
+          name: QCLASS
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              1: IN (Internet)
+              3: CH (Chaos)
+              4: HS (Hesiod)
+              254: NONE
+              255: ANY
+          category: type
+          doc: "Question record class — almost always 1 (IN, Internet). 255 (ANY) may appear as a query-only value. [RFC 1035 §3.2.4, §3.2.5]"
+
+  # ---- Answer section: Resource Records (RFC 1035 §4.1.3) ---------------------
+  - kind: repeat
+    id: dnsAnswers
+    name: Answer Section (Resource Records)
+    category: variable
+    count: { kind: ref, field: dnsAnCount }
+    doc: "ANCOUNT resource records answering the query. Empty by default (ANCOUNT=0). Each RR is NAME, TYPE, CLASS, TTL, RDLENGTH and a type-specific RDATA. [RFC 1035 §4.1.3]"
+    element:
+      id: dnsRr
+      name: Resource Record
+      fields:
+        - id: dnsRrName
+          name: NAME (compression pointer)
+          type: { kind: bits, n: 16 }
+          category: addressing
+          doc: "Owner name of this RR. In real responses the answer NAME is almost always a 2-byte compression pointer (high bits 11, i.e. 0xC0xx) referencing the QNAME in the Question section, rather than a repeated label chain. This preset models it as that single 16-bit pointer; an uncompressed name would instead be a label chain like QNAME above. [RFC 1035 §4.1.4]"
+        - id: dnsRrType
+          name: TYPE
+          type:
+            kind: enum
+            bits: 16
+            variants: *dns_type_variants
+          category: type
+          doc: "Resource record type — selects how RDATA is interpreted (A=1, NS=2, CNAME=5, SOA=6, PTR=12, MX=15, TXT=16, AAAA=28, SRV=33). Drives the RDATA Switch below. [RFC 1035 §3.2.2]"
+        - id: dnsRrClass
+          name: CLASS
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              1: IN (Internet)
+              3: CH (Chaos)
+              4: HS (Hesiod)
+          category: type
+          doc: "Resource record class — almost always 1 (IN, Internet). [RFC 1035 §3.2.4]"
+        - id: dnsRrTtl
+          name: TTL
+          type: { kind: bits, n: 32 }
+          category: variable
+          doc: "Time To Live in seconds — how long the record may be cached by a resolver before it must be re-queried. A value of 0 means do not cache. Interpreted as a 32-bit signed value per RFC 1035 but treated as unsigned in practice. [RFC 1035 §3.2.1, RFC 2181 §8]"
+        - id: dnsRdLength
+          name: RDLENGTH
+          type: { kind: bits, n: 16 }
+          category: length
+          doc: "Length in octets of the RDATA field that follows. Lets a parser skip records of unknown TYPE. Drives the byte length of the opaque/text RDATA variants below. [RFC 1035 §3.2.1]"
+        - kind: switch
+          id: dnsRdata
+          name: RDATA
+          on: { kind: ref, field: dnsRrType }
+          doc: "Record data, decoded according to TYPE. Each case below unpacks the canonical RDATA wire format for that record type; the default treats RDATA as RDLENGTH opaque octets. [RFC 1035 §3.3, §3.4.1]"
+          cases:
+            "1":
+              id: dnsRdataA
+              name: A (IPv4 address)
+              fields:
+                - id: dnsRdataAAddr
+                  name: Address
+                  type: { kind: bits, n: 32 }
+                  category: addressing
+                  doc: "A single IPv4 host address as a 32-bit value (e.g. 93.184.216.34). RDLENGTH is 4. [RFC 1035 §3.4.1]"
+            "28":
+              id: dnsRdataAaaa
+              name: AAAA (IPv6 address)
+              fields:
+                - id: dnsRdataAaaaAddr
+                  name: Address
+                  type: { kind: bits, n: 128 }
+                  category: addressing
+                  doc: "A single IPv6 host address as a 128-bit value. RDLENGTH is 16. [RFC 3596 §2.2]"
+            "5":
+              id: dnsRdataCname
+              name: CNAME (canonical name)
+              fields:
+                - id: dnsRdataCnameName
+                  name: CNAME
+                  type: { kind: bytes, n: { kind: ref, field: dnsRdLength } }
+                  category: variable
+                  doc: "A <domain-name> giving the canonical (alias target) name. Carried here as an opaque RDLENGTH-byte field because the inner name may itself use compression pointers, which this preset does not expand. [RFC 1035 §3.3.1]"
+            "2":
+              id: dnsRdataNs
+              name: NS (name server)
+              fields:
+                - id: dnsRdataNsName
+                  name: NSDNAME
+                  type: { kind: bytes, n: { kind: ref, field: dnsRdLength } }
+                  category: variable
+                  doc: "A <domain-name> specifying an authoritative name server for the owner name. Carried as an opaque RDLENGTH-byte field (may contain compression pointers). [RFC 1035 §3.3.11]"
+            "12":
+              id: dnsRdataPtr
+              name: PTR (domain pointer)
+              fields:
+                - id: dnsRdataPtrName
+                  name: PTRDNAME
+                  type: { kind: bytes, n: { kind: ref, field: dnsRdLength } }
+                  category: variable
+                  doc: "A <domain-name> pointing to some location in the name space (used for reverse lookups, e.g. PTR for 34.216.184.93.in-addr.arpa). Carried as an opaque RDLENGTH-byte field. [RFC 1035 §3.3.12]"
+            "15":
+              id: dnsRdataMx
+              name: MX (mail exchange)
+              fields:
+                - id: dnsRdataMxPref
+                  name: Preference
+                  type: { kind: bits, n: 16 }
+                  category: variable
+                  doc: "Preference of this mail exchanger relative to others for the same owner — lower values are tried first. [RFC 1035 §3.3.9]"
+                - id: dnsRdataMxExchange
+                  name: Exchange
+                  type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: dnsRdLength }, b: { kind: lit, value: 2 } } }
+                  category: variable
+                  doc: "A <domain-name> identifying the mail server. Carried as an opaque field of RDLENGTH minus the 2-byte Preference (may contain compression pointers). [RFC 1035 §3.3.9]"
+            "6":
+              id: dnsRdataSoa
+              name: SOA (start of authority)
+              fields:
+                - id: dnsRdataSoaMname
+                  name: MNAME
+                  type: { kind: bytes, n: { kind: ref, field: dnsSoaMnameLen } }
+                  category: variable
+                  doc: "<domain-name> of the primary (master) name server for this zone. Carried as an opaque label sequence; its byte length is given by the auxiliary count dnsSoaMnameLen. [RFC 1035 §3.3.13]"
+                - id: dnsRdataSoaRname
+                  name: RNAME
+                  type: { kind: bytes, n: { kind: ref, field: dnsSoaRnameLen } }
+                  category: variable
+                  doc: "<domain-name> encoding the mailbox of the zone administrator (first label is the local-part, e.g. hostmaster.example.com = hostmaster@example.com). Byte length given by dnsSoaRnameLen. [RFC 1035 §3.3.13]"
+                - id: dnsRdataSoaSerial
+                  name: SERIAL
+                  type: { kind: bits, n: 32 }
+                  category: variable
+                  doc: "Zone version number — incremented on every change so secondaries know when to transfer. [RFC 1035 §3.3.13]"
+                - id: dnsRdataSoaRefresh
+                  name: REFRESH
+                  type: { kind: bits, n: 32 }
+                  category: variable
+                  doc: "Interval in seconds before a secondary should refresh the zone from the primary. [RFC 1035 §3.3.13]"
+                - id: dnsRdataSoaRetry
+                  name: RETRY
+                  type: { kind: bits, n: 32 }
+                  category: variable
+                  doc: "Interval in seconds before a failed refresh should be retried. [RFC 1035 §3.3.13]"
+                - id: dnsRdataSoaExpire
+                  name: EXPIRE
+                  type: { kind: bits, n: 32 }
+                  category: variable
+                  doc: "Upper limit in seconds that a secondary may serve the zone without a successful refresh before it is considered no longer authoritative. [RFC 1035 §3.3.13]"
+                - id: dnsRdataSoaMinimum
+                  name: MINIMUM
+                  type: { kind: bits, n: 32 }
+                  category: variable
+                  doc: "Minimum TTL, originally the default TTL for the zone's records; reinterpreted by RFC 2308 as the Negative Caching TTL for NXDOMAIN/NODATA answers. [RFC 1035 §3.3.13, RFC 2308 §4]"
+            "16":
+              id: dnsRdataTxt
+              name: TXT (text)
+              fields:
+                - id: dnsRdataTxtData
+                  name: TXT-DATA
+                  type: { kind: bytes, n: { kind: ref, field: dnsRdLength } }
+                  category: variable
+                  doc: "One or more <character-string>s, each a 1-byte length prefix followed by that many octets, packed to fill RDLENGTH. Used for SPF, DKIM, domain verification, etc. Carried here as the full RDLENGTH-byte opaque blob. [RFC 1035 §3.3.14]"
+            "33":
+              id: dnsRdataSrv
+              name: SRV (service location)
+              fields:
+                - id: dnsRdataSrvPriority
+                  name: Priority
+                  type: { kind: bits, n: 16 }
+                  category: variable
+                  doc: "Priority of this target host — clients contact the reachable SRV target with the lowest Priority value first. [RFC 2782]"
+                - id: dnsRdataSrvWeight
+                  name: Weight
+                  type: { kind: bits, n: 16 }
+                  category: variable
+                  doc: "Relative weight for load balancing among targets of equal Priority — higher weight gets a proportionally larger share of selections. [RFC 2782]"
+                - id: dnsRdataSrvPort
+                  name: Port
+                  type: { kind: bits, n: 16 }
+                  category: variable
+                  doc: "TCP/UDP port on the target host where the service is offered. [RFC 2782]"
+                - id: dnsRdataSrvTarget
+                  name: Target
+                  type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: dnsRdLength }, b: { kind: lit, value: 6 } } }
+                  category: variable
+                  doc: "<domain-name> of the host providing the service (\".\" means the service is decidedly not available). Carried as an opaque field of RDLENGTH minus the 6 bytes of Priority/Weight/Port. [RFC 2782]"
+          default:
+            id: dnsRdataRaw
+            name: RDATA (opaque)
+            fields:
+              - id: dnsRdataBytes
+                name: RDATA
+                type: { kind: bytes, n: { kind: ref, field: dnsRdLength } }
+                category: payload-marker
+                doc: "Type-specific record data treated as RDLENGTH opaque octets — used for record types not individually decoded by this preset (e.g. OPT/EDNS0, CAA, DNSSEC RRs) and for any name that uses compression. [RFC 1035 §3.2.1]"

@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IGMPv2
+rowBits: 32
+byteOrder: BE
+description: Internet Group Management Protocol version 2 message (RFC 2236). Fixed 8-byte header — Type (1 byte), Max Resp Time (1 byte), Checksum (2 bytes), Group Address (4 bytes). Type 0x11 = Membership Query (used for both General Query when Group Address is 0.0.0.0, and Group-Specific Query when Group Address names the group), 0x16 = Version 2 Membership Report (join), 0x17 = Leave Group, 0x12 = Version 1 Membership Report (backward compatibility, RFC 1112). Max Resp Time is meaningful only in Query messages; in Report and Leave messages it is set to 0 and MUST be ignored by receivers. Checksum covers the entire 8-byte IGMP message.
+body:
+  - id: type
+    name: Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0x11: "Membership Query (General or Group-Specific)"
+        0x12: "Version 1 Membership Report"
+        0x16: "Version 2 Membership Report (Join)"
+        0x17: "Leave Group"
+    category: type
+    doc: "Message type code. 0x11 = Membership Query — sent by routers to discover group members (General Query if Group Address = 0.0.0.0, Group-Specific Query otherwise); 0x16 = Version 2 Membership Report — sent by a host to join a group or respond to a Query; 0x17 = Leave Group — sent by a host when it stops listening to a multicast group; 0x12 = Version 1 Membership Report — backward compatibility with IGMPv1 (RFC 1112). [RFC 2236 §2.2]"
+  - id: maxRespTime
+    name: Max Resp Time
+    type:
+      kind: int
+      bits: 8
+    category: variable
+    doc: "Maximum time (in units of 1/10 second) allowed before sending a responding Membership Report. Only meaningful in Membership Query messages (Type 0x11); used by hosts to spread Report transmissions to reduce burst traffic on the link. Set to 0 in Report (0x16/0x12) and Leave (0x17) messages and MUST be ignored by receivers of those message types. Default value in Queries is 100 (= 10 seconds). [RFC 2236 §2.2]"
+  - id: checksum
+    name: Checksum
+    type:
+      kind: int
+      bits: 16
+    category: checksum
+    doc: "16-bit one's complement of the one's complement sum of the entire IGMPv2 message (all 8 bytes). The checksum field itself is treated as zero during calculation. Senders MUST compute and fill in the checksum; receivers SHOULD verify it and silently discard messages with invalid checksums. The algorithm is the same as the IP header checksum (RFC 1071). [RFC 2236 §2.2]"
+  - id: groupAddress
+    name: Group Address
+    type:
+      kind: int
+      bits: 32
+    category: addressing
+    doc: "IPv4 multicast group address in dotted-decimal form. In a General Membership Query this field is 0.0.0.0; in a Group-Specific Query it holds the address of the group being queried. In Membership Report messages (0x16 and 0x12) it holds the address of the group the sender is joining or continuing to listen to. In Leave Group messages (0x17) it holds the address of the group the sender is leaving. Valid multicast addresses are in the range 224.0.0.0 – 239.255.255.255. [RFC 2236 §2.2, RFC 1112]"

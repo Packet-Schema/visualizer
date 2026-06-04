@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TLS ServerHello
+rowBits: 32
+byteOrder: BE
+description: TLS 1.3 ServerHello handshake message (RFC 8446 §4.1.3). Sent by the server in response to a ClientHello; selects exactly one cipher suite (unlike ClientHello which lists many), echoes the legacy_session_id, and carries extensions (e.g. supported_versions, key_share) that finalise the key exchange. Wraps inside a TLS Record (Content Type=22).
+body:
+  - id: tlsMsgType
+    name: Handshake Type
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: Handshake message type — 2 = ServerHello. Server uses this to distinguish ServerHello from other handshake messages. [RFC 8446 §4]
+  - id: tlsHandshakeLen
+    name: Handshake Length
+    type:
+      kind: bits
+      n: 24
+    category: length
+    doc: Length in bytes of the handshake message body that follows (legacy_version through extensions). [RFC 8446 §4]
+  - id: tlsLegacyVersion
+    name: legacy_version
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: Frozen at 0x0303 (TLS 1.2) for middlebox compatibility. The actual negotiated version is conveyed via the supported_versions extension. [RFC 8446 §4.1.3]
+  - id: tlsRandom
+    name: random
+    type:
+      kind: bits
+      n: 256
+    category: identifier
+    doc: 32 cryptographically random bytes contributed by the server; mixed into the handshake transcript and key derivation. Special value 0x..CF21AD74E59A6111... signals a TLS 1.2 downgrade. [RFC 8446 §4.1.3]
+  - id: tlsSessionIdLen
+    name: legacy_session_id_echo length
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Length of the legacy_session_id_echo field that follows (0–32 bytes). Server echoes whatever the client sent in its session_id for middlebox compatibility. [RFC 8446 §4.1.3]
+  - id: tlsSessionIdEcho
+    name: legacy_session_id_echo
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: tlsSessionIdLen
+    category: identifier
+    doc: Echo of the client's legacy session identifier. Not used for session resumption in TLS 1.3; present solely for middlebox compatibility. [RFC 8446 §4.1.3]
+  - id: tlsCipherSuite
+    name: cipher_suite
+    type:
+      kind: bits
+      n: 16
+    category: type
+    doc: The single cipher suite selected by the server from the client's offered list — e.g. 0x1301 = TLS_AES_128_GCM_SHA256. Unlike ClientHello, ServerHello contains exactly one value. [RFC 8446 §4.1.3]
+  - id: tlsLegacyCompression
+    name: legacy_compression_method
+    type:
+      kind: bits
+      n: 8
+    category: reserved
+    doc: Must be 0x00 (null compression) in TLS 1.3; compression is forbidden. A ServerHello with any other value MUST be rejected. [RFC 8446 §4.1.3]
+  - id: tlsServerExtBytes
+    name: extensions length
+    type:
+      kind: bits
+      n: 16
+    category: length
+    doc: Total length in bytes of the extensions block that follows. ServerHello MUST include supported_versions and key_share (or pre_shared_key) extensions. [RFC 8446 §4.1.3]
+  - id: tlsServerExtensions
+    name: extensions
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: tlsServerExtBytes
+    category: variable
+    doc: TLV-encoded extension list selected by the server. Required extensions are supported_versions (type 43) and key_share (type 51) or pre_shared_key (type 41). [RFC 8446 §4.2]

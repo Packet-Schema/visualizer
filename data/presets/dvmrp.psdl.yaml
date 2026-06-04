@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DVMRP
+rowBits: 32
+byteOrder: BE
+description: "Distance Vector Multicast Routing Protocol (DVMRP) message (RFC 1075). DVMRP is carried inside IGMP as type 0x13 and uses a shared header — Type (1 byte, always 0x13), Code (1 byte, 1=Probe, 2=Report, 7=Graft, 8=Graft-Ack), Checksum (2 bytes), Reserved (2 bytes), MinorVersion (1 byte), MajorVersion (1 byte) — followed by a variable-length body whose byte count is supplied externally via dvmrpBodyBytes. The Probe message is used for neighbor discovery; the Report message carries routing table entries; Graft and Graft-Ack support explicit joining of pruned branches. Checksum covers the entire DVMRP message."
+
+body:
+  - id: dvmrpType
+    name: Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0x13: "DVMRP"
+    category: type
+    defaultValue: 0x13
+    doc: "IGMP message type for DVMRP. Always 0x13 (19 decimal), identifying this IGMP message as a DVMRP control message. Receivers that do not recognise IGMP type 0x13 will discard the message silently. [RFC 1075 §3.1]"
+
+  - id: dvmrpCode
+    name: Code
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Probe"
+        2: "Report"
+        7: "Graft"
+        8: "Graft-Ack"
+    category: type
+    defaultValue: 1
+    doc: "DVMRP message sub-type. 1=Probe (periodic neighbor-discovery hello, announces multicast capabilities and list of neighbors), 2=Report (distance-vector routing update, carries (source-network, metric) pairs), 7=Graft (explicit request to re-join a pruned branch toward a source), 8=Graft-Ack (acknowledgement of a Graft message). [RFC 1075 §3.1]"
+
+  - id: dvmrpChecksum
+    name: Checksum
+    type:
+      kind: int
+      bits: 16
+    category: checksum
+    doc: "16-bit one's complement of the one's complement sum of the entire DVMRP message. The checksum field itself is treated as zero during computation. Senders MUST compute and insert the checksum; receivers SHOULD verify and silently discard messages with invalid checksums. Algorithm identical to the IP header checksum (RFC 1071). [RFC 1075 §3.1]"
+
+  - id: dvmrpReserved
+    name: Reserved
+    type:
+      kind: int
+      bits: 16
+    category: reserved
+    doc: "Reserved field. MUST be set to zero by the sender and ignored by the receiver. Future protocol extensions may assign meaning to these bits. [RFC 1075 §3.1]"
+
+  - id: dvmrpMinorVersion
+    name: Minor Version
+    type:
+      kind: int
+      bits: 8
+    category: identifier
+    defaultValue: 0
+    doc: "DVMRP minor protocol version number. Together with MajorVersion identifies the exact revision of the protocol implementation. Receivers may use this to negotiate or detect version mismatches between neighbors. [RFC 1075 §3.1]"
+
+  - id: dvmrpMajorVersion
+    name: Major Version
+    type:
+      kind: int
+      bits: 8
+    category: identifier
+    defaultValue: 3
+    doc: "DVMRP major protocol version number. RFC 1075 implementations typically report major version 3. Together with MinorVersion allows routers to log or filter messages from incompatible DVMRP versions. [RFC 1075 §3.1]"
+
+  - id: dvmrpBody
+    name: Body
+    type:
+      kind: bytes
+      n: { kind: ref, field: dvmrpBodyBytes }
+    category: variable
+    doc: "Variable-length DVMRP message body. Content depends on the Code field: for Probe (1) it contains the router's neighbor list and capabilities; for Report (2) it contains (source-network, metric) distance-vector entries; for Graft (7) and Graft-Ack (8) it contains the multicast group and source address being grafted. The byte count dvmrpBodyBytes is supplied externally from the enclosing IP/IGMP payload length minus the 8-byte fixed DVMRP header. [RFC 1075 §3.2–§3.5]"

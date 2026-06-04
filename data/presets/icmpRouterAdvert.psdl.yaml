@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ICMP Router Advertisement
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). All multi-byte fields (Checksum, Lifetime, RouterAddress, PreferenceLevel) are transmitted in big-endian order.
+description: ICMP Router Advertisement message (Type 9, RFC 1256). Part of the ICMP Router Discovery protocol, this message is sent by routers — either periodically or in response to a Router Solicitation (Type 10) — to announce one or more router addresses and their associated preference levels. Hosts listen on the all-systems multicast group (224.0.0.1) or the subnet broadcast address. The fixed 8-byte header (Type/Code/Checksum/NumAddrs/AddrEntrySize/Lifetime) is followed by a list of NumAddrs address entries, each consisting of a 32-bit Router Address and a signed 32-bit Preference Level. Larger preference values indicate more preferred default routers; 0x80000000 marks an address as unusable. [RFC 1256]
+body:
+  - id: icmpRdiscType
+    name: Type
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: ICMP message type. 9 = Router Advertisement, sent by routers to advertise their addresses as default gateways. The complementary Router Solicitation sent by hosts uses Type 10. [RFC 1256 §3.2]
+  - id: icmpRdiscCode
+    name: Code
+    type:
+      kind: bits
+      n: 8
+    category: type
+    doc: ICMP code subtype for Router Advertisement. Must be 0; any other value causes the message to be silently discarded by conforming receivers. [RFC 1256 §3.2]
+  - id: icmpRdiscChecksum
+    name: Checksum
+    type:
+      kind: bits
+      n: 16
+    category: checksum
+    doc: 16-bit one's-complement checksum over the entire ICMP message (header plus address entries). Computed with the Checksum field set to zero; verified by the receiver before processing. [RFC 1256 §3.2 / RFC 792]
+  - id: icmpRdiscAddrCount
+    name: Num Addrs
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Number of router addresses advertised in this message. Each address occupies AddrEntrySize 32-bit words in the variable-length address list that follows the fixed header. A value of 0 is legal (e.g. for a withdrawal). [RFC 1256 §3.2]
+  - id: icmpRdiscAddrEntrySize
+    name: Addr Entry Size
+    type:
+      kind: bits
+      n: 8
+    category: length
+    doc: Size of each address entry in 32-bit words. Must be 2 (i.e. 8 octets per entry — one 32-bit Router Address plus one 32-bit Preference Level). Receivers MUST ignore advertisements where this field is less than 2. [RFC 1256 §3.2]
+  - id: icmpRdiscLifetime
+    name: Lifetime
+    type:
+      kind: bits
+      n: 16
+    category: variable
+    doc: Maximum number of seconds that the advertised addresses may be considered valid as default router addresses. The maximum value is 9000 seconds (2.5 hours). A Lifetime of 0 withdraws all addresses in this advertisement. [RFC 1256 §3.2]
+  - kind: repeat
+    id: icmpRdiscAddresses
+    name: Router Addresses
+    category: variable
+    doc: List of NumAddrs router address entries. Each entry specifies one IPv4 address on which the router is reachable as a default gateway and an associated preference level. Entries are ordered highest-preference first by convention. [RFC 1256 §3.2]
+    element:
+      id: icmpRdiscAddrEntry
+      fields:
+        - id: icmpRdiscRouterAddr
+          name: Router Address
+          type:
+            kind: bits
+            n: 32
+          category: addressing
+          doc: IPv4 address of the router interface on the subnet from which the advertisement was sent. Hosts add this address to their default router list for up to Lifetime seconds. The address 0.0.0.0 is invalid. [RFC 1256 §3.2]
+        - id: icmpRdiscPreferenceLevel
+          name: Preference Level
+          type:
+            kind: bits
+            n: 32
+          category: variable
+          doc: Signed 32-bit preference for this router address relative to other addresses on the same subnet. Higher values indicate more preferred routers; the default is 0. The value 0x80000000 (most negative 32-bit integer) marks the address as being advertised but not usable as a default router. [RFC 1256 §3.2]
+    count:
+      kind: ref
+      field: icmpRdiscAddrCount

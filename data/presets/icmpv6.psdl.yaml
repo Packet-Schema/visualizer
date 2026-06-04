@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../../schemas/psdl.schema.json
-name: ICMPv6 Echo
+name: ICMPv6
 rowBits: 32
 byteOrder: Network byte order (big-endian, MSB-first). The Identifier and Sequence Number are 16-bit big-endian.
-description: ICMP for IPv6 echo request/reply layout (RFC 4443). Carried in IPv6 with Next Header=58.
+description: ICMP for IPv6 (RFC 4443). Carried in IPv6 with Next Header=58. A shared Type/Code/Checksum header is followed by a Switch on Type that selects the per-message body — Echo Request/Reply (128/129), Destination Unreachable (1), Packet Too Big (2, with the MTU field central to Path MTU Discovery), Time Exceeded (3), and Parameter Problem (4). Neighbor Discovery messages (133–137) are modelled separately in the icmpv6Ndp preset.
 body:
   - id: type
     name: Type
@@ -25,17 +25,108 @@ body:
       n: 16
     category: checksum
     doc: 16-bit one's-complement checksum over the ICMPv6 message plus an IPv6 pseudo-header (src/dst, length, next header). Mandatory in IPv6. [RFC 4443 §2.3]
-  - id: identifier
-    name: Identifier
-    type:
-      kind: bits
-      n: 16
-    category: identifier
-    doc: Echo identifier — lets the sender pair replies with outstanding requests; commonly the ping process's PID.
-  - id: sequence
-    name: Sequence Number
-    type:
-      kind: bits
-      n: 16
-    category: identifier
-    doc: Echo sequence number — incremented per ping so dropped responses are visible.
+  - kind: switch
+    id: rest
+    name: Message Body
+    on:
+      kind: ref
+      field: type
+    cases:
+      "128":
+        id: echoRequest
+        name: Echo Request
+        fields:
+          - id: identifierReq
+            name: Identifier
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo Request identifier (Type=128) — lets the sender pair replies with outstanding requests; commonly the ping process's PID. Returned unchanged in the matching Echo Reply. [RFC 4443 §4.1]
+          - id: sequenceReq
+            name: Sequence Number
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo Request sequence number (Type=128) — incremented per ping and echoed back in the reply so dropped/reordered responses are visible. [RFC 4443 §4.1]
+      "129":
+        id: echoReply
+        name: Echo Reply
+        fields:
+          - id: identifierRep
+            name: Identifier
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo Reply identifier (Type=129) — copied from the originating Echo Request so the sender can correlate replies. [RFC 4443 §4.2]
+          - id: sequenceRep
+            name: Sequence Number
+            type:
+              kind: bits
+              n: 16
+            category: identifier
+            doc: Echo Reply sequence number (Type=129) — copied from the originating Echo Request to detect loss/reordering. [RFC 4443 §4.2]
+      "1":
+        id: destUnreachable
+        name: Destination Unreachable
+        fields:
+          - id: unused1
+            name: Unused
+            type:
+              kind: bits
+              n: 32
+            category: reserved
+            doc: Unused field for Destination Unreachable (Type=1), sent as zero and ignored on receipt. Code refines the reason (0=no route, 1=admin prohibited, 3=address unreachable, 4=port unreachable). The original packet follows in the message body. [RFC 4443 §3.1]
+      "2":
+        id: packetTooBig
+        name: Packet Too Big
+        fields:
+          - id: mtu
+            name: MTU
+            type:
+              kind: bits
+              n: 32
+            category: length
+            doc: Maximum Transmission Unit of the next-hop link that could not forward the packet (Type=2, Code=0). Used by Path MTU Discovery to shrink the sender's packet size. [RFC 4443 §3.2][RFC 8201]
+      "3":
+        id: timeExceeded
+        name: Time Exceeded
+        fields:
+          - id: unused3
+            name: Unused
+            type:
+              kind: bits
+              n: 32
+            category: reserved
+            doc: Unused field for Time Exceeded (Type=3), sent as zero. Code 0=hop limit exceeded in transit (used by traceroute), 1=fragment reassembly time exceeded. [RFC 4443 §3.3]
+      "4":
+        id: parameterProblem
+        name: Parameter Problem
+        fields:
+          - id: pointer
+            name: Pointer
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Offset (in octets) into the invoking packet where the error was detected (Type=4). Code 0=erroneous header field, 1=unrecognized Next Header type, 2=unrecognized IPv6 option. [RFC 4443 §3.4]
+    default:
+      id: echoDefault
+      name: Echo
+      fields:
+        - id: identifier
+          name: Identifier
+          type:
+            kind: bits
+            n: 16
+          category: identifier
+          doc: Echo identifier — lets the sender pair replies with outstanding requests; commonly the ping process's PID. Shown for Echo and message types not otherwise modeled. [RFC 4443 §4.1]
+        - id: sequence
+          name: Sequence Number
+          type:
+            kind: bits
+            n: 16
+          category: identifier
+          doc: Echo sequence number — incremented per ping so dropped responses are visible. Shown for Echo and message types not otherwise modeled. [RFC 4443 §4.1]

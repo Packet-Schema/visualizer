@@ -1,0 +1,142 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NTP Control Message
+rowBits: 32
+byteOrder: BE
+description: "NTP Control Message (RFC 1305 Appendix B, mode 6). Used by NTP management and monitoring tools (e.g., ntpq) to query or configure NTP daemons over UDP port 123. The fixed header is 12 bytes, followed by a variable-length Data field (up to 468 bytes), optional padding to a 32-bit boundary, and an optional 96-bit Authenticator (Key ID + Message Digest) when authentication is requested. The Response (R), Error (E), and More (M) bits distinguish queries from responses and signal error or fragmentation conditions. OpCode selects the operation: read status, read variables, write variables, etc."
+
+body:
+  - kind: group
+    id: ntpCtrlFlags1
+    name: LI / VN / Mode
+    children:
+      - id: ntpCtrlLI
+        name: LI
+        type:
+          kind: enum
+          bits: 2
+          variants:
+            0: "No warning"
+            1: "Last minute has 61 seconds"
+            2: "Last minute has 59 seconds"
+            3: "Alarm condition (clock not synchronized)"
+        category: flags
+        defaultValue: 0
+        doc: "Leap Indicator. 2-bit code warning of an impending leap second or, when set to 3, indicating that the clock is unsynchronized. In control messages this field is conventionally set to 0. [RFC 1305 Appendix B]"
+      - id: ntpCtrlVN
+        name: VN
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 2
+        doc: "Version Number. Identifies the NTP version; must be 2 for NTPv2 or 3 for NTPv3 control messages. Receivers that do not implement the indicated version may discard the packet. [RFC 1305 Appendix B]"
+      - id: ntpCtrlMode
+        name: Mode
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 6
+        doc: "Association mode. MUST be 6 for NTP Control Messages. Mode 6 is reserved exclusively for NTP management and monitoring queries and responses. [RFC 1305 Appendix B]"
+
+  - kind: group
+    id: ntpCtrlFlags2
+    name: R / E / M / OpCode
+    children:
+      - id: ntpCtrlR
+        name: R
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Response (R) bit. Set to 0 in a request; set to 1 in a response to indicate this packet is a reply to a matching request identified by the Sequence field. [RFC 1305 Appendix B]"
+      - id: ntpCtrlE
+        name: E
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Error (E) bit. Set to 1 in a response to indicate that an error occurred while processing the request. When E=1 the Data field contains an ASCII error message. Always 0 in requests. [RFC 1305 Appendix B]"
+      - id: ntpCtrlM
+        name: M
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "More (M) bit. Set to 1 when the response data is too large for a single packet and additional response fragments follow with the same Sequence number. The last (or only) fragment has M=0. Always 0 in requests. [RFC 1305 Appendix B]"
+      - id: ntpCtrlOpCode
+        name: OpCode
+        type:
+          kind: enum
+          bits: 5
+          variants:
+            0: "Reserved"
+            1: "Read Status"
+            2: "Read Variables"
+            3: "Write Variables"
+            4: "Read Clock Variables"
+            5: "Write Clock Variables"
+            6: "Set Trap Address/Port"
+            7: "Trap Response"
+        category: type
+        defaultValue: 1
+        doc: "Operation code. Selects the control function: 1=Read Status, 2=Read Variables, 3=Write Variables, 4=Read Clock Variables, 5=Write Clock Variables, 6=Set Trap Address/Port, 7=Trap Response. Values 8–31 are reserved. [RFC 1305 Appendix B]"
+
+  - id: ntpCtrlSequence
+    name: Sequence
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Sequence number assigned by the requestor to match a response to its originating request. The responder copies this value unchanged into the reply. Incremented by one for each new request; the More (M) bit fragments share the same sequence number. [RFC 1305 Appendix B]"
+
+  - id: ntpCtrlStatus
+    name: Status
+    type: { kind: int, bits: 16 }
+    category: variable
+    doc: "Status word. In a request it is set to 0. In a response it carries system status (when AssocID=0) or peer association status (when AssocID≠0): the high byte encodes leap/sync/count information and the low byte encodes event codes. [RFC 1305 Appendix B]"
+
+  - id: ntpCtrlAssocID
+    name: Association ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Association ID. Identifies the peer association to which the operation applies. 0 indicates the operation targets the local NTP system rather than a specific peer. Assigned by the server; the client reflects it in subsequent requests for the same peer. [RFC 1305 Appendix B]"
+
+  - id: ntpCtrlOffset
+    name: Offset
+    type: { kind: int, bits: 16 }
+    category: variable
+    doc: "Payload offset in octets. For fragmented responses (M=1) this is the byte offset within the reassembled Data payload at which this fragment's data begins. Set to 0 in requests and in single-fragment responses. [RFC 1305 Appendix B]"
+
+  - id: ntpCtrlDataBytes
+    name: Count
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Number of octets of data in the Data field that follows. Set to 0 when no data is present. Maximum value is 468 octets so that the entire control message fits within a single 512-byte UDP payload. [RFC 1305 Appendix B]"
+
+  - kind: optional
+    when: { kind: ref, field: ntpCtrlDataBytes }
+    field:
+      id: ntpCtrlData
+      name: Data
+      type: { kind: bytes, n: { kind: ref, field: ntpCtrlDataBytes } }
+      category: payload-marker
+      doc: "Variable-length payload. In requests it carries a comma-separated list of variable names or name=value assignments (ASCII). In responses it carries the queried variable values or, when E=1, an ASCII error message. Length given by the Count field; present only when Count > 0. [RFC 1305 Appendix B]"
+
+  - kind: optional
+    when: { kind: ref, field: ntpCtrlDataBytes }
+    field:
+      id: ntpCtrlPadding
+      name: Padding
+      type: { kind: bits, n: 24 }
+      category: reserved
+      doc: "Zero-fill padding appended after the Data field to align the total message to a 32-bit (4-byte) boundary. The number of padding bytes is ((4 - (Count mod 4)) mod 4), i.e. 0 to 3 bytes; shown here at its maximum width of 24 bits. Not counted in the Count field. Present only when a Data field is present and Count is not a multiple of 4. [RFC 1305 Appendix B]"
+
+  - kind: optional
+    when: { kind: ref, field: ntpCtrlAuthKeyID }
+    field:
+      id: ntpCtrlAuthKeyID
+      name: Key ID
+      type: { kind: int, bits: 32 }
+      category: identifier
+      doc: "Authenticator Key Identifier. Present only when the control message is authenticated. Identifies the symmetric key shared between the NTP management client and server that was used to compute the Message Digest. A value of 0 indicates no authentication. [RFC 1305 Appendix B]"
+
+  - kind: optional
+    when: { kind: ref, field: ntpCtrlAuthKeyID }
+    field:
+      id: ntpCtrlAuthDigest
+      name: Message Digest
+      type: { kind: bits, n: 64 }
+      category: checksum
+      doc: "Message Digest (64 bits / 8 bytes). A cryptographic MAC computed over the entire NTP Control Message (header + data + padding) using the key identified by Key ID. Provides data integrity and peer authentication for management operations. [RFC 1305 Appendix B]"

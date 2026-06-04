@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: STUN Message
+rowBits: 32
+byteOrder: BE
+description: STUN (Session Traversal Utilities for NAT) message format as defined in RFC 8489. Fixed 20-byte header followed by variable-length TLV attributes.
+body:
+  - kind: group
+    id: stunMessageType
+    children:
+      - { id: stunZeros, name: "Zeros", type: { kind: int, bits: 2 }, category: reserved, doc: "Must be 0b00; top two bits of STUN message type are always zero." }
+      - { id: stunMessageClass, name: "Message Class", type: { kind: int, bits: 2 }, category: type, doc: "Message class: 00=Request, 01=Indication, 10=Success Response, 11=Error Response. Simplified encoding for educational purposes (actual encoding uses bits 9 and 8)." }
+      - { id: stunMessageMethod, name: "Message Method", type: { kind: int, bits: 12 }, category: type, doc: "Message method: 0x001=Binding. Remaining bits encode the STUN method." }
+  - { id: stunMessageLength, name: "Message Length", type: { kind: int, bits: 16 }, category: length, doc: "Size of the message in bytes, not including the 20-byte header. Must be a multiple of 4." }
+  - { id: stunMagicCookie, name: "Magic Cookie", type: { kind: int, bits: 32 }, category: identifier, doc: "Fixed value 0x2112A442. Used to distinguish STUN from older protocols and aids in NAT traversal." }
+  - { id: stunTransactionId, name: "Transaction ID", type: { kind: bits, n: 96 }, category: identifier, doc: "Randomly chosen 96-bit (12-byte) identifier used to correlate requests and responses." }
+  - kind: repeat
+    id: stunAttributes
+    count: { kind: ref, field: "stunAttrCount" }
+    element:
+      id: stunAttribute
+      fields:
+        - { id: stunAttrType, name: "Attribute Type", type: { kind: int, bits: 16 }, category: type, doc: "Attribute type: 0x0001=MAPPED-ADDRESS, 0x0006=USERNAME, 0x0008=MESSAGE-INTEGRITY, 0x0009=ERROR-CODE, 0x000A=UNKNOWN-ATTRIBUTES, 0x0014=REALM, 0x0015=NONCE, 0x0020=XOR-MAPPED-ADDRESS, 0x8022=SOFTWARE, 0x8028=FINGERPRINT." }
+        - { id: stunAttrLen, name: "Attribute Length", type: { kind: int, bits: 16 }, category: length, doc: "Length of the attribute value in bytes before padding. The value is padded to a 4-byte boundary." }
+        - { id: stunAttrValue, name: "Attribute Value", type: { kind: bytes, n: { kind: ref, field: "stunAttrLen" } }, category: variable, doc: "Attribute value of stunAttrLen bytes, padded to the nearest 4-byte boundary." }

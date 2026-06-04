@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IKEv2 Key Exchange Payload
+rowBits: 32
+byteOrder: BE
+description: "IKEv2 Key Exchange (KE) Payload (RFC 7296 §3.4). Carries a Diffie-Hellman public value used to establish a shared secret during IKE_SA_INIT and CREATE_CHILD_SA exchanges. The payload begins with the standard 4-byte Generic Payload Header (Next Payload, Critical flag, Reserved bits, Payload Length), followed by a 2-byte Diffie-Hellman Group Number identifying the DH group (MODP, ECP, etc.), a 2-byte Reserved field, and then the variable-length Key Exchange Data containing the sender's raw DH public value. The Key Exchange Data length is Payload Length minus 8 bytes (4-byte header + 4-byte DH group/reserved). Both peers send a KE payload; each uses the other's public value with its own private key to derive the same shared secret. [RFC 7296 §3.4]"
+
+body:
+  - kind: group
+    id: ikev2KeNextCritical
+    name: Next Payload / C / Reserved
+    children:
+      - id: ikev2KeNextPayload
+        name: Next Payload
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            0: "No Next Payload"
+            33: "SA (Security Association)"
+            34: "KE (Key Exchange)"
+            35: "IDi (Identification - Initiator)"
+            36: "IDr (Identification - Responder)"
+            37: "CERT (Certificate)"
+            38: "CERTREQ (Certificate Request)"
+            39: "AUTH (Authentication)"
+            40: "Ni/Nr (Nonce)"
+            41: "N (Notify)"
+            42: "D (Delete)"
+            43: "V (Vendor ID)"
+            44: "TSi (Traffic Selector - Initiator)"
+            45: "TSr (Traffic Selector - Responder)"
+            46: "SK (Encrypted and Authenticated)"
+            47: "CP (Configuration)"
+            48: "EAP (Extensible Authentication)"
+        category: type
+        doc: "Payload type of the next payload in the IKEv2 payload chain, or 0 if this is the last payload. Values 33–48 are defined payload types; 0 means no further payloads follow. Forms a singly-linked list through the IKEv2 message. [RFC 7296 §3.2]"
+
+      - id: ikev2KeCritical
+        name: C
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Critical (C) flag. If set to 1, the payload is critical; a receiver that does not understand the payload type MUST reject the message with a NOTIFY of type UNSUPPORTED_CRITICAL_PAYLOAD. If 0, an unrecognised payload type MAY be silently ignored. [RFC 7296 §3.2]"
+
+      - id: ikev2KeReserved1
+        name: Reserved
+        type: { kind: int, bits: 7 }
+        category: reserved
+        doc: "Reserved bits [6:0] of the second byte of the Generic Payload Header. MUST be sent as zero and MUST be ignored on receipt per generic payload header rules. [RFC 7296 §3.2]"
+
+  - id: ikev2KePayloadLength
+    name: Payload Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length in bytes of this KE payload, including the 4-byte Generic Payload Header, the 4-byte DH group/reserved field, and the variable-length Key Exchange Data. The Key Exchange Data length equals this value minus 8. Minimum value is 8 (empty KE data). [RFC 7296 §3.2 / §3.4]"
+
+  - id: ikev2KeDhGroup
+    name: Diffie-Hellman Group Num
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        0: "None"
+        1: "768-bit MODP (Group 1)"
+        2: "1024-bit MODP (Group 2)"
+        5: "1536-bit MODP (Group 5)"
+        14: "2048-bit MODP (Group 14)"
+        15: "3072-bit MODP (Group 15)"
+        16: "4096-bit MODP (Group 16)"
+        17: "6144-bit MODP (Group 17)"
+        18: "8192-bit MODP (Group 18)"
+        19: "256-bit ECP (Group 19)"
+        20: "384-bit ECP (Group 20)"
+        21: "521-bit ECP (Group 21)"
+        22: "1024-bit MODP with 160-bit POS (Group 22)"
+        23: "2048-bit MODP with 224-bit POS (Group 23)"
+        24: "2048-bit MODP with 256-bit POS (Group 24)"
+        25: "192-bit ECP (Group 25)"
+        26: "224-bit ECP (Group 26)"
+        27: "224-bit Brainpool ECP (Group 27)"
+        28: "256-bit Brainpool ECP (Group 28)"
+        29: "384-bit Brainpool ECP (Group 29)"
+        30: "512-bit Brainpool ECP (Group 30)"
+        31: "Curve25519 (Group 31)"
+        32: "Curve448 (Group 32)"
+        33: "GOST3410-2012-256 (Group 33)"
+        34: "GOST3410-2012-512 (Group 34)"
+    category: identifier
+    doc: "Identifies the Diffie-Hellman group whose public value is carried in the Key Exchange Data field. Both peers MUST use the same group; if the group is unacceptable the responder returns an INVALID_KE_PAYLOAD notification containing its preferred group number. Group numbers are maintained by IANA. [RFC 7296 §3.4 / §3.10.1]"
+
+  - id: ikev2KeReserved2
+    name: Reserved
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "Reserved 16-bit field immediately following the Diffie-Hellman Group Num. MUST be sent as zero and MUST be ignored on receipt. Pads the fixed header portion to a 32-bit boundary before the variable-length Key Exchange Data. [RFC 7296 §3.4]"
+
+  - id: ikev2KeData
+    name: Key Exchange Data
+    type: { kind: bytes, n: { kind: ref, field: ikev2KeDataLen } }
+    category: variable
+    doc: "The sender's Diffie-Hellman public value for the group specified in Diffie-Hellman Group Num. For MODP groups the value is an unsigned integer in big-endian network byte order, zero-padded to the group's prime size. For ECP groups the value is an uncompressed point (0x04 || X || Y) per RFC 5903. Both peers exchange KE payloads and each combines its own private key with the peer's public value to derive the same shared secret used to key the IKE SA. [RFC 7296 §3.4 / RFC 5903]"

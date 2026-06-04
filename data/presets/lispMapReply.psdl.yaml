@@ -1,0 +1,262 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LISP Map-Reply
+rowBits: 32
+byteOrder: BE
+description: "Locator/ID Separation Protocol (LISP) Map-Reply message (RFC 6833, updated by RFC 8111). Sent by a Map-Server or ETR to an ITR or Map-Resolver in response to a Map-Request (Type=1). A Map-Reply carries one or more EID-to-RLOC mapping records. The fixed header contains Type=2 (4 bits), Probe (P) flag, Echo-Nonce (E) flag, Security (S) flag, 17 reserved bits, and an 8-bit Record Count, followed by a 64-bit Nonce echoed from the Map-Request. Each record contains a 32-bit TTL, 8-bit Locator Count, 8-bit EID Mask-Length, a 3-bit ACT action code, an Authoritative (A) flag, 12 reserved bits, a 12-bit Map-Version number, a 16-bit EID-AFI, a variable-length EID-Prefix, and zero or more Locator entries. Each Locator entry contains Priority, Weight, M-Priority, M-Weight, flags, and a variable-length RLOC address. UDP destination port 4342. [RFC 6833 §6.1.4]"
+
+body:
+  - kind: group
+    id: lispReplyTypeFlags
+    name: Type / Flags
+    children:
+      - id: lispReplyType
+        name: Type
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            2: "Map-Reply"
+        category: type
+        defaultValue: 2
+        doc: "LISP control message type. MUST be 2 for a Map-Reply. Values 1=Map-Request, 3=Map-Register, 4=Map-Notify, 8=Map-Referral; other values are reserved. The receiver MUST silently discard a message whose Type does not match the expected value. [RFC 6833 §6.1.4]"
+      - id: lispReplyP
+        name: P
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Probe (P) flag. Set to 1 when the Map-Reply is sent in response to a Map-Request with the Probe bit set, indicating the reply is a RLOC-probe response rather than a mapping query response. The nonce in this reply MUST match the nonce in the probe request. [RFC 6833 §6.1.4]"
+      - id: lispReplyE
+        name: E
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Echo-Nonce (E) flag. Set to 1 to indicate that the Nonce field echoes the nonce from the corresponding Map-Request, enabling the ITR to correlate the reply to its outstanding request and to verify RLOC reachability via the nonce echo mechanism. [RFC 6833 §6.1.4]"
+      - id: lispReplyS
+        name: S
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Security (S) flag. Reserved for future use of a Map-Reply Security field; MUST be set to 0 and ignored on receipt in current implementations. [RFC 6833 §6.1.4]"
+      - id: lispReplyReserved
+        name: Reserved
+        type: { kind: bits, n: 17 }
+        category: reserved
+        doc: "17 reserved bits following the S flag. MUST be set to zero on transmission and ignored on receipt. [RFC 6833 §6.1.4]"
+
+  - kind: group
+    id: lispReplyRecordCountGroup
+    name: Record Count
+    children:
+      - id: lispReplyRecCount
+        name: Record Count
+        type: { kind: int, bits: 8 }
+        category: length
+        defaultValue: 0
+        doc: "Number of EID-to-RLOC mapping records carried in this Map-Reply. Each record appears sequentially after the Nonce field. A value of 0 is valid (negative reply with no records) and indicates that no mapping exists for the queried EID. [RFC 6833 §6.1.4]"
+
+  - id: lispReplyNonce
+    name: Nonce
+    type: { kind: int, bits: 64 }
+    category: identifier
+    doc: "64-bit nonce echoed verbatim from the Map-Request that triggered this Map-Reply. The ITR uses the nonce to correlate replies with outstanding requests and to detect replay; when E=1 it also serves as a liveness token on the data path. [RFC 6833 §6.1.4]"
+
+  - kind: repeat
+    id: lispReplyRecords
+    name: Records
+    category: variable
+    doc: "Zero or more EID-to-RLOC mapping records. The count is given by Record Count. Each record describes the mapping for one EID-prefix, including its TTL, action, map-version, and all associated Locator entries (RLOCs). [RFC 6833 §6.1.4]"
+    count: { kind: ref, field: lispReplyRecCount }
+    element:
+      id: lispReplyRecord
+      fields:
+        - id: lispRecordTTL
+          name: Record TTL
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: "Time-to-live for this mapping record in minutes. A value of 0xFFFFFFFF means the mapping never expires. A value of 0 indicates the EID is no longer reachable and the ITR should remove the mapping immediately. [RFC 6833 §6.1.4]"
+
+        - id: lispRecLocCount
+          name: Locator Count
+          type: { kind: int, bits: 8 }
+          category: length
+          defaultValue: 0
+          doc: "Number of Locator entries (RLOCs) that follow the EID-Prefix in this record. A value of 0 is a valid negative reply indicating the EID exists but has no reachable RLOCs. [RFC 6833 §6.1.4]"
+
+        - id: lispRecEIDMaskLen
+          name: EID Mask-Len
+          type: { kind: int, bits: 8 }
+          category: addressing
+          doc: "Prefix length of the EID-Prefix for this record, in bits. Applies to the EID-Prefix address family indicated by EID-AFI. For example, 24 for a /24 IPv4 prefix or 48 for a /48 IPv6 prefix. [RFC 6833 §6.1.4]"
+
+        - kind: group
+          id: lispRecActA
+          name: ACT / A / Rsvd
+          children:
+            - id: lispRecACT
+              name: ACT
+              type:
+                kind: enum
+                bits: 3
+                variants:
+                  0: "No Action"
+                  1: "Natively Forward"
+                  2: "Send Map-Request"
+                  3: "Drop"
+                  4: "Drop with Map-Request"
+              category: type
+              defaultValue: 0
+              doc: "Action code indicating what the ITR should do when no more-specific mapping is found. 0=No Action (use existing mapping or forward natively), 1=Natively Forward (send without LISP encapsulation), 2=Send Map-Request (trigger a new Map-Request), 3=Drop (silently discard), 4=Drop and send Map-Request. [RFC 6833 §6.1.4]"
+            - id: lispRecA
+              name: A
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 0
+              doc: "Authoritative (A) flag. Set to 1 when the Map-Reply originates from the ETR that owns the EID-prefix (authoritative source). Set to 0 when the reply is generated by a Map-Resolver or Map-Server on behalf of the ETR (non-authoritative). [RFC 6833 §6.1.4]"
+            - id: lispRecRsvd12
+              name: Reserved
+              type: { kind: bits, n: 12 }
+              category: reserved
+              doc: "12 reserved bits. MUST be set to zero on transmission and ignored on receipt. [RFC 6833 §6.1.4]"
+
+        - kind: group
+          id: lispRecMapVersionGroup
+          name: Map-Version
+          children:
+            - id: lispRecMapVersion
+              name: Map-Version
+              type: { kind: int, bits: 12 }
+              category: identifier
+              defaultValue: 0
+              doc: "12-bit map-version number for this EID-prefix record. Incremented by the ETR each time the mapping changes. An ITR that has a cached copy can detect staleness by comparing this value against the version carried in LISP-encapsulated data packets (when V=1). A value of 0 means versioning is not used. [RFC 6833 §6.1.4]"
+
+        - id: lispRecEIDAFI
+          name: EID-AFI
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              0: "AFI 0 (No address)"
+              1: "IPv4"
+              2: "IPv6"
+          category: addressing
+          doc: "Address Family Indicator for the EID-Prefix, as assigned by IANA. 0=no address (used for negative mappings), 1=IPv4 (4-byte address), 2=IPv6 (16-byte address). Other values (e.g. MAC, E.164) are possible per IANA AFI registry. [RFC 6833 §6.1.4]"
+
+        - kind: switch
+          id: lispRecEIDPrefixByAFI
+          on: { kind: ref, field: lispRecEIDAFI }
+          cases:
+            "1":
+              id: lispRecEIDPrefixIPv4
+              name: EID-Prefix (IPv4)
+              fields:
+                - id: lispRecEIDv4
+                  name: EID-Prefix
+                  type: { kind: bytes, n: { kind: lit, value: 4 } }
+                  category: addressing
+                  doc: "4-byte IPv4 EID-Prefix address. The prefix length is given by EID Mask-Len. Identifies the endpoint address space for which this mapping record is authoritative. [RFC 6833 §6.1.4]"
+            "2":
+              id: lispRecEIDPrefixIPv6
+              name: EID-Prefix (IPv6)
+              fields:
+                - id: lispRecEIDv6
+                  name: EID-Prefix
+                  type: { kind: bytes, n: { kind: lit, value: 16 } }
+                  category: addressing
+                  doc: "16-byte IPv6 EID-Prefix address. The prefix length is given by EID Mask-Len. Identifies the endpoint address space for which this mapping record is authoritative. [RFC 6833 §6.1.4]"
+          default:
+            id: lispRecEIDPrefixNone
+            name: EID-Prefix (no address)
+            fields: []
+
+        - kind: repeat
+          id: lispRecLocators
+          name: Locators
+          category: variable
+          doc: "Zero or more Locator (RLOC) entries for this EID-prefix record. Count is given by Locator Count. Each entry specifies a reachable RLOC address with its priority, weight, and reachability flags. [RFC 6833 §6.1.4]"
+          count: { kind: ref, field: lispRecLocCount }
+          element:
+            id: lispLocator
+            fields:
+              - id: lispLocPriority
+                name: Priority
+                type: { kind: int, bits: 8 }
+                category: variable
+                doc: "Unicast priority of this RLOC. Lower numeric values indicate higher preference for unicast traffic. An ITR uses the lowest-priority RLOC(s) that are reachable. A value of 255 means the RLOC is not used for unicast forwarding. [RFC 6833 §6.1.4]"
+              - id: lispLocWeight
+                name: Weight
+                type: { kind: int, bits: 8 }
+                category: variable
+                doc: "Unicast weight for load balancing among RLOCs of equal priority. Traffic is distributed proportionally to weight. All RLOCs with the same lowest priority are used; relative weights determine the traffic share. [RFC 6833 §6.1.4]"
+              - id: lispLocMPriority
+                name: M-Priority
+                type: { kind: int, bits: 8 }
+                category: variable
+                doc: "Multicast priority of this RLOC for multicast traffic. Lower values indicate higher preference. A value of 255 means the RLOC is not used for multicast forwarding. [RFC 6833 §6.1.4]"
+              - id: lispLocMWeight
+                name: M-Weight
+                type: { kind: int, bits: 8 }
+                category: variable
+                doc: "Multicast weight for load balancing among RLOCs of equal multicast priority. Semantics are analogous to the unicast Weight field but apply only to multicast traffic. [RFC 6833 §6.1.4]"
+              - kind: group
+                id: lispLocFlagsGroup
+                name: Flags
+                children:
+                  - id: lispLocUnusedFlags
+                    name: Unused Flags
+                    type: { kind: bits, n: 13 }
+                    category: reserved
+                    doc: "13 unused flag bits. MUST be set to zero on transmission and ignored on receipt. [RFC 6833 §6.1.4]"
+                  - id: lispLocL
+                    name: L
+                    type: { kind: int, bits: 1 }
+                    category: flags
+                    defaultValue: 0
+                    doc: "Local (L) flag. Set to 1 if this RLOC is locally assigned and directly reachable from the sending ETR. Set to 0 if the RLOC belongs to a remote site. [RFC 6833 §6.1.4]"
+                  - id: lispLocP
+                    name: p
+                    type: { kind: int, bits: 1 }
+                    category: flags
+                    defaultValue: 0
+                    doc: "RLOC-probe-reply (p) flag. Set to 1 when this Locator entry is included in a RLOC-probe Map-Reply to indicate that the probe reached this specific RLOC. Allows the ITR to identify which RLOC responded to its probe. [RFC 6833 §6.1.4]"
+                  - id: lispLocR
+                    name: R
+                    type: { kind: int, bits: 1 }
+                    category: flags
+                    defaultValue: 0
+                    doc: "Reachability (R) flag. Set to 1 when the ETR has determined (e.g. via RLOC probing or IGP/BGP) that this RLOC is currently reachable. Set to 0 when the RLOC is known to be unreachable. ITRs SHOULD prefer RLOCs with R=1. [RFC 6833 §6.1.4]"
+              - id: lispLocAFI
+                name: Loc-AFI
+                type:
+                  kind: enum
+                  bits: 16
+                  variants:
+                    1: "IPv4"
+                    2: "IPv6"
+                category: addressing
+                doc: "Address Family Indicator for this RLOC address. 1=IPv4 (4-byte RLOC), 2=IPv6 (16-byte RLOC). Determines the length of the RLOC address field that follows. [RFC 6833 §6.1.4]"
+              - kind: switch
+                id: lispLocAddrByAFI
+                on: { kind: ref, field: lispLocAFI }
+                cases:
+                  "1":
+                    id: lispLocAddrIPv4
+                    name: RLOC Address (IPv4)
+                    fields:
+                      - id: lispLocRLOCv4
+                        name: RLOC
+                        type: { kind: bytes, n: { kind: lit, value: 4 } }
+                        category: addressing
+                        doc: "4-byte IPv4 RLOC address of this locator. The ITR encapsulates data packets to this address when this RLOC is selected for forwarding. [RFC 6833 §6.1.4]"
+                  "2":
+                    id: lispLocAddrIPv6
+                    name: RLOC Address (IPv6)
+                    fields:
+                      - id: lispLocRLOCv6
+                        name: RLOC
+                        type: { kind: bytes, n: { kind: lit, value: 16 } }
+                        category: addressing
+                        doc: "16-byte IPv6 RLOC address of this locator. The ITR encapsulates data packets to this address when this RLOC is selected for forwarding. [RFC 6833 §6.1.4]"
+                default:
+                  id: lispLocAddrUnknown
+                  name: RLOC Address (unknown AFI)
+                  fields: []

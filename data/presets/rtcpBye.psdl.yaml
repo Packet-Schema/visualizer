@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RTCP Goodbye
+rowBits: 32
+byteOrder: BE
+description: RTCP Goodbye (BYE) packet (RFC 3550, PT=203). Sent by a participant to indicate it is leaving a session. Contains a list of contributing SSRCs to be removed and an optional human-readable reason string. The receiver removes the listed sources from active speaker tracking upon receipt.
+body:
+  - kind: group
+    id: flags
+    children:
+      - { id: v, name: Version, type: { kind: int, bits: 2 }, category: type, doc: "RTCP version; always 2. Packets with other version values must be ignored [RFC 3550 §6.6]." }
+      - { id: p, name: Padding, type: { kind: int, bits: 1 }, category: flags, doc: "If set, the packet contains one or more additional padding octets at the end that are not part of the control information; the last octet contains the count of padding octets [RFC 3550 §6.6]." }
+      - { id: rtcpByeSrcCount, name: Source Count, type: { kind: int, bits: 5 }, category: length, doc: "Number of SSRC/CSRC identifiers included in this BYE packet (SC field). May be zero when a mixer sends a BYE on behalf of multiple contributors [RFC 3550 §6.6]." }
+  - { id: pt, name: Packet Type, type: { kind: int, bits: 8 }, category: type, doc: "RTCP packet type; 203 identifies a Goodbye (BYE) packet. Allows compound RTCP demultiplexing within a single UDP datagram [RFC 3550 §6.6]." }
+  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Length of this RTCP packet in 32-bit words minus one, including the header and any padding. Enables receivers to skip over unknown packet types in compound packets [RFC 3550 §6.6]." }
+  - kind: repeat
+    id: byeSources
+    count: { kind: ref, field: "rtcpByeSrcCount" }
+    element:
+      id: byeSource
+      fields:
+        - { id: byeSsrc, name: SSRC/CSRC, type: { kind: int, bits: 32 }, category: identifier, doc: "Synchronization or contributing source identifier of the participant that is leaving the session. The receiver should remove this SSRC from active speaker tracking [RFC 3550 §6.6]." }
+  - { kind: optional, when: { kind: ref, field: "rtcpByeSrcCount" }, field: { id: rtcpByeHasReason, name: Has Reason, type: { kind: int, bits: 8 }, category: length, doc: "Length in octets of the optional reason-for-leaving string that follows. Present only when at least one SSRC is listed (SC > 0) and the packet length indicates additional bytes remain [RFC 3550 §6.6]." } }
+  - { kind: optional, when: { kind: ref, field: "rtcpByeHasReason" }, field: { id: rtcpByeReason, name: Reason for Leaving, type: { kind: bytes, n: { kind: ref, field: "rtcpByeHasReason" } }, category: variable, doc: "UTF-8 encoded reason string explaining why the participant is leaving (e.g., 'camera malfunction'). Padded with null octets to the next 32-bit boundary; length given by the preceding octet [RFC 3550 §6.6]." } }

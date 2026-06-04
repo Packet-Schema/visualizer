@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DCCP Generic Header
+rowBits: 32
+byteOrder: BE
+description: DCCP (Datagram Congestion Control Protocol) generic header (RFC 4340). Supports 24-bit sequence numbers (X=0) and 48-bit sequence numbers (X=1).
+body:
+  - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing, doc: "Source port number identifying the sending application." }
+  - { id: dstPort, name: Destination Port, type: { kind: int, bits: 16 }, category: addressing, doc: "Destination port number identifying the receiving application." }
+  - { id: dataOffset, name: Data Offset, type: { kind: int, bits: 8 }, category: length, doc: "Offset from the start of the packet to the data area, measured in 32-bit words." }
+  - { id: ccVal, name: CCVal, type: { kind: int, bits: 4 }, category: variable, doc: "Used by the CCID for congestion-control-specific purposes." }
+  - { id: csCov, name: CsCov, type: { kind: int, bits: 4 }, category: variable, doc: "Checksum coverage: 0 means the checksum covers the entire packet; 1-15 indicate partial coverage of that many 4-byte words." }
+  - { id: checksum, name: Checksum, type: { kind: int, bits: 16 }, category: checksum, doc: "One's complement checksum of the DCCP header, payload, and pseudo-header." }
+  - kind: group
+    id: flagsGroup
+    children:
+      - { id: res, name: Reserved, type: { kind: int, bits: 3 }, category: reserved, doc: "Reserved bits; must be set to zero by senders and ignored by receivers." }
+      - { id: type, name: Type, type: { kind: int, bits: 4 }, category: type, doc: "Packet type: 0=Request, 1=Response, 2=Data, 3=Ack, 4=DataAck, 5=CloseReq, 6=Close, 7=Reset, 8=Sync, 9=SyncAck." }
+      - { id: x, name: X, type: { kind: int, bits: 1 }, category: flags, doc: "Extended sequence numbers flag: 0 uses 24-bit sequence numbers, 1 uses 48-bit sequence numbers." }
+  - { id: seqNumHigh, name: Sequence Number High, type: { kind: int, bits: 24 }, category: identifier, doc: "High 24 bits of the sequence number; when X=0 this field contains the complete 24-bit sequence number." }
+  - { kind: optional, when: { kind: ref, field: "x" }, field: { id: reserved2, name: Reserved2, type: { kind: int, bits: 16 }, category: reserved, doc: "Reserved field present only when X=1; must be set to zero." } }
+  - { kind: optional, when: { kind: ref, field: "x" }, field: { id: seqNumLow, name: Sequence Number Low, type: { kind: int, bits: 32 }, category: identifier, doc: "Low 32 bits of the 48-bit sequence number; present only when X=1." } }

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IPsec AH Header
+rowBits: 32
+byteOrder: BE
+description: IP Authentication Header (RFC 4302). AH provides connectionless integrity and data-origin authentication for IP datagrams; it does NOT provide confidentiality (use ESP for that). AH can be applied in Transport mode (protecting the IP payload only) or Tunnel mode (protecting the entire inner IP datagram). The Integrity Check Value (ICV) is computed over the immutable fields of the outer IP header plus the entire AH header and payload; the ICV length is determined by the negotiated transform — HMAC-SHA-1-96 and AES-128-XCBC-MAC-96 produce 12-byte ICVs. Carried inside IP as Protocol number 51.
+body:
+  - id: nextHeader
+    name: Next Header
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: Identifies the protocol of the next header (payload) immediately following the AH header. In Transport mode this is the upper-layer protocol (TCP=6, UDP=17, ICMPv6=58, etc.). In Tunnel mode this is IPv4 (4) or IPv6 (41), identifying the encapsulated IP packet. Uses the same IANA IP Protocol Number registry as IPv4's Protocol field. [RFC 4302 §2.1]
+  - id: payloadLen
+    name: Payload Len
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Length of this AH header in 32-bit (4-byte) words minus 2. For example, a standard HMAC-SHA-1-96 AH (24 bytes total: 3×4 fixed + 12 bytes ICV) gives Payload Len = 24/4 − 2 = 4. The total AH header length in bytes = (Payload Len + 2) × 4. [RFC 4302 §2.2]"
+  - id: reserved
+    name: Reserved
+    type: { kind: bits, n: 16 }
+    category: reserved
+    doc: Reserved. MUST be set to zero on transmission; MUST be ignored on receipt. [RFC 4302 §2.3]
+  - id: spi
+    name: Security Parameters Index (SPI)
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Arbitrary 32-bit value that, in combination with the destination IP address and the security protocol (AH), uniquely identifies the Security Association for this datagram. Values 1..255 are reserved by IANA; 256..4294967295 are available. SPI 0 is reserved for local implementation use. The SPI is chosen by the receiving node during IKE negotiation. [RFC 4302 §2.4]"
+  - id: sequenceNumber
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Monotonically increasing unsigned counter. Initialized to 0 when a new SA is established; the first packet sent gets SN=1. Used for anti-replay: a receiver maintains a sliding window and discards packets with duplicate or too-old sequence numbers. The counter MUST NOT wrap (the SA must be renegotiated or manually reset before wrapping). [RFC 4302 §2.5]"
+  - id: icv
+    name: Integrity Check Value (ICV)
+    type: { kind: bytes, n: { kind: ref, field: ahIcvLen } }
+    category: checksum
+    doc: "Authentication data — the ICV output of the negotiated integrity algorithm, e.g. 12 bytes for HMAC-SHA-1-96 (RFC 2404) or AES-128-XCBC-MAC-96 (RFC 3566), 16 bytes for AES-256-GMAC (RFC 4543). Computed over the immutable and predictable fields of the outer IP header, the AH header (ICV field zeroed), and the payload. The receiving end recomputes the ICV and discards the packet if it does not match. [RFC 4302 §2.6]"

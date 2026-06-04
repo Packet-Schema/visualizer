@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IPv6 Destination Options Extension Header
+rowBits: 32
+byteOrder: BE
+description: IPv6 Destination Options Extension Header (RFC 8200 §4.6). Processed only by the packet's final destination (or, when a Routing header precedes it, by each listed intermediate destination). Carries TLV-encoded options identical in format to Hop-by-Hop Options; common options include PadN (0x01), Tunnel Encapsulation Limit (RFC 2473), Home Address (RFC 6275 §6.3), and ILNP Nonce (RFC 6744).
+body:
+  - id: nextHeader
+    name: Next Header
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: IP Protocol Number identifying the type of the header immediately following this Destination Options header (e.g. 6=TCP, 17=UDP, 58=ICMPv6, 60=another Destination Options header). Uses the same IANA numbering as IPv4 Protocol. [RFC 8200 §4.6]
+  - id: hdrExtLen
+    name: Hdr Ext Len
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: Length of this Destination Options header in 8-octet units, not including the first 8 octets. A value of 0 means the header is exactly 8 octets long (2 fixed bytes + 6 option bytes). [RFC 8200 §4.6]
+  - kind: repeat
+    id: ipv6DstOptions
+    name: Options
+    category: variable
+    doc: Chain of TLV-encoded destination options filling the option area of this header. Each entry is either the single-byte Pad1 option (Option Type 0x00, no length or data fields) or a standard Type-Length-Value triplet. The two high bits of the Option Type byte encode the action for unrecognised options (00=skip, 01=discard, 10=discard+ICMP, 11=discard+ICMP if non-multicast); the third-highest bit (0x20) flags whether the option data may change en route. The total header must be padded to a multiple of 8 octets using Pad1 or PadN. [RFC 8200 §4.2, §4.6]
+    element:
+      id: ipv6DstOptionRecord
+      fields:
+        - kind: switch
+          id: ipv6DstOptByType
+          on: { kind: ref, field: ipv6DstOptType }
+          doc: Splits the single-byte Pad1 option (Option Type 0x00) from all other options that use the standard Type-Length-Value triplet. PSDL has no comparison operator, so the magic value 0 is handled via a Switch. [RFC 8200 §4.2]
+          cases:
+            "0":
+              id: ipv6DstOpt_pad1
+              name: Pad1
+              fields:
+                - id: ipv6DstOptType
+                  name: Option Type
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  defaultValue: 0
+                  doc: "Pad1 option — a single 0x00 octet inserted to align subsequent options on their natural boundaries. It is the only IPv6 option without an Opt Data Len or Opt Data field. [RFC 8200 §4.2]"
+          default:
+            id: ipv6DstOpt_tlv
+            name: Option (TLV)
+            fields:
+              - id: ipv6DstOptType
+                name: Option Type
+                type: { kind: int, bits: 8 }
+                category: type
+                doc: "Option identifier byte. Bits 7-6: unrecognised-option action (00=skip and continue, 01=discard packet silently, 10=discard+send ICMP Parameter Problem to source, 11=discard+send ICMP only if destination is not multicast). Bit 5: 0=option data does not change en route, 1=may change (as in the Home Address option). Common values — 0x01 PadN, 0x04 Tunnel Encapsulation Limit (RFC 2473), 0xC9 Home Address (decimal 201, RFC 6275 §6.3), 0x8B ILNP Nonce (RFC 6744). [RFC 8200 §4.2]"
+              - id: ipv6DstOptDataLen
+                name: Opt Data Len
+                type: { kind: int, bits: 8 }
+                category: length
+                doc: "Length of the Opt Data field in octets, not counting the Option Type and Opt Data Len bytes themselves. For PadN this is the number of zero padding bytes (0 or more); for Tunnel Encapsulation Limit it is 1 (RFC 2473 §4.1.1); for Home Address it is 16 (a full 128-bit IPv6 address, RFC 6275 §6.3). [RFC 8200 §4.2]"
+              - id: ipv6DstOptData
+                name: Opt Data
+                type: { kind: bytes, n: { kind: ref, field: ipv6DstOptDataLen } }
+                category: variable
+                doc: "Option-specific data, ipv6DstOptDataLen octets long. PadN fills with zeros; Tunnel Encapsulation Limit carries a 1-byte limit value; Home Address (Option Type 201/0xC9) carries the 128-bit home address of the mobile node used by Mobile IPv6 to restore the original source address before upper-layer processing (RFC 6275 §6.3); ILNP Nonce carries a 64-bit or 96-bit nonce for anti-spoofing (RFC 6744). [RFC 8200 §4.2, RFC 2473 §4.1.1, RFC 6275 §6.3, RFC 6744]"
+    count: { kind: ref, field: ipv6DstOptCount }

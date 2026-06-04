@@ -414,10 +414,18 @@ describe("toAscii — invariants vs normalize", () => {
   // padding, breaking the cheap row arithmetic. Skip those by id rather than
   // by deeper container inspection so the invariant stays load-bearing for
   // the simple presets where it matters most.
+  // http3Frame is the first non-encrypted preset whose body leads with
+  // QUIC varint fields. Under the all-refs-zero env, `normalize()` sizes an
+  // un-seeded varint as 0 bits, while `toAscii()` deliberately seeds the
+  // worst-case varint width so the rendered cell advertises its maximum size.
+  // That intentional divergence renders rows for fields that contribute 0
+  // bits to `totalBits`, breaking the cheap row arithmetic — same class of
+  // exemption as the Encrypted presets below, so skip it by id too.
   const PRESETS_WITH_ENCRYPTED = new Set([
     "quicShort",
     "quicLong",
     "tlsClientHelloFull",
+    "http3Frame",
   ]);
 
   it("the rendered total bit count equals normalize().totalBits", () => {

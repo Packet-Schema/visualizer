@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IPv6 Segment Routing Header (SRH)
+rowBits: 32
+byteOrder: BE
+description: "IPv6 Segment Routing Header (SRH, RFC 8754). Routing Type 4 extension header that encodes an ordered list of 128-bit IPv6 segment addresses (the SR policy) to steer a packet through a sequence of SRv6-capable nodes. The fixed 8-byte base (Next Header through Tag) is followed by a Segment List of (Last Entry + 1) × 16 bytes and an optional TLV block occupying the remaining bytes up to the total header length. Total header length in bytes = (Hdr Ext Len + 1) × 8."
+body:
+  - id: srhNextHeader
+    name: Next Header
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "IP protocol number of the header immediately following this SRH (e.g. 6=TCP, 17=UDP, 58=ICMPv6, 59=No Next Header). Uses the same IANA numbering as IPv4 Protocol. [RFC 8754 §2, RFC 8200 §4.4]"
+
+  - id: srhHdrExtLen
+    name: Hdr Ext Len
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Length of this SRH in 8-octet units, not including the first 8 octets. Total header size in bytes = (Hdr Ext Len + 1) × 8. For N segments and no TLVs, Hdr Ext Len = 2 × N. [RFC 8754 §2]"
+
+  - id: srhRoutingType
+    name: Routing Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        4: "SRH (Segment Routing Header)"
+    category: type
+    defaultValue: 4
+    doc: "Routing Type identifying this as a Segment Routing Header. MUST be set to 4. Other Routing Type values are defined elsewhere (0 deprecated, 2 Mobile IPv6, 3 RPL). [RFC 8754 §2, RFC 8200 §4.4]"
+
+  - id: srhSegmentsLeft
+    name: Segments Left
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Number of route segments remaining to be visited before the packet reaches its final destination. Decremented by each SRv6-capable node that processes this header. When 0 the packet is delivered to the current destination address. MUST NOT exceed Last Entry + 1. [RFC 8754 §2]"
+
+  - id: srhLastEntry
+    name: Last Entry
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Zero-based index of the last element in the Segment List, equal to the number of segments minus one. Since the Segment List is stored in reverse path order, Segment List[0] is the final destination and Segment List[Last Entry] is the first hop to be visited. [RFC 8754 §2]"
+
+  - id: srhFlags
+    name: Flags
+    type: { kind: bits, n: 8 }
+    category: flags
+    doc: "8-bit flags field. All bits are currently unassigned; MUST be set to 0 on transmission and MUST be ignored on receipt. Future extensions may assign individual bits (see RFC 8754 §8.2 for the HMAC TLV extension). [RFC 8754 §2]"
+
+  - id: srhTag
+    name: Tag
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "16-bit tag that marks packets belonging to the same SR policy or flow class. Set to 0 when not used. Allows middleboxes and the destination to group or distinguish SR-encapsulated flows without inspecting the full Segment List. [RFC 8754 §2]"
+
+  - kind: repeat
+    id: srhSegmentList
+    name: Segment List
+    category: addressing
+    doc: "Ordered list of 128-bit IPv6 addresses constituting the SR policy, stored in reverse path order. Segment List[0] is the ultimate destination of the SR path; Segment List[Last Entry] is the first segment to be visited. The active segment identifier is Segment List[Segments Left]. Total number of entries = Last Entry + 1. [RFC 8754 §2, SRv6 Network Programming RFC 8986]"
+    element:
+      id: srhSegmentRecord
+      fields:
+        - id: srhSegment
+          name: Segment
+          type: { kind: bits, n: 128 }
+          category: addressing
+          doc: "One 128-bit IPv6 Segment Identifier (SID) in the Segment List. Stored as a standard IPv6 address (e.g. 2001:db8:1::1). The SRv6 SID encodes a locator, a function, and optionally arguments within the 128 bits (RFC 8986). The list is ordered in reverse path order so index 0 is the last node visited. [RFC 8754 §2, RFC 8986 §3]"
+    count: { kind: ref, field: srhSegmentCount }
+
+  - kind: optional
+    when: { kind: ref, field: srhTlvPresent }
+    field:
+      id: srhTlvs
+      name: TLV Objects
+      type:
+        kind: bytes
+        n: { kind: ref, field: srhTlvBytes }
+      category: variable
+      doc: "Variable-length block of Type-Length-Value (TLV) objects occupying the bytes between the end of the Segment List and the end of the SRH. Each TLV has a 1-byte Type, a 1-byte Length (value bytes following), and a variable-length Value, padded to an even octet boundary. Defined TLV types include Pad1 (0), PadN (1), HMAC (5) for cryptographic path authentication, and NSH Carrier (TBD). [RFC 8754 §2.1, RFC 8754 §9.1]"

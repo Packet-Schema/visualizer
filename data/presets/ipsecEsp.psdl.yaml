@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IPsec ESP Header / Trailer
+rowBits: 32
+byteOrder: BE
+description: IP Encapsulating Security Payload (RFC 4303). ESP provides confidentiality (encryption), connectionless integrity, data-origin authentication, anti-replay protection, and optional traffic-flow confidentiality. The visible header contains only SPI and Sequence Number; the Payload Data, Padding, Pad Length, Next Header, and ICV are all protected by the negotiated cipher-suite (e.g. AES-GCM, AES-CBC+HMAC-SHA-1). In Transport mode the original IP payload is encrypted; in Tunnel mode the entire inner IP datagram is encrypted. Carried inside IP as Protocol number 50.
+body:
+  - id: spi
+    name: Security Parameters Index (SPI)
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Arbitrary 32-bit value that, combined with the destination IP address and security protocol (ESP), uniquely identifies the Security Association. Values 1..255 are reserved; 0 is reserved for local use. Chosen by the receiving node during IKE negotiation; the sending node copies it into every packet. A receiver uses SPI to look up the SA and hence the decryption key and algorithm. [RFC 4303 §2.1]"
+  - id: sequenceNumber
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Monotonically increasing counter initialized to 0 when the SA is established (first packet SN=1). The sender increments it for each packet; the receiver uses a sliding-window check to detect replayed or duplicate packets (anti-replay service). The SA must be renegotiated before the counter wraps. Extended Sequence Numbers (64-bit) are negotiated via IKEv2 and the high-order 32 bits are implicit. [RFC 4303 §2.2]"
+  - id: payloadData
+    name: Payload Data (Encrypted)
+    type: { kind: bytes, n: { kind: ref, field: espPayloadBytes } }
+    category: payload-marker
+    doc: "Encrypted payload. In Transport mode: the upper-layer protocol data (TCP segment, UDP datagram, etc.). In Tunnel mode: the entire inner IP datagram. The encryption algorithm and key are determined by the SA. The Payload Data MUST be an integral number of bytes; block-cipher modes use padding (see Pad Length field). [RFC 4303 §2.4]"
+  - id: padding
+    name: Padding
+    type: { kind: bytes, n: { kind: ref, field: espPaddingBytes } }
+    category: reserved
+    doc: "Zero or more padding bytes appended after the Payload Data to satisfy block-cipher alignment requirements and/or to provide traffic-flow confidentiality by obscuring the true payload length. All padding bytes MUST be filled with an incrementing sequence (1, 2, 3, ...). [RFC 4303 §2.4]"
+  - id: padLength
+    name: Pad Length
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Number of padding bytes immediately preceding this field. Zero means no padding. Used by the receiver to locate the Next Header field and to strip the padding after decryption. The Pad Length plus 2 (for Pad Length + Next Header) is subtracted from the decrypted data to recover the original payload. [RFC 4303 §2.4]"
+  - id: nextHeader
+    name: Next Header
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "Protocol type of the Payload Data. In Transport mode: the IP Protocol Number of the upper-layer protocol (TCP=6, UDP=17, ICMPv6=58, etc.). In Tunnel mode: IPv4=4 or IPv6=41. This field is part of the encrypted region and is revealed only after decryption, preventing passive observers from identifying the encapsulated protocol. [RFC 4303 §2.6]"
+  - id: icv
+    name: Integrity Check Value (ICV)
+    type: { kind: bytes, n: { kind: ref, field: espIcvBytes } }
+    category: checksum
+    doc: "Authentication data produced by the integrity algorithm. For combined-mode algorithms (AES-GCM, AES-CCM, ChaCha20-Poly1305) the ICV is the AEAD authentication tag — typically 16 bytes. For ESP-with-integrity (e.g. AES-CBC + HMAC-SHA-1-96) the ICV is the HMAC output — typically 12 bytes. The ICV covers the SPI, Sequence Number, and encrypted payload (but not the outer IP header). [RFC 4303 §2.7]"

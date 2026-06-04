@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RIPv1
+rowBits: 32
+byteOrder: BE
+description: "RIPv1 message format (RFC 1058). A distance-vector routing protocol carried over UDP port 520. The fixed 4-byte header contains a Command, Version (always 1), and a reserved MustBeZero field, followed by zero or more 20-byte Route Entries. Each entry encodes an IPv4 destination address (no subnet mask or next-hop — classful routing only) and a hop-count metric capped at 15; 16 signifies infinity (unreachable). There is no explicit route-entry count in the header; the count is inferred from the UDP payload length."
+body:
+  - id: ripv1Command
+    name: Command
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Request"
+        2: "Response"
+    category: type
+    doc: "Command type: 1=Request (ask neighbors for routing table), 2=Response (carry route entries). All other values are reserved. [RFC 1058 §3.1]"
+
+  - id: ripv1Version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "RIP protocol version. MUST be 1 for RIPv1. Packets with version 0 are silently discarded; packets with version > 1 are processed with RIPv1 rules, ignoring unknown fields. [RFC 1058 §3.1]"
+
+  - id: ripv1MustBeZero
+    name: Must Be Zero
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "Reserved field. MUST be zero on transmission; receivers MUST ignore its value. [RFC 1058 §3.1]"
+
+  - kind: repeat
+    id: ripv1Routes
+    name: Route Entries
+    count: { kind: ref, field: ripv1RteCount }
+    element:
+      id: ripv1RouteEntry
+      fields:
+        - id: ripv1Afi
+          name: Address Family Identifier
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Address Family Identifier: 2=IP (AF_INET). A value of 0 in a Request message with metric 16 means 'send your entire routing table'. [RFC 1058 §3.1]"
+
+        - id: ripv1Mbz1
+          name: Must Be Zero (Padding)
+          type: { kind: int, bits: 16 }
+          category: reserved
+          doc: "Reserved padding after AFI. MUST be zero on transmission; receivers MUST ignore its value. [RFC 1058 §3.1]"
+
+        - id: ripv1IpAddress
+          name: IP Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: "Destination IPv4 address for this route entry. RIPv1 uses classful addressing; there is no separate subnet mask field. [RFC 1058 §3.1]"
+
+        - id: ripv1Mbz2
+          name: Must Be Zero (Reserved 1)
+          type: { kind: int, bits: 32 }
+          category: reserved
+          doc: "Reserved field occupying the position used by Subnet Mask in RIPv2. MUST be zero on transmission; receivers MUST ignore its value. [RFC 1058 §3.1]"
+
+        - id: ripv1Mbz3
+          name: Must Be Zero (Reserved 2)
+          type: { kind: int, bits: 32 }
+          category: reserved
+          doc: "Reserved field occupying the position used by Next Hop in RIPv2. MUST be zero on transmission; receivers MUST ignore its value. [RFC 1058 §3.1]"
+
+        - id: ripv1Metric
+          name: Metric
+          type: { kind: int, bits: 32 }
+          category: variable
+          doc: "Hop count metric for the destination. Valid values are 1–15; 16 (infinity) marks the destination as unreachable and is used for route poisoning and split-horizon with poisoned reverse. [RFC 1058 §3.1]"

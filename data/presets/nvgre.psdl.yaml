@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NVGRE
+rowBits: 32
+byteOrder: BE
+description: Network Virtualization using Generic Routing Encapsulation (RFC 7637). Fixed 8-byte header built on RFC 1701 GRE. The GRE Key field (32 bits) is repurposed to carry a 24-bit Virtual Subnet ID (VSID) and an 8-bit FlowID, enabling tenant isolation and per-flow entropy across an IP underlay. Protocol Type is always 0x6558 (Transparent Ethernet Bridging / TEB), wrapping inner Ethernet frames. C=0, R=0, K=1, S=0, Version=0 are fixed by the specification; the K=1 bit is what makes the GRE Key field present.
+body:
+  - kind: group
+    id: flagsAndVer
+    name: Flags & Version
+    children:
+      - id: checksumPresent
+        name: C
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Checksum Present bit. MUST be 0 for NVGRE; no GRE checksum extension is used. [RFC 7637 §3, RFC 2784 §2.1]
+      - id: reserved0
+        name: R
+        type: { kind: bits, n: 1 }
+        category: reserved
+        doc: Routing Present bit inherited from RFC 1701. MUST be 0 on transmission and MUST be ignored on receipt for NVGRE. [RFC 7637 §3, RFC 1701 §2]
+      - id: keyPresent
+        name: K
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Key Present bit. MUST be 1 for NVGRE, indicating that the 32-bit GRE Key field (carrying VSID and FlowID) is present. [RFC 7637 §3, RFC 2890 §2]
+      - id: seqPresent
+        name: S
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Sequence Number Present bit. MUST be 0 for NVGRE; the GRE Sequence Number extension is not used. [RFC 7637 §3, RFC 2890 §2]
+      - id: reserved1
+        name: Reserved0
+        type: { kind: bits, n: 9 }
+        category: reserved
+        doc: Reserved 9-bit field (bits 4–12 of the GRE flags word). MUST be set to zero on transmission and MUST be ignored on receipt. [RFC 7637 §3, RFC 2784 §2.1]
+      - id: version
+        name: Ver
+        type: { kind: bits, n: 3 }
+        category: type
+        doc: GRE Version Number. MUST be 0 for NVGRE (and for RFC 2784 GRE in general). A receiver SHOULD discard any packet where this field is non-zero. [RFC 7637 §3, RFC 2784 §2.1]
+  - id: protocolType
+    name: Protocol Type
+    type: { kind: int, bits: 16 }
+    category: type
+    doc: EtherType of the encapsulated payload. MUST be 0x6558 (Transparent Ethernet Bridging) for NVGRE, indicating that the GRE payload is a complete Ethernet frame including the inner MAC header. [RFC 7637 §3, RFC 1701 §2.3]
+  - kind: group
+    id: greKey
+    name: GRE Key (VSID + FlowID)
+    children:
+      - id: vsid
+        name: VSID
+        type: { kind: int, bits: 24 }
+        category: identifier
+        doc: Virtual Subnet ID — a 24-bit tenant network identifier occupying the upper 24 bits of the GRE Key field. Logically equivalent to the VXLAN VNI; up to ~16 million distinct overlay segments are addressable. Endpoints in the same VSID share a broadcast domain. [RFC 7637 §3]
+      - id: flowId
+        name: FlowID
+        type: { kind: int, bits: 8 }
+        category: identifier
+        doc: Flow ID — the lower 8 bits of the GRE Key field. Provides per-flow entropy so that ECMP or LAG implementations can distribute traffic without inspecting the inner Ethernet frame. A value of 0x00 indicates no per-flow label; non-zero values are assigned by the originating hypervisor. [RFC 7637 §3]

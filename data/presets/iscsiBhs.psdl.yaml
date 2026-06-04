@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: iSCSI Basic Header Segment
+rowBits: 32
+byteOrder: BE
+description: "iSCSI Basic Header Segment (BHS) — the mandatory fixed 48-byte header present in every iSCSI PDU (RFC 7143 §10.2). The BHS encodes the PDU function via the Opcode field (e.g. 0x01 SCSI Command, 0x21 SCSI Response, 0x06 Login Request), carries the Initiator Task Tag to correlate commands with responses, and provides the TotalAHSLength and DataSegmentLength values that govern the variable-length Additional Header Segments and Data Segment appended after the BHS. All multi-byte integers are big-endian. Maximum PDU size is negotiated during Login via the MaxRecvDataSegmentLength key."
+
+body:
+  - kind: group
+    id: iscsiOpcodeWord
+    name: Opcode Byte
+    children:
+      - id: iscsiImmediate
+        name: I (Immediate)
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Immediate delivery bit. When set to 1, the PDU bypasses the send queue and is delivered to the target immediately regardless of the current command window. Only meaningful on initiator-to-target PDUs; reserved in all target-to-initiator PDUs. [RFC 7143 §10.2.1]"
+
+      - id: iscsiOpcode
+        name: Opcode
+        type:
+          kind: enum
+          bits: 6
+          variants:
+            1: "SCSI Command"
+            2: "SCSI Task Management Function Request"
+            3: "Login Request"
+            4: "Text Request"
+            5: "SCSI Data-Out"
+            6: "Logout Request"
+            17: "SCSI Response"
+            18: "SCSI Task Management Function Response"
+            19: "Login Response"
+            20: "Text Response"
+            21: "SCSI Data-In"
+            22: "Logout Response"
+            28: "Ready To Transfer (R2T)"
+            29: "Asynchronous Message"
+            63: "Reject"
+        category: type
+        doc: "PDU function code (6 bits, MSB of opcode byte). Initiator opcodes 0x01–0x1F; target opcodes 0x20–0x3F. Key values: 0x01 SCSI Command (initiator sends SCSI CDB), 0x21 (33 dec) SCSI Response (target returns status), 0x06 Logout Request (initiator terminates session or connection). Unknown opcodes MUST be rejected with a Reject PDU (reason 0x04). [RFC 7143 §10.2.1, Table 10.1]"
+
+      - id: iscsiReserved0
+        name: Reserved
+        type: { kind: int, bits: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit at position 7 of the first byte. MUST be zero on transmission; receivers SHOULD ignore. [RFC 7143 §10.2.1]"
+
+  - kind: group
+    id: iscsiFlagsWord
+    name: F + Opcode-Specific (bytes 1–3)
+    children:
+      - id: iscsiFinal
+        name: F (Final)
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 1
+        doc: "Final bit — bit 7 of byte 1. When set to 1, this PDU is the last (or only) PDU of a sequence. For SCSI Command, F=1 means all unsolicited Data-Out PDUs have been sent. For Login/Text, F=1 closes the negotiation exchange. For Data-In, F=1 marks the last Data-In PDU for the transfer. MUST be 1 in single-PDU transfers. [RFC 7143 §10.2.1]"
+
+      - id: iscsiOpcodeSpecific1
+        name: Opcode-Specific (bytes 1–3 lower 23 bits)
+        type: { kind: bits, n: 23 }
+        category: flags
+        doc: "Opcode-specific flags occupying the lower 23 bits of bytes 1–3. Interpretation depends on Opcode. For SCSI Command (0x01): bit R (read expected), bit W (write expected), 2-bit ATTR (task attributes: 0=Untagged, 1=Simple, 2=Ordered, 3=Head of Queue, 4=ACA). For Login Request/Response (0x03/0x23): bits T (Transit), C (Continue), 2-bit CSG (Current Stage), 2-bit NSG (Next Stage). Unused bits within a given opcode MUST be zero. [RFC 7143 §10.3, §10.6, §10.12]"
+
+  - id: iscsiTotalAHSLength
+    name: TotalAHSLength
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "Total length of all Additional Header Segments (AHS) in units of 4-byte words, immediately following the BHS. A value of 0 means no AHS is present. AHS types include Extended CDB AHS (type 1) for CDBs longer than 16 bytes and Expected Bidirectional Read Data Length AHS (type 2). The AHS region starts at byte 48 of the PDU. [RFC 7143 §10.2.1]"
+
+  - id: iscsiDataSegmentLength
+    name: DataSegmentLength
+    type: { kind: int, bits: 24 }
+    category: length
+    defaultValue: 0
+    doc: "Length of the Data Segment in bytes, exclusive of padding. Follows the AHS region (if any). The Data Segment is padded to a 4-byte boundary; padding bytes (up to 3) are not included in this length. A value of 0 means no Data Segment is present. Must not exceed the negotiated MaxRecvDataSegmentLength of the receiving endpoint. [RFC 7143 §10.2.1]"
+
+  - id: iscsiLunOrOpcodeSpecific
+    name: LUN or Opcode-Specific
+    type: { kind: bits, n: 64 }
+    category: addressing
+    doc: "64-bit field at bytes 8–15. For opcodes that address a Logical Unit (SCSI Command 0x01, SCSI Task Management 0x02, SCSI Data-Out 0x05, Ready-to-Transfer 0x1C), this field carries the 8-byte LUN encoded per SAM-4 (typically 2-byte LUN in the lower 16 bits with the upper 48 bits reserved). For other opcodes (Login, Text, Logout, Async, Reject) the field is opcode-specific or reserved. [RFC 7143 §10.2.1, §10.3.2]"
+
+  - id: iscsiInitiatorTaskTag
+    name: InitiatorTaskTag
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Initiator-assigned tag that uniquely identifies this command within the iSCSI session (bytes 16–19). The target returns this value unchanged in every response PDU (SCSI Response, R2T, Data-In) so the initiator can correlate replies with the originating command. A value of 0xFFFFFFFF is the reserved 'no tag' value used in unsolicited PDUs (e.g. Async Message) that do not belong to a command sequence. [RFC 7143 §10.2.1]"
+
+  - id: iscsiOpcodeSpecificFields
+    name: Opcode-Specific Fields (bytes 20–47)
+    type: { kind: bytes, n: { kind: lit, value: 28 } }
+    category: variable
+    doc: "Remaining 28 bytes of the 48-byte BHS (bytes 20–47), whose layout is fully determined by the Opcode. For SCSI Command (0x01): bytes 20–23 Expected Data Transfer Length, bytes 24–27 CmdSN, bytes 28–31 ExpStatSN, bytes 32–47 SCSI CDB (16 bytes). For SCSI Response (0x21): bytes 20–23 SNACKTag, bytes 24–27 StatSN, bytes 28–31 ExpCmdSN, bytes 32–35 MaxCmdSN, bytes 36–39 Exp2xTransferOffset, bytes 40–43 BidirectionalReadResidualCount, bytes 44–47 ResidualCount. For Login Request (0x06): bytes 20–23 CID+reserved, bytes 24–27 CmdSN, bytes 28–31 ExpStatSN, bytes 32–47 reserved. [RFC 7143 §10.3, §10.4, §10.12]"

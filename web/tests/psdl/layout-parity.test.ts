@@ -198,16 +198,37 @@ for (const key of PSDL_04_PRESET_KEYS) {
   });
 }
 
-describe("http2FrameHeader — length-prefixed payload", () => {
-  it("payload bits scale with the Length controller", () => {
+describe("http2FrameHeader — per-type payload Switch", () => {
+  it("unknown frame type renders an opaque length-prefixed payload", () => {
     const pkt = PRESETS["http2FrameHeader"];
     const env = buildEnv(pkt);
-    env.set("length", 7);
+    // An unregistered Type (0xFF) falls through to the Switch default,
+    // which carries the opaque `payload` byte run sized by http2PayloadBytes.
+    env.set("type", 0xff);
+    env.set("http2PayloadBytes", 7);
     const layout = resolveLayout(pkt, { env });
-    // 9-byte fixed header (72 bits) + 7 bytes of payload (56 bits) = 128.
+    // 9-byte fixed header (72 bits) + 7 bytes of opaque payload (56 bits) = 128.
     expect(layout.totalBits).toBe(72 + 7 * 8);
     const payload = layout.cells.find((c) => c.field.id === "payload");
     expect(payload?.bitsTotal).toBe(56);
+  });
+
+  it("SETTINGS frame (Type 0x4) expands Identifier/Value entries", () => {
+    const pkt = PRESETS["http2FrameHeader"];
+    const env = buildEnv(pkt);
+    env.set("type", 0x4);
+    env.set("http2SettingsCount", 2);
+    const layout = resolveLayout(pkt, { env });
+    // 72-bit header + 2 entries × (16 + 32) bits = 72 + 96 = 168.
+    expect(layout.totalBits).toBe(72 + 2 * (16 + 32));
+  });
+
+  it("RST_STREAM frame (Type 0x3) appends a 32-bit Error Code", () => {
+    const pkt = PRESETS["http2FrameHeader"];
+    const env = buildEnv(pkt);
+    env.set("type", 0x3);
+    const layout = resolveLayout(pkt, { env });
+    expect(layout.totalBits).toBe(72 + 32);
   });
 });
 

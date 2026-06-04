@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TSIG (Transaction Signature)
+rowBits: 32
+byteOrder: BE
+description: "Transaction Signature (TSIG) DNS Resource Record (RFC 8945). TSIG provides cryptographic message authentication for DNS transactions and zone transfers. A TSIG RR is appended to a DNS message as an additional record; its NAME carries the key name, TYPE=250, CLASS=ANY, TTL=0. The RDATA carries: AlgorithmName (wire-format DNS name identifying the MAC algorithm, e.g. hmac-sha256), TimeSigned (48-bit POSIX seconds), Fudge (16-bit clock skew tolerance in seconds), MACSize (16-bit length of MAC), MAC (variable, MACSize bytes), OriginalID (16-bit copy of the DNS message ID as signed), Error (16-bit RCODE extension, e.g. 0=NOERROR, 17=BADSIG, 18=BADKEY, 22=BADTIME), OtherLen (16-bit length of OtherData), and OtherData (variable, OtherLen bytes; non-empty only when Error=BADTIME to carry server time). TSIG MACs are computed over the entire DNS message plus a TSIG variables block; the shared secret is identified by the key name in the record NAME. [RFC 8945]"
+
+body:
+  # ---- RR Header (RFC 1035 §3.2.1, RFC 8945 §4.2) --------------------------------
+  - id: tsigName
+    name: NAME (key name, compression pointer)
+    type: { kind: bits, n: 16 }
+    category: addressing
+    doc: "Owner name of this TSIG RR, encoded as a 2-byte DNS compression pointer (0xC0xx) referencing the key name label sequence elsewhere in the message. The key name identifies which shared TSIG secret to use for MAC verification. Uncompressed label chains are not modeled in this preset. [RFC 8945 §4.2, RFC 1035 §4.1.4]"
+
+  - id: tsigType
+    name: TYPE
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        250: "TSIG"
+    category: type
+    doc: "DNS RR type. MUST be 250 (TSIG) for a transaction signature record. Receivers that do not recognise TSIG MUST return FORMERR if the record appears in a non-additional section. [RFC 8945 §4.2, IANA DNS Parameters]"
+
+  - id: tsigClass
+    name: CLASS
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        255: "ANY"
+    category: type
+    doc: "DNS RR class. MUST be ANY (255) for TSIG records; a TSIG RR with any other class value is considered malformed. [RFC 8945 §4.2]"
+
+  - id: tsigTtl
+    name: TTL
+    type: { kind: bits, n: 32 }
+    category: variable
+    doc: "Time To Live. MUST be zero (0) for TSIG records; a non-zero TTL indicates a malformed TSIG RR and the receiver MUST return FORMERR. TTL=0 ensures TSIG RRs are never cached. [RFC 8945 §4.2]"
+
+  - id: tsigRdLength
+    name: RDLENGTH
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Length in octets of the RDATA that follows, covering AlgorithmName through OtherData. Enables parsers to skip the TSIG RDATA block when verifying message structure. [RFC 8945 §4.2, RFC 1035 §3.2.1]"
+
+  # ---- TSIG RDATA (RFC 8945 §4.2) ------------------------------------------------
+  - id: tsigAlgorithmName
+    name: Algorithm Name
+    type: { kind: bytes, n: { kind: ref, field: tsigAlgorithmNameLen } }
+    category: identifier
+    doc: "Fully-qualified domain name in uncompressed DNS wire-format labels identifying the MAC algorithm. Defined names include hmac-md5.sig-alg.reg.int (legacy), gss-tsig, hmac-sha1, hmac-sha224, hmac-sha256, hmac-sha384, hmac-sha512. The name is case-insensitive and terminated by a root label (0x00). Byte length is given by the auxiliary counter tsigAlgorithmNameLen; defaults to 0 bytes when not yet set. [RFC 8945 §6, RFC 4635]"
+
+  - id: tsigTimeSigned
+    name: Time Signed
+    type: { kind: bits, n: 48 }
+    category: variable
+    doc: "48-bit unsigned POSIX timestamp (seconds since the Unix epoch, UTC) indicating when the MAC was computed. Recipients check that this value is within Fudge seconds of their own clock; if not, they MUST return BADTIME (Error=22). A 48-bit field allows timestamps well beyond the 32-bit year-2038 boundary. [RFC 8945 §4.2, §5.2.3]"
+
+  - id: tsigFudge
+    name: Fudge
+    type: { kind: bits, n: 16 }
+    category: variable
+    doc: "Permitted clock skew in seconds between the signer and verifier. The verifier MUST accept a TSIG whose TimeSigned is within |localTime - TimeSigned| <= Fudge. Implementations SHOULD default to 300 seconds. A value of 0 is technically valid but impractical due to clock drift. [RFC 8945 §4.2, §5.2.3]"
+
+  - id: tsigMacLen
+    name: MAC Size
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Length in octets of the MAC field that immediately follows. For full-length HMACs: HMAC-MD5=16, HMAC-SHA1=20, HMAC-SHA224=28, HMAC-SHA256=32, HMAC-SHA384=48, HMAC-SHA512=64 bytes. Truncated MACs are permitted by mutual configuration; MUST be at least half the full HMAC length and at least 10 octets. A value of 0 indicates a request MAC (used for multi-message sequences). [RFC 8945 §4.2, §5.2.2]"
+
+  - id: tsigMac
+    name: MAC
+    type: { kind: bytes, n: { kind: ref, field: tsigMacLen } }
+    category: variable
+    doc: "Message Authentication Code computed over the DNS message (stripped of the TSIG RR) concatenated with the TSIG variables block (key name, class, TTL, algorithm name, time signed, fudge, error, other data). The algorithm is identified by AlgorithmName. Receivers recompute the MAC with the shared secret and compare; mismatch MUST result in BADSIG (Error=17). Byte length is tsigMacLen; defaults to 0 bytes when tsigMacLen=0. [RFC 8945 §4.2, §5.2]"
+
+  - id: tsigOriginalId
+    name: Original ID
+    type: { kind: bits, n: 16 }
+    category: identifier
+    doc: "The DNS message ID from the message header as it was when the MAC was computed. Allows detection of ID mangling by middleboxes; verifiers MUST check that this matches the actual message ID. For responses the Original ID is copied from the corresponding request. [RFC 8945 §4.2, §5.2.1]"
+
+  - id: tsigError
+    name: Error
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        0: "NOERROR"
+        1: "FORMERR"
+        9: "NOTAUTH"
+        17: "BADSIG"
+        18: "BADKEY"
+        22: "BADTIME"
+    category: type
+    doc: "Extended RCODE carrying TSIG-specific error conditions. 0=NOERROR (MAC verified successfully), 17=BADSIG (MAC did not verify), 18=BADKEY (key name not recognised), 22=BADTIME (TimeSigned outside Fudge window; OtherData then carries server's current time). Values 1–15 mirror standard DNS RCODEs. In a request the Error MUST be 0; in an error response it carries the reason. [RFC 8945 §4.2, §5.2.3, §5.3.2]"
+
+  - id: tsigOtherLen
+    name: Other Len
+    type: { kind: bits, n: 16 }
+    category: length
+    doc: "Length in octets of the OtherData field that immediately follows. MUST be 0 in all cases except when Error=BADTIME (22), in which case it MUST be 6 (carrying the server's current 48-bit timestamp). Receivers MUST ignore OtherData when Error is not BADTIME. [RFC 8945 §4.2, §5.3.2]"
+
+  - id: tsigOtherData
+    name: Other Data
+    type: { kind: bytes, n: { kind: ref, field: tsigOtherLen } }
+    category: variable
+    doc: "Variable-length supplementary data. Only present when Error=BADTIME (22), in which case this field is exactly 6 bytes containing the server's current time as a 48-bit unsigned POSIX timestamp, allowing the client to re-synchronise its clock and retry. Byte length is tsigOtherLen; defaults to 0 bytes when tsigOtherLen=0. [RFC 8945 §4.2, §5.3.2]"

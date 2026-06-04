@@ -71,6 +71,154 @@ _isis_tlv_variants: &isis_tlv_variants
         type: { kind: bytes, n: { kind: ref, field: tlvLength } }
         category: identifier
         doc: Symbolic name of the originating router, in 7-bit ASCII (no terminating NUL). Lets operators see hostnames instead of raw System IDs in `show isis database`. [RFC 5301]
+  "128":
+    id: ipInternalReachability
+    name: TLV 128 — IP Internal Reachability
+    fields:
+      - { id: tlvType, name: "Type=128", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: ipInternalReachValue
+        name: Internal Prefix Entries
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: variable
+        doc: Sequence of 12-byte entries, each carrying four 1-byte metrics (default, delay, expense, error — the high bit marking whether the metric is supported / internal-external) followed by a 4-byte IPv4 address and a 4-byte subnet mask. Advertises prefixes reachable inside the routing domain. Length is always a multiple of 12. [RFC 1195 §4.2]
+  "130":
+    id: ipExternalReachability
+    name: TLV 130 — IP External Reachability
+    fields:
+      - { id: tlvType, name: "Type=130", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: ipExternalReachValue
+        name: External Prefix Entries
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: variable
+        doc: Same 12-byte entry layout as TLV 128 (four 1-byte metrics, 4-byte address, 4-byte mask) but describes prefixes redistributed into IS-IS from outside the routing domain. The internal/external bit in the default metric distinguishes the comparison class during SPF. Length is always a multiple of 12. [RFC 1195 §4.2]
+  "135":
+    id: extendedIpReachability
+    name: TLV 135 — Extended IP Reachability
+    fields:
+      - { id: tlvType, name: "Type=135", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: extIpReach_metric
+        name: Metric
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: 32-bit wide metric for the first prefix entry. Replaces the 6-bit metric of TLV 128/130 to support modern path costs. [RFC 5305 §3.3]
+      - kind: group
+        id: extIpReach_control
+        name: U/S/PrefixLen
+        children:
+          - id: extIpReach_up
+            name: U
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Up/Down bit. When set, the prefix has been leaked down from L2 into L1, preventing it from being re-advertised back up and causing routing loops. [RFC 5305 §3.3 / RFC 5302]
+          - id: extIpReach_sub
+            name: S
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Sub-TLV presence bit. When set, a 1-byte sub-TLV length and sub-TLVs follow the prefix octets. [RFC 5305 §3.3]
+          - id: extIpReach_prefixLen
+            name: Prefix Length
+            type: { kind: bits, n: 6 }
+            category: length
+            doc: Number of significant bits (0..32) in the IPv4 prefix that follows. Determines how many prefix octets (ceil(len/8)) are present. [RFC 5305 §3.3]
+      - id: extIpReach_prefix
+        name: Prefix + Remaining Entries
+        type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: tlvLength }, b: { kind: lit, value: 5 } } }
+        category: addressing
+        doc: The variable-length IPv4 prefix (only the significant octets indicated by Prefix Length) for the first entry, optional sub-TLVs, and any further metric/control/prefix entries packed back-to-back until Length is exhausted. [RFC 5305 §3.3]
+  "232":
+    id: ipv6InterfaceAddress
+    name: TLV 232 — IPv6 Interface Address
+    fields:
+      - { id: tlvType, name: "Type=232", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: ipv6InterfaceAddresses
+        name: IPv6 Addresses
+        type: { kind: bytes, n: { kind: ref, field: tlvLength } }
+        category: addressing
+        doc: One or more 16-byte IPv6 addresses assigned to the originating router's interfaces. On Hello PDUs these are link-local; in LSPs they may be non-link-local. Length is always a multiple of 16. [RFC 5308 §3]
+  "236":
+    id: ipv6Reachability
+    name: TLV 236 — IPv6 Reachability
+    fields:
+      - { id: tlvType, name: "Type=236", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: ipv6Reach_metric
+        name: Metric
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: 32-bit wide metric for the first IPv6 prefix entry. [RFC 5308 §2]
+      - kind: group
+        id: ipv6Reach_control
+        name: U/X/S/Flags
+        children:
+          - id: ipv6Reach_up
+            name: U
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Up/Down bit. Set when the prefix is leaked from L2 into L1 to prevent re-advertisement loops. [RFC 5308 §2]
+          - id: ipv6Reach_external
+            name: X
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: External bit. Set when the prefix was redistributed into IS-IS from another protocol. [RFC 5308 §2]
+          - id: ipv6Reach_sub
+            name: S
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Sub-TLV presence bit. When set, a 1-byte sub-TLV length and sub-TLVs follow the prefix octets. [RFC 5308 §2]
+          - id: ipv6Reach_reserved
+            name: Rsvd
+            type: { kind: bits, n: 5 }
+            category: reserved
+            doc: Reserved; transmitted as zero, ignored on receipt. [RFC 5308 §2]
+      - id: ipv6Reach_prefixLen
+        name: Prefix Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Number of significant bits (0..128) in the IPv6 prefix that follows. The prefix is encoded in ceil(len/8) octets. [RFC 5308 §2]
+      - id: ipv6Reach_prefix
+        name: Prefix + Remaining Entries
+        type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: tlvLength }, b: { kind: lit, value: 6 } } }
+        category: addressing
+        doc: The variable-length IPv6 prefix (only the significant octets indicated by Prefix Length) for the first entry, optional sub-TLVs, and any further metric/control/prefix entries packed back-to-back until Length is exhausted. [RFC 5308 §2]
+  "242":
+    id: routerCapability
+    name: TLV 242 — Router Capability
+    fields:
+      - { id: tlvType, name: "Type=242", type: { kind: int, bits: 8 }, category: type }
+      - { id: tlvLength, name: Length, type: { kind: int, bits: 8 }, category: length }
+      - id: routerCap_routerId
+        name: Router ID
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: 4-byte Router ID of the originating router, giving capability sub-TLVs a stable identity independent of any single interface address. [RFC 4971 §1]
+      - kind: group
+        id: routerCap_flags
+        name: Flags
+        children:
+          - id: routerCap_reserved
+            name: Rsvd
+            type: { kind: bits, n: 6 }
+            category: reserved
+            doc: Reserved; transmitted as zero, ignored on receipt. [RFC 4971 §1]
+          - id: routerCap_d
+            name: D
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Down bit. When set, the capability has been leaked from L2 down into L1 and MUST NOT be leaked back up to L2, preventing loops. [RFC 4971 §1]
+          - id: routerCap_s
+            name: S
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Scope/flooding bit. When set, the capability TLV MAY be flooded across the entire IS-IS routing domain; when clear it is confined to the level/area of origin. [RFC 4971 §1]
+      - id: routerCap_subTlvs
+        name: Capability Sub-TLVs
+        type: { kind: bytes, n: { kind: op, op: "-", a: { kind: ref, field: tlvLength }, b: { kind: lit, value: 5 } } }
+        category: variable
+        doc: Zero or more sub-TLVs describing optional router capabilities (e.g. Segment Routing, traffic-engineering node attributes), each in Type/Length/Value form. [RFC 4971 §2]
 
 body:
   - id: protocolDiscriminator

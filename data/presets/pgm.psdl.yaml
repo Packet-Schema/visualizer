@@ -1,0 +1,203 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PGM (Pragmatic General Multicast)
+rowBits: 32
+byteOrder: BE
+description: "Pragmatic General Multicast (PGM) reliable multicast transport protocol (RFC 3208). PGM provides a reliable, receiver-driven multicast service: sources transmit Original Data (ODATA) packets; receivers detect losses and issue Negative Acknowledgements (NAK); the network or source replies with Repair Data (RDATA); Source Path Messages (SPM) carry path state. Every PGM packet shares a 16-byte common header: Source Port (16 bits), Destination Port (16 bits), Type (8 bits, 0=SPM, 4=ODATA, 5=RDATA, 8=NAK, 9=NCF), Options flags (8 bits), Checksum (16 bits), Global Source ID / TSDU-Origin (48 bits, 6 bytes), and TSDU Length (16 bits). The type-specific extension header and data payload follow the common header; their combined byte count is supplied externally via pgmBodyBytes. PGM is designed to scale to very large multicast groups with bounded state at routers and guarantees that all receivers either obtain all data or are explicitly notified of irrecoverable loss."
+
+body:
+  - kind: group
+    id: pgmCommonHeader
+    name: PGM Common Header
+    children:
+      - id: pgmSourcePort
+        name: Source Port
+        type: { kind: int, bits: 16 }
+        category: addressing
+        doc: "UDP-like source port identifying the sending transport session endpoint. Together with the Global Source ID it demultiplexes multiple PGM sessions originating from the same host. [RFC 3208 §5]"
+
+      - id: pgmDestPort
+        name: Destination Port
+        type: { kind: int, bits: 16 }
+        category: addressing
+        doc: "UDP-like destination port identifying the receiving transport session endpoint. Receivers use this field together with the multicast group address to filter PGM packets destined for a specific session. [RFC 3208 §5]"
+
+      - id: pgmType
+        name: Type
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            0: "SPM"
+            4: "ODATA"
+            5: "RDATA"
+            8: "NAK"
+            9: "NCF"
+            10: "NNAK"
+            13: "SPMR"
+        category: type
+        defaultValue: 4
+        doc: "PGM packet type. 0=SPM (Source Path Message, carries path state from source), 4=ODATA (Original Data, data sent by source), 5=RDATA (Repair Data, retransmitted copy), 8=NAK (Negative Acknowledgement, loss report from receiver), 9=NCF (NAK Confirmation, router or source confirming NAK), 10=NNAK (Null NAK, used by network elements to suppress duplicate NAKs), 13=SPMR (SPM Request, solicits an SPM). [RFC 3208 §5, §8–§14]"
+
+      - id: pgmOptions
+        name: Options
+        type: { kind: int, bits: 8 }
+        category: flags
+        defaultValue: 0
+        doc: "Options flags byte. Bit 7 (0x80) = PARITY, indicates the packet is a parity FEC packet; bit 6 (0x40) = VAR_PKTLEN, variable-length FEC; bit 5 (0x20) = PRESENT, one or more option extensions follow the type-specific header; lower bits are reserved and MUST be zero. [RFC 3208 §5]"
+
+      - id: pgmChecksum
+        name: Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: "Standard Internet checksum (one's complement sum) over the entire PGM packet including the common header, type-specific header, and data. A value of 0x0000 in this field means the checksum was not computed by the sender; receivers MAY discard packets with a non-zero bad checksum. [RFC 3208 §5]"
+
+      - id: pgmGlobalSourceId
+        name: Global Source ID
+        type: { kind: bits, n: 48 }
+        category: identifier
+        doc: "48-bit (6-byte) globally unique identifier for the PGM transport session originating host, typically derived from a network interface MAC address or a similar unique value. Together with Source Port and Destination Port it uniquely identifies the PGM session across the entire network. [RFC 3208 §5]"
+
+      - id: pgmTsduLength
+        name: TSDU Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Transport Service Data Unit length in bytes. For ODATA and RDATA this is the length of the user data payload carried in this packet. For SPM, NAK, NCF, and other control packets this field is set to zero. [RFC 3208 §5]"
+
+  - kind: switch
+    id: pgmBody
+    on: { kind: ref, field: pgmType }
+    cases:
+      "0":
+        id: pgmSpm
+        name: SPM Body
+        fields:
+          - id: pgmSpmSqn
+            name: SPM Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Monotonically increasing sequence number assigned by the source to each SPM. Receivers use this to detect duplicate or out-of-order SPMs and to advance their SPM path state. [RFC 3208 §8]"
+          - id: pgmSpmTrailSqn
+            name: Trailing Edge Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Sequence number of the oldest unacknowledged ODATA packet still retained by the source for retransmission. Receivers below this sequence number are considered unrecoverably behind. [RFC 3208 §8]"
+          - id: pgmSpmLeadSqn
+            name: Leading Edge Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Sequence number of the most recently transmitted ODATA packet. Receivers can derive the range of sequence numbers they may need to NAK from the trail and lead pair. [RFC 3208 §8]"
+          - id: pgmSpmNlaAfi
+            name: NLA AFI
+            type: { kind: int, bits: 16 }
+            category: type
+            doc: "Address Family Indicator for the Source NLA (Network Layer Address). 1=IPv4 (AFI_IP), 2=IPv6 (AFI_IP6) as per IANA address family numbers. Determines the length of the NLA field that follows. [RFC 3208 §8]"
+          - id: pgmSpmReserved
+            name: Reserved
+            type: { kind: int, bits: 16 }
+            category: reserved
+            doc: "Reserved field following the NLA AFI in the SPM header. MUST be set to zero by the sender and ignored by the receiver. [RFC 3208 §8]"
+          - id: pgmSpmNla
+            name: Source NLA
+            type: { kind: bytes, n: { kind: ref, field: pgmBodyBytes } }
+            category: addressing
+            doc: "Network Layer Address of the SPM originator (source). For AFI_IP this is 4 bytes (IPv4); for AFI_IP6 this is 16 bytes (IPv6). Receivers record this address to direct NAKs toward the source path. pgmBodyBytes carries the externally supplied byte count. [RFC 3208 §8]"
+
+      "4":
+        id: pgmOdata
+        name: ODATA Body
+        fields:
+          - id: pgmOdataSqn
+            name: Data Packet Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Monotonically increasing sequence number assigned by the source to each original data packet. Receivers use this to detect gaps (triggering NAK generation) and to order data for delivery to the application. [RFC 3208 §9]"
+          - id: pgmOdataTrailSqn
+            name: Trailing Edge Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Sequence number of the oldest ODATA packet still held by the source for potential retransmission. Receivers that fall below this window cannot recover lost packets and SHOULD notify the application of unrecoverable loss. [RFC 3208 §9]"
+          - id: pgmOdataData
+            name: ODATA Payload
+            type: { kind: bytes, n: { kind: ref, field: pgmBodyBytes } }
+            category: payload-marker
+            doc: "Original application data payload carried in this ODATA packet. The number of bytes is indicated by the TSDU Length field in the common header and supplied externally via pgmBodyBytes. [RFC 3208 §9]"
+
+      "5":
+        id: pgmRdata
+        name: RDATA Body
+        fields:
+          - id: pgmRdataSqn
+            name: Repair Data Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Sequence number of the original ODATA packet being repaired. Receivers match this against their loss bitmap to determine whether the repair fills a gap. [RFC 3208 §10]"
+          - id: pgmRdataTrailSqn
+            name: Trailing Edge Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Current trailing edge of the source transmit window at the time the repair is sent. Receivers use this to determine whether they are still within the recovery window. [RFC 3208 §10]"
+          - id: pgmRdataData
+            name: RDATA Payload
+            type: { kind: bytes, n: { kind: ref, field: pgmBodyBytes } }
+            category: payload-marker
+            doc: "Repair data payload — a copy of the original ODATA payload for the indicated sequence number. The byte count is supplied externally via pgmBodyBytes. [RFC 3208 §10]"
+
+      "8":
+        id: pgmNak
+        name: NAK Body
+        fields:
+          - id: pgmNakSqn
+            name: Requested Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Sequence number of the lost ODATA packet being requested for retransmission. The source or a network element responds with an RDATA or NCF packet for this sequence number. [RFC 3208 §11]"
+          - id: pgmNakSrcNlaAfi
+            name: Source NLA AFI
+            type: { kind: int, bits: 16 }
+            category: type
+            doc: "Address Family Indicator for the NAK Source NLA. 1=IPv4, 2=IPv6. Determines the width of the Source NLA field that follows. [RFC 3208 §11]"
+          - id: pgmNakSrcReserved
+            name: Reserved
+            type: { kind: int, bits: 16 }
+            category: reserved
+            doc: "Reserved field after the Source NLA AFI. MUST be set to zero by the sender and ignored by the receiver. [RFC 3208 §11]"
+          - id: pgmNakSrcNla
+            name: Source NLA
+            type: { kind: bytes, n: { kind: ref, field: pgmBodyBytes } }
+            category: addressing
+            doc: "Network layer address of the multicast source toward which the NAK is being directed (unicast path for repair). For AFI_IP: 4 bytes IPv4; for AFI_IP6: 16 bytes IPv6. pgmBodyBytes supplies the external byte count. [RFC 3208 §11]"
+
+      "9":
+        id: pgmNcf
+        name: NCF Body
+        fields:
+          - id: pgmNcfSqn
+            name: Confirmed Sequence Number
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Sequence number of the ODATA packet whose NAK is being confirmed. The NCF suppresses duplicate NAKs from other receivers that have also detected the same loss. [RFC 3208 §12]"
+          - id: pgmNcfSrcNlaAfi
+            name: Source NLA AFI
+            type: { kind: int, bits: 16 }
+            category: type
+            doc: "Address Family Indicator for the NCF Source NLA. 1=IPv4, 2=IPv6. [RFC 3208 §12]"
+          - id: pgmNcfSrcReserved
+            name: Reserved
+            type: { kind: int, bits: 16 }
+            category: reserved
+            doc: "Reserved field after the Source NLA AFI in the NCF. MUST be zero on transmit, ignored on receive. [RFC 3208 §12]"
+          - id: pgmNcfSrcNla
+            name: Source NLA
+            type: { kind: bytes, n: { kind: ref, field: pgmBodyBytes } }
+            category: addressing
+            doc: "Network layer address identifying the source path for which the NAK confirmation applies. Receivers that receive a NCF for the requested sequence number SHOULD suppress their pending NAK retransmission timers. pgmBodyBytes supplies the external byte count. [RFC 3208 §12]"
+
+    default:
+      id: pgmUnknownBody
+      name: Message Body
+      fields:
+        - id: pgmRawBody
+          name: Body
+          type: { kind: bytes, n: { kind: ref, field: pgmBodyBytes } }
+          category: variable
+          doc: "Raw type-specific body for PGM packet types not explicitly decoded (e.g. NNAK type 10, SPMR type 13). The byte count pgmBodyBytes is supplied externally from the enclosing transport (IP payload length minus 16 bytes for the PGM common header). [RFC 3208 §5]"

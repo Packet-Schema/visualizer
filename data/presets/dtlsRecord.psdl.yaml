@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: DTLS 1.2 Record
+rowBits: 32
+byteOrder: BE
+description: DTLS 1.2 record layer header (RFC 6347 §4.1) — 13-byte fixed header followed by a variable-length encrypted fragment. Extends TLS record format with a 2-byte epoch and 6-byte sequence number for replay detection across cipher state changes.
+body:
+  - { id: contentType, name: Content Type, type: { kind: int, bits: 8 }, category: type, doc: "Record content type: 20=ChangeCipherSpec, 21=Alert, 22=Handshake, 23=ApplicationData." }
+  - { id: version, name: Version, type: { kind: int, bits: 16 }, category: type, doc: "DTLS protocol version: 0xFEFF=DTLS 1.0, 0xFEFD=DTLS 1.2. Note that DTLS version numbers are inverted relative to TLS (higher wire value = older version)." }
+  - { id: epoch, name: Epoch, type: { kind: int, bits: 16 }, category: identifier, doc: "Epoch counter incremented each time the cipher state changes (e.g., after a ChangeCipherSpec). Sequence numbers restart from zero at each new epoch. Not present in TLS." }
+  - { id: sequenceNumber, name: Sequence Number, type: { kind: int, bits: 48 }, category: identifier, doc: "Per-epoch 48-bit sequence number used for replay detection and reordering. Monotonically increasing within an epoch. Not present in TLS." }
+  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Length in bytes of the DTLSCiphertext fragment that follows this header." }
+  - { id: fragment, name: Fragment, type: { kind: bytes, n: { kind: ref, field: "length" } }, category: payload-marker, doc: "Encrypted (or, before the handshake completes, plaintext) payload whose interpretation depends on contentType." }

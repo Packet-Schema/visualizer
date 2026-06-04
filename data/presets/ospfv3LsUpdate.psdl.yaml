@@ -1,0 +1,98 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OSPFv3 Link State Update
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first).
+description: "OSPFv3 Link State Update packet (RFC 5340 §A.3.5, packet type 4). 16-byte OSPFv3 common header (Version=3, Type=4, Packet Length, Router ID, Area ID, Checksum, Instance ID, Reserved) followed by a 4-byte LSA count and a variable-length list of LSA headers. OSPFv3 is the IPv6 revision of OSPF; the common header shrinks from OSPFv2's 24 bytes to 16 bytes by removing the Authentication Type and Authentication fields, delegating authentication to IPsec (AH/ESP). Link State Update packets carry one or more LSAs as the primary flooding mechanism: a router sends them in reply to Link State Request packets during Database Exchange and re-floods newer LSA instances as they arrive. OSPFv3 extends the LS Type field to 16 bits; the high-order bits encode flooding scope (link-local, area, AS) and the U-bit controls handling of unknown types. Common LS Type values: 0x2001=Router-LSA, 0x2002=Network-LSA, 0x2003=Inter-Area-Prefix-LSA, 0x2009=Intra-Area-Prefix-LSA."
+body:
+  - id: version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 3
+    doc: OSPF protocol version. Always 3 for OSPFv3 (OSPFv2 for IPv4 uses version 2 and a different, 24-byte header format). [RFC 5340 §A.3.1]
+  - id: packetType
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 4
+    doc: OSPFv3 packet type. 1=Hello, 2=Database Description, 3=Link State Request, 4=Link State Update (this preset), 5=Link State Acknowledgment. [RFC 5340 §A.3.1]
+  - id: packetLength
+    name: Packet Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length of the OSPFv3 packet in bytes, including the 16-byte common header. For a Link State Update with N LSA headers = 16 + 4 + 20 × N. [RFC 5340 §A.3.1]
+  - id: routerId
+    name: Router ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the originating router, written in dotted-quad notation. Must be unique within the OSPFv3 routing domain; typically configured manually or derived from a stable IPv4 address on the router. [RFC 5340 §A.3.1]
+  - id: areaId
+    name: Area ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the OSPF area to which this packet belongs, written in dotted-quad notation. 0.0.0.0 denotes the backbone area. Routers flood LSAs only within the area from which the update is received. [RFC 5340 §A.3.1]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: Standard ICMPv6-style checksum (one's complement of one's-complement 16-bit sum) over the OSPFv3 packet plus an IPv6 pseudo-header. Unlike OSPFv2, there is no separate authentication field; the entire packet is covered. [RFC 5340 §A.3.1]
+  - id: instanceId
+    name: Instance ID
+    type: { kind: int, bits: 8 }
+    category: identifier
+    defaultValue: 0
+    doc: Allows multiple OSPFv3 instances to run on a single link; packets with a different Instance ID are silently discarded. Instance 0 is the default; higher values enable multiple routing domains on the same interface. [RFC 5340 §A.3.1]
+  - id: reserved
+    name: Reserved
+    type: { kind: bits, n: 8 }
+    category: reserved
+    doc: Reserved octet in the OSPFv3 common header. Transmitted as zero and ignored on receipt. Replaces the OSPFv2 Authentication Type and 64-bit Authentication fields, which are absent in OSPFv3 because authentication is handled by IPsec. [RFC 5340 §A.3.1]
+  - id: ospfv3LsaCount
+    name: Number of LSAs
+    type: { kind: int, bits: 32 }
+    category: length
+    doc: Count of LSAs contained in this Link State Update packet. Each complete LSA immediately follows in sequence. A value of zero is valid and produces an empty update packet (20 bytes total). [RFC 5340 §A.3.5]
+  - kind: repeat
+    id: lsas
+    name: LSA List
+    category: variable
+    doc: "Zero or more LSA headers carried by this Link State Update. Each entry is the 20-byte LSA header common to all OSPFv3 LSA types. OSPFv3 extends LS Type to 16 bits; the U-bit (bit 15) controls handling of unknown types, bits 14-13 encode flooding scope (00=link-local, 01=area, 10=AS-scoped), and the lower 13 bits are the function code. Common LS Types: 0x2001=Router-LSA, 0x2002=Network-LSA, 0x2003=Inter-Area-Prefix-LSA, 0x2009=Intra-Area-Prefix-LSA. [RFC 5340 §A.3.5 / §A.4.1]"
+    element:
+      id: lsaRecord
+      fields:
+        - id: lsAge
+          name: LS Age
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: Time in seconds since the LSA was originated. Incremented in transit; when it reaches MaxAge (3600 s) the LSA is flushed from the link-state database. Used together with LS Sequence Number to determine which instance is more recent. [RFC 5340 §A.4.1]
+        - id: lsType
+          name: LS Type
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "16-bit LSA type encoding flooding scope and function code. U-bit (bit 15) — if set, an unknown type is stored and flooded like a known type; if clear, it is discarded. Bits 14-13 encode scope: 00=link-local, 01=area, 10=AS. Lower 13 bits are the function code: 0x01=Router-LSA (0x2001), 0x02=Network-LSA (0x2002), 0x03=Inter-Area-Prefix-LSA (0x2003), 0x09=Intra-Area-Prefix-LSA (0x2009). [RFC 5340 §A.4.1]"
+        - id: linkStateId
+          name: Link State ID
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Identifies the portion of the routing domain described by the LSA; interpretation depends on LS Type. For Router-LSAs and Network-LSAs the value is set to 0 or an interface index; for prefix-carrying LSAs it may hold an arbitrary discriminator assigned by the originating router. [RFC 5340 §A.4.1]
+        - id: advertisingRouter
+          name: Advertising Router
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Router ID of the router that originated this LSA, in dotted-quad notation. Together with LS Type and Link State ID forms the unique three-part key for an LSA in the link-state database. [RFC 5340 §A.4.1]
+        - id: lsSeqNum
+          name: LS Sequence Number
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Signed 32-bit sequence number incremented each time the originating router re-originates the LSA. InitialSequenceNumber is 0x80000001; MaxSequenceNumber is 0x7FFFFFFF. A larger value means a more recent instance; duplicate or stale LSAs are discarded during flooding. [RFC 5340 §A.4.1]
+        - id: lsChecksum
+          name: LS Checksum
+          type: { kind: int, bits: 16 }
+          category: checksum
+          doc: Fletcher checksum computed over the complete LSA contents excluding the LS Age field. Used both for corruption detection and as a tie-breaker between two instances with identical LS Sequence Numbers. [RFC 5340 §A.4.1]
+        - id: lsaLength
+          name: Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Total length of the LSA in bytes, including this 20-byte header and any type-specific body. A receiver uses this value to delimit each LSA within the update packet. [RFC 5340 §A.4.1]
+    count: { kind: ref, field: ospfv3LsaCount }

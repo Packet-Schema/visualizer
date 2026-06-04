@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RADIUS CoA / Disconnect
+rowBits: 32
+byteOrder: BE
+description: "RADIUS Dynamic Authorization extension (RFC 5176). Adds Disconnect-Request/ACK/NAK (Codes 40–42) and Change-of-Authorization (CoA) Request/ACK/NAK (Codes 43–45) to allow a Dynamic Authorization Server (DAS) to modify or terminate an active user session on a NAS without waiting for re-authentication. The packet structure mirrors RFC 2865 RADIUS: a fixed 20-byte header (Code, Identifier, Length, Authenticator) followed by zero or more Type-Length-Value attributes."
+body:
+  - id: coaCode
+    name: Code
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        40: "Disconnect-Request"
+        41: "Disconnect-ACK"
+        42: "Disconnect-NAK"
+        43: "CoA-Request"
+        44: "CoA-ACK"
+        45: "CoA-NAK"
+    category: type
+    doc: "Identifies the Dynamic Authorization packet type. 40=Disconnect-Request (terminate session), 41=Disconnect-ACK (success), 42=Disconnect-NAK (failure), 43=CoA-Request (modify session), 44=CoA-ACK (CoA accepted), 45=CoA-NAK (CoA rejected). Codes outside 40–45 are not defined by this extension. [RFC 5176 §3]"
+
+  - id: coaIdentifier
+    name: Identifier
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Aids in matching requests and replies. The DAS increments this value for each new Disconnect or CoA request; the NAS copies it unchanged into the corresponding ACK or NAK response. Values 0–255 wrap around. [RFC 5176 §3]"
+
+  - id: coaLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length of the RADIUS CoA/Disconnect packet in bytes, including the 20-byte header and all AVP attributes. Minimum value is 20; maximum is 4096. Octets outside the range indicated by Length MUST be treated as padding and ignored. [RFC 5176 §3]"
+
+  - id: coaAuthenticator
+    name: Authenticator
+    type: { kind: bytes, n: { kind: lit, value: 16 } }
+    category: checksum
+    doc: "16-byte (128-bit) field that authenticates the packet. In Disconnect-Request and CoA-Request the DAS computes a Request Authenticator over the shared secret; in ACK/NAK responses the NAS computes a Response Authenticator using the corresponding request's Authenticator. Prevents replay and forgery. [RFC 5176 §3]"
+
+  - kind: repeat
+    id: coaAttributes
+    name: Attributes
+    count: eos
+    element:
+      id: coaAttr
+      fields:
+        - id: coaAttrType
+          name: Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: "AVP attribute type code. Identifies which session parameter is carried. Common values: 1=User-Name, 5=NAS-Port, 6=Service-Type, 8=Framed-IP-Address, 30=Called-Station-Id, 31=Calling-Station-Id, 44=Acct-Session-Id, 50=Acct-Multi-Session-Id. Error-Cause (101) is used in NAK responses to indicate the reason for rejection. [RFC 5176 §3, RFC 2865 §5]"
+
+        - id: coaAttrLength
+          name: Length
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Total length of this AVP in bytes, including the 1-byte Type and 1-byte Length fields themselves. Minimum value is 2 (empty value); maximum is 255. Determines the size of the Value field as (Length - 2) bytes. [RFC 5176 §3, RFC 2865 §5]"
+
+        - id: coaAttrValue
+          name: Value
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: "coaAttrLength" }
+              b: { kind: lit, value: 2 }
+          category: variable
+          doc: "Variable-length attribute value whose interpretation depends on the Type field. May encode an IPv4 address (4 bytes), a 32-bit integer, a string, or vendor-specific data. Length is coaAttrLength minus 2 bytes for Type and Length. For Error-Cause (101), the value is a 4-byte integer encoding the error condition (e.g. 501=Administratively Prohibited, 503=Session Context Not Found). [RFC 5176 §3, RFC 2865 §5]"

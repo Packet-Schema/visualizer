@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NTP v4 Header
+rowBits: 32
+byteOrder: BE
+description: NTP version 4 header (RFC 5905) — fixed 48 bytes (384 bits). Covers the standard on-wire format for client/server and symmetric modes.
+body:
+  - { kind: group, id: row1, children: [
+      { id: li,        name: Leap Indicator,    type: { kind: int, bits: 2  }, category: flags,    doc: "2-bit leap indicator: 0=no warning, 1=last minute has 61s, 2=last minute has 59s, 3=alarm (clock unsynchronized)" },
+      { id: vn,        name: Version Number,    type: { kind: int, bits: 3  }, category: type,     doc: "3-bit NTP version number; value is 4 for NTPv4" },
+      { id: mode,      name: Mode,              type: { kind: int, bits: 3  }, category: type,     doc: "3-bit association mode: 0=reserved, 1=symmetric active, 2=symmetric passive, 3=client, 4=server, 5=broadcast, 6=NTP control, 7=private" },
+      { id: stratum,   name: Stratum,           type: { kind: int, bits: 8  }, category: type,     doc: "8-bit stratum level: 0=unspecified/kiss-o'-death, 1=primary reference clock, 2-15=secondary (NTP-synchronized), 16=unsynchronized" },
+      { id: poll,      name: Poll Interval,     type: { kind: int, bits: 8  }, category: type,     doc: "8-bit signed integer representing log2 of the maximum interval in seconds between successive NTP messages" },
+      { id: precision, name: Precision,         type: { kind: int, bits: 8  }, category: type,     doc: "8-bit signed integer representing log2 of the precision of the system clock in seconds" },
+    ] }
+  - { id: rootDelay,          name: Root Delay,           type: { kind: int, bits: 32 }, category: variable,  doc: "Total round-trip delay to the reference clock in NTP Short Format (16-bit seconds + 16-bit fraction)" }
+  - { id: rootDispersion,     name: Root Dispersion,      type: { kind: int, bits: 32 }, category: variable,  doc: "Total dispersion (maximum error) relative to the reference clock in NTP Short Format" }
+  - { id: referenceId,        name: Reference ID,         type: { kind: int, bits: 32 }, category: identifier, doc: "32-bit code identifying the particular reference source; for stratum 1 a 4-character ASCII string (e.g. GPS), for stratum ≥2 the IPv4 address of the reference NTP server" }
+  - { id: referenceTimestamp, name: Reference Timestamp,  type: { kind: int, bits: 64 }, category: variable,  doc: "Time at which the local clock was last set or corrected, in NTP Timestamp Format (32-bit seconds + 32-bit fraction since 1900-01-01)" }
+  - { id: originTimestamp,    name: Origin Timestamp,     type: { kind: int, bits: 64 }, category: variable,  doc: "Time at which the request departed the client for the server, in NTP Timestamp Format; filled in by the client and echoed back by the server" }
+  - { id: receiveTimestamp,   name: Receive Timestamp,    type: { kind: int, bits: 64 }, category: variable,  doc: "Time at which the request arrived at the server (or the reply arrived at the client), in NTP Timestamp Format" }
+  - { id: transmitTimestamp,  name: Transmit Timestamp,   type: { kind: int, bits: 64 }, category: variable,  doc: "Time at which the reply departed the server (or the request departed the client), in NTP Timestamp Format; used to compute round-trip delay" }

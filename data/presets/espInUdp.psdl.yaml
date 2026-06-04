@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: UDP Encapsulation of IPsec ESP (NAT-T)
+rowBits: 32
+byteOrder: BE
+description: "UDP Encapsulation of IPsec ESP packets for NAT Traversal (RFC 3948). When an IPsec peer is behind a Network Address Translator (NAT), the NAT rewrites the outer IP source address and port, which would normally break ESP's integrity check and prevent demultiplexing of IKE vs. ESP traffic. RFC 3948 solves this by wrapping ESP inside a UDP datagram on port 4500 (for both source and destination). An SPI value of 0 in the ESP header is a sentinel indicating that the UDP payload is an IKE message rather than an ESP packet (since valid ESP SPIs are always non-zero); non-zero SPI identifies a normal ESP-encrypted data packet. The fixed overhead is 8 bytes (UDP header) + 8 bytes (ESP header) = 16 bytes before the encrypted payload."
+body:
+  - id: srcPort
+    name: Source Port
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: "UDP source port. In NAT-T deployments this is typically 4500 (the IANA-assigned NAT Traversal port), matching the destination port. The NAT device rewrites this field when translating the source address; the receiver must use the SPI to identify the SA rather than the IP 5-tuple. [RFC 3948 §2, RFC 4303]"
+
+  - id: dstPort
+    name: Destination Port
+    type: { kind: int, bits: 16 }
+    category: addressing
+    doc: "UDP destination port. MUST be 4500 for ESP-in-UDP NAT-T traffic as registered with IANA. Port 500 is used for plain IKE without NAT traversal; once a NAT is detected (via NAT-D payloads in IKE_SA_INIT), both IKE and ESP traffic migrate to port 4500. [RFC 3948 §2]"
+
+  - id: udpLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Length of the UDP datagram in bytes, including the 8-byte UDP header and all encapsulated data (ESP header + encrypted payload). Minimum value is 8 (header only). Used by the receiver to determine the end of the UDP payload. [RFC 768, RFC 3948 §2]"
+
+  - id: udpChecksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: "UDP checksum covering a pseudo-header (source/destination IP, protocol, UDP length), the UDP header, and the payload. For IPv4, a value of 0 means the checksum was not computed (permitted for UDP). For IPv6, the checksum is mandatory (RFC 2460 §8.1). Since the ESP payload is already integrity-protected by the ICV, the UDP checksum adds limited value but SHOULD be computed when possible. [RFC 768, RFC 3948 §3.1.2]"
+
+  - id: spi
+    name: Security Parameters Index (SPI)
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "32-bit Security Parameters Index. When SPI=0, the UDP payload is a non-ESP marker: the remaining bytes are an IKE message, not an ESP packet (IKE uses this sentinel to share port 4500 with ESP). When SPI is non-zero (1..0xFFFFFFFF), it identifies the IPsec Security Association and the payload is a standard ESP packet. Values 1..255 are reserved by IANA for future use; valid negotiated SPIs are typically in the range 256..0xFFFFFFFF. [RFC 3948 §2, RFC 4303 §2.1]"
+
+  - id: sequenceNumber
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Monotonically increasing anti-replay counter, initialized to 0 when the SA is established (first packet carries SN=1). The sender increments it for each ESP packet; the receiver maintains a sliding-window to reject replayed or duplicate packets. The SA must be renegotiated before the 32-bit counter wraps. Extended Sequence Numbers (64-bit) may be negotiated via IKEv2 with the high-order 32 bits implicit. [RFC 4303 §2.2, RFC 3948 §2]"
+
+  - id: espPayload
+    name: Payload Data (Encrypted)
+    type: { kind: bytes, n: { kind: ref, field: espUdpPayloadBytes } }
+    category: payload-marker
+    doc: "Encrypted ESP payload bytes. Contains the ciphertext produced by the negotiated encryption algorithm (e.g. AES-GCM, AES-CBC, ChaCha20-Poly1305). In Transport mode the original upper-layer PDU (TCP/UDP datagram) is encrypted; in Tunnel mode the entire inner IP datagram is encrypted. Also includes any padding, the Pad Length byte, the Next Header byte, and the Integrity Check Value (ICV/authentication tag) — all of which are opaque to a passive observer. The total encapsulated length equals udpLength minus 8 (UDP header) minus 8 (SPI + Sequence Number). [RFC 4303 §2.4, RFC 3948 §2]"

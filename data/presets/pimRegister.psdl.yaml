@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PIM Register
+rowBits: 32
+byteOrder: BE
+description: "PIM Register message (RFC 7761, type 1). Sent by a Designated Router (DR) to the Rendezvous Point (RP) to tunnel multicast data from a source into the shared tree. Carries a fixed 8-byte header — Version/Type, Reserved, Checksum, and a flags word with Border and Null-Register bits — followed by the original multicast IP data packet."
+
+body:
+  - kind: group
+    id: pimHeader
+    name: PIM Header
+    children:
+      - id: pimVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        doc: "PIM version number; MUST be 2. A router receiving a packet with any other version number MUST silently discard it. [RFC 7761 §4.9]"
+      - id: pimType
+        name: Type
+        type: { kind: int, bits: 4 }
+        category: type
+        doc: "PIM message type; 1 for Register. The DR unicasts Register messages toward the RP to tunnel multicast data into the RP-rooted shared tree. [RFC 7761 §4.9]"
+      - id: pimReserved
+        name: Reserved
+        type: { kind: int, bits: 8 }
+        category: reserved
+        doc: "Reserved bits; MUST be set to zero on transmit and ignored on receipt. [RFC 7761 §4.9]"
+      - id: pimChecksum
+        name: Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: "Standard IP checksum over the entire PIM message. For Register messages the checksum covers only the 8-byte header (not the encapsulated data packet) to allow hardware offload on the DR. Computed with this field set to zero. [RFC 7761 §4.9]"
+
+  - kind: group
+    id: pimRegisterFlags
+    name: Register Flags
+    children:
+      - id: pimBorderBit
+        name: B
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Border (B) bit. Set to 1 when the DR sending this Register is at the border of a PIM domain and the encapsulated packet originated from a directly connected source outside the domain. Allows the RP to identify inter-domain registrations. [RFC 7761 §4.9.2]"
+      - id: pimNullRegisterBit
+        name: N
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Null-Register (N) bit. When set to 1, the Register message carries no encapsulated data; used by the DR to probe whether the RP still has active receivers on the shared tree, allowing the RP to send Register-Stop before the register suppression timer expires. [RFC 7761 §4.9.4]"
+      - id: pimRegisterReserved
+        name: Reserved
+        type: { kind: int, bits: 30 }
+        category: reserved
+        doc: "Reserved bits following the B and N flags; MUST be set to zero on transmit and ignored on receipt. [RFC 7761 §4.9]"
+
+  - id: pimRegisterData
+    name: Multicast Data Packet
+    type: { kind: bytes, n: { kind: ref, field: pimRegisterDataBytes } }
+    category: payload-marker
+    doc: "The original multicast IP data packet (IPv4 or IPv6) tunneled from the DR to the RP inside the Register message. When the Null-Register (N) bit is set, this field is empty (zero bytes). The RP decapsulates this packet and forwards it onto the shared tree. [RFC 7761 §4.9.1]"

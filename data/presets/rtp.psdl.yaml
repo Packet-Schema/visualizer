@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RTP Header
+rowBits: 32
+byteOrder: BE
+description: RTP (Real-time Transport Protocol) header as defined in RFC 3550. Fixed header is 12 bytes (96 bits) when CC=0 and no extension.
+body:
+  - kind: group
+    id: row1
+    children:
+      - { id: v, name: Version, type: { kind: int, bits: 2 }, category: type, doc: "RTP version; current version is 2." }
+      - { id: p, name: Padding, type: { kind: int, bits: 1 }, category: flags, doc: "If set, the packet contains one or more additional padding octets at the end; the last octet contains the count of padding octets." }
+      - { id: x, name: Extension, type: { kind: int, bits: 1 }, category: flags, doc: "If set, the fixed header is followed by exactly one header extension." }
+      - { id: cc, name: CSRC Count, type: { kind: int, bits: 4 }, category: length, doc: "Number of CSRC identifiers that follow the fixed header." }
+      - { id: m, name: Marker, type: { kind: int, bits: 1 }, category: flags, doc: "Application-specific marker bit; for audio it is used to indicate the end of a talkspurt." }
+      - { id: pt, name: Payload Type, type: { kind: int, bits: 7 }, category: type, doc: "Identifies the format of the RTP payload (e.g. 0=PCMU, 8=PCMA, 96-127=dynamic)." }
+      - { id: seqNum, name: Sequence Number, type: { kind: int, bits: 16 }, category: identifier, doc: "Incremented by one for each RTP data packet sent; used for packet loss detection and reordering." }
+  - { id: timestamp, name: Timestamp, type: { kind: int, bits: 32 }, category: variable, doc: "Sampling instant of the first octet in the RTP data packet; used for synchronization and jitter calculation." }
+  - { id: ssrc, name: SSRC, type: { kind: int, bits: 32 }, category: identifier, doc: "Synchronization Source Identifier; chosen randomly to identify the source of the RTP stream uniquely within a session." }
+  - kind: repeat
+    id: csrcList
+    count: { kind: ref, field: "cc" }
+    element:
+      id: csrcEntry
+      fields:
+        - { id: csrc, name: CSRC, type: { kind: int, bits: 32 }, category: identifier, doc: "Contributing Source Identifier; identifies a contributing source to the payload of the packet." }

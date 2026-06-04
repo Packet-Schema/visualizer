@@ -95,6 +95,19 @@ body:
             kind: ref
             field: frameType
           cases:
+            "0":
+              id: paddingFrame
+              fields:
+                - id: padding_body
+                  name: PADDING
+                  type:
+                    kind: bits
+                    n: 8
+                  category: reserved
+                  doc: PADDING frame — a single zero byte with no body; increases packet size. [RFC 9000 §19.1]
+            "1":
+              id: pingFrame
+              fields: []
             "2":
               id: ackFrame
               fields:
@@ -105,6 +118,64 @@ body:
                     n: 128
                   category: payload-marker
                   doc: ACK frame ranges (RFC 9000 §19.3). 16-byte placeholder.
+            "4":
+              id: resetStreamFrame
+              fields:
+                - id: rs_streamId
+                  name: Stream ID
+                  type:
+                    kind: bits
+                    n: 32
+                  category: identifier
+                  doc: Stream ID of the stream being terminated. [RFC 9000 §19.4]
+                - id: rs_appErrorCode
+                  name: Application Error Code
+                  type:
+                    kind: bits
+                    n: 32
+                  category: type
+                  doc: Application-level error code indicating why the stream is closed. [RFC 9000 §19.4]
+                - id: rs_finalSize
+                  name: Final Size
+                  type:
+                    kind: bits
+                    n: 32
+                  category: length
+                  doc: Final size (in bytes) of the stream by the RESET_STREAM sender. [RFC 9000 §19.4]
+            "5":
+              id: stopSendingFrame
+              fields:
+                - id: ss_streamId
+                  name: Stream ID
+                  type:
+                    kind: bits
+                    n: 32
+                  category: identifier
+                  doc: Stream ID of the stream being ignored. [RFC 9000 §19.5]
+                - id: ss_appErrorCode
+                  name: Application Error Code
+                  type:
+                    kind: bits
+                    n: 32
+                  category: type
+                  doc: Application-level error code indicating why the sender is ignoring the stream. [RFC 9000 §19.5]
+            "7":
+              id: newTokenFrame
+              fields:
+                - id: nt_tokenLength
+                  name: Token Length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length of the Token field, as a variable-length integer (placeholder). [RFC 9000 §19.7]
+                - id: nt_token
+                  name: Token
+                  type:
+                    kind: bits
+                    n: 64
+                  category: payload-marker
+                  doc: Opaque token a client can use in the header of a future Initial packet. [RFC 9000 §19.7]
             "6":
               id: cryptoFrame
               fields:
@@ -125,6 +196,132 @@ body:
                     n: 128
                   category: payload-marker
                   doc: STREAM frame payload (RFC 9000 §19.8). 16-byte placeholder.
+            "16":
+              id: maxDataFrame
+              fields:
+                - id: md_maximumData
+                  name: Maximum Data
+                  type:
+                    kind: bits
+                    n: 32
+                  category: length
+                  doc: Maximum amount of data (in bytes) that can be sent on the connection, as a variable-length integer (placeholder). [RFC 9000 §19.9]
+            "24":
+              id: newConnectionIdFrame
+              fields:
+                - id: ncid_sequenceNumber
+                  name: Sequence Number
+                  type:
+                    kind: bits
+                    n: 8
+                  category: identifier
+                  doc: Sequence number assigned to the Connection ID, as a variable-length integer (placeholder). [RFC 9000 §19.15]
+                - id: ncid_retirePriorTo
+                  name: Retire Prior To
+                  type:
+                    kind: bits
+                    n: 8
+                  category: identifier
+                  doc: The smallest sequence number to keep; prior Connection IDs should be retired. [RFC 9000 §19.15]
+                - id: ncid_length
+                  name: Length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length of the Connection ID field (1–20 bytes). [RFC 9000 §19.15]
+                - id: ncid_connectionId
+                  name: Connection ID
+                  type:
+                    kind: bits
+                    n: 64
+                  category: addressing
+                  doc: New Connection ID the peer may use; shown here as 8 bytes. [RFC 9000 §19.15]
+                - id: ncid_statelessResetToken
+                  name: Stateless Reset Token
+                  type:
+                    kind: bits
+                    n: 128
+                  category: checksum
+                  doc: 128-bit Stateless Reset Token associated with the Connection ID. [RFC 9000 §19.15]
+            "26":
+              id: pathChallengeFrame
+              fields:
+                - id: pc_data
+                  name: Data
+                  type:
+                    kind: bits
+                    n: 64
+                  category: payload-marker
+                  doc: 64-bit unpredictable payload used to validate the path to the peer. [RFC 9000 §19.17]
+            "27":
+              id: pathResponseFrame
+              fields:
+                - id: pr_data
+                  name: Data
+                  type:
+                    kind: bits
+                    n: 64
+                  category: payload-marker
+                  doc: 64-bit payload echoing the Data of a received PATH_CHALLENGE frame. [RFC 9000 §19.18]
+            "28":
+              id: connectionCloseTransportFrame
+              fields:
+                - id: cct_errorCode
+                  name: Error Code
+                  type:
+                    kind: bits
+                    n: 32
+                  category: type
+                  doc: A QUIC transport error code indicating the reason for closing, as a variable-length integer (placeholder). [RFC 9000 §19.19]
+                - id: cct_frameType
+                  name: Frame Type
+                  type:
+                    kind: bits
+                    n: 8
+                  category: type
+                  doc: Type of the frame that triggered the error (0 when unknown), as a variable-length integer (placeholder). [RFC 9000 §19.19]
+                - id: cct_reasonPhraseLength
+                  name: Reason Phrase Length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length of the Reason Phrase field, as a variable-length integer (placeholder). [RFC 9000 §19.19]
+                - id: cct_reasonPhrase
+                  name: Reason Phrase
+                  type:
+                    kind: bits
+                    n: 32
+                  category: payload-marker
+                  doc: UTF-8 encoded human-readable explanation for closing the connection. [RFC 9000 §19.19]
+            "29":
+              id: connectionCloseApplicationFrame
+              fields:
+                - id: cca_errorCode
+                  name: Error Code
+                  type:
+                    kind: bits
+                    n: 32
+                  category: type
+                  doc: An application protocol error code indicating the reason for closing, as a variable-length integer (placeholder). [RFC 9000 §19.19]
+                - id: cca_reasonPhraseLength
+                  name: Reason Phrase Length
+                  type:
+                    kind: bits
+                    n: 8
+                  category: length
+                  doc: Length of the Reason Phrase field, as a variable-length integer (placeholder). [RFC 9000 §19.19]
+                - id: cca_reasonPhrase
+                  name: Reason Phrase
+                  type:
+                    kind: bits
+                    n: 32
+                  category: payload-marker
+                  doc: UTF-8 encoded human-readable explanation for closing the connection. [RFC 9000 §19.19]
+            "30":
+              id: handshakeDoneFrame
+              fields: []
           default:
             id: frameDefault
             fields:

@@ -17,6 +17,8 @@ body:
       kind: bits
       n: 8
     category: type
+    defaultValue: 0
+    doc: "Frame type, which determines the structure and semantics of the payload: 0x0 DATA, 0x1 HEADERS, 0x2 PRIORITY, 0x3 RST_STREAM, 0x4 SETTINGS, 0x5 PUSH_PROMISE, 0x6 PING, 0x7 GOAWAY, 0x8 WINDOW_UPDATE, 0x9 CONTINUATION. Frames of unknown type MUST be ignored and discarded. [RFC 9113 §4.1 / §6 / §11.2]"
   - id: flags
     name: Flags
     type:
@@ -35,15 +37,201 @@ body:
       kind: bits
       n: 31
     category: identifier
-  - id: payload
+  - kind: switch
+    id: framePayload
     name: Payload
-    type:
-      kind: bytes
-      n:
-        kind: ref
-        field: length
-    category: payload-marker
-    doc: Frame payload — length bytes. [RFC 9113 §4.1]
+    on: { kind: ref, field: type }
+    doc: >-
+      Frame payload, decoded per the Type field (RFC 9113 §6). The frame Type
+      determines the structure of these `length` bytes. PSDL 0.4 has no
+      comparison operator, so each registered frame type is unpacked with an
+      explicit Switch case; the default case renders any unknown / extension
+      frame type as an opaque byte run. [RFC 9113 §4.1 / §6]
+    cases:
+      "0":
+        id: frameData
+        name: DATA
+        fields:
+          - kind: optional
+            when: { kind: ref, field: http2HasPadding }
+            field:
+              id: padLength
+              name: Pad Length
+              type: { kind: int, bits: 8 }
+              category: length
+              doc: "Present only when the PADDED flag (0x08) is set. Number of padding bytes that follow the Data field. Padding is purely for obfuscation of payload size; its length is included in the frame Length. A Pad Length that is >= the frame payload length MUST be treated as a connection error of type PROTOCOL_ERROR. [RFC 9113 §6.1]"
+          - id: data
+            name: Data
+            type: { kind: bytes, n: { kind: ref, field: http2DataBytes } }
+            category: payload-marker
+            doc: "Application data carried by the stream (request/response message body). Its length is the frame payload length minus the Pad Length field (if present) and the Padding. DATA frames are subject to flow control. [RFC 9113 §6.1]"
+          - id: padding
+            name: Padding
+            type: { kind: bytes, n: { kind: ref, field: http2PaddingBytes } }
+            category: reserved
+            doc: "Pad Length bytes of padding, set to zero on send and ignored on receive. Present only when the PADDED flag is set; counts toward flow control and the frame Length. [RFC 9113 §6.1]"
+      "1":
+        id: frameHeaders
+        name: HEADERS
+        fields:
+          - kind: optional
+            when: { kind: ref, field: http2HasPadding }
+            field:
+              id: padLength
+              name: Pad Length
+              type: { kind: int, bits: 8 }
+              category: length
+              doc: "Present only when the PADDED flag (0x08) is set. Number of trailing padding bytes; included in the frame Length. [RFC 9113 §6.2]"
+          - kind: optional
+            when: { kind: ref, field: http2HasPriority }
+            field:
+              id: exclusive
+              name: E
+              type: { kind: int, bits: 1 }
+              category: flags
+              doc: "Exclusive dependency flag. Present only when the PRIORITY flag (0x20) is set. When 1, the Stream Dependency is exclusive (this stream becomes the sole dependency of its parent). (Stream prioritization per RFC 7540 §5.3 is deprecated by RFC 9113 but the fields remain in the wire format.) [RFC 9113 §6.2]"
+          - kind: optional
+            when: { kind: ref, field: http2HasPriority }
+            field:
+              id: streamDependency
+              name: Stream Dependency
+              type: { kind: int, bits: 31 }
+              category: identifier
+              doc: "Present only when the PRIORITY flag (0x20) is set. The stream identifier on which this stream depends. A value of 0 means it depends on the root of the priority tree. [RFC 9113 §6.2 / §5.3]"
+          - kind: optional
+            when: { kind: ref, field: http2HasPriority }
+            field:
+              id: weight
+              name: Weight
+              type: { kind: int, bits: 8 }
+              category: variable
+              doc: "Present only when the PRIORITY flag (0x20) is set. Priority weight; the value sent is the weight minus one (so 0..255 represents weights 1..256). [RFC 9113 §6.2 / §5.3]"
+          - id: headerBlockFragment
+            name: Header Block Fragment
+            type: { kind: bytes, n: { kind: ref, field: http2HeaderBlockBytes } }
+            category: payload-marker
+            doc: "A fragment of the HPACK-compressed header block (RFC 7541). A complete header block may span this HEADERS frame plus zero or more following CONTINUATION frames; only the frame bearing the END_HEADERS flag (0x04) terminates the block. [RFC 9113 §6.2]"
+          - id: padding
+            name: Padding
+            type: { kind: bytes, n: { kind: ref, field: http2PaddingBytes } }
+            category: reserved
+            doc: "Pad Length bytes of padding, present only when the PADDED flag is set. Set to zero on send, ignored on receive. [RFC 9113 §6.2]"
+      "2":
+        id: framePriority
+        name: PRIORITY
+        fields:
+          - id: exclusive
+            name: E
+            type: { kind: int, bits: 1 }
+            category: flags
+            doc: "Exclusive dependency flag. When 1, the dependent stream is the sole dependency of its parent stream. (Stream prioritization is deprecated by RFC 9113 but the PRIORITY frame and fields remain.) [RFC 9113 §6.3 / §5.3]"
+          - id: streamDependency
+            name: Stream Dependency
+            type: { kind: int, bits: 31 }
+            category: identifier
+            doc: "31-bit stream identifier of the stream this stream depends on; 0 denotes dependency on the priority tree root. A PRIORITY frame with a Stream Dependency equal to its own stream MUST be treated as a stream error of type PROTOCOL_ERROR. [RFC 9113 §6.3 / §5.3]"
+          - id: weight
+            name: Weight
+            type: { kind: int, bits: 8 }
+            category: variable
+            doc: "Priority weight; the transmitted value is the weight minus one, so 0..255 maps to weights 1..256. The PRIORITY frame's payload is a fixed 5 octets; any other length is a FRAME_SIZE_ERROR. [RFC 9113 §6.3 / §5.3]"
+      "3":
+        id: frameRstStream
+        name: RST_STREAM
+        fields:
+          - id: errorCode
+            name: Error Code
+            type: { kind: int, bits: 32 }
+            category: type
+            doc: "32-bit error code indicating why the stream is being terminated (e.g. 0 NO_ERROR, 1 PROTOCOL_ERROR, 2 INTERNAL_ERROR, 3 FLOW_CONTROL_ERROR, 8 CANCEL, 11 ENHANCE_YOUR_CALM). The RST_STREAM payload is a fixed 4 octets; any other length is a FRAME_SIZE_ERROR. [RFC 9113 §6.4 / §7]"
+      "4":
+        id: frameSettings
+        name: SETTINGS
+        fields:
+          - kind: repeat
+            id: settings
+            name: Settings
+            category: variable
+            doc: "Zero or more SETTINGS parameters, each a 16-bit Identifier followed by a 32-bit Value (6 octets per entry). The frame Length MUST be a multiple of 6 octets, otherwise FRAME_SIZE_ERROR. A SETTINGS frame with the ACK flag (0x01) set MUST be empty. [RFC 9113 §6.5]"
+            element:
+              id: settingEntry
+              fields:
+                - id: identifier
+                  name: Identifier
+                  type: { kind: int, bits: 16 }
+                  category: identifier
+                  doc: "Setting identifier: 0x1 HEADER_TABLE_SIZE, 0x2 ENABLE_PUSH, 0x3 MAX_CONCURRENT_STREAMS, 0x4 INITIAL_WINDOW_SIZE, 0x5 MAX_FRAME_SIZE, 0x6 MAX_HEADER_LIST_SIZE. Unknown identifiers MUST be ignored. [RFC 9113 §6.5.2]"
+                - id: value
+                  name: Value
+                  type: { kind: int, bits: 32 }
+                  category: variable
+                  doc: "32-bit value for the corresponding setting. [RFC 9113 §6.5.1 / §6.5.2]"
+            count: { kind: ref, field: http2SettingsCount }
+      "6":
+        id: framePing
+        name: PING
+        fields:
+          - id: opaqueData
+            name: Opaque Data
+            type: { kind: int, bits: 64 }
+            category: variable
+            doc: "8 octets of opaque application data. A PING response (ACK flag 0x01 set) MUST echo this value unchanged. The PING payload is a fixed 8 octets; any other length is a FRAME_SIZE_ERROR. [RFC 9113 §6.7]"
+      "7":
+        id: frameGoaway
+        name: GOAWAY
+        fields:
+          - id: r2
+            name: R
+            type: { kind: bits, n: 1 }
+            category: reserved
+            doc: "Reserved 1-bit field preceding the Last-Stream-ID. Sent as 0 and ignored on receipt. [RFC 9113 §6.8]"
+          - id: lastStreamId
+            name: Last-Stream-ID
+            type: { kind: bits, n: 31 }
+            category: identifier
+            doc: "Highest-numbered stream identifier for which the sender might have taken some action, or 0 if none. Lets the receiver know which streams may have been processed before the connection is closed. [RFC 9113 §6.8]"
+          - id: errorCode
+            name: Error Code
+            type: { kind: int, bits: 32 }
+            category: type
+            doc: "32-bit error code indicating the reason for closing the connection (same registry as RST_STREAM; e.g. 0 NO_ERROR for graceful shutdown). [RFC 9113 §6.8 / §7]"
+          - id: debugData
+            name: Additional Debug Data
+            type: { kind: bytes, n: { kind: ref, field: http2GoawayDebugBytes } }
+            category: payload-marker
+            doc: "Optional opaque debugging information (frame Length minus the fixed 8 octets). Intended for diagnostics; its content has no defined semantics and MUST NOT alter protocol state. [RFC 9113 §6.8]"
+      "8":
+        id: frameWindowUpdate
+        name: WINDOW_UPDATE
+        fields:
+          - id: r2
+            name: R
+            type: { kind: bits, n: 1 }
+            category: reserved
+            doc: "Reserved 1-bit field preceding the Window Size Increment. Sent as 0 and ignored on receipt. [RFC 9113 §6.9]"
+          - id: windowSizeIncrement
+            name: Window Size Increment
+            type: { kind: bits, n: 31 }
+            category: variable
+            doc: "Number of octets (1 .. 2^31-1) by which the sender can increase the flow-control window. A value of 0 MUST be treated as a stream error (or connection error on stream 0) of type PROTOCOL_ERROR. The payload is a fixed 4 octets. [RFC 9113 §6.9]"
+      "9":
+        id: frameContinuation
+        name: CONTINUATION
+        fields:
+          - id: headerBlockFragment
+            name: Header Block Fragment
+            type: { kind: bytes, n: { kind: ref, field: http2HeaderBlockBytes } }
+            category: payload-marker
+            doc: "A fragment of the HPACK-compressed header block (RFC 7541) continuing a preceding HEADERS, PUSH_PROMISE, or CONTINUATION frame. The block ends with the CONTINUATION frame carrying the END_HEADERS flag (0x04). [RFC 9113 §6.10]"
+    default:
+      id: framePayloadOpaque
+      name: Payload
+      fields:
+        - id: payload
+          name: Payload
+          type: { kind: bytes, n: { kind: ref, field: http2PayloadBytes } }
+          category: payload-marker
+          doc: "Opaque frame payload — `length` bytes. Used for unrecognized or extension frame types (RFC 9113 §5.5); also covers the registered types PUSH_PROMISE (0x5) and the deprecated/obsolete types whose body is not expanded here. An endpoint MUST ignore and discard frames of unknown type. [RFC 9113 §4.1 / §5.5]"
 constraints:
   - lhs:
       kind: op

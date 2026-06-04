@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: Syslog Message
+rowBits: 32
+byteOrder: BE
+description: "Syslog protocol message (RFC 5424). On the wire the message is an ASCII/UTF-8 text stream, but RFC 5424 defines a machine-parseable structure: a PRI part '<' + decimal Priority + '>' where Priority = Facility * 8 + Severity (Facility 0–23, Severity 0–7, so Priority 0–191), a VERSION integer (always '1'), and then SP-separated header fields TIMESTAMP (RFC 3339 date-time or '-'), HOSTNAME (max 255 chars or '-'), APP-NAME (max 48 chars or '-'), PROCID (max 128 chars or '-'), MSGID (max 32 chars or '-'), followed by STRUCTURED-DATA (one or more SD-ELEMENTs '[id param …]' or '-'), and an optional MSG payload in UTF-8. This PSDL models the PRI value as an 8-bit unsigned integer, VERSION as an 8-bit field, and all subsequent variable-length ASCII/UTF-8 fields as byte arrays whose lengths are carried in preceding length-hint fields (not part of the wire format — supplied by the parser/visualizer). Because RFC 5424 text fields are delimited by spaces and end-of-message rather than inline length prefixes, the length fields here are PSDL-level annotations enabling the visualizer to demarcate each field; they do not correspond to bytes on the wire."
+
+body:
+  - kind: group
+    id: priGroup
+    name: PRI
+    children:
+      - id: priValue
+        name: Priority
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "Encoded Priority value from the PRI part '<P>'. Priority = Facility * 8 + Severity. Facility (bits 7–3) identifies the message source: 0=kern, 1=user, 2=mail, 3=daemon, 4=auth, 5=syslog, 6=lpr, 7=news, 8=uucp, 9=cron, 10=authpriv, 16–23=local0–local7. Severity (bits 2–0): 0=Emergency, 1=Alert, 2=Critical, 3=Error, 4=Warning, 5=Notice, 6=Informational, 7=Debug. Valid range 0–191; values 192–255 are undefined. The '<' and '>' delimiters and decimal encoding are ASCII text on the wire, not binary. [RFC 5424 §6.2.1]"
+
+  - id: version
+    name: VERSION
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 1
+    doc: "Syslog protocol version. MUST be '1' (ASCII digit, decimal value 49 on wire; modeled here as the integer 1 for clarity). A value other than 1 MUST cause the message to be treated as an unknown version. The field is one ASCII digit on the wire, space-separated from the subsequent TIMESTAMP. [RFC 5424 §6.2.2]"
+
+  - id: timestampLen
+    name: TIMESTAMP Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the TIMESTAMP field that follows. RFC 5424 §6.2.3 defines TIMESTAMP as an RFC 3339 date-time (e.g. '2003-10-11T22:14:15.003Z', up to 32 bytes) or the single character '-' (NILVALUE) when the sending device does not know the time. Not a wire field; supplied by the parser. [RFC 5424 §6.2.3]"
+
+  - id: timestamp
+    name: TIMESTAMP
+    type: { kind: bytes, n: { kind: ref, field: timestampLen } }
+    category: variable
+    doc: "RFC 3339 full-date 'T' full-time string (e.g. '2003-10-11T22:14:15.003Z') or '-' (NILVALUE). The time offset MUST be 'Z' or ±HH:MM; fractional seconds SHOULD be included. Maximum length 32 bytes. Encoded as UTF-8 ASCII on the wire. [RFC 5424 §6.2.3]"
+
+  - id: hostnameLen
+    name: HOSTNAME Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the HOSTNAME field that follows. HOSTNAME is the fully-qualified domain name, a static IP address, or '-' (NILVALUE) when the sending device does not know its name. Maximum 255 bytes on the wire. Not a wire field; supplied by the parser. [RFC 5424 §6.2.4]"
+
+  - id: hostname
+    name: HOSTNAME
+    type: { kind: bytes, n: { kind: ref, field: hostnameLen } }
+    category: addressing
+    doc: "Identifies the machine that originally sent the message. SHOULD be a fully qualified domain name (FQDN); may be a static IP address, a hostname without domain, or '-'. Printable ASCII, no spaces, maximum 255 bytes. [RFC 5424 §6.2.4]"
+
+  - id: appNameLen
+    name: APP-NAME Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the APP-NAME field that follows. APP-NAME identifies the device or application that originated the message. Maximum 48 bytes. Not a wire field; supplied by the parser. [RFC 5424 §6.2.5]"
+
+  - id: appName
+    name: APP-NAME
+    type: { kind: bytes, n: { kind: ref, field: appNameLen } }
+    category: identifier
+    doc: "Device or application that generated the message (e.g. 'sshd', 'kernel', 'nginx'). Printable ASCII, no spaces, maximum 48 bytes. '-' (NILVALUE) when unknown. [RFC 5424 §6.2.5]"
+
+  - id: procIdLen
+    name: PROCID Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the PROCID field that follows. PROCID often contains a process ID (numeric string) but may contain any printable ASCII string up to 128 bytes, or '-'. Not a wire field; supplied by the parser. [RFC 5424 §6.2.6]"
+
+  - id: procId
+    name: PROCID
+    type: { kind: bytes, n: { kind: ref, field: procIdLen } }
+    category: identifier
+    doc: "Process or connection identifier for the application that sent the message. Typically the numeric PID (e.g. '1234') but may be any printable ASCII token up to 128 bytes. '-' when not applicable. [RFC 5424 §6.2.6]"
+
+  - id: msgIdLen
+    name: MSGID Length
+    type: { kind: int, bits: 8 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the MSGID field that follows. MSGID identifies the type of message (e.g. 'ID47', 'TCPIN'), enabling a collector to classify events without parsing MSG. Maximum 32 bytes on wire, or '-'. Not a wire field; supplied by the parser. [RFC 5424 §6.2.7]"
+
+  - id: msgId
+    name: MSGID
+    type: { kind: bytes, n: { kind: ref, field: msgIdLen } }
+    category: identifier
+    doc: "Message type identifier used to filter or classify log messages (e.g. 'ID47'). Printable ASCII, no spaces, maximum 32 bytes. '-' (NILVALUE) when the originator does not provide a message type. [RFC 5424 §6.2.7]"
+
+  - id: structDataLen
+    name: STRUCTURED-DATA Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the STRUCTURED-DATA field that follows. STRUCTURED-DATA carries zero or more SD-ELEMENTs of the form '[SD-ID PARAM-NAME=\"PARAM-VALUE\" …]', or the single character '-' (NILVALUE). Maximum total length is unbounded on the wire. Not a wire field; supplied by the parser. [RFC 5424 §6.3]"
+
+  - id: structData
+    name: STRUCTURED-DATA
+    type: { kind: bytes, n: { kind: ref, field: structDataLen } }
+    category: variable
+    doc: "Structured metadata encoded as one or more SD-ELEMENTs '[SD-ID param=\"value\" …]' or '-'. SD-ID is either a registered IANA name or a private-enterprise SD-ID of the form 'name@PEN'. PARAM-VALUE is a UTF-8 string with '\\', '\"', and ']' escaped as '\\\\', '\\\"', '\\]'. Provides key-value structured data for machine processing without parsing free-form MSG text. [RFC 5424 §6.3]"
+
+  - id: msgLen
+    name: MSG Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 0
+    doc: "PSDL length-hint: byte count of the MSG field that follows. MSG is a free-form UTF-8 string containing the human-readable log message, running to the end of the syslog frame (or transport record). May begin with a UTF-8 BOM (0xEF 0xBB 0xBF) to signal UTF-8 encoding explicitly. Not a wire field; supplied by the parser. [RFC 5424 §6.4]"
+
+  - id: msg
+    name: MSG
+    type: { kind: bytes, n: { kind: ref, field: msgLen } }
+    category: payload-marker
+    doc: "Free-form log message payload. UTF-8 encoded; if the first three bytes are the UTF-8 BOM (0xEF 0xBB 0xBF), the remainder MUST be valid UTF-8. When no BOM is present the encoding is unspecified (commonly ASCII). Runs to end-of-frame; length is determined by the transport framing (octet-counting per RFC 6587 §3.4.1, or newline-delimited). [RFC 5424 §6.4]"

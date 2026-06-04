@@ -1,0 +1,178 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OCSP Request
+rowBits: 32
+byteOrder: BE
+description: "Online Certificate Status Protocol (OCSP) Request (RFC 6960) — ASN.1 DER encoded. OCSPRequest ::= SEQUENCE { tbsRequest TBSRequest, optionalSignature [0] EXPLICIT Signature OPTIONAL }. TBSRequest ::= SEQUENCE { version [0] EXPLICIT INTEGER DEFAULT v1 OPTIONAL, requestorName [1] EXPLICIT GeneralName OPTIONAL, requestList SEQUENCE OF Request, requestExtensions [2] EXPLICIT Extensions OPTIONAL }. Request ::= SEQUENCE { reqCert CertID, singleRequestExtensions [0] EXPLICIT Extensions OPTIONAL }. CertID ::= SEQUENCE { hashAlgorithm AlgorithmIdentifier, issuerNameHash OCTET STRING, issuerKeyHash OCTET STRING, serialNumber CertificateSerialNumber }. All lengths use BER/DER short or long form (kind: berLength). This PSDL models the mandatory fields (outer OCSPRequest SEQUENCE, tbsRequest SEQUENCE, requestList SEQUENCE OF Request with one CertID per Request) and leaves optional extensions as opaque bytes. [RFC 6960 §4.1 / ITU-T X.690 §8.1.3]"
+
+body:
+  - kind: group
+    id: ocspRequestWrapper
+    name: OCSPRequest SEQUENCE
+    children:
+      - id: ocspReqTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag 0x30 (decimal 48). Identifies the start of the outer OCSPRequest SEQUENCE that encloses the tbsRequest and an optional Signature. [RFC 6960 §4.1.1 / ITU-T X.690 §8.9]"
+      - id: ocspReqLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the OCSPRequest SEQUENCE contents (tbsRequest bytes, plus optional Signature). Short form (0x00–0x7F) encodes the count directly; long form uses 0x80|n followed by n big-endian length octets. [RFC 6960 §4.1 / ITU-T X.690 §8.1.3]"
+
+  - kind: group
+    id: tbsRequestWrapper
+    name: TBSRequest SEQUENCE
+    children:
+      - id: tbsReqTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag 0x30 for TBSRequest (To-Be-Signed Request). Contains the optional version, optional requestorName, mandatory requestList, and optional requestExtensions. [RFC 6960 §4.1.1 / ITU-T X.690 §8.9]"
+      - id: tbsReqLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the TBSRequest SEQUENCE contents. Includes requestList and any optional fields (version [0], requestorName [1], requestExtensions [2]) that are present. [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+
+  - kind: group
+    id: requestListWrapper
+    name: requestList SEQUENCE OF
+    children:
+      - id: reqListTag
+        name: SEQUENCE Tag
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 48
+        doc: "ASN.1 universal SEQUENCE tag 0x30 for the requestList field (SEQUENCE OF Request). Each element is a Request SEQUENCE containing a mandatory reqCert CertID and an optional singleRequestExtensions. [RFC 6960 §4.1.1 / ITU-T X.690 §8.9]"
+      - id: reqListLength
+        name: SEQUENCE Length
+        type: { kind: berLength }
+        category: length
+        doc: "BER/DER length of the requestList SEQUENCE contents, i.e., the total byte length of all encoded Request elements. [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+
+  - kind: repeat
+    id: requests
+    name: Request Elements
+    category: variable
+    doc: "SEQUENCE OF Request. Each Request contains one reqCert CertID SEQUENCE (mandatory) encoding the target certificate's hash algorithm, issuerNameHash, issuerKeyHash, and serialNumber. An optional singleRequestExtensions [0] may follow the CertID; it is captured as opaque bytes in reqExtsData. The count of Request elements is derived from reqListLength but, as PSDL has no comparison operator, is driven by a ref to requestCount (default 0 for safe rendering of an empty list). [RFC 6960 §4.1.1]"
+    element:
+      id: requestRecord
+      fields:
+        - id: requestSeqTag
+          name: Request SEQUENCE Tag
+          type: { kind: int, bits: 8 }
+          category: type
+          defaultValue: 48
+          doc: "ASN.1 universal SEQUENCE tag 0x30 for a single Request element. Contains reqCert CertID and optional singleRequestExtensions [0] EXPLICIT Extensions. [RFC 6960 §4.1.1 / ITU-T X.690 §8.9]"
+        - id: requestSeqLength
+          name: Request SEQUENCE Length
+          type: { kind: berLength }
+          category: length
+          doc: "BER/DER length of this Request SEQUENCE's contents (CertID SEQUENCE plus any singleRequestExtensions). [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+        - kind: group
+          id: certIdGroup
+          name: reqCert CertID SEQUENCE
+          children:
+            - id: certIdTag
+              name: CertID SEQUENCE Tag
+              type: { kind: int, bits: 8 }
+              category: type
+              defaultValue: 48
+              doc: "ASN.1 universal SEQUENCE tag 0x30 for CertID, which is defined as SEQUENCE { hashAlgorithm AlgorithmIdentifier, issuerNameHash OCTET STRING, issuerKeyHash OCTET STRING, serialNumber CertificateSerialNumber }. [RFC 6960 §4.1.1 / ITU-T X.690 §8.9]"
+            - id: certIdLength
+              name: CertID SEQUENCE Length
+              type: { kind: berLength }
+              category: length
+              doc: "BER/DER length of the CertID SEQUENCE contents (hashAlgorithm + issuerNameHash + issuerKeyHash + serialNumber). [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+            - kind: group
+              id: hashAlgGroup
+              name: hashAlgorithm AlgorithmIdentifier
+              children:
+                - id: hashAlgTag
+                  name: AlgorithmIdentifier Tag
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  defaultValue: 48
+                  doc: "ASN.1 universal SEQUENCE tag 0x30 for AlgorithmIdentifier ::= SEQUENCE { algorithm OBJECT IDENTIFIER, parameters ANY DEFINED BY algorithm OPTIONAL }. Identifies the hash algorithm (e.g., SHA-1 OID 1.3.14.3.2.26, SHA-256 OID 2.16.840.1.101.3.4.2.1) used to compute issuerNameHash and issuerKeyHash. [RFC 6960 §4.1.1 / RFC 5280 §4.1.1.2]"
+                - id: hashAlgLength
+                  name: AlgorithmIdentifier Length
+                  type: { kind: berLength }
+                  category: length
+                  doc: "BER/DER length of the AlgorithmIdentifier SEQUENCE contents (algorithm OID and optional parameters). For SHA-1 with NULL parameters this is typically 9 bytes; for SHA-256 it is 13 bytes. [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+                - id: hashAlgData
+                  name: AlgorithmIdentifier Data
+                  type: { kind: bytes, n: { kind: ref, field: hashAlgLength } }
+                  category: variable
+                  doc: "DER-encoded AlgorithmIdentifier contents: an OID TLV (tag 0x06, length, OID octets) followed by an optional parameters field (usually NULL: 0x05 0x00). The OID identifies the hash function applied to issuerName and issuerKey. Common values: SHA-1 = {0x30 0x09 0x06 0x05 0x2b 0x0e 0x03 0x02 0x1a 0x05 0x00}, SHA-256 = {0x30 0x0d 0x06 0x09 0x60 0x86 0x48 0x01 0x65 0x03 0x04 0x02 0x01 0x05 0x00}. [RFC 6960 §4.1.1 / RFC 5280 §4.1.1.2]"
+            - kind: group
+              id: issuerNameHashGroup
+              name: issuerNameHash OCTET STRING
+              children:
+                - id: issuerNameHashTag
+                  name: OCTET STRING Tag
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  defaultValue: 4
+                  doc: "ASN.1 universal OCTET STRING tag 0x04. Precedes issuerNameHash, which is the hash of the DER encoding of the issuer's distinguished name. The hash algorithm is the one identified by hashAlgorithm in this CertID. [RFC 6960 §4.1.1 / ITU-T X.690 §8.7]"
+                - id: issuerNameHashLength
+                  name: OCTET STRING Length
+                  type: { kind: berLength }
+                  category: length
+                  doc: "BER/DER length of the issuerNameHash value in octets. Equals the output size of the hash algorithm: 20 bytes for SHA-1, 32 bytes for SHA-256. [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+                - id: issuerNameHashValue
+                  name: issuerNameHash Value
+                  type: { kind: bytes, n: { kind: ref, field: issuerNameHashLength } }
+                  category: variable
+                  doc: "Hash of the DER encoding of the certificate issuer's Name field. Computed using the algorithm identified by hashAlgorithm. Together with issuerKeyHash, uniquely identifies the CA that issued the target certificate. [RFC 6960 §4.1.1]"
+            - kind: group
+              id: issuerKeyHashGroup
+              name: issuerKeyHash OCTET STRING
+              children:
+                - id: issuerKeyHashTag
+                  name: OCTET STRING Tag
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  defaultValue: 4
+                  doc: "ASN.1 universal OCTET STRING tag 0x04. Precedes issuerKeyHash, which is the hash of the BIT STRING value of the issuer's public key (the contents of the subjectPublicKey field, excluding the tag, length, and number-of-unused-bits octet). [RFC 6960 §4.1.1 / ITU-T X.690 §8.7]"
+                - id: issuerKeyHashLength
+                  name: OCTET STRING Length
+                  type: { kind: berLength }
+                  category: length
+                  doc: "BER/DER length of the issuerKeyHash value in octets. Equals the output size of the hash algorithm: 20 bytes for SHA-1, 32 bytes for SHA-256. [RFC 6960 §4.1.1 / ITU-T X.690 §8.1.3]"
+                - id: issuerKeyHashValue
+                  name: issuerKeyHash Value
+                  type: { kind: bytes, n: { kind: ref, field: issuerKeyHashLength } }
+                  category: variable
+                  doc: "Hash of the issuer's public key bit string value (not the SubjectPublicKeyInfo SEQUENCE, just the key octets). Used together with issuerNameHash to identify the CA. Enables the OCSP responder to locate the issuer without transmitting the full CA certificate. [RFC 6960 §4.1.1]"
+            - kind: group
+              id: serialNumberGroup
+              name: serialNumber INTEGER
+              children:
+                - id: serialNumberTag
+                  name: INTEGER Tag
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  defaultValue: 2
+                  doc: "ASN.1 universal INTEGER tag 0x02. Precedes the serialNumber field, which is the decimal serial number of the target certificate whose revocation status is being queried. [RFC 6960 §4.1.1 / ITU-T X.690 §8.3]"
+                - id: serialNumberLength
+                  name: INTEGER Length
+                  type: { kind: berLength }
+                  category: length
+                  doc: "BER/DER length of the serialNumber value in octets. Certificate serial numbers are up to 20 octets (RFC 5280 §4.1.2.2); DER INTEGER encoding prepends a 0x00 pad byte if the high bit of the first value octet is set. [RFC 6960 §4.1.1 / RFC 5280 §4.1.2.2 / ITU-T X.690 §8.3]"
+                - id: serialNumberValue
+                  name: serialNumber Value
+                  type: { kind: bytes, n: { kind: ref, field: serialNumberLength } }
+                  category: identifier
+                  doc: "DER INTEGER value bytes of the target certificate's serial number. The serial number MUST be a positive integer assigned by the CA and MUST be unique within the CA's scope. Maximum 20 octets per RFC 5280 §4.1.2.2; DER uses the minimum number of octets with a leading 0x00 added only when the MSB would otherwise be set (sign bit). [RFC 6960 §4.1.1 / RFC 5280 §4.1.2.2]"
+        - kind: optional
+          when: { kind: ref, field: reqHasExts }
+          field:
+            id: reqExtsData
+            name: singleRequestExtensions Data
+            type: { kind: bytes, n: { kind: ref, field: reqExtsLength } }
+            category: variable
+            doc: "Opaque bytes of the singleRequestExtensions [0] EXPLICIT Extensions field, when present. Extensions are encoded as a context-specific [0] wrapper (tag 0xA0) containing a SEQUENCE OF Extension, each Extension ::= SEQUENCE { extnID OID, critical BOOLEAN DEFAULT FALSE, extnValue OCTET STRING }. Present only when reqHasExts is non-zero. [RFC 6960 §4.1.1 / RFC 5280 §4.2]"
+    count: { kind: ref, field: requestCount }

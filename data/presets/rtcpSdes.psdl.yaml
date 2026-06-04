@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RTCP SDES
+rowBits: 32
+byteOrder: BE
+description: "RTCP Source Description (SDES) packet, PT=202 (RFC 3550 §6.5). Carries descriptive information about RTP session participants. The fixed 4-byte common header is followed by one or more Source Chunks, each consisting of a 32-bit SSRC/CSRC identifier and a variable-length list of SDES items terminated by an END item (type=0). At least one CNAME item (type=1) MUST be included in every SDES packet to permanently identify a source across session boundaries."
+body:
+  - kind: group
+    id: rtcpSdesHeader
+    name: Common Header
+    children:
+      - id: v
+        name: Version
+        type: { kind: int, bits: 2 }
+        category: type
+        doc: "RTCP version number; MUST be 2. Packets with any other version value MUST be ignored. [RFC 3550 §6.1]"
+      - id: p
+        name: Padding
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Padding flag. If set, the packet contains additional padding octets at the end that are not part of the payload; the last octet holds the count of padding bytes. [RFC 3550 §6.1]"
+      - id: sc
+        name: Source Count
+        type: { kind: int, bits: 5 }
+        category: length
+        doc: "Number of SSRC/CSRC chunks contained in this SDES packet. Zero is valid (e.g. in a compound packet). [RFC 3550 §6.5]"
+  - id: pt
+    name: Packet Type
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "RTCP packet type; value 202 (0xCA) identifies a Source Description packet. [RFC 3550 §6.5]"
+  - id: length
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Length of this RTCP SDES packet in 32-bit words minus one, including header and padding but not the leading common header word. [RFC 3550 §6.1]"
+  - kind: repeat
+    id: rtcpSdesChunks
+    name: Source Chunks
+    category: variable
+    count: { kind: ref, field: "sc" }
+    element:
+      id: rtcpSdesChunk
+      fields:
+        - id: ssrc
+          name: SSRC / CSRC
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: "Synchronization Source (SSRC) or Contributing Source (CSRC) identifier of the participant described by the following SDES items. Uniquely identifies the source within an RTP session. [RFC 3550 §6.5]"
+        - kind: repeat
+          id: rtcpSdesItems
+          name: SDES Items
+          category: variable
+          count: "eos"
+          element:
+            id: rtcpSdesItem
+            fields:
+              - id: rtcpSdesItemType
+                name: Item Type
+                type:
+                  kind: enum
+                  bits: 8
+                  variants:
+                    0: "END"
+                    1: "CNAME"
+                    2: "NAME"
+                    3: "EMAIL"
+                    4: "PHONE"
+                    5: "LOC"
+                    6: "TOOL"
+                    7: "NOTE"
+                    8: "PRIV"
+                category: type
+                doc: "SDES item type code. 0=END terminates the item list (no Length or Value follows); 1=CNAME canonical end-point identifier (MUST be present in every SDES packet); 2=NAME user name; 3=EMAIL email address; 4=PHONE phone number; 5=LOC geographic location; 6=TOOL application name; 7=NOTE note about source; 8=PRIV private extensions. [RFC 3550 §6.5.1–6.5.8]"
+              - id: rtcpSdesItemLen
+                name: Item Length
+                type: { kind: int, bits: 8 }
+                category: length
+                doc: "Length of the Item Value field in octets. Not present for END items (type=0). Maximum 255 octets per item. [RFC 3550 §6.5]"
+              - id: rtcpSdesItemValue
+                name: Item Value
+                type: { kind: bytes, n: { kind: ref, field: "rtcpSdesItemLen" } }
+                category: variable
+                doc: "Item value as a UTF-8 encoded string without a null terminator. Length is given by the preceding Item Length field. For CNAME, SHOULD be in the form 'user@host' and MUST be unique across all participants. [RFC 3550 §6.5.1]"

@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OSPFv2 Link State Update
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first).
+description: OSPFv2 Link State Update packet (RFC 2328 Appendix A.3.4, packet type 4). 24-byte OSPF common header followed by a 4-byte LSA count and a variable-length list of LSAs. Link State Update packets are the mechanism by which LSAs are flooded throughout an OSPF area; a router sends them in response to Link State Request packets received during Database Exchange, and also whenever it re-originates or relays a newer LSA instance. Each LSA is represented here by its 20-byte header, which contains all fields needed to identify, sequence, and validate the LSA.
+body:
+  - id: version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 2
+    doc: OSPF protocol version. Always 2 for OSPFv2 (OSPFv3 for IPv6 uses a separate packet format). [RFC 2328 §A.3.1]
+  - id: packetType
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 4
+    doc: OSPF packet type. 1=Hello, 2=Database Description, 3=Link State Request, 4=Link State Update (this preset), 5=Link State Acknowledgment. [RFC 2328 §A.3.1]
+  - id: packetLength
+    name: Packet Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Length of the OSPF packet in bytes, including the 24-byte common header. For a Link State Update with N LSA headers = 24 + 4 + 20 × N. [RFC 2328 §A.3.1]
+  - id: routerId
+    name: Router ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the originating router. Written in dotted-quad form like an IPv4 address; conventionally chosen as the largest IP address configured on the router, or a manually assigned value. Must be unique within the OSPF routing domain. [RFC 2328 §A.3.1]
+  - id: areaId
+    name: Area ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the OSPF area to which this packet belongs. 0.0.0.0 denotes the backbone area. Routers only flood LSAs within the area from which the update is received. [RFC 2328 §A.3.1]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: Standard IP checksum (one's complement of one's-complement 16-bit sum) computed over the entire OSPF packet excluding the 64-bit Authentication field. [RFC 2328 §A.3.1]
+  - id: authType
+    name: Authentication Type
+    type: { kind: int, bits: 16 }
+    category: type
+    defaultValue: 0
+    doc: Authentication scheme applied per-interface. 0=Null (no authentication), 1=Simple password, 2=Cryptographic (MD5/HMAC). [RFC 2328 §D.1]
+  - id: authentication
+    name: Authentication
+    type: { kind: bits, n: 64 }
+    category: identifier
+    doc: 64-bit authentication payload whose meaning is set by Authentication Type. Null→zero; Simple→ASCII password padded with zeros; Cryptographic→2-byte reserved (0) || 1-byte Key ID || 1-byte Auth Data Length || 4-byte cryptographic sequence number, with the actual MAC appended after the packet. [RFC 2328 §D.3]
+  - id: ospfLsaCount
+    name: Number of LSAs
+    type: { kind: int, bits: 32 }
+    category: length
+    doc: Count of LSAs contained in this Link State Update packet. Each LSA immediately follows in sequence; a value of zero is valid and indicates an empty update. [RFC 2328 §A.3.4]
+  - kind: repeat
+    id: lsas
+    name: LSA List
+    category: variable
+    doc: Zero or more LSA headers carried by this Link State Update. Each entry is a 20-byte LSA header that identifies and sequences the LSA. LS Type values — 1=Router-LSA, 2=Network-LSA, 3=Summary-LSA (IP network), 4=Summary-LSA (ASBR), 5=AS-external-LSA — determine the portion of the routing domain being described. [RFC 2328 §A.3.4 / §A.4.1]
+    element:
+      id: lsaRecord
+      fields:
+        - id: lsAge
+          name: LS Age
+          type: { kind: int, bits: 16 }
+          category: identifier
+          doc: Time in seconds since the LSA was originated. Incremented in transit; when it reaches MaxAge (3600 s) the LSA is flushed from the database. Used with LS Sequence Number to determine which instance is more recent. [RFC 2328 §A.4.1]
+        - id: lsaOptions
+          name: Options
+          type: { kind: int, bits: 8 }
+          category: flags
+          doc: Optional capabilities supported by the described portion of the routing domain, encoded with the same bit assignments as the common Options field (T/E/MC/N/EA/DC bits). [RFC 2328 §A.4.1]
+        - id: lsType
+          name: LS Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: LSA type code. 1=Router-LSA (describes a router's links), 2=Network-LSA (describes a broadcast/NBMA segment's attached routers), 3=Summary-LSA for an IP network (inter-area prefix reachability), 4=Summary-LSA for an ASBR (inter-area ASBR reachability), 5=AS-external-LSA (routes redistributed from outside OSPF). [RFC 2328 §A.4.1]
+        - id: linkStateId
+          name: Link State ID
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Identifies the portion of the routing domain described by the LSA; interpretation depends on LS Type — Router ID for Router-LSAs, DR interface address for Network-LSAs, destination IP network for Summary-LSAs and AS-external-LSAs. [RFC 2328 §A.4.1]
+        - id: advertisingRouter
+          name: Advertising Router
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Router ID (dotted-quad on the wire) of the router that originated this LSA. Together with LS Type and Link State ID forms the unique key for the LSA in the link-state database. [RFC 2328 §A.4.1]
+        - id: lsSeqNum
+          name: LS Sequence Number
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Signed 32-bit sequence number incremented each time the LSA is re-originated. InitialSequenceNumber is 0x80000001; MaxSequenceNumber is 0x7FFFFFFF. A larger value means a more recent instance; used to discard duplicate or stale LSAs during flooding. [RFC 2328 §A.4.1]
+        - id: lsChecksum
+          name: LS Checksum
+          type: { kind: int, bits: 16 }
+          category: checksum
+          doc: Fletcher checksum computed over the complete contents of the LSA excluding the LS Age field. Used to detect data corruption; also verified when an LSA is installed in the database. [RFC 2328 §A.4.1]
+        - id: lsaLength
+          name: Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Total length of the LSA in bytes, including this 20-byte header. A receiver uses this value to locate the boundary of each LSA within the update packet. [RFC 2328 §A.4.1]
+    count: { kind: ref, field: ospfLsaCount }

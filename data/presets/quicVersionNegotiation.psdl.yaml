@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: QUIC Version Negotiation
+rowBits: 32
+byteOrder: BE
+description: QUIC Version Negotiation Packet (RFC 9000 §17.2.1). Sent by a server when it does not support the version chosen by the client. Header Form=1, Version=0x00000000 (signals VN), followed by variable-length Destination and Source Connection IDs, and a list of Supported Versions the server does accept.
+body:
+  - id: vnHeaderForm
+    name: Header Form (1=Long)
+    type:
+      kind: bits
+      n: 1
+    category: type
+    defaultValue: 1
+    doc: Must be 1 — Version Negotiation uses the long-header form. [RFC 9000 §17.2.1]
+  - kind: group
+    id: vnUnused7
+    name: Unused (7 bits)
+    children:
+      - id: vnUnusedBits
+        name: Unused
+        type:
+          kind: bits
+          n: 7
+        category: reserved
+        doc: Seven bits following the Header Form; set to arbitrary values by the sender and ignored by the receiver. [RFC 9000 §17.2.1]
+  - id: vnVersion
+    name: Version (0x00000000)
+    type:
+      kind: int
+      bits: 32
+    category: type
+    defaultValue: 0
+    doc: Fixed to 0x00000000 — this value in the Version field marks the packet as a Version Negotiation packet, not a supported QUIC version. [RFC 9000 §17.2.1]
+  - id: vnDcidLen
+    name: DCID Length
+    type:
+      kind: int
+      bits: 8
+    category: length
+    defaultValue: 0
+    doc: Length in bytes of the Destination Connection ID field (0–20). Echoed from the client's Source Connection ID. [RFC 9000 §17.2.1]
+  - id: vnDcid
+    name: Destination Connection ID
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: vnDcidLen
+    category: addressing
+    doc: Destination Connection ID — vnDcidLen bytes, copied from the Source Connection ID of the triggering client packet. [RFC 9000 §17.2.1]
+  - id: vnScidLen
+    name: SCID Length
+    type:
+      kind: int
+      bits: 8
+    category: length
+    defaultValue: 0
+    doc: Length in bytes of the Source Connection ID field (0–20). Set to the server's chosen Connection ID, which may be zero-length. [RFC 9000 §17.2.1]
+  - id: vnScid
+    name: Source Connection ID
+    type:
+      kind: bytes
+      n:
+        kind: ref
+        field: vnScidLen
+    category: addressing
+    doc: Source Connection ID — vnScidLen bytes, chosen by the server; may be zero-length. [RFC 9000 §17.2.1]
+  - id: vnVersionCount
+    name: Supported Version Count
+    type:
+      kind: int
+      bits: 8
+    category: length
+    defaultValue: 0
+    doc: Number of Supported Version entries that follow. Not an on-wire field in RFC 9000 (the list runs to end-of-packet); modeled here as an explicit count for preset display. [RFC 9000 §17.2.1]
+  - kind: repeat
+    id: vnSupportedVersions
+    name: Supported Versions
+    category: variable
+    count:
+      kind: ref
+      field: vnVersionCount
+    element:
+      id: vnSupportedVersion
+      fields:
+        - id: vnSupportedVersionValue
+          name: Supported Version
+          type:
+            kind: int
+            bits: 32
+          category: type
+          doc: A QUIC version the server supports. Clients MUST select one of these versions for retry. [RFC 9000 §17.2.1]

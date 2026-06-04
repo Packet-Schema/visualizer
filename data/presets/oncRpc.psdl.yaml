@@ -1,0 +1,170 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ONC RPC Message (RFC 5531)
+rowBits: 32
+byteOrder: BE
+description: Open Network Computing Remote Procedure Call message (RFC 5531, formerly Sun RPC / RFC 1831). ONC RPC is the transport-layer RPC substrate used by NFS (RFC 7530), NIS, and many other Sun/IETF protocols. Every message begins with a 32-bit Transaction ID (XID) and a 32-bit Message Type (0=CALL, 1=REPLY). A CALL carries the RPC version, program number, program version, procedure number, and two auth flavour/body pairs (Credentials and Verifier). A REPLY carries a Reply Status and, for an accepted call, the Verifier and Accept Status fields; rejected calls carry a Reject Status and sub-reason fields.
+body:
+  - id: xid
+    name: XID
+    type:
+      kind: bits
+      n: 32
+    category: identifier
+    doc: Transaction identifier — an opaque 32-bit value chosen by the caller that is echoed unchanged in the corresponding reply, allowing a client to match replies to outstanding calls when multiple RPCs are in flight. [RFC 5531 §8]
+  - id: rpcMsgType
+    name: Message Type
+    type:
+      kind: enum
+      bits: 32
+      variants:
+        0: CALL
+        1: REPLY
+    category: type
+    doc: Discriminates between a CALL (0) and a REPLY (1). The body that follows is entirely determined by this field. [RFC 5531 §8]
+  - kind: switch
+    id: rpcBody
+    name: RPC Body
+    on:
+      kind: ref
+      field: rpcMsgType
+    cases:
+      "0":
+        id: callBody
+        name: Call Body
+        fields:
+          - id: rpcvers
+            name: RPC Version
+            type:
+              kind: bits
+              n: 32
+            category: type
+            doc: RPC protocol version — MUST be 2 for ONC RPC as standardised. If a server receives a CALL with an unsupported version it replies with a REPLY/MSG_DENIED/RPC_MISMATCH response carrying the supported version range. [RFC 5531 §8]
+          - id: prog
+            name: Program Number
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: ONC RPC program number identifying the remote program to invoke. Well-known values include 100003 (NFS, RFC 7530), 100000 (portmapper/rpcbind, RFC 1833), and 100004 (NIS/YP). Assigned by IANA and the historical Sun Microsystems program registry. [RFC 5531 §8]
+          - id: vers
+            name: Program Version
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Version of the remote program. Allows a program to evolve its interface while keeping the same program number. If the server does not support the requested version it replies with PROG_MISMATCH. [RFC 5531 §8]
+          - id: proc
+            name: Procedure Number
+            type:
+              kind: bits
+              n: 32
+            category: identifier
+            doc: Procedure number within the remote program — selects the specific remote function to call. Procedure 0 is always the NULL (ping) procedure by convention. [RFC 5531 §8]
+          - id: credFlavor
+            name: Credentials Flavor
+            type:
+              kind: bits
+              n: 32
+            category: type
+            doc: Authentication flavor for the Credentials opaque auth body. 0=AUTH_NONE, 1=AUTH_SYS (Unix credentials per RFC 5531), 6=RPCSEC_GSS (RFC 2203). Determines how the credBody is interpreted. [RFC 5531 §8]
+          - id: credLength
+            name: Credentials Length
+            type:
+              kind: bits
+              n: 32
+            category: length
+            doc: Length in bytes of the opaque Credentials body that follows. For AUTH_NONE this is 0; for AUTH_SYS it encodes stamp, machinename, uid, gid, and gids. MUST NOT exceed 400 octets. [RFC 5531 §8]
+          - id: credBody
+            name: Credentials Body
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: credLength
+            category: variable
+            doc: Opaque credential bytes whose format is determined by Credentials Flavor. For AUTH_NONE, absent (length 0). For AUTH_SYS, contains stamp (32 b), machinename length+string, uid (32 b), gid (32 b), and a length-prefixed auxiliary GID array. [RFC 5531 §8]
+          - id: verfFlavor
+            name: Verifier Flavor
+            type:
+              kind: bits
+              n: 32
+            category: type
+            doc: Authentication flavor for the Verifier opaque auth body. Same flavor codes as Credentials Flavor (0=AUTH_NONE, 6=RPCSEC_GSS). For most AUTH_SYS calls the verifier is AUTH_NONE with length 0. [RFC 5531 §8]
+          - id: verfLength
+            name: Verifier Length
+            type:
+              kind: bits
+              n: 32
+            category: length
+            doc: Length in bytes of the opaque Verifier body that follows. For AUTH_NONE this is always 0. For RPCSEC_GSS this carries a GSS-API token length. MUST NOT exceed 400 octets. [RFC 5531 §8]
+          - id: verfBody
+            name: Verifier Body
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: verfLength
+            category: variable
+            doc: Opaque verifier bytes whose interpretation depends on the Verifier Flavor. For AUTH_NONE (flavor=0, length=0) this field is absent. For RPCSEC_GSS this contains a GSS-API per-message token used to authenticate and optionally integrity-protect or encrypt the call. [RFC 5531 §8]
+      "1":
+        id: replyBody
+        name: Reply Body
+        fields:
+          - id: replyStat
+            name: Reply Status
+            type:
+              kind: enum
+              bits: 32
+              variants:
+                0: MSG_ACCEPTED
+                1: MSG_DENIED
+            category: type
+            doc: Top-level reply discriminator. MSG_ACCEPTED (0) means the call was accepted by the server RPC layer (the remote procedure may still return an application error). MSG_DENIED (1) means the call was rejected before dispatch, e.g. due to an RPC version mismatch or authentication failure. [RFC 5531 §8]
+          - id: replyVerfFlavor
+            name: Reply Verifier Flavor
+            type:
+              kind: bits
+              n: 32
+            category: type
+            doc: Verifier flavor returned by the server in the reply. Present for both MSG_ACCEPTED and MSG_DENIED replies. For AUTH_NONE calls this is typically AUTH_NONE (0) with length 0. [RFC 5531 §8]
+          - id: replyVerfLength
+            name: Reply Verifier Length
+            type:
+              kind: bits
+              n: 32
+            category: length
+            doc: Length in bytes of the server's reply Verifier body. For AUTH_NONE this is 0 and the body is absent. For RPCSEC_GSS this carries the server's GSS-API response token length. [RFC 5531 §8]
+          - id: replyVerfBody
+            name: Reply Verifier Body
+            type:
+              kind: bytes
+              n:
+                kind: ref
+                field: replyVerfLength
+            category: variable
+            doc: Opaque server verifier body. Absent when Reply Verifier Length is 0 (AUTH_NONE). For RPCSEC_GSS this contains the server's GSS-API token authenticating the reply. [RFC 5531 §8]
+          - id: acceptStat
+            name: Accept/Reject Status
+            type:
+              kind: enum
+              bits: 32
+              variants:
+                0: SUCCESS
+                1: PROG_UNAVAIL
+                2: PROG_MISMATCH
+                3: PROC_UNAVAIL
+                4: GARBAGE_ARGS
+                5: SYSTEM_ERR
+            category: type
+            doc: "For MSG_ACCEPTED replies: SUCCESS (0) means the procedure completed; PROG_UNAVAIL (1), PROG_MISMATCH (2), PROC_UNAVAIL (3), GARBAGE_ARGS (4), and SYSTEM_ERR (5) report specific dispatch failures. For MSG_DENIED replies this field carries the reject status: RPC_MISMATCH (0) or AUTH_ERROR (1). [RFC 5531 §8]"
+    default:
+      id: rpcBodyOpaque
+      name: RPC Body (Unknown Type)
+      fields:
+        - id: rpcBodyRaw
+          name: Raw Body
+          type:
+            kind: bits
+            n: 32
+          category: reserved
+          doc: Opaque 32-bit body for an unrecognised Message Type value. Valid ONC RPC messages use only type 0 (CALL) or 1 (REPLY); any other value is a protocol violation per RFC 5531 §8. Shown as a single word for visualisation purposes. [RFC 5531 §8]

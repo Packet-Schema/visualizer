@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PSAMP Message
+rowBits: 32
+byteOrder: BE
+description: "Packet Sampling (PSAMP) export message (RFC 5476). PSAMP defines a framework for selecting, reporting, and exporting information about individual sampled packets using the IPFIX protocol (RFC 7011) as its transport. A PSAMP message is structurally identical to an IPFIX message: a 16-byte Message Header (Version always 10, Length, Export Time, Sequence Number, Observation Domain ID) followed by one or more IPFIX Sets. PSAMP-specific information elements — such as the sampled packet content, observation time, interface, and selection method metadata — are carried inside Data Sets whose templates are defined by PSAMP Information Elements (RFC 5477). Options Template Sets (Set ID 3) convey sampling process parameters (e.g., sampling rate, algorithm, selector ID) as IPFIX Options Records per RFC 5477. The Sequence Number counts exported Data Records, not messages, enabling loss detection at the Collecting Process."
+
+body:
+  - kind: group
+    id: psampHeader
+    name: Message Header
+    children:
+      - id: psampVersion
+        name: Version
+        type: { kind: int, bits: 16 }
+        category: type
+        defaultValue: 10
+        doc: "PSAMP/IPFIX protocol version. MUST be 10 (0x000A); a Collecting Process that does not recognise the version SHOULD discard the message. PSAMP reuses the IPFIX wire format verbatim and therefore shares the same version number. [RFC 5476 §6, RFC 7011 §3.1]"
+
+      - id: psampLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Total length of the PSAMP Message in bytes, including the 16-byte Message Header and all Sets that follow. The maximum value is bounded by the transport MTU; over UDP the upper bound is 65535 bytes. Used to determine how many bytes of Set data follow the header. [RFC 5476 §6, RFC 7011 §3.1]"
+
+      - id: psampExportTime
+        name: Export Time
+        type: { kind: int, bits: 32 }
+        category: variable
+        doc: "Time at which this PSAMP Message left the Exporting Process, expressed as seconds since the UNIX epoch (00:00:00 UTC, 1 January 1970). Collecting Processes use this for time-stamping sampled-packet records and for session management. PSAMP sampling timestamps within Data Records may carry higher resolution via dedicated Information Elements (e.g., observationTimeMilliseconds, RFC 5477). [RFC 5476 §6, RFC 7011 §3.1]"
+
+      - id: psampSequenceNumber
+        name: Sequence Number
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "Incremental sequence counter of all IPFIX Data Records sent within the current transport session for this Observation Domain. Each exported Data Record (not each Message) increments the counter; Template Records and Options Template Records are excluded from the count. Allows the Collecting Process to detect lost or reordered messages carrying sampled-packet reports. [RFC 5476 §6, RFC 7011 §3.1]"
+
+      - id: psampObservationDomainId
+        name: Observation Domain ID
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "A 32-bit identifier that is locally unique to the Exporting Process and designates the Observation Domain — the set of Observation Points whose packets are being sampled and reported in this message. In PSAMP deployments each physical or logical interface under a Packet Selection process is typically assigned a distinct Observation Domain ID so that the Collecting Process can correlate sampled records back to the correct measurement point. [RFC 5476 §6, RFC 7011 §3.1]"
+
+  - id: psampSets
+    name: Sets
+    type:
+      kind: bytes
+      n:
+        kind: cond
+        test: { kind: ref, field: psampLength }
+        t:
+          kind: op
+          op: "-"
+          a: { kind: ref, field: psampLength }
+          b: { kind: lit, value: 16 }
+        f: { kind: lit, value: 0 }
+    category: variable
+    doc: "Variable-length payload containing one or more IPFIX Sets that fill the remainder of the PSAMP Message (psampLength − 16 bytes). Each Set begins with a 4-byte Set Header: a 2-byte Set ID (2=Template Set, 3=Options Template Set, 256–65535=Data Set) and a 2-byte Set Length. Template Sets (ID 2) define the layout of PSAMP Data Records using PSAMP Information Elements from RFC 5477 (e.g., ipHeaderPacketSection, mplsLabelStackSection, dataLinkFrameSection). Options Template Sets (ID 3) report sampling process parameters such as selectorId, selectorAlgorithm, samplingPacketInterval, and samplingPopulation per RFC 5477 §4. Data Sets (ID 256–65535) carry the actual sampled-packet records whose field layout was previously conveyed via a Template Set with the matching Template ID. [RFC 5476 §6, RFC 5477, RFC 7011 §3.3]"

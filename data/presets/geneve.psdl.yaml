@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: GENEVE
+rowBits: 32
+byteOrder: BE
+description: GENEVE (Generic Network Virtualization Encapsulation) header as defined in RFC 8926. Provides a flexible encapsulation format for network virtualization with variable-length options.
+body:
+  - kind: group
+    id: word1
+    children:
+      - { id: version, name: Version, type: { kind: int, bits: 2 }, category: type, doc: "Version number, must be 0." }
+      - { id: optLen, name: Options Length, type: { kind: int, bits: 6 }, category: length, doc: "Length of options fields in 4-byte multiples. A value of 0 indicates no options." }
+      - { id: o, name: OAM Flag, type: { kind: int, bits: 1 }, category: flags, doc: "OAM packet indicator. When set, the packet contains an OAM message." }
+      - { id: c, name: Critical Options Flag, type: { kind: int, bits: 1 }, category: flags, doc: "Critical option present. When set, at least one option with the critical bit set is present." }
+      - { id: reserved, name: Reserved, type: { kind: int, bits: 6 }, category: reserved, doc: "Reserved bits, must be zero on transmission and ignored on receipt." }
+      - { id: protocolType, name: Protocol Type, type: { kind: int, bits: 16 }, category: type, doc: "EtherType of the encapsulated payload (e.g. 0x0800=IPv4, 0x86DD=IPv6, 0x6558=Transparent Ethernet Bridging)." }
+  - { id: vni, name: Virtual Network Identifier, type: { kind: int, bits: 24 }, category: identifier, doc: "24-bit identifier for the virtual network segment that uniquely identifies the tenant or overlay network." }
+  - { id: reserved2, name: Reserved, type: { kind: int, bits: 8 }, category: reserved, doc: "Reserved bits in the second word, must be zero on transmission and ignored on receipt." }
+  - { id: options, name: Options, type: { kind: bytes, n: { kind: op, op: "*", a: { kind: ref, field: "optLen" }, b: { kind: lit, value: 4 } } }, category: variable, doc: "Variable-length tunnel options, total length is optLen * 4 bytes." }

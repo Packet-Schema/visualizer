@@ -1,0 +1,352 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP-4 UPDATE Message (full)
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). The 19-byte BGP Common Header (Marker + Length + Type) precedes every BGP message; the UPDATE-specific fields follow — Withdrawn Routes Length, the Withdrawn Routes list, Total Path Attribute Length, the Path Attributes list, and finally the NLRI list.
+description: BGP-4 UPDATE message (RFC 4271 §4.3) — full 版。simple 版 (bgpUpdate.psdl.yaml) が Path Attributes / Withdrawn Routes / NLRI を opaque bytes として持つのに対し、 この版は Path Attribute の TLV (Attribute Flags 1 B + Type Code 1 B + Length 1/2 B + Value) を Attribute Type Code 別に展開し、 Withdrawn Routes / NLRI の `<Length, Prefix>` 2-tuple も 1 件ずつパースする。 PSDL 0.4 には比較演算子が無いため、 Attribute Length の 1/2 B 可変 (Extended-Length bit) と Attribute Value の型分岐は CoAP の 13/14 magic 値と同様に Switch で表現する。 各可変長セクションは repeat(count=ref, 既定 0) なので、 全 ref=0 / switch default 時の既定 totalBits は 19 B Common Header + 2 B Withdrawn Length + 2 B Total Path Attribute Length = 184 bit (simple 版と一致)。 [RFC 4271 / RFC 4760]
+
+# Attribute Length は Attribute Flags の Extended-Length bit で 1 B / 2 B に変わる。
+# PSDL 0.4 には比較演算子が無いので、 attrExtLen (0/1) を on にした Switch で 2 B 版を case "1" として足す
+# (CoAP の Option Length 13/14 と同じ方式)。既定 (attrExtLen=0) は default の 1 B 版。
+_bgp_attr_length_variants: &bgp_attr_length_variants
+  "1":
+    id: bgpAttrLenExt
+    name: Attribute Length (Extended, 2 B)
+    fields:
+      - id: bgpAttrLength16
+        name: Attribute Length (2 B)
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Two-octet big-endian Attribute Length. Present when the Extended-Length flag (bit 4, 0x10) is set in Attribute Flags. Gives the length in octets of the Attribute Value that follows. [RFC 4271 §4.3]"
+
+body:
+  - kind: group
+    id: bgpCommonHeader
+    name: BGP Common Header
+    children:
+      - id: bgpMarker
+        name: Marker
+        type: { kind: bits, n: 128 }
+        category: identifier
+        doc: 16 octets. Historically carried an authentication value; in BGP-4 it is retained only for backward compatibility and MUST be set to all ones (0xFFFF…FFFF) on transmission. Receivers use it to resynchronise after a malformed message — a 16-byte all-ones run is the unambiguous marker for the next message boundary in the TCP byte stream. [RFC 4271 §4.1]
+      - id: bgpLength
+        name: Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: Total length of the BGP message in octets, including this 19-byte Common Header. MUST be at least 19 and no greater than 4096. Lets the receiver locate the start of the next message in the TCP stream. [RFC 4271 §4.1]
+      - id: bgpType
+        name: Type
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: BGP message type. 1 = OPEN, 2 = UPDATE (this preset), 3 = NOTIFICATION, 4 = KEEPALIVE. 5 = ROUTE-REFRESH was added later by RFC 2918. [RFC 4271 §4.1]
+
+  - id: bgpWithdrawnRoutesLength
+    name: Withdrawn Routes Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length in octets of the following Withdrawn Routes field. A value of 0 means no routes are being withdrawn from service in this UPDATE (and the Withdrawn Routes field itself is absent). [RFC 4271 §4.3]
+  - kind: repeat
+    id: bgpWithdrawnRoutes
+    name: Withdrawn Routes
+    category: variable
+    doc: List of `<Length, Prefix>` 2-tuples describing routes being withdrawn from service. Length is a 1-octet field giving the prefix length in bits (0..32 for IPv4); Prefix is the most-significant Length bits of the IP address, padded with trailing zero bits to the next octet boundary, i.e. `(Length + 7) / 8` octets. A Length of 0 matches all addresses (the default route). The number of tuples here has no explicit count — it is derived from Withdrawn Routes Length — so this preset exposes `bgpWithdrawnCount` as the iteration count (defaults to 0). [RFC 4271 §4.3]
+    count: { kind: ref, field: bgpWithdrawnCount }
+    element:
+      id: bgpWithdrawnRoute
+      fields:
+        - id: bgpWithdrawnPrefixLen
+          name: Length
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Prefix length in bits (0..32 for IPv4). The Prefix field that follows occupies `(Length + 7) / 8` octets — the most-significant Length bits of the address rounded up to an octet boundary. Length 0 denotes the default route (no Prefix octets). [RFC 4271 §4.3]"
+        - id: bgpWithdrawnPrefix
+          name: Prefix
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "/"
+              a: { kind: op, op: "+", a: { kind: ref, field: bgpWithdrawnPrefixLen }, b: { kind: lit, value: 7 } }
+              b: { kind: lit, value: 8 }
+          category: addressing
+          doc: "Most-significant `bgpWithdrawnPrefixLen` bits of the withdrawn IP prefix, padded with trailing zero bits to a whole number of octets — `(Length + 7) / 8` octets. [RFC 4271 §4.3]"
+
+  - id: bgpTotalPathAttributeLength
+    name: Total Path Attribute Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length in octets of the following Path Attributes field. A value of 0 means no Path Attributes are present — and per §4.3, if Total Path Attribute Length is 0 then NLRI MUST also be empty (the UPDATE only withdraws routes). [RFC 4271 §4.3]
+  - kind: repeat
+    id: bgpPathAttributes
+    name: Path Attributes
+    category: variable
+    doc: Concatenation of Path Attribute TLVs, each `<Attribute Flags (1 B) + Attribute Type Code (1 B) + Attribute Length (1 or 2 B) + Attribute Value>`. The number of attributes has no explicit count (derived from Total Path Attribute Length), so this preset exposes `bgpPathAttrCount` as the iteration count (defaults to 0). Well-known mandatory codes are 1 = ORIGIN, 2 = AS_PATH, 3 = NEXT_HOP; optional non-transitive 4 = MULTI_EXIT_DISC; well-known discretionary 5 = LOCAL_PREF, 6 = ATOMIC_AGGREGATE; optional transitive 7 = AGGREGATOR, 8 = COMMUNITIES (RFC 1997), 14 = MP_REACH_NLRI / 15 = MP_UNREACH_NLRI (RFC 4760). [RFC 4271 §4.3 / §5]
+    count: { kind: ref, field: bgpPathAttrCount }
+    element:
+      id: bgpPathAttribute
+      fields:
+        - kind: group
+          id: bgpAttrFlags
+          name: Attribute Flags
+          children:
+            - id: attrOptional
+              name: Optional
+              type: { kind: int, bits: 1 }
+              category: flags
+              doc: "Bit 0 (0x80). 0 = well-known attribute (all implementations MUST recognise it), 1 = optional attribute. [RFC 4271 §4.3]"
+            - id: attrTransitive
+              name: Transitive
+              type: { kind: int, bits: 1 }
+              category: flags
+              doc: "Bit 1 (0x40). For optional attributes: 1 = transitive (propagate even if unrecognised), 0 = non-transitive. For well-known attributes it MUST be 1. [RFC 4271 §4.3]"
+            - id: attrPartial
+              name: Partial
+              type: { kind: int, bits: 1 }
+              category: flags
+              doc: "Bit 2 (0x20). For optional transitive attributes: 1 = the information is partial (was passed through a router that did not recognise it), 0 = complete. MUST be 0 for well-known and for optional non-transitive attributes. [RFC 4271 §4.3]"
+            - id: attrExtLen
+              name: Extended Length
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 0
+              doc: "Bit 3 (0x10). 0 = Attribute Length is a single octet; 1 = Attribute Length is two octets. This preset switches on this bit to choose the 1-byte (default) or 2-byte Attribute Length encoding. [RFC 4271 §4.3]"
+            - id: attrFlagsReserved
+              name: Reserved
+              type: { kind: int, bits: 4 }
+              category: reserved
+              doc: "Low-order 4 bits of the Attribute Flags octet. Unused; MUST be set to 0 on transmission and ignored on reception. [RFC 4271 §4.3]"
+        - id: attrTypeCode
+          name: Attribute Type Code
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: ORIGIN
+              2: AS_PATH
+              3: NEXT_HOP
+              4: MULTI_EXIT_DISC
+              5: LOCAL_PREF
+              6: ATOMIC_AGGREGATE
+              7: AGGREGATOR
+              8: COMMUNITIES
+              14: MP_REACH_NLRI
+              15: MP_UNREACH_NLRI
+          category: type
+          defaultValue: 1
+          doc: "Attribute Type Code. Well-known: 1 ORIGIN, 2 AS_PATH, 3 NEXT_HOP, 5 LOCAL_PREF, 6 ATOMIC_AGGREGATE. Optional: 4 MULTI_EXIT_DISC, 7 AGGREGATOR, 8 COMMUNITIES (RFC 1997), 14 MP_REACH_NLRI / 15 MP_UNREACH_NLRI (RFC 4760). The Attribute Value layout below switches on this code. [RFC 4271 §5 / RFC 4760 §3-4]"
+        - kind: switch
+          id: bgpAttrLengthByExt
+          on: { kind: ref, field: attrExtLen }
+          doc: "Attribute Length is 1 octet by default, or 2 octets when the Extended-Length flag (attrExtLen) is set. PSDL 0.4 has no comparison operator, so the 2-byte form is added as case \"1\" (CoAP Option-Length style) and the 1-byte form is the default. [RFC 4271 §4.3]"
+          cases: *bgp_attr_length_variants
+          default:
+            id: bgpAttrLenSimple
+            name: Attribute Length (1 B)
+            fields:
+              - id: bgpAttrLength8
+                name: Attribute Length (1 B)
+                type: { kind: int, bits: 8 }
+                category: length
+                doc: "One-octet Attribute Length (the default when the Extended-Length flag is clear). Gives the length in octets of the Attribute Value that follows. [RFC 4271 §4.3]"
+        - kind: switch
+          id: bgpAttrValue
+          on: { kind: ref, field: attrTypeCode }
+          doc: "Attribute Value, decoded per Attribute Type Code. Unrecognised / unmodelled codes fall through to the default, which keeps the value as opaque bytes of length `attrValueBytes`. [RFC 4271 §5 / RFC 4760]"
+          cases:
+            "1":
+              id: bgpAttrOrigin
+              name: ORIGIN
+              fields:
+                - id: bgpOrigin
+                  name: Origin
+                  type:
+                    kind: enum
+                    bits: 8
+                    variants:
+                      0: IGP
+                      1: EGP
+                      2: INCOMPLETE
+                  category: type
+                  defaultValue: 0
+                  doc: "ORIGIN (type 1, well-known mandatory). 0 = IGP (NLRI is interior to the originating AS), 1 = EGP (learned via the EGP protocol), 2 = INCOMPLETE (learned by some other means, e.g. redistribution). 1 octet. [RFC 4271 §5.1.1]"
+            "2":
+              id: bgpAttrAsPath
+              name: AS_PATH
+              fields:
+                - kind: repeat
+                  id: bgpAsPathSegments
+                  name: Path Segments
+                  category: variable
+                  doc: "AS_PATH (type 2, well-known mandatory). A sequence of path segments, each `<Segment Type (1 B) + Segment Length (1 B) + AS numbers>`. Iteration count is exposed as `bgpAsPathSegCount` (defaults to 0). [RFC 4271 §5.1.2 / RFC 4893 for 4-octet ASNs]"
+                  count: { kind: ref, field: bgpAsPathSegCount }
+                  element:
+                    id: bgpAsPathSegment
+                    fields:
+                      - id: bgpAsSegType
+                        name: Segment Type
+                        type:
+                          kind: enum
+                          bits: 8
+                          variants:
+                            1: AS_SET
+                            2: AS_SEQUENCE
+                            3: AS_CONFED_SEQUENCE
+                            4: AS_CONFED_SET
+                        category: type
+                        defaultValue: 2
+                        doc: "Path segment type. 1 = AS_SET (unordered set, used after route aggregation), 2 = AS_SEQUENCE (ordered list of ASes traversed). 3/4 = AS_CONFED_SEQUENCE / AS_CONFED_SET (RFC 5065 confederations). [RFC 4271 §5.1.2]"
+                      - id: bgpAsSegLength
+                        name: Segment Length
+                        type: { kind: int, bits: 8 }
+                        category: length
+                        doc: "Number of AS numbers in this segment (a count of ASes, NOT a byte count). Each AS is 2 octets in classic BGP or 4 octets with 4-octet ASN support (RFC 6793). [RFC 4271 §5.1.2]"
+                      - kind: repeat
+                        id: bgpAsSegValue
+                        name: AS Numbers
+                        category: identifier
+                        doc: "The `bgpAsSegLength` autonomous-system numbers of this segment. Modelled here as 2-octet ASNs; with 4-octet ASN support (RFC 6793) each entry is 4 octets instead. Iteration count is exposed as `bgpAsSegAsCount` (defaults to 0). [RFC 4271 §5.1.2 / RFC 6793]"
+                        count: { kind: ref, field: bgpAsSegAsCount }
+                        element:
+                          id: bgpAsNumberEntry
+                          fields:
+                            - id: bgpAsNumber
+                              name: AS Number
+                              type: { kind: int, bits: 16 }
+                              category: identifier
+                              doc: "A single autonomous-system number (2 octets in classic BGP; 4 octets with RFC 6793 4-octet ASN support). [RFC 4271 §5.1.2]"
+            "3":
+              id: bgpAttrNextHop
+              name: NEXT_HOP
+              fields:
+                - id: bgpNextHop
+                  name: Next Hop
+                  type: { kind: bits, n: 32 }
+                  category: addressing
+                  doc: "NEXT_HOP (type 3, well-known mandatory). The IPv4 address (4 octets) of the border router that should be used as the next hop to the destinations listed in the NLRI. [RFC 4271 §5.1.3]"
+            "4":
+              id: bgpAttrMed
+              name: MULTI_EXIT_DISC
+              fields:
+                - id: bgpMed
+                  name: Multi Exit Disc
+                  type: { kind: int, bits: 32 }
+                  category: variable
+                  doc: "MULTI_EXIT_DISC / MED (type 4, optional non-transitive). A 4-octet unsigned metric used to discriminate among multiple exit/entry points to the same neighbouring AS; a lower value is preferred. [RFC 4271 §5.1.4]"
+            "5":
+              id: bgpAttrLocalPref
+              name: LOCAL_PREF
+              fields:
+                - id: bgpLocalPref
+                  name: Local Pref
+                  type: { kind: int, bits: 32 }
+                  category: variable
+                  doc: "LOCAL_PREF (type 5, well-known discretionary). A 4-octet unsigned value advertised to internal (iBGP) peers expressing the originating speaker's degree of preference for the route; a higher value is preferred. [RFC 4271 §5.1.5]"
+            "6":
+              id: bgpAttrAtomicAggregate
+              name: ATOMIC_AGGREGATE
+              fields: []
+            "7":
+              id: bgpAttrAggregator
+              name: AGGREGATOR
+              fields:
+                - id: bgpAggregatorAs
+                  name: Aggregator AS
+                  type: { kind: int, bits: 16 }
+                  category: identifier
+                  doc: "AGGREGATOR (type 7, optional transitive). The last AS number that formed the aggregate route — 2 octets in classic BGP, or 4 octets with 4-octet ASN support (RFC 6793; AS4_AGGREGATOR is type 18). [RFC 4271 §5.1.7]"
+                - id: bgpAggregatorIp
+                  name: Aggregator IP
+                  type: { kind: bits, n: 32 }
+                  category: addressing
+                  doc: "The IPv4 address (4 octets) of the BGP speaker that formed the aggregate route. [RFC 4271 §5.1.7]"
+            "8":
+              id: bgpAttrCommunities
+              name: COMMUNITIES
+              fields:
+                - kind: repeat
+                  id: bgpCommunities
+                  name: Communities
+                  category: variable
+                  doc: "COMMUNITIES (type 8, optional transitive — RFC 1997). A list of 4-octet community values used to group routes for the application of routing policy. Well-known values include 0xFFFFFF01 NO_EXPORT, 0xFFFFFF02 NO_ADVERTISE, 0xFFFFFF03 NO_EXPORT_SUBCONFED. Iteration count is exposed as `bgpCommunityCount` (defaults to 0). [RFC 1997]"
+                  count: { kind: ref, field: bgpCommunityCount }
+                  element:
+                    id: bgpCommunityEntry
+                    fields:
+                      - id: bgpCommunity
+                        name: Community
+                        type: { kind: int, bits: 32 }
+                        category: identifier
+                        doc: "A single 4-octet community value, conventionally written as `ASN:value` (high 2 octets = ASN, low 2 octets = locally defined). [RFC 1997]"
+            "14":
+              id: bgpAttrMpReach
+              name: MP_REACH_NLRI
+              fields:
+                - id: bgpMpReachAfi
+                  name: AFI
+                  type: { kind: int, bits: 16 }
+                  category: type
+                  doc: "MP_REACH_NLRI (type 14, optional non-transitive — RFC 4760). Address Family Identifier (IANA): 1 = IPv4, 2 = IPv6. [RFC 4760 §3]"
+                - id: bgpMpReachSafi
+                  name: SAFI
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  doc: "Subsequent Address Family Identifier (IANA): 1 = unicast, 2 = multicast, 4 = MPLS labels. Together with AFI it identifies the set of NLRI carried. [RFC 4760 §3]"
+                - id: bgpMpReachRest
+                  name: Next Hop + NLRI
+                  type: { kind: bytes, n: { kind: ref, field: bgpMpReachBytes } }
+                  category: variable
+                  doc: "Remainder of MP_REACH_NLRI: Length of Next Hop Network Address (1 B) + Network Address of Next Hop + Reserved (1 B) + the Network Layer Reachability Information for the (AFI, SAFI). Kept as opaque bytes (`bgpMpReachBytes`) here; the per-AFI prefix encoding is out of scope for this枠. [RFC 4760 §3]"
+            "15":
+              id: bgpAttrMpUnreach
+              name: MP_UNREACH_NLRI
+              fields:
+                - id: bgpMpUnreachAfi
+                  name: AFI
+                  type: { kind: int, bits: 16 }
+                  category: type
+                  doc: "MP_UNREACH_NLRI (type 15, optional non-transitive — RFC 4760). Address Family Identifier (IANA): 1 = IPv4, 2 = IPv6. [RFC 4760 §4]"
+                - id: bgpMpUnreachSafi
+                  name: SAFI
+                  type: { kind: int, bits: 8 }
+                  category: type
+                  doc: "Subsequent Address Family Identifier (IANA): 1 = unicast, 2 = multicast, 4 = MPLS labels. [RFC 4760 §4]"
+                - id: bgpMpUnreachRest
+                  name: Withdrawn Routes
+                  type: { kind: bytes, n: { kind: ref, field: bgpMpUnreachBytes } }
+                  category: variable
+                  doc: "Withdrawn Routes for the (AFI, SAFI) being unreachable — kept as opaque bytes (`bgpMpUnreachBytes`) here; the per-AFI prefix encoding is out of scope for this枠. [RFC 4760 §4]"
+          default:
+            id: bgpAttrOpaque
+            name: Attribute Value (opaque)
+            fields:
+              - id: bgpAttrValueOpaque
+                name: Attribute Value
+                type: { kind: bytes, n: { kind: ref, field: attrValueBytes } }
+                category: variable
+                doc: "Opaque Attribute Value of `attrValueBytes` octets, used for Attribute Type Codes not explicitly modelled above (e.g. 9 ORIGINATOR_ID, 10 CLUSTER_LIST, 16 EXTENDED_COMMUNITIES, 17 AS4_PATH, 18 AS4_AGGREGATOR, 32 LARGE_COMMUNITY). [RFC 4271 §4.3]"
+
+  - kind: repeat
+    id: bgpNlri
+    name: Network Layer Reachability Information
+    category: variable
+    doc: List of `<Length, Prefix>` 2-tuples announcing IPv4-unicast routes that share the Path Attributes above — same encoding as Withdrawn Routes. The NLRI field has no explicit length; its size is `Length - 23 - Total Path Attribute Length - Withdrawn Routes Length` (it runs to the end of the message), so this preset exposes `bgpNlriCount` as the iteration count (defaults to 0). For multiprotocol BGP (RFC 4760) the IPv4-unicast NLRI here is empty and reachability is carried inside the MP_REACH_NLRI / MP_UNREACH_NLRI path attributes instead. [RFC 4271 §4.3]
+    count: { kind: ref, field: bgpNlriCount }
+    element:
+      id: bgpNlriEntry
+      fields:
+        - id: bgpNlriPrefixLen
+          name: Length
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Prefix length in bits (0..32 for IPv4). The Prefix field that follows occupies `(Length + 7) / 8` octets. Length 0 denotes the default route (no Prefix octets). [RFC 4271 §4.3]"
+        - id: bgpNlriPrefix
+          name: Prefix
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "/"
+              a: { kind: op, op: "+", a: { kind: ref, field: bgpNlriPrefixLen }, b: { kind: lit, value: 7 } }
+              b: { kind: lit, value: 8 }
+          category: addressing
+          doc: "Most-significant `bgpNlriPrefixLen` bits of the announced IP prefix, padded with trailing zero bits to a whole number of octets — `(Length + 7) / 8` octets. [RFC 4271 §4.3]"

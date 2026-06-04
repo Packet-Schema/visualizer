@@ -207,6 +207,26 @@ body:
             kind: ref
             field: frameType
           cases:
+            "0":
+              id: paddingFrame
+              fields:
+                - id: padding_body
+                  name: PADDING
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: PADDING frame — a single zero byte repeated to inflate the packet; no other content. (RFC 9000 §19.1). 16-byte placeholder.
+            "1":
+              id: pingFrame
+              fields:
+                - id: ping_body
+                  name: PING
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: PING frame — empty body; elicits an acknowledgement to verify the peer is alive (RFC 9000 §19.2). 16-byte placeholder.
             "2":
               id: ackFrame
               fields:
@@ -217,6 +237,26 @@ body:
                     n: 128
                   category: payload-marker
                   doc: ACK frame ranges (RFC 9000 §19.3). 16-byte placeholder.
+            "4":
+              id: resetStreamFrame
+              fields:
+                - id: reset_stream_body
+                  name: RESET_STREAM
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: RESET_STREAM frame — abruptly terminates the sending part of a stream (Stream ID, Application Error Code, Final Size) (RFC 9000 §19.4). 16-byte placeholder.
+            "5":
+              id: stopSendingFrame
+              fields:
+                - id: stop_sending_body
+                  name: STOP_SENDING
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: STOP_SENDING frame — requests the peer cease transmitting on a stream (Stream ID, Application Error Code) (RFC 9000 §19.5). 16-byte placeholder.
             "6":
               id: cryptoFrame
               fields:
@@ -227,6 +267,16 @@ body:
                     n: 128
                   category: payload-marker
                   doc: CRYPTO frame data (RFC 9000 §19.6). 16-byte placeholder.
+            "7":
+              id: newTokenFrame
+              fields:
+                - id: new_token_body
+                  name: NEW_TOKEN
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: NEW_TOKEN frame — server provides a token a client can use in the Token field of a future Initial packet (Token Length, Token) (RFC 9000 §19.7). 16-byte placeholder.
             "8":
               id: streamFrame
               fields:
@@ -237,6 +287,76 @@ body:
                     n: 128
                   category: payload-marker
                   doc: STREAM frame payload (RFC 9000 §19.8). 16-byte placeholder.
+            "16":
+              id: maxDataFrame
+              fields:
+                - id: max_data_body
+                  name: MAX_DATA
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: MAX_DATA frame — connection-level flow control limit on total data the peer may send (Maximum Data) (RFC 9000 §19.9). 16-byte placeholder.
+            "24":
+              id: newConnectionIdFrame
+              fields:
+                - id: new_connection_id_body
+                  name: NEW_CONNECTION_ID
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: NEW_CONNECTION_ID frame — supplies an alternative Connection ID for connection migration (Sequence Number, Retire Prior To, Length, CID, Stateless Reset Token) (RFC 9000 §19.15). 16-byte placeholder.
+            "26":
+              id: pathChallengeFrame
+              fields:
+                - id: path_challenge_body
+                  name: PATH_CHALLENGE
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: PATH_CHALLENGE frame — 8 bytes of unpredictable data used to validate reachability of a network path (RFC 9000 §19.17). 16-byte placeholder.
+            "27":
+              id: pathResponseFrame
+              fields:
+                - id: path_response_body
+                  name: PATH_RESPONSE
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: PATH_RESPONSE frame — echoes the 8-byte PATH_CHALLENGE data to complete path validation (RFC 9000 §19.18). 16-byte placeholder.
+            "28":
+              id: connectionCloseQuicFrame
+              fields:
+                - id: connection_close_quic_body
+                  name: CONNECTION_CLOSE (QUIC)
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: CONNECTION_CLOSE frame (type 0x1c) — signals a QUIC transport-layer error (Error Code, Frame Type, Reason Phrase) (RFC 9000 §19.19). 16-byte placeholder.
+            "29":
+              id: connectionCloseAppFrame
+              fields:
+                - id: connection_close_app_body
+                  name: CONNECTION_CLOSE (App)
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: CONNECTION_CLOSE frame (type 0x1d) — signals an application-layer error (Error Code, Reason Phrase); only allowed in 0-RTT/1-RTT packets (RFC 9000 §19.19). 16-byte placeholder.
+            "30":
+              id: handshakeDoneFrame
+              fields:
+                - id: handshake_done_body
+                  name: HANDSHAKE_DONE
+                  type:
+                    kind: bits
+                    n: 128
+                  category: payload-marker
+                  doc: HANDSHAKE_DONE frame — server-to-client signal that the handshake is confirmed; empty body (RFC 9000 §19.20). 16-byte placeholder.
           default:
             id: frameDefault
             fields:

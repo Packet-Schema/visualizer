@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SCTP AUTH Chunk (RFC 4895)
+rowBits: 32
+byteOrder: BE
+description: "SCTP Authenticated Chunks (AUTH) chunk (RFC 4895, chunk type 0x0F = 15). Provides per-chunk integrity protection for SCTP associations that negotiate the AUTH extension during INIT/INIT-ACK via the RANDOM, CHUNKS, and HMAC-ALGO parameters. The AUTH chunk MUST be inserted immediately before the first protected DATA, SACK, or other negotiated chunk type in the SCTP packet. The structure is a standard 4-byte SCTP chunk header (Type=15, Flags, Length) followed by a Shared Key Identifier, an HMAC Identifier, and a variable-length HMAC value whose size is determined by the negotiated algorithm (e.g. 20 bytes for HMAC-SHA-1-96 per RFC 2104, 32 bytes for HMAC-SHA-256)."
+
+body:
+  - id: chunkType
+    name: "Type=15"
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 15
+    doc: "SCTP chunk type for AUTH; MUST be 0x0F (decimal 15). The two high-order bits (00) indicate that an endpoint receiving this chunk type without understanding it MUST stop processing the packet and discard it. [RFC 4895 §4.1]"
+
+  - id: chunkFlags
+    name: Flags
+    type: { kind: int, bits: 8 }
+    category: reserved
+    defaultValue: 0
+    doc: "Chunk Flags. All bits are reserved and MUST be set to zero on transmit and ignored on receipt. No flag bits are defined for the AUTH chunk. [RFC 4895 §4.1]"
+
+  - id: chunkLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: "Total length in bytes of this AUTH chunk, including the 4-byte chunk header, the 2-byte Shared Key Identifier, the 2-byte HMAC Identifier, and the variable-length HMAC field. The value does not include padding bytes that may follow to align the next chunk to a 4-byte boundary. [RFC 4895 §4.1]"
+
+  - id: sharedKeyIdentifier
+    name: Shared Key Identifier
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Index of the endpoint-pair shared key used to compute the HMAC. Value 0 refers to the randomly generated key exchanged in the RANDOM parameter during association setup; other values index pre-shared keys configured out-of-band. The peer must hold a key with this identifier to verify the HMAC. [RFC 4895 §4.1 / §6.1]"
+
+  - id: hmacIdentifier
+    name: HMAC Identifier
+    type:
+      kind: enum
+      bits: 16
+      variants:
+        0: "Reserved"
+        1: "HMAC-SHA-1-96"
+        3: "HMAC-SHA-256"
+    category: identifier
+    doc: "Identifies the HMAC algorithm applied to produce the HMAC field. Negotiated via the HMAC-ALGO parameter in the INIT/INIT-ACK exchange. 1=HMAC-SHA-1-96 (20-byte digest, RFC 2104), 3=HMAC-SHA-256 (32-byte digest, RFC 4868). Endpoints MUST support HMAC-SHA-1-96 as the mandatory-to-implement algorithm. Value 0 is reserved; value 2 is unassigned. [RFC 4895 §4.1 / §6.2 / IANA SCTP HMAC Algorithm Identifiers]"
+
+  - id: hmacValue
+    name: HMAC
+    type: { kind: bytes, n: { kind: ref, field: sctpAuthHmacBytes } }
+    category: variable
+    doc: "HMAC digest computed over the entire SCTP packet (Common Header + all chunks, with this HMAC field zeroed during computation) using the algorithm identified by HMAC Identifier and the shared key identified by Shared Key Identifier. Length = chunkLength - 8 bytes (header 4 + SharedKeyIdentifier 2 + HMACIdentifier 2). For HMAC-SHA-1-96 this is 20 bytes; for HMAC-SHA-256 this is 32 bytes. [RFC 4895 §4.1 / §6.3]"

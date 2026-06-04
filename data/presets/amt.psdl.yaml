@@ -1,0 +1,211 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: AMT (Automatic Multicast Tunneling)
+rowBits: 32
+byteOrder: BE
+description: "Automatic Multicast Tunneling (AMT) control and data messages (RFC 7450). AMT enables a host without native IP multicast connectivity to receive multicast traffic through a unicast tunnel to an AMT Relay. All messages begin with a 4-bit Version (always 0) and a 4-bit Type field selecting one of seven message types: 1=Relay Discovery, 2=Relay Advertisement, 3=Request, 4=Membership Query, 5=Membership Update, 6=Multicast Data, 7=Teardown. The per-type body that follows is represented by a Switch on amtType; for types not explicitly expanded the body is captured as raw bytes whose length is supplied externally via amtBodyBytes."
+
+body:
+  - kind: group
+    id: amtCommonHeader
+    name: AMT Common Header
+    children:
+      - id: amtVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 0
+        doc: "AMT protocol version. MUST be 0 for this specification; a receiver that does not recognise the version SHOULD discard the message. [RFC 7450 §5]"
+
+      - id: amtType
+        name: Type
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            1: "Relay Discovery"
+            2: "Relay Advertisement"
+            3: "Request"
+            4: "Membership Query"
+            5: "Membership Update"
+            6: "Multicast Data"
+            7: "Teardown"
+        category: type
+        defaultValue: 1
+        doc: "AMT message type. 1=Relay Discovery (gateway→relay, locate a relay), 2=Relay Advertisement (relay→gateway, relay unicast address), 3=Request (gateway→relay, solicit a Membership Query), 4=Membership Query (relay→gateway, encapsulated IGMP/MLD query), 5=Membership Update (gateway→relay, encapsulated IGMP/MLD report), 6=Multicast Data (relay→gateway, encapsulated multicast datagram), 7=Teardown (gateway→relay, terminate subscription). [RFC 7450 §5.1–§5.7]"
+
+  - kind: switch
+    id: amtBody
+    on: { kind: ref, field: amtType }
+    cases:
+      "1":
+        id: amtRelayDiscovery
+        name: Relay Discovery
+        fields:
+          - id: amtRdReserved
+            name: Reserved
+            type: { kind: int, bits: 24 }
+            category: reserved
+            doc: "Reserved bits in the Relay Discovery message. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.1]"
+          - id: amtNonce
+            name: Discovery Nonce
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "A 32-bit random value chosen by the gateway. The relay MUST return the same nonce in the corresponding Relay Advertisement so the gateway can match the response to its request. Provides lightweight replay protection. [RFC 7450 §5.1]"
+
+      "2":
+        id: amtRelayAdvertisement
+        name: Relay Advertisement
+        fields:
+          - id: amtRaReserved
+            name: Reserved
+            type: { kind: int, bits: 24 }
+            category: reserved
+            doc: "Reserved bits in the Relay Advertisement message. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.2]"
+          - id: amtRaNonce
+            name: Discovery Nonce
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Echo of the Discovery Nonce from the corresponding Relay Discovery message. Allows the gateway to correlate this advertisement with its outstanding discovery request. [RFC 7450 §5.2]"
+          - id: amtRelayAddress
+            name: Relay Address
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "IPv4 unicast address of the AMT Relay to which the gateway should direct subsequent Request messages. Encoded as a 4-byte big-endian IPv4 address. (For IPv6 relays, a future extension would use a different address type; RFC 7450 defines only IPv4.) [RFC 7450 §5.2]"
+
+      "3":
+        id: amtRequest
+        name: Request
+        fields:
+          - id: amtReqP
+            name: P
+            type: { kind: int, bits: 1 }
+            category: flags
+            defaultValue: 0
+            doc: "P (IPv6) flag. When set to 1 the gateway is requesting an IPv6 Membership Query (MLD); when 0 it is requesting an IPv4 query (IGMP). Signals to the relay which version of the group membership protocol to encapsulate in the Membership Query response. [RFC 7450 §5.3]"
+          - id: amtReqReserved
+            name: Reserved
+            type: { kind: int, bits: 23 }
+            category: reserved
+            doc: "Reserved bits in the Request message. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.3]"
+          - id: amtReqNonce
+            name: Request Nonce
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "A 32-bit random value chosen by the gateway and echoed by the relay in the corresponding Membership Query. Used to correlate query responses and to compute the MAC protecting the Membership Update. MUST be regenerated for each new Request. [RFC 7450 §5.3]"
+
+      "4":
+        id: amtMembershipQuery
+        name: Membership Query
+        fields:
+          - id: amtMqL
+            name: L
+            type: { kind: int, bits: 1 }
+            category: flags
+            defaultValue: 0
+            doc: "L (limit) flag. When set to 1, the relay has reached its capacity and the gateway SHOULD NOT send a Membership Update in response; it SHOULD send a new Request to find a less-loaded relay. When 0, the relay can accept membership updates. [RFC 7450 §5.4]"
+          - id: amtMqG
+            name: G
+            type: { kind: int, bits: 1 }
+            category: flags
+            defaultValue: 0
+            doc: "G (gateway address change) flag. When set to 1, the relay is notifying the gateway that it has detected a change in the gateway's IP address or UDP port (e.g. after a NAT rebinding) and the gateway SHOULD send a new Request. [RFC 7450 §5.4]"
+          - id: amtMqReserved
+            name: Reserved
+            type: { kind: int, bits: 6 }
+            category: reserved
+            doc: "Reserved bits in the Membership Query fixed header. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.4]"
+          - id: amtMqResponseMac
+            name: Response MAC
+            type: { kind: bits, n: 48 }
+            category: checksum
+            doc: "48-bit MAC computed by the relay using a local secret and the Request Nonce. The gateway must return this value unchanged in the Membership Update, allowing the relay to verify that the update corresponds to a legitimate query it issued. [RFC 7450 §5.4]"
+          - id: amtMqNonce
+            name: Request Nonce
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Echo of the Request Nonce from the corresponding Request message (type 3). Returned unchanged by the gateway in the Membership Update to allow the relay to correlate request, query, and update. [RFC 7450 §5.4]"
+          - id: amtMqData
+            name: Encapsulated Query
+            type: { kind: bytes, n: { kind: ref, field: amtBodyBytes } }
+            category: variable
+            doc: "Encapsulated IGMP Membership Query (IPv4) or MLD Query (IPv6) datagram, including the IP header. The P flag in the preceding Request selects the IP version. The gateway forwards this query to the local multicast listeners so they can respond with their current group memberships. [RFC 7450 §5.4]"
+
+      "5":
+        id: amtMembershipUpdate
+        name: Membership Update
+        fields:
+          - id: amtMuReserved
+            name: Reserved
+            type: { kind: int, bits: 8 }
+            category: reserved
+            doc: "Reserved bits in the Membership Update fixed header. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.5]"
+          - id: amtMuResponseMac
+            name: Response MAC
+            type: { kind: bits, n: 48 }
+            category: checksum
+            doc: "48-bit MAC echoed from the Membership Query. The relay uses this value to authenticate the update and to correlate it with the session established during the Request/Query exchange. An update with an invalid MAC MUST be discarded. [RFC 7450 §5.5]"
+          - id: amtMuNonce
+            name: Request Nonce
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Echo of the Request Nonce from the Membership Query. Together with the Response MAC it authenticates the Membership Update and ties it to the session. The relay verifies that this nonce matches the one issued in the query. [RFC 7450 §5.5]"
+          - id: amtMuData
+            name: Encapsulated Report
+            type: { kind: bytes, n: { kind: ref, field: amtBodyBytes } }
+            category: variable
+            doc: "Encapsulated IGMP Membership Report (IGMPv2/v3, IPv4) or MLD Report (MLDv1/v2, IPv6) datagram, including the IP header. Carries the gateway's current group membership state to the relay so the relay can join or prune the appropriate multicast groups upstream. [RFC 7450 §5.5]"
+
+      "6":
+        id: amtMulticastData
+        name: Multicast Data
+        fields:
+          - id: amtMdReserved
+            name: Reserved
+            type: { kind: int, bits: 8 }
+            category: reserved
+            doc: "Reserved bits in the Multicast Data fixed header. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.6]"
+          - id: amtMdData
+            name: Encapsulated Datagram
+            type: { kind: bytes, n: { kind: ref, field: amtBodyBytes } }
+            category: payload-marker
+            doc: "Encapsulated IP multicast datagram (IPv4 or IPv6), including the IP header. The relay forwards native multicast traffic to the gateway inside this message. The gateway decapsulates the inner IP datagram and delivers it to local listeners. [RFC 7450 §5.6]"
+
+      "7":
+        id: amtTeardown
+        name: Teardown
+        fields:
+          - id: amtTdReserved
+            name: Reserved
+            type: { kind: int, bits: 8 }
+            category: reserved
+            doc: "Reserved bits in the Teardown fixed header. MUST be set to zero by the sender and ignored by the receiver. [RFC 7450 §5.7]"
+          - id: amtTdResponseMac
+            name: Response MAC
+            type: { kind: bits, n: 48 }
+            category: checksum
+            doc: "48-bit MAC from the most recent Membership Query for this session. The relay uses this value to authenticate the Teardown and to locate the membership state to remove. A Teardown with an invalid MAC MUST be discarded. [RFC 7450 §5.7]"
+          - id: amtTdNonce
+            name: Request Nonce
+            type: { kind: int, bits: 32 }
+            category: identifier
+            doc: "Echo of the Request Nonce associated with the session being torn down. Together with the Response MAC, identifies and authenticates the specific AMT session the gateway wishes to terminate. [RFC 7450 §5.7]"
+          - id: amtTdGatewayPort
+            name: Gateway Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "UDP source port number of the gateway as observed by the relay, echoed back to confirm the NAT-mapped endpoint being torn down. Helps the relay unambiguously identify the session when multiple gateways share an IP address. [RFC 7450 §5.7]"
+          - id: amtTdGatewayAddress
+            name: Gateway Address
+            type: { kind: int, bits: 32 }
+            category: addressing
+            doc: "IPv4 source address of the gateway as observed by the relay, echoed back to confirm the NAT-mapped endpoint being torn down. Together with Gateway Port, uniquely identifies the session to be removed from the relay's membership state. [RFC 7450 §5.7]"
+
+    default:
+      id: amtUnknownBody
+      name: Message Body
+      fields:
+        - id: amtRawBody
+          name: Body
+          type: { kind: bytes, n: { kind: ref, field: amtBodyBytes } }
+          category: variable
+          doc: "Raw message body for AMT message types not explicitly decoded. The byte count amtBodyBytes is supplied externally from the enclosing transport (UDP payload length minus 1 byte for the Version+Type header octet). [RFC 7450 §5]"

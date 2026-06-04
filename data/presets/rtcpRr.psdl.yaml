@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RTCP Receiver Report
+rowBits: 32
+byteOrder: BE
+description: RTCP Receiver Report packet (RFC 3550, PT=201). Contains zero or more reception report blocks describing reception quality from the reporter to each active sender. Unlike Sender Report (PT=200), it carries no sender information (NTP/RTP timestamps, packet/octet counts).
+body:
+  - kind: group
+    id: flags
+    children:
+      - { id: v, name: Version, type: { kind: int, bits: 2 }, category: type, doc: "RTCP version, always 2 [RFC 3550 §6.4.2]." }
+      - { id: p, name: Padding, type: { kind: int, bits: 1 }, category: flags, doc: "If set, the packet contains additional padding octets at the end that are not part of the control information [RFC 3550 §6.4.2]." }
+      - { id: rtcpRrBlockCount, name: Reception Report Count, type: { kind: int, bits: 5 }, category: length, doc: "Number of reception report blocks contained in this packet (RC field) [RFC 3550 §6.4.2]." }
+  - { id: pt, name: Packet Type, type: { kind: int, bits: 8 }, category: type, doc: "RTCP packet type; 201 identifies a Receiver Report. Distinguishes RR from SR (200) which additionally contains sender information [RFC 3550 §6.4.2]." }
+  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Length of this RTCP packet in 32-bit words minus one, including the header and any padding [RFC 3550 §6.4.2]." }
+  - { id: ssrc, name: SSRC (Reporter), type: { kind: int, bits: 32 }, category: identifier, doc: "Synchronization source identifier of the originator of this RR packet [RFC 3550 §6.4.2]." }
+  - kind: repeat
+    id: reportBlocks
+    count: { kind: ref, field: "rtcpRrBlockCount" }
+    element:
+      id: reportBlock
+      fields:
+        - { id: rrSsrc, name: SSRC of Source, type: { kind: int, bits: 32 }, category: identifier, doc: "SSRC identifier of the RTP source to which the information in this reception report block pertains [RFC 3550 §6.4.1]." }
+        - kind: group
+          id: lossInfo
+          children:
+            - { id: fractionLost, name: Fraction Lost, type: { kind: int, bits: 8 }, category: variable, doc: "Fraction of RTP data packets from this source lost since the previous SR or RR was sent, expressed as a fixed-point number with binary point at the left edge [RFC 3550 §6.4.1]." }
+            - { id: cumulativeLost, name: Cumulative Packets Lost, type: { kind: int, bits: 24 }, category: variable, doc: "Total number of RTP data packets from this source lost since the beginning of reception; may be negative due to reordering or duplicates [RFC 3550 §6.4.1]." }
+        - { id: extendedSeq, name: Extended Highest Sequence Number, type: { kind: int, bits: 32 }, category: variable, doc: "Low 16 bits hold the highest sequence number received in an RTP packet from this source; upper 16 bits extend it with the sequence number cycle count [RFC 3550 §6.4.1]." }
+        - { id: jitter, name: Interarrival Jitter, type: { kind: int, bits: 32 }, category: variable, doc: "Estimate of the statistical variance of the RTP data packet interarrival time, measured in timestamp units and expressed as an unsigned integer [RFC 3550 §6.4.1]." }
+        - { id: lsr, name: Last SR Timestamp, type: { kind: int, bits: 32 }, category: variable, doc: "Middle 32 bits of the NTP timestamp from the most recent RTCP SR received from source SSRC; zero if no SR has been received [RFC 3550 §6.4.1]." }
+        - { id: dlsr, name: Delay Since Last SR, type: { kind: int, bits: 32 }, category: variable, doc: "Delay in units of 1/65536 seconds between receiving the last SR from source SSRC and sending this reception report block; zero if no SR has been received [RFC 3550 §6.4.1]." }

@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: TACACS+ Packet
+rowBits: 32
+byteOrder: BE
+description: "TACACS+ (Terminal Access Controller Access-Control System Plus) packet (RFC 8907). An AAA protocol for network device administration — Authentication, Authorization, and Accounting — operating over TCP port 49. The fixed 12-byte header carries Version (Major 4, Minor 0 or 1), Type (Authentication/Authorization/Accounting), Sequence Number, Flags, Session ID, and Body Length. The variable-length Body immediately follows; it is XOR-obfuscated (not encrypted) using a pseudo-random pad derived from a shared secret, the Session ID, and a sequence number (RFC 8907 §4.5). The Unencrypted flag (TAC_PLUS_UNENCRYPTED_FLAG 0x04) in the Flags byte disables obfuscation when set. RFC 8907 obsoletes the earlier Cisco draft; the term 'encryption' is retained in field names for historical compatibility but the mechanism is XOR obfuscation."
+
+body:
+  - kind: group
+    id: tacacsVersion
+    name: Version
+    children:
+      - id: tacacsMajorVersion
+        name: Major Version
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 4
+        doc: "TACACS+ major version number. MUST be 4 (binary 0100) for all TACACS+ packets. A receiver MUST discard any packet whose major version is not 4. [RFC 8907 §4.1]"
+      - id: tacacsMinorVersion
+        name: Minor Version
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            0: "Default (0)"
+            1: "One (1)"
+        category: type
+        defaultValue: 0
+        doc: "TACACS+ minor version. 0 = the default version; 1 = used for CHAP and MS-CHAP authentication subtypes. A receiver that does not support the minor version MUST respond with a minor version it does support. [RFC 8907 §4.1]"
+
+  - id: tacacsType
+    name: Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "TAC_PLUS_AUTHEN (Authentication)"
+        2: "TAC_PLUS_AUTHOR (Authorization)"
+        3: "TAC_PLUS_ACCT (Accounting)"
+    category: type
+    defaultValue: 1
+    doc: "Packet type indicating the AAA service. 1=Authentication (identity verification), 2=Authorization (privilege/policy check), 3=Accounting (session/command logging). A session MUST use only one type throughout its lifetime. [RFC 8907 §4.1]"
+
+  - id: tacacsSeqNo
+    name: Sequence Number
+    type: { kind: int, bits: 8 }
+    category: identifier
+    defaultValue: 1
+    doc: "Sequence number of the current packet. The first packet in a session MUST have sequence number 1; each subsequent packet increments the value by 1. Client sends odd numbers, server responds with even numbers. A session MUST be abandoned if the sequence number wraps to 0. [RFC 8907 §4.1]"
+
+  - kind: group
+    id: tacacsFlags
+    name: Flags
+    children:
+      - id: tacacsFlagsReserved
+        name: Reserved
+        type: { kind: bits, n: 5 }
+        category: reserved
+        doc: "Upper 5 bits of the Flags byte. Reserved for future use; MUST be set to zero on transmission and ignored on receipt. [RFC 8907 §4.1]"
+      - id: tacacsSingleConnectFlag
+        name: Single Connect
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "TAC_PLUS_SINGLE_CONNECT_FLAG (0x04). When set, indicates that the sender supports multiplexing multiple TACACS+ sessions over a single TCP connection (single-connect mode). Both peers MUST set this flag to use single-connect mode; if either peer does not set it the connection MUST carry only one session. [RFC 8907 §4.3]"
+      - id: tacacsUnencryptedFlag
+        name: Unencrypted
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "TAC_PLUS_UNENCRYPTED_FLAG (0x02). When set to 1, the Body is transmitted in cleartext (no XOR obfuscation). When 0, the Body is XOR-obfuscated using a pad derived from MD5(shared-secret + session-id + version + seq-no) chained iteratively. Use of unobfuscated packets is NOT RECOMMENDED in production environments. [RFC 8907 §4.5]"
+      - id: tacacsMoreFlag
+        name: More
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Historically labelled TAC_PLUS_MORE (0x01). Reserved and MUST be set to zero; retained in the flag byte layout for backward compatibility with pre-RFC implementations. [RFC 8907 §4.1]"
+
+  - id: tacacsSessionId
+    name: Session ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Pseudo-random 32-bit session identifier chosen by the client for the lifetime of the session. Used — together with the shared secret, version byte, and sequence number — as input to the MD5-based pseudo-random pad generator for body obfuscation. Different sessions between the same peers MUST use distinct Session IDs. [RFC 8907 §4.1 / §4.5]"
+
+  - id: tacacsBodyLen
+    name: Length
+    type: { kind: int, bits: 32 }
+    category: length
+    doc: "Total length in bytes of the packet body (i.e. the payload that immediately follows this header). Does not include the 12-byte header itself. A receiver MUST silently discard any packet whose body does not exactly match this value. [RFC 8907 §4.1]"
+
+  - id: tacacsBody
+    name: Body
+    type: { kind: bytes, n: { kind: ref, field: tacacsBodyLen } }
+    category: variable
+    doc: "Variable-length packet body whose structure depends on Type and SeqNo. Authentication body: START (seq=1 from client) / REPLY (seq=2 from server) / CONTINUE (seq≥3 from client) as defined in RFC 8907 §5. Authorization body: REQUEST (client) / RESPONSE (server) per RFC 8907 §6. Accounting body: REQUEST (client) / REPLY (server) per RFC 8907 §7. When the Unencrypted flag is 0, the raw body octets are XOR-obfuscated; the visualizer displays the obfuscated bytes as-is. [RFC 8907 §4.5]"

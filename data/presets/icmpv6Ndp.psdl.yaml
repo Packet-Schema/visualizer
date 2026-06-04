@@ -1,0 +1,225 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: ICMPv6 Neighbor Discovery
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first). The fixed 4-byte ICMPv6 header (Type/Code/Checksum) is followed by a message-type-specific body and then a chain of Neighbor Discovery options, each a Type/Length/Value record whose Length counts in units of 8 octets (so the on-the-wire size of one option is Length*8 bytes, including the 2-byte Type+Length header). 128-bit IPv6 addresses are carried big-endian.
+description: ICMPv6 Neighbor Discovery Protocol messages (RFC 4861) — the IPv6 equivalent of ARP plus router discovery. All NDP messages share the 4-byte ICMPv6 header (Type, Code, Checksum) defined in RFC 4443; the per-type body is selected by Type (133 Router Solicitation, 134 Router Advertisement, 135 Neighbor Solicitation, 136 Neighbor Advertisement, 137 Redirect) and is followed by a variable chain of NDP Options (Source/Target Link-Layer Address, Prefix Information, Redirected Header, MTU). Because PSDL 0.4 has no comparison operator, message types and option types are dispatched with Switches; the default case renders an opaque body for any unmodelled ICMPv6 type. [RFC 4861]
+
+# NDP option catalogue, shared between every message's option chain via a YAML anchor.
+_ndp_option_variants: &ndp_option_variants
+  "1":
+    id: ndpOptSourceLinkAddr
+    name: Source Link-Layer Address
+    fields:
+      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, defaultValue: 1, doc: "NDP option type 1 = Source Link-Layer Address — the link-layer (e.g. Ethernet MAC) address of the sender. Included in Router/Neighbor Solicitations and Router Advertisements so the receiver can reply without a separate resolution step. [RFC 4861 §4.6.1]" }
+      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, defaultValue: 1, doc: "Option length in units of 8 octets, including the Type and Length bytes. For an Ethernet (48-bit) address this is 1 (8 octets total). A value of 0 is invalid and the option MUST be silently discarded. [RFC 4861 §4.6]" }
+      - { id: ndpLinkAddr, name: Link-Layer Address, type: { kind: bits, n: 48 }, category: addressing, doc: "Sender's link-layer address. Shown here as a 48-bit Ethernet MAC, the common case; the field length is media-dependent and padded so the whole option is a multiple of 8 octets. [RFC 4861 §4.6.1]" }
+  "2":
+    id: ndpOptTargetLinkAddr
+    name: Target Link-Layer Address
+    fields:
+      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, defaultValue: 2, doc: "NDP option type 2 = Target Link-Layer Address — the link-layer address of the target being advertised. Included in Neighbor Advertisements and Redirects so the receiver learns the target's MAC without further resolution. [RFC 4861 §4.6.1]" }
+      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, defaultValue: 1, doc: "Option length in units of 8 octets, including the Type and Length bytes. For an Ethernet (48-bit) address this is 1 (8 octets total). [RFC 4861 §4.6]" }
+      - { id: ndpLinkAddr, name: Link-Layer Address, type: { kind: bits, n: 48 }, category: addressing, doc: "Target's link-layer address, shown as a 48-bit Ethernet MAC (the common case); media-dependent and padded to an 8-octet multiple. [RFC 4861 §4.6.1]" }
+  "3":
+    id: ndpOptPrefixInfo
+    name: Prefix Information
+    fields:
+      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, defaultValue: 3, doc: "NDP option type 3 = Prefix Information — appears only in Router Advertisements; supplies on-link and address-autoconfiguration prefixes for the link. [RFC 4861 §4.6.2]" }
+      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, defaultValue: 4, doc: "Option length in units of 8 octets, including the Type and Length bytes. Always 4 (32 octets total) for Prefix Information. [RFC 4861 §4.6.2]" }
+      - { id: ndpPrefixLength, name: Prefix Length, type: { kind: int, bits: 8 }, category: length, doc: "Number of leading bits of the Prefix that are valid (0..128). The same prefix may be used for on-link determination and/or stateless address autoconfiguration. [RFC 4861 §4.6.2]" }
+      - kind: group
+        id: ndpPrefixFlags
+        name: Flags / Reserved
+        children:
+          - { id: ndpPrefixL, name: L, type: { kind: bits, n: 1 }, category: flags, doc: "On-link flag. When set, the prefix can be used for on-link determination — destinations matching it are reachable directly on the link. [RFC 4861 §4.6.2]" }
+          - { id: ndpPrefixA, name: A, type: { kind: bits, n: 1 }, category: flags, doc: "Autonomous address-configuration flag. When set, the prefix can be used for stateless address autoconfiguration (SLAAC, RFC 4862). [RFC 4861 §4.6.2]" }
+          - { id: ndpPrefixRsv6, name: Reserved1, type: { kind: bits, n: 6 }, category: reserved, doc: "Reserved (6 bits). Sent as zero by the sender and ignored by the receiver. [RFC 4861 §4.6.2]" }
+      - { id: ndpValidLifetime, name: Valid Lifetime, type: { kind: int, bits: 32 }, category: variable, doc: "Length of time in seconds (relative to the packet's reception) that the prefix is valid for on-link determination. 0xFFFFFFFF represents infinity. [RFC 4861 §4.6.2]" }
+      - { id: ndpPreferredLifetime, name: Preferred Lifetime, type: { kind: int, bits: 32 }, category: variable, doc: "Length of time in seconds that addresses generated from the prefix via SLAAC remain preferred. 0xFFFFFFFF represents infinity; must not exceed the Valid Lifetime. [RFC 4861 §4.6.2]" }
+      - { id: ndpPrefixRsv32, name: Reserved2, type: { kind: bits, n: 32 }, category: reserved, doc: "Reserved (32 bits). Sent as zero by the sender and ignored by the receiver. [RFC 4861 §4.6.2]" }
+      - { id: ndpPrefix, name: Prefix, type: { kind: bits, n: 128 }, category: addressing, doc: "An IPv6 address or prefix; only the leading Prefix Length bits are significant, the remainder are zero. The link-local prefix MUST NOT be advertised here. [RFC 4861 §4.6.2]" }
+  "5":
+    id: ndpOptMtu
+    name: MTU
+    fields:
+      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, defaultValue: 5, doc: "NDP option type 5 = MTU — appears in Router Advertisements to communicate a recommended link MTU, useful on links (e.g. some non-broadcast media) whose MTU is otherwise unknown or inconsistent. [RFC 4861 §4.6.4]" }
+      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, defaultValue: 1, doc: "Option length in units of 8 octets, including the Type and Length bytes. Always 1 (8 octets total) for the MTU option. [RFC 4861 §4.6.4]" }
+      - { id: ndpMtuRsv, name: Reserved, type: { kind: bits, n: 16 }, category: reserved, doc: "Reserved (16 bits). Sent as zero by the sender and ignored by the receiver. [RFC 4861 §4.6.4]" }
+      - { id: ndpMtu, name: MTU, type: { kind: int, bits: 32 }, category: length, doc: "Recommended Maximum Transmission Unit for the link, in octets. Hosts SHOULD use this value provided it is not larger than the MTU they would otherwise use. [RFC 4861 §4.6.4]" }
+
+body:
+  - id: type
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "ICMPv6 message type identifying the Neighbor Discovery message. 133=Router Solicitation, 134=Router Advertisement, 135=Neighbor Solicitation, 136=Neighbor Advertisement, 137=Redirect. These five types make up NDP, the IPv6 counterpart to ARP and ICMP Router Discovery. [RFC 4861 §4 / RFC 4443]"
+  - id: code
+    name: Code
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: "ICMPv6 code. For all Neighbor Discovery message types (133-137) the Code field is 0; non-zero values cause the message to be silently discarded. [RFC 4861 §4]"
+  - id: checksum
+    name: Checksum
+    type: { kind: bits, n: 16 }
+    category: checksum
+    doc: "16-bit one's-complement checksum over the ICMPv6 message plus the IPv6 pseudo-header (src/dst addresses, upper-layer length, Next Header=58). Mandatory in IPv6. [RFC 4443 §2.3 / RFC 4861 §4]"
+  - kind: switch
+    id: ndpBody
+    name: Message Body
+    on: { kind: ref, field: type }
+    cases:
+      "133":
+        id: routerSolicitation
+        name: Router Solicitation
+        fields:
+          - { id: rsReserved, name: Reserved, type: { kind: bits, n: 32 }, category: reserved, doc: "Reserved (32 bits) in a Router Solicitation. Sent as zero by the sender and ignored by the receiver. Hosts send Router Solicitations to prompt routers to generate Router Advertisements immediately rather than at their next scheduled time. [RFC 4861 §4.1]" }
+          - kind: repeat
+            id: rsOptions
+            name: Options
+            category: variable
+            doc: "Neighbor Discovery options for a Router Solicitation. The only valid option is Source Link-Layer Address (type 1), and it MUST NOT be included when the source address is the unspecified address (::). [RFC 4861 §4.1 / §4.6]"
+            element:
+              id: rsOption
+              fields:
+                - kind: switch
+                  id: rsByOptType
+                  on: { kind: ref, field: ndpOptType }
+                  cases: *ndp_option_variants
+                  default:
+                    id: rsOptUnknown
+                    name: Unknown Option
+                    fields:
+                      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Type of an NDP option not catalogued in this preset. Receivers MUST silently ignore options with an unrecognized Type. [RFC 4861 §4.6]" }
+                      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Option length in units of 8 octets (including the 2-byte Type+Length header); the Value below is therefore ndpOptLength*8 - 2 octets. A Length of 0 is invalid. [RFC 4861 §4.6]" }
+                      - { id: ndpOptValue, name: Value, type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: ndpOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }, category: variable, doc: "Opaque body of an NDP option whose Type is not modelled here; ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+            count: { kind: ref, field: rsOptions_count }
+      "134":
+        id: routerAdvertisement
+        name: Router Advertisement
+        fields:
+          - { id: raCurHopLimit, name: Cur Hop Limit, type: { kind: int, bits: 8 }, category: variable, doc: "Default value that hosts should place in the Hop Count field of outgoing IPv6 packets. 0 means unspecified (the router has no recommendation). [RFC 4861 §4.2]" }
+          - kind: group
+            id: raFlags
+            name: Flags / Reserved
+            children:
+              - { id: raM, name: M, type: { kind: bits, n: 1 }, category: flags, doc: "Managed address configuration flag. When set, hosts should use stateful DHCPv6 to obtain addresses in addition to any derived via SLAAC. [RFC 4861 §4.2]" }
+              - { id: raO, name: O, type: { kind: bits, n: 1 }, category: flags, doc: "Other configuration flag. When set, hosts should use stateful DHCPv6 to obtain other (non-address) configuration information such as DNS servers. [RFC 4861 §4.2]" }
+              - { id: raReserved6, name: Reserved, type: { kind: bits, n: 6 }, category: reserved, doc: "Reserved (6 bits) in the Router Advertisement flags octet. Sent as zero by the sender and ignored by the receiver. [RFC 4861 §4.2]" }
+          - { id: raRouterLifetime, name: Router Lifetime, type: { kind: int, bits: 16 }, category: variable, doc: "Lifetime in seconds, associated with the default router, for which the sender may be used as a default router. 0 indicates the router is NOT a default router and MUST NOT appear on the default router list. Max 65535. [RFC 4861 §4.2]" }
+          - { id: raReachableTime, name: Reachable Time, type: { kind: int, bits: 32 }, category: variable, doc: "Time in milliseconds that a node assumes a neighbor is reachable after receiving a reachability confirmation. 0 means unspecified (left to the receiver). Used by Neighbor Unreachability Detection. [RFC 4861 §4.2 / §6.3.4]" }
+          - { id: raRetransTimer, name: Retrans Timer, type: { kind: int, bits: 32 }, category: variable, doc: "Time in milliseconds between retransmitted Neighbor Solicitations, used in address resolution and Neighbor Unreachability Detection. 0 means unspecified. [RFC 4861 §4.2]" }
+          - kind: repeat
+            id: raOptions
+            name: Options
+            category: variable
+            doc: "Neighbor Discovery options for a Router Advertisement. Valid options include Source Link-Layer Address (1), Prefix Information (3), MTU (5), and (RFC 6106) Recursive DNS Server. [RFC 4861 §4.2 / §4.6]"
+            element:
+              id: raOption
+              fields:
+                - kind: switch
+                  id: raByOptType
+                  on: { kind: ref, field: ndpOptType }
+                  cases: *ndp_option_variants
+                  default:
+                    id: raOptUnknown
+                    name: Unknown Option
+                    fields:
+                      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Type of an NDP option not catalogued in this preset. Receivers MUST silently ignore unrecognized option types. [RFC 4861 §4.6]" }
+                      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Option length in units of 8 octets (including the 2-byte Type+Length header); the Value below is ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+                      - { id: ndpOptValue, name: Value, type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: ndpOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }, category: variable, doc: "Opaque body of an NDP option whose Type is not modelled here; ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+            count: { kind: ref, field: raOptions_count }
+      "135":
+        id: neighborSolicitation
+        name: Neighbor Solicitation
+        fields:
+          - { id: nsReserved, name: Reserved, type: { kind: bits, n: 32 }, category: reserved, doc: "Reserved (32 bits) in a Neighbor Solicitation. Sent as zero and ignored. Neighbor Solicitations resolve a target's link-layer address (like ARP Request) and verify neighbor reachability (Neighbor Unreachability Detection / Duplicate Address Detection). [RFC 4861 §4.3]" }
+          - { id: nsTargetAddress, name: Target Address, type: { kind: bits, n: 128 }, category: addressing, doc: "The IPv6 address of the target of the solicitation. MUST NOT be a multicast address. This is the address whose link-layer address is being resolved or whose reachability is being confirmed. [RFC 4861 §4.3]" }
+          - kind: repeat
+            id: nsOptions
+            name: Options
+            category: variable
+            doc: "Neighbor Discovery options for a Neighbor Solicitation. The valid option is Source Link-Layer Address (1), which MUST NOT be included when the source address is the unspecified address (used during Duplicate Address Detection). [RFC 4861 §4.3 / §4.6]"
+            element:
+              id: nsOption
+              fields:
+                - kind: switch
+                  id: nsByOptType
+                  on: { kind: ref, field: ndpOptType }
+                  cases: *ndp_option_variants
+                  default:
+                    id: nsOptUnknown
+                    name: Unknown Option
+                    fields:
+                      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Type of an NDP option not catalogued in this preset. Receivers MUST silently ignore unrecognized option types. [RFC 4861 §4.6]" }
+                      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Option length in units of 8 octets (including the 2-byte Type+Length header); the Value below is ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+                      - { id: ndpOptValue, name: Value, type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: ndpOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }, category: variable, doc: "Opaque body of an NDP option whose Type is not modelled here; ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+            count: { kind: ref, field: nsOptions_count }
+      "136":
+        id: neighborAdvertisement
+        name: Neighbor Advertisement
+        fields:
+          - kind: group
+            id: naFlags
+            name: Flags / Reserved
+            children:
+              - { id: naR, name: R, type: { kind: bits, n: 1 }, category: flags, doc: "Router flag. When set, the sender is a router. Used by Neighbor Unreachability Detection to detect a router that has become a host. [RFC 4861 §4.4]" }
+              - { id: naS, name: S, type: { kind: bits, n: 1 }, category: flags, doc: "Solicited flag. When set, the advertisement was sent in response to a Neighbor Solicitation from the Destination address. Used as a reachability confirmation; never set in unsolicited advertisements. [RFC 4861 §4.4]" }
+              - { id: naO, name: O, type: { kind: bits, n: 1 }, category: flags, doc: "Override flag. When set, the advertisement should override an existing cache entry and update the cached link-layer address. Should not be set in solicited advertisements for anycast addresses. [RFC 4861 §4.4]" }
+              - { id: naReserved29, name: Reserved, type: { kind: bits, n: 29 }, category: reserved, doc: "Reserved (29 bits) in a Neighbor Advertisement. Sent as zero by the sender and ignored by the receiver. [RFC 4861 §4.4]" }
+          - { id: naTargetAddress, name: Target Address, type: { kind: bits, n: 128 }, category: addressing, doc: "For a solicited advertisement, the Target Address copied from the Neighbor Solicitation that prompted it. For an unsolicited advertisement, the address whose link-layer address has changed. MUST NOT be a multicast address. [RFC 4861 §4.4]" }
+          - kind: repeat
+            id: naOptions
+            name: Options
+            category: variable
+            doc: "Neighbor Discovery options for a Neighbor Advertisement. The valid option is Target Link-Layer Address (2), which carries the target's link-layer address (analogous to an ARP Reply). [RFC 4861 §4.4 / §4.6]"
+            element:
+              id: naOption
+              fields:
+                - kind: switch
+                  id: naByOptType
+                  on: { kind: ref, field: ndpOptType }
+                  cases: *ndp_option_variants
+                  default:
+                    id: naOptUnknown
+                    name: Unknown Option
+                    fields:
+                      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Type of an NDP option not catalogued in this preset. Receivers MUST silently ignore unrecognized option types. [RFC 4861 §4.6]" }
+                      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Option length in units of 8 octets (including the 2-byte Type+Length header); the Value below is ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+                      - { id: ndpOptValue, name: Value, type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: ndpOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }, category: variable, doc: "Opaque body of an NDP option whose Type is not modelled here; ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+            count: { kind: ref, field: naOptions_count }
+      "137":
+        id: redirect
+        name: Redirect
+        fields:
+          - { id: rdReserved, name: Reserved, type: { kind: bits, n: 32 }, category: reserved, doc: "Reserved (32 bits) in a Redirect message. Sent as zero and ignored. Routers send Redirects to inform a host of a better first-hop node for a destination, or that the destination is in fact a neighbor on the same link. [RFC 4861 §4.5]" }
+          - { id: rdTargetAddress, name: Target Address, type: { kind: bits, n: 128 }, category: addressing, doc: "The IPv6 address that is a better first hop to use for the Destination Address. When the target is the destination itself, it is a host on the same link; otherwise it is a better router. MUST NOT be a multicast address. [RFC 4861 §4.5]" }
+          - { id: rdDestinationAddress, name: Destination Address, type: { kind: bits, n: 128 }, category: addressing, doc: "The IPv6 address of the destination that is redirected to the Target Address. MUST NOT be a multicast address. [RFC 4861 §4.5]" }
+          - kind: repeat
+            id: rdOptions
+            name: Options
+            category: variable
+            doc: "Neighbor Discovery options for a Redirect. Valid options are Target Link-Layer Address (2) and Redirected Header (4, the IP header plus as much of the redirected packet as fits). [RFC 4861 §4.5 / §4.6]"
+            element:
+              id: rdOption
+              fields:
+                - kind: switch
+                  id: rdByOptType
+                  on: { kind: ref, field: ndpOptType }
+                  cases: *ndp_option_variants
+                  default:
+                    id: rdOptUnknown
+                    name: Unknown Option
+                    fields:
+                      - { id: ndpOptType, name: Type, type: { kind: int, bits: 8 }, category: type, doc: "Type of an NDP option not catalogued in this preset (e.g. 4 Redirected Header). Receivers MUST silently ignore unrecognized option types. [RFC 4861 §4.6]" }
+                      - { id: ndpOptLength, name: Length, type: { kind: int, bits: 8 }, category: length, doc: "Option length in units of 8 octets (including the 2-byte Type+Length header); the Value below is ndpOptLength*8 - 2 octets. [RFC 4861 §4.6]" }
+                      - { id: ndpOptValue, name: Value, type: { kind: bytes, n: { kind: op, op: "-", a: { kind: op, op: "*", a: { kind: ref, field: ndpOptLength }, b: { kind: lit, value: 8 } }, b: { kind: lit, value: 2 } } }, category: variable, doc: "Opaque body of an NDP option whose Type is not modelled here; ndpOptLength*8 - 2 octets. For type 4 (Redirected Header) this is 6 reserved octets followed by the original IP packet. [RFC 4861 §4.6.3]" }
+            count: { kind: ref, field: rdOptions_count }
+    default:
+      id: ndpUnknown
+      name: Unknown ICMPv6 Body
+      fields:
+        - id: ndpOpaque
+          name: Body
+          type: { kind: bytes, n: { kind: ref, field: ndpOpaqueBytes } }
+          category: variable
+          doc: "Opaque message body for an ICMPv6 Type not modelled by this Neighbor Discovery preset. The five NDP types (133-137) are decoded above; other ICMPv6 types (e.g. 1 Destination Unreachable, 128/129 Echo) are covered by the dedicated ICMPv6 preset. [RFC 4443 / RFC 4861]"

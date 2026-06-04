@@ -1,0 +1,150 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: OSPFv3 Hello Packet
+rowBits: 32
+byteOrder: Network byte order (big-endian, MSB-first).
+description: OSPFv3 Hello packet (RFC 5340 §A.3.2). 16-byte OSPFv3 common header followed by the Hello-specific body, sent over IPv6 protocol 89 to the AllSPFRouters (FF02::5) or AllDRouters (FF02::6) multicast group. OSPFv3 removes the Authentication fields that OSPFv2 carried in the common header — authentication is delegated entirely to IPsec (AH/ESP). Hello packets discover neighbors, elect the Designated Router and Backup Designated Router, and maintain adjacencies; the Neighbor list at the tail enumerates every router from which a valid Hello has been received during the last RouterDeadInterval.
+body:
+  - id: version
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 3
+    doc: OSPF protocol version. Always 3 for OSPFv3 (OSPFv2 for IPv4 uses version 2 and a different packet format). [RFC 5340 §A.3.1]
+  - id: packetType
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 1
+    doc: OSPFv3 packet type. 1=Hello (this preset), 2=Database Description, 3=Link State Request, 4=Link State Update, 5=Link State Acknowledgment. [RFC 5340 §A.3.1]
+  - id: packetLength
+    name: Packet Length
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Total length of the OSPFv3 packet in bytes, including the 16-byte common header. For a Hello with N neighbors = 16 + 20 + 4 × N. [RFC 5340 §A.3.1]
+  - id: routerId
+    name: Router ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the originating router, written in dotted-quad notation. Must be unique within the OSPFv3 routing domain; typically configured manually or derived from a stable IPv4 address on the router. [RFC 5340 §A.3.1]
+  - id: areaId
+    name: Area ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: 32-bit identifier of the OSPF area this packet belongs to, written in dotted-quad notation. 0.0.0.0 is the backbone area. Two routers will only become neighbors if their Area IDs match. [RFC 5340 §A.3.1]
+  - id: checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: Standard ICMPv6-style checksum (one's complement of one's-complement 16-bit sum) over the OSPFv3 packet plus an IPv6 pseudo-header. Replaces the OSPFv2 checksum which excluded the authentication fields; in OSPFv3 the entire packet is covered. [RFC 5340 §A.3.1]
+  - id: instanceId
+    name: Instance ID
+    type: { kind: int, bits: 8 }
+    category: identifier
+    defaultValue: 0
+    doc: Allows multiple OSPFv3 instances to run on a single link; packets with different Instance IDs are ignored. Instance 0 is the default; higher values are used for multiple routing domains on the same interface. [RFC 5340 §A.3.1]
+  - id: reserved
+    name: Reserved
+    type: { kind: bits, n: 8 }
+    category: reserved
+    doc: Reserved octet in the OSPFv3 common header. Transmitted as zero and ignored on receipt. OSPFv3 replaces the OSPFv2 Authentication Type and 64-bit Authentication fields with this single reserved byte, delegating authentication to IPsec. [RFC 5340 §A.3.1]
+  - id: interfaceId
+    name: Interface ID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: The interface index (MIB-II ifIndex) of the interface on which this Hello was sent. Together with the Router ID, uniquely identifies the originating interface within the routing domain. [RFC 5340 §A.3.2]
+  - id: rtrPriority
+    name: Router Priority
+    type: { kind: int, bits: 8 }
+    category: identifier
+    defaultValue: 1
+    doc: Per-interface priority used to elect the Designated Router. Higher value wins; ties broken by larger Router ID. Priority 0 means the router is ineligible to become DR or BDR. [RFC 5340 §A.3.2]
+  - kind: group
+    id: optionsBits
+    name: Options
+    children:
+      - id: opt_reserved_hi
+        name: "*"
+        type: { kind: bits, n: 14 }
+        category: reserved
+        doc: High-order 14 reserved bits of the 24-bit Options field. Transmitted as zero and ignored on receipt. [RFC 5340 §A.2]
+      - id: opt_at
+        name: AT
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Authentication Trailer capability — router supports the OSPFv3 Authentication Trailer mechanism defined in RFC 7166 as an alternative to IPsec. [RFC 7166]
+      - id: opt_l
+        name: L
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: LLS data block present — router appends a Link-Local Signaling (LLS) block after the OSPFv3 packet body. Used for out-of-band signaling extensions. [RFC 5613]
+      - id: opt_af
+        name: AF
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Address Family support — router supports OSPFv3 Address Family extensions to carry non-IPv6 prefixes (e.g. IPv4). [RFC 5838]
+      - id: opt_dc
+        name: DC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Demand Circuit support — router handles demand-driven circuits and the associated LSA suppression. [RFC 1793]
+      - id: opt_r
+        name: R
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Router bit — when set, the originating router is an active router willing to forward transit traffic. When clear, neighbor adjacencies may still form but the router will not appear in AS routing calculations. [RFC 5340 §A.2]
+      - id: opt_n
+        name: N
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: NSSA capability — router supports NSSA (Not-So-Stubby Area) Type-7 LSAs. Replaces the N/P bit of OSPFv2; must match between neighbors in an NSSA for the adjacency to form. [RFC 3101]
+      - id: opt_mc
+        name: MC
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Multicast Capability — router forwards IPv6 multicast datagrams per the MOSPF specification. [RFC 5340 §A.2]
+      - id: opt_e
+        name: E
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: External Routing capability — router can flood AS-external-LSAs into the area. Must be reset for stub areas; Hellos with mismatched E-bit values will not form an adjacency. [RFC 5340 §A.2]
+      - id: opt_v6
+        name: V6
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: IPv6 forwarding capability — when set, the router is capable of forwarding IPv6 unicast packets. When clear, the router is excluded from IPv6 shortest-path calculations even if R-bit is set. [RFC 5340 §A.2]
+  - id: helloInterval
+    name: HelloInterval
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 10
+    doc: Interval in seconds between successive Hello packets on this interface. Typically 10 s on broadcast/point-to-point, 30 s on NBMA links. Both sides of an adjacency must agree on HelloInterval. [RFC 5340 §A.3.2]
+  - id: routerDeadInterval
+    name: Router Dead Interval
+    type: { kind: int, bits: 16 }
+    category: identifier
+    defaultValue: 40
+    doc: Seconds before a neighbor that has stopped sending Hellos is declared down. Conventionally 4 × HelloInterval. Changed to 16 bits in OSPFv3 (was 32 bits in OSPFv2). Both sides must agree for an adjacency to form. [RFC 5340 §A.3.2]
+  - id: designatedRouterId
+    name: Designated Router ID
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: Router ID (not IPv6 address) of the Designated Router on this link, in dotted-quad notation. 0.0.0.0 if no DR has been elected. The DR centralises LSA flooding on broadcast/NBMA links. OSPFv3 uses Router ID instead of interface address to identify DR/BDR. [RFC 5340 §A.3.2]
+  - id: backupDesignatedRouterId
+    name: Backup Designated Router ID
+    type: { kind: int, bits: 32 }
+    category: addressing
+    doc: Router ID of the Backup Designated Router on this link, in dotted-quad notation. 0.0.0.0 if no BDR has been elected. The BDR assumes the DR role immediately upon DR failure. [RFC 5340 §A.3.2]
+  - kind: repeat
+    id: neighbors
+    name: Neighbor List
+    category: variable
+    doc: Zero or more 32-bit Router IDs of neighbors from whom a valid Hello has been received within the last RouterDeadInterval. Two-way communication is confirmed once a router sees its own Router ID in this list in a received Hello. OSPFv3 lists Router IDs (not IPv6 addresses) because link-local addresses serve as next-hops. [RFC 5340 §A.3.2]
+    element:
+      id: neighborRecord
+      fields:
+        - id: neighborId
+          name: Neighbor Router ID
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: Router ID of one neighbor from whom a Hello was recently received, in dotted-quad notation. [RFC 5340 §A.3.2]
+    count: { kind: ref, field: ospfv3NeighborCount }

@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PIM Assert
+rowBits: 32
+byteOrder: BE
+description: >-
+  PIM Assert message (RFC 7761 §4.9.6, message type 5). Sent by a PIM router on a multi-access LAN when it detects that another router is also forwarding multicast traffic for the same (S,G) or (*,G) entry. The Assert process elects a single Designated Forwarder (DF) among competing downstream routers by comparing RPF metric information; the router with the best unicast route metric wins and all others suppress their forwarding state. Assert messages are sent to the ALL-PIM-ROUTERS group (224.0.0.13) over IP protocol 103.
+body:
+  - kind: group
+    id: pimHeader
+    name: PIM Header
+    children:
+      - id: pimVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        doc: "PIM protocol version number; MUST be 2. A router receiving a packet with any other version MUST silently discard it. [RFC 7761 §4.9]"
+      - id: pimType
+        name: Type
+        type: { kind: int, bits: 4 }
+        category: type
+        doc: "PIM message type; 5 for Assert. The Assert process is used on multi-access LANs to elect a single forwarder when multiple PIM routers detect duplicate multicast forwarding. [RFC 7761 §4.9]"
+      - id: pimReserved
+        name: Reserved
+        type: { kind: int, bits: 8 }
+        category: reserved
+        doc: "Reserved bits; MUST be set to zero on transmit and ignored on receipt. [RFC 7761 §4.9]"
+      - id: pimChecksum
+        name: Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: "One's-complement checksum computed over the entire PIM Assert message with this field set to zero. A receiver MUST verify the checksum and silently discard the message if it fails. [RFC 7761 §4.9]"
+
+  - kind: group
+    id: encodedGroupAddr
+    name: Encoded Group Address
+    children:
+      - id: grpAddrFamily
+        name: Addr Family
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "Address family of the multicast group address. 1 = IPv4, 2 = IPv6. Defined by the IANA Address Family Numbers registry. [RFC 7761 §4.9.1]"
+      - id: grpEncodingType
+        name: Encoding Type
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "Encoding type for the group address that follows. 0 = native encoding for the address family specified in Addr Family. [RFC 7761 §4.9.1]"
+      - id: grpB
+        name: B
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "Bidirectional PIM bit. When set, the group uses BIDIR-PIM bidirectional trees. 0 for standard PIM-SM assert processing. [RFC 7761 §4.9.1]"
+      - id: grpReserved
+        name: Reserved
+        type: { kind: bits, n: 7 }
+        category: reserved
+        doc: "Reserved flag bits in the Encoded-Group-Address; MUST be zero on transmit and ignored on receipt. [RFC 7761 §4.9.1]"
+      - id: grpMaskLen
+        name: Mask Len
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: "Length in bits of the multicast group address mask. For IPv4 host group entries this is typically 32; smaller values represent a group prefix range. [RFC 7761 §4.9.1]"
+      - id: grpMulticastAddr
+        name: Group Multicast Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: "IPv4 multicast group address (224.0.0.0/4) identifying the group tree for which the Assert is being sent. Together with Mask Len it identifies the (S,G) or (*,G) entry in dispute. [RFC 7761 §4.9.6]"
+
+  - kind: group
+    id: encodedUnicastAddr
+    name: Encoded Unicast Source Address
+    children:
+      - id: srcAddrFamily
+        name: Addr Family
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "Address family of the source unicast address. 1 = IPv4, 2 = IPv6. Defined by the IANA Address Family Numbers registry. [RFC 7761 §4.9.1]"
+      - id: srcEncodingType
+        name: Encoding Type
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: "Encoding type for the unicast source address that follows. 0 = native encoding for the specified address family. [RFC 7761 §4.9.1]"
+      - id: srcUnicastAddr
+        name: Source Address
+        type: { kind: int, bits: 32 }
+        category: addressing
+        doc: "IPv4 unicast address of the multicast source. Set to 0.0.0.0 for a (*,G) Assert (RP-tree) where there is no specific source; set to the actual source address for an (S,G) Assert (source-specific tree). [RFC 7761 §4.9.6]"
+
+  - kind: group
+    id: assertMetricGroup
+    name: Assert Metric Preference
+    children:
+      - id: assertR
+        name: R
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: "RPT-bit (R). When set to 1, the sending router's best route to the source (or RP for *,G) is via the shared Rendezvous Point Tree; a router with R=0 always wins the Assert election over one with R=1. Used by the Assert winner election to determine whether to elect a DR with a source-specific route. [RFC 7761 §4.9.6]"
+      - id: assertMetricPreference
+        name: Metric Preference
+        type: { kind: int, bits: 31 }
+        category: identifier
+        doc: "Preference value assigned to the unicast routing protocol that provided the route to the source or RP. Lower values indicate higher preference; a router with a lower Metric Preference wins the Assert election when R bits are equal. Corresponds to the administrative distance of the routing protocol. [RFC 7761 §4.9.6]"
+
+  - id: assertMetric
+    name: Metric
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Unicast routing metric to the source or RP as reported by the routing protocol indicated by Metric Preference. Lower values indicate a better (shorter) path. Used as a tiebreaker when R bits and Metric Preference values are equal; the router with the lowest Metric wins and becomes the Assert winner (Designated Forwarder) for the LAN segment. [RFC 7761 §4.9.6]"

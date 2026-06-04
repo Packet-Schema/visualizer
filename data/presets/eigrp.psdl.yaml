@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: EIGRP
+rowBits: 32
+byteOrder: BE
+description: "Enhanced Interior Gateway Routing Protocol (EIGRP) packet (RFC 7868). A 20-byte fixed header — Version, Opcode, Checksum, Flags, Sequence Number, Acknowledgment Number, Virtual Router ID, and Autonomous System Number — followed by a sequence of Type-Length-Value (TLV) records that carry routing information. Common TLV types: 0x0001 General Parameters, 0x0102 IP Internal Routes, 0x0103 IP External Routes. EIGRP operates directly over IP (protocol number 88) and uses multicast address 224.0.0.10 for neighbour communication. [RFC 7868]"
+
+body:
+  - kind: group
+    id: eigrpHeader
+    name: EIGRP Header
+    children:
+      - id: eigrpVersion
+        name: Version
+        type: { kind: int, bits: 8 }
+        category: type
+        defaultValue: 2
+        doc: "EIGRP header version. MUST be 2 for packets conforming to RFC 7868. A receiver that receives a packet with an unrecognised version number SHOULD log the event and discard the packet. [RFC 7868 §6.1]"
+
+      - id: eigrpOpcode
+        name: Opcode
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: "Update"
+            3: "Query"
+            4: "Reply"
+            5: "Hello"
+            6: "SIA-Query"
+            7: "SIA-Reply"
+            8: "Request"
+        category: type
+        defaultValue: 5
+        doc: "Packet type. 1=Update (carries routing information changes), 3=Query (requests best-path information from neighbours), 4=Reply (response to a Query), 5=Hello (neighbour discovery and keepalive), 6=SIA-Query / 7=SIA-Reply (Stuck-In-Active recovery per RFC 7868 §5.4.4), 8=Request. [RFC 7868 §6.1]"
+
+      - id: eigrpChecksum
+        name: Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: "Standard IP one's-complement checksum computed over the entire EIGRP packet beginning with the Version field. The checksum is calculated with this field set to zero. A receiver MUST discard packets with an invalid checksum. [RFC 7868 §6.1]"
+
+  - id: eigrpFlags
+    name: Flags
+    type: { kind: bits, n: 32 }
+    category: flags
+    doc: "32-bit flags field. Bit 0 (MSB): Init flag — set on the first Update sent to a new neighbour to trigger a full topology-table exchange. Bit 1: CR (Conditionally Received) — set when the packet may be received by a neighbour that has not yet established a full adjacency. Bits 2–31 are reserved and MUST be set to zero on transmission. [RFC 7868 §6.1]"
+
+  - id: eigrpSequence
+    name: Sequence Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Sequence number used for reliable transport. Each reliable packet (Update, Query, Reply, SIA-Query, SIA-Reply) carries a unique, monotonically increasing sequence number. Hello and Ack packets carry sequence number 0. The receiver sends an acknowledgment containing this value in the Ack Number field. [RFC 7868 §6.1 / §5.3]"
+
+  - id: eigrpAck
+    name: Ack Number
+    type: { kind: int, bits: 32 }
+    category: identifier
+    doc: "Acknowledgment number piggybacked on outgoing packets. Contains the highest sequence number received from the neighbour to which this packet is addressed. A standalone Ack is sent as a Hello (Opcode 5) with a non-zero Ack Number and a unicast destination. A value of 0 means no acknowledgment is being piggybacked. [RFC 7868 §6.1 / §5.3]"
+
+  - id: eigrpVirtualRouterId
+    name: Virtual Router ID
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Virtual Router ID (VRID) that identifies the address-family instance for this packet. Well-known values: 0x0001 = IPv4 unicast, 0x0002 = IPv6 unicast, 0x8001 = IPv4 multicast, 0x8006 = IPv6 multicast. Allows multiple EIGRP address-family processes to share a single neighbour relationship over the same interface. [RFC 7868 §6.1]"
+
+  - id: eigrpAsNumber
+    name: AS Number
+    type: { kind: int, bits: 16 }
+    category: identifier
+    doc: "Autonomous System number that identifies the EIGRP routing domain. Neighbours with different AS numbers MUST NOT form an adjacency unless explicitly configured for route redistribution. Together with Virtual Router ID, this field scopes all topology information carried in the TLVs that follow. [RFC 7868 §6.1]"
+
+  - kind: repeat
+    id: eigrpTlvs
+    name: TLVs
+    category: variable
+    element:
+      id: eigrpTlv
+      fields:
+        - id: eigrpTlvType
+          name: TLV Type
+          type:
+            kind: enum
+            bits: 16
+            variants:
+              1: "General Parameters (0x0001)"
+              258: "IP Internal Route (0x0102)"
+              259: "IP External Route (0x0103)"
+              260: "IP Community (0x0104)"
+              512: "IPv6 Internal Route (0x0200)"
+              513: "IPv6 External Route (0x0201)"
+              1024: "Multicast Sequence (0x0400)"
+              1025: "Peer Stubbing Info (0x0401)"
+              1026: "Peer Termination (0x0402)"
+          category: type
+          doc: "TLV type code identifying the content of this record. 0x0001=General Parameters (hello interval, hold time, K-values, and neighbour flags used to verify compatibility); 0x0102=IP Internal Route (EIGRP-originated prefix reachable within the AS); 0x0103=IP External Route (prefix redistributed from another routing domain, carrying the original protocol attributes); 0x0200/0x0201=IPv6 equivalents; 0x0400=Multicast Sequence used by EIGRP multicast reliable transport; 0x0401=Peer Stubbing Info advertising stub-router capability; 0x0402=Peer Termination graceful neighbour shutdown. [RFC 7868 §6.2–6.9]"
+
+        - id: eigrpTlvLen
+          name: TLV Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Total length of this TLV record in bytes, including the 4-byte Type and Length fields themselves. A value of 4 means the Value field is empty. Receivers MUST use this field to skip over unrecognised TLV types without discarding the entire packet. [RFC 7868 §6.2]"
+
+        - id: eigrpTlvValue
+          name: TLV Value
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: eigrpTlvLen }
+              b: { kind: lit, value: 4 }
+          category: variable
+          doc: "TLV value payload whose length is (TLV Length − 4) bytes. Content is type-specific: 0x0001 General Parameters carries K1–K6 metric coefficients, hold time, and neighbour flags; 0x0102 IP Internal carries delay, bandwidth, MTU, hop count, reliability, load, prefix length, and destination IPv4 prefix; 0x0103 IP External additionally carries the originating router ID, originating AS, external protocol tag, and external protocol metric. [RFC 7868 §6.3–6.5]"
+    count: "eos"

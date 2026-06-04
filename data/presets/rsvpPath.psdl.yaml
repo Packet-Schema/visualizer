@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RSVP Common Header + Object
+rowBits: 32
+byteOrder: BE
+description: >-
+  Resource ReSerVation Protocol (RSVP) common header followed by a sequence of typed objects (RFC 2205). The 8-byte common header carries the RSVP version (4 bits), flags (4 bits), message type (1=Path, 2=Resv, 3=PathErr, 4=ResvErr, 5=PathTear, 6=ResvTear, 7=ResvConf), checksum, Send TTL, reserved byte, and total message length. Each object has a 4-byte object header (ObjLength, Class-Num, C-Type) followed by variable-length contents. Key class numbers: 1=SESSION, 3=RSVP_HOP, 5=TIME_VALUES, 9=FLOWSPEC, 12=SENDER_TEMPLATE.
+body:
+  - kind: group
+    id: rsvpCommonHeader
+    name: RSVP Common Header (row 1)
+    children:
+      - id: rsvpVers
+        name: Vers
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 1
+        doc: RSVP protocol version number. MUST be 1 for this specification; receivers MUST discard messages with an unrecognized version number. [RFC 2205 §3.1]
+      - id: rsvpFlags
+        name: Flags
+        type: { kind: bits, n: 4 }
+        category: flags
+        doc: Reserved flags. No flag bits are currently defined; MUST be transmitted as zero and MUST be ignored on receipt. [RFC 2205 §3.1]
+      - id: rsvpMsgType
+        name: Msg Type
+        type:
+          kind: enum
+          bits: 8
+          variants:
+            1: Path
+            2: Resv
+            3: PathErr
+            4: ResvErr
+            5: PathTear
+            6: ResvTear
+            7: ResvConf
+        category: type
+        defaultValue: 1
+        doc: RSVP message type. 1=Path (sender advertising a data path), 2=Resv (receiver requesting resources along the path), 3=PathErr (path error notification), 4=ResvErr (reservation error notification), 5=PathTear (teardown path state), 6=ResvTear (teardown reservation state), 7=ResvConf (reservation confirmation). [RFC 2205 §3.1]
+      - id: rsvpChecksum
+        name: RSVP Checksum
+        type: { kind: int, bits: 16 }
+        category: checksum
+        doc: One's complement checksum of the entire RSVP message computed with this field set to zero. A value of zero means checksum is disabled. Covers the common header and all objects. [RFC 2205 §3.1]
+  - kind: group
+    id: rsvpCommonHeader2
+    name: RSVP Common Header (row 2)
+    children:
+      - id: rsvpSendTTL
+        name: Send TTL
+        type: { kind: int, bits: 8 }
+        category: variable
+        doc: IP TTL value with which the RSVP message was transmitted. Compared against the received IP TTL to detect non-RSVP-capable hops along the path; if the difference exceeds a router's configured threshold, the router may take action such as sending a PathErr. [RFC 2205 §3.1]
+      - id: rsvpReserved
+        name: Reserved
+        type: { kind: int, bits: 8 }
+        category: reserved
+        doc: Reserved byte. MUST be transmitted as zero and MUST be ignored on receipt. [RFC 2205 §3.1]
+      - id: rsvpLength
+        name: RSVP Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: Total length of the RSVP message in bytes, including this 8-byte common header and all objects. Minimum value is 8 (header only). Used to delimit the RSVP message within the IP datagram when multiple messages are bundled. [RFC 2205 §3.1]
+  - kind: repeat
+    id: rsvpObjects
+    name: RSVP Objects
+    element:
+      id: rsvpObject
+      fields:
+        - id: rsvpObjLength
+          name: Object Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Total length of this object in bytes, including this 4-byte object header. MUST be a multiple of 4 and at least 4. Receivers use this value to locate the start of the next object in the message. [RFC 2205 §3.1]
+        - id: rsvpObjClassNum
+          name: Class-Num
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: Object class number identifying the information carried. 1=SESSION (destination address, protocol ID, destination port), 3=RSVP_HOP (previous/next RSVP-capable hop address and Logical Interface Handle), 5=TIME_VALUES (refresh period R in milliseconds), 9=FLOWSPEC (requested QoS parameters), 12=SENDER_TEMPLATE (sender IP address and source port). High-order two bits encode handling rules for unknown classes (ignore / forward / send error). [RFC 2205 §3.1]
+        - id: rsvpObjCType
+          name: C-Type
+          type: { kind: int, bits: 8 }
+          category: type
+          doc: Object sub-type within the class, further qualifying the encoding format. For example, SESSION C-Type 1 = IPv4 destination address; RSVP_HOP C-Type 1 = IPv4 next/previous hop; SENDER_TEMPLATE C-Type 1 = IPv4 sender address. Defined per Class-Num in RFC 2205 and protocol-specific companion RFCs. [RFC 2205 §3.1]
+        - id: rsvpObjContents
+          name: Object Contents
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "-"
+              a: { kind: ref, field: rsvpObjLength }
+              b: { kind: lit, value: 4 }
+          category: variable
+          doc: >-
+            Object-specific payload following the 4-byte object header, (ObjLength - 4) bytes long. Content format is defined by Class-Num and C-Type. Example — SESSION IPv4 (Class 1, C-Type 1): 4-byte IPv4 DestAddress + 1-byte Protocol ID + 1-byte Flags + 2-byte DstPort (RFC 2205 §A.1). Example — TIME_VALUES (Class 5, C-Type 1): 4-byte Refresh Period R in milliseconds (RFC 2205 §A.2). [RFC 2205 §3.1]
+    count: { kind: ref, field: rsvpObjectCount }

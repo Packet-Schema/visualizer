@@ -1,0 +1,190 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: HTTP/3 Frame
+rowBits: 32
+byteOrder: BE
+description: >-
+  HTTP/3 frame (RFC 9114 §7). Each frame begins with a QUIC variable-length
+  integer Type, followed by a QUIC variable-length integer Length (payload byte
+  count), and then the frame-type-specific payload. HTTP/3 runs over QUIC
+  (RFC 9000) streams; frames are NOT aligned to QUIC packets. The Type field
+  selects the payload layout: 0x00 DATA, 0x01 HEADERS (QPACK-compressed,
+  RFC 9204), 0x03 CANCEL_PUSH, 0x04 SETTINGS, 0x05 PUSH_PROMISE,
+  0x07 GOAWAY, 0x0D MAX_PUSH_ID. Unknown frame types MUST be ignored.
+body:
+  - id: http3FrameType
+    name: Type
+    type:
+      kind: varint
+      encoding: quic
+    category: type
+    doc: >-
+      QUIC variable-length integer identifying the frame type. Registered types:
+      0x00 DATA, 0x01 HEADERS, 0x03 CANCEL_PUSH, 0x04 SETTINGS,
+      0x05 PUSH_PROMISE, 0x07 GOAWAY, 0x0D MAX_PUSH_ID. Endpoints MUST ignore
+      and discard frames of unknown type. [RFC 9114 §7 / §7.2]
+  - id: http3PayloadLength
+    name: Length
+    type:
+      kind: varint
+      encoding: quic
+    category: length
+    doc: >-
+      QUIC variable-length integer giving the number of bytes in the frame
+      payload that follows. A frame whose Length field extends beyond the end of
+      the stream MUST be treated as a connection error of type
+      H3_FRAME_ERROR. [RFC 9114 §7.1]
+  - kind: switch
+    id: http3FramePayload
+    name: Frame Payload
+    on: { kind: ref, field: http3FrameType }
+    doc: >-
+      Frame payload decoded according to the Type field (RFC 9114 §7.2). Each
+      registered frame type has a distinct payload layout; unknown frame types
+      are rendered as an opaque byte run. PSDL has no comparison operator, so
+      magic-value dispatch is expressed entirely with switch cases. [RFC 9114 §7]
+    cases:
+      "0":
+        id: frameData
+        name: DATA
+        fields:
+          - id: data
+            name: Data
+            type: { kind: bytes, n: { kind: ref, field: http3PayloadBytes } }
+            category: payload-marker
+            doc: >-
+              Application data for the request or response body. DATA frames are
+              subject to HTTP/3 flow control; they MUST NOT be sent on the
+              control stream. Length equals the Length varint. [RFC 9114 §7.2.1]
+      "1":
+        id: frameHeaders
+        name: HEADERS
+        fields:
+          - id: headerBlock
+            name: Encoded Field Section
+            type: { kind: bytes, n: { kind: ref, field: http3PayloadBytes } }
+            category: payload-marker
+            doc: >-
+              QPACK-encoded field section (RFC 9204). Contains a Required Insert
+              Count, an S-bit + Delta Base, and one or more encoded field line
+              representations. HEADERS frames MUST NOT be sent on the control
+              stream. [RFC 9114 §7.2.2 / RFC 9204 §4.5]
+      "3":
+        id: frameCancelPush
+        name: CANCEL_PUSH
+        fields:
+          - id: pushId
+            name: Push ID
+            type:
+              kind: varint
+              encoding: quic
+            category: identifier
+            doc: >-
+              QUIC variable-length integer identifying the server push to cancel.
+              The Push ID MUST be less than the Maximum Push ID communicated via
+              MAX_PUSH_ID. A client sends CANCEL_PUSH to indicate it does not
+              wish to receive the promised push; the server sends it to indicate
+              the push will not be delivered. [RFC 9114 §7.2.3]
+      "4":
+        id: frameSettings
+        name: SETTINGS
+        fields:
+          - kind: repeat
+            id: settingsList
+            name: Settings
+            category: variable
+            doc: >-
+              Zero or more Setting entries, each a (Identifier, Value) pair of
+              QUIC variable-length integers. SETTINGS MUST be sent exactly once
+              on each control stream and MUST NOT be sent on request or push
+              streams. Unknown setting identifiers MUST be ignored. [RFC 9114 §7.2.4]
+            element:
+              id: settingEntry
+              fields:
+                - id: settingId
+                  name: Setting Identifier
+                  type:
+                    kind: varint
+                    encoding: quic
+                  category: identifier
+                  doc: >-
+                    QUIC variable-length integer setting key. Registered
+                    identifiers include 0x01 QPACK_MAX_TABLE_CAPACITY,
+                    0x06 MAX_FIELD_SECTION_SIZE, 0x07 QPACK_BLOCKED_STREAMS.
+                    Unknown identifiers MUST be ignored. [RFC 9114 §7.2.4.1 / §11.2.2]
+                - id: settingValue
+                  name: Setting Value
+                  type:
+                    kind: varint
+                    encoding: quic
+                  category: variable
+                  doc: >-
+                    QUIC variable-length integer value for the corresponding
+                    setting identifier. [RFC 9114 §7.2.4]
+            count: { kind: ref, field: http3SettingsCount }
+      "5":
+        id: framePushPromise
+        name: PUSH_PROMISE
+        fields:
+          - id: pushId
+            name: Push ID
+            type:
+              kind: varint
+              encoding: quic
+            category: identifier
+            doc: >-
+              QUIC variable-length integer uniquely identifying the server push
+              within the connection. The Push ID MUST NOT exceed the Maximum Push
+              ID; reusing a Push ID is a connection error of type
+              H3_ID_ERROR. [RFC 9114 §7.2.5]
+          - id: pushHeaderBlock
+            name: Encoded Field Section
+            type: { kind: bytes, n: { kind: ref, field: http3PushHeaderBytes } }
+            category: payload-marker
+            doc: >-
+              QPACK-encoded field section for the promised request, consuming the
+              remaining bytes of the frame payload (Length minus the byte width
+              of the Push ID varint). [RFC 9114 §7.2.5 / RFC 9204 §4.5]
+      "7":
+        id: frameGoaway
+        name: GOAWAY
+        fields:
+          - id: streamId
+            name: Stream ID / Push ID
+            type:
+              kind: varint
+              encoding: quic
+            category: identifier
+            doc: >-
+              QUIC variable-length integer. When sent by the server, this is the
+              Stream ID of the last client-initiated bidirectional stream that was
+              or might be processed; when sent by the client, this is the Push ID
+              of the last push that was or might be accepted. Streams and pushes
+              with higher identifiers were not processed and MAY be retried on a
+              new connection. [RFC 9114 §7.2.6]
+      "13":
+        id: frameMaxPushId
+        name: MAX_PUSH_ID
+        fields:
+          - id: maxPushId
+            name: Push ID
+            type:
+              kind: varint
+              encoding: quic
+            category: identifier
+            doc: >-
+              QUIC variable-length integer setting the maximum Push ID value the
+              server is allowed to use. This is a unidirectional limit; only
+              clients send MAX_PUSH_ID. Sending MAX_PUSH_ID on the server control
+              stream is a connection error of type H3_MESSAGE_ERROR. [RFC 9114 §7.2.7]
+    default:
+      id: frameUnknown
+      name: Unknown / Extension Frame Payload
+      fields:
+        - id: payload
+          name: Payload
+          type: { kind: bytes, n: { kind: ref, field: http3PayloadBytes } }
+          category: payload-marker
+          doc: >-
+            Opaque payload for an unknown or extension frame type. Endpoints MUST
+            ignore and discard frames of unknown type, including their payload.
+            [RFC 9114 §7.2.8 / §9]

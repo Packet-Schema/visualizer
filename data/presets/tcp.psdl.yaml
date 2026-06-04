@@ -33,10 +33,26 @@ _tcp_option_variants: &tcp_option_variants
   "5":
     id: sack
     fields:
-      - { id: kind, name: "Kind=5", type: { kind: bits, n: 8 }, category: type }
-      - { id: length, name: "Len=10", type: { kind: bits, n: 8 }, category: length }
-      - { id: leftEdge, name: Left Edge, type: { kind: int, bits: 32 }, category: identifier }
-      - { id: rightEdge, name: Right Edge, type: { kind: int, bits: 32 }, category: identifier }
+      - { id: kind, name: "Kind=5", type: { kind: bits, n: 8 }, category: type, doc: "Selective Acknowledgment option kind (RFC 2018)." }
+      - { id: length, name: Length, type: { kind: bits, n: 8 }, category: length, doc: "Total option length in bytes; 10/18/26/34 carry 1..4 SACK blocks (RFC 2018)." }
+      - kind: repeat
+        id: sackBlocks
+        name: SACK Blocks
+        category: identifier
+        element:
+          id: sackBlock
+          fields:
+            - { id: leftEdge, name: Left Edge, type: { kind: int, bits: 32 }, category: identifier, doc: "First sequence number of this contiguous received block (RFC 2018)." }
+            - { id: rightEdge, name: Right Edge, type: { kind: int, bits: 32 }, category: identifier, doc: "Sequence number immediately following the last byte of this block (RFC 2018)." }
+        count:
+          kind: op
+          op: "/"
+          a:
+            kind: op
+            op: "-"
+            a: { kind: ref, field: length }
+            b: { kind: lit, value: 2 }
+          b: { kind: lit, value: 8 }
   "8":
     id: timestamps
     fields:
@@ -44,6 +60,66 @@ _tcp_option_variants: &tcp_option_variants
       - { id: length, name: "Len=10", type: { kind: bits, n: 8 }, category: length }
       - { id: tsval, name: TS Value, type: { kind: int, bits: 32 }, category: identifier }
       - { id: tsecr, name: TS Echo Reply, type: { kind: int, bits: 32 }, category: identifier }
+  "19":
+    id: md5sig
+    fields:
+      - { id: kind, name: "Kind=19", type: { kind: bits, n: 8 }, category: type, doc: "TCP MD5 Signature option kind (RFC 2385)." }
+      - { id: length, name: "Len=18", type: { kind: bits, n: 8 }, category: length, doc: "Fixed option length of 18 bytes (RFC 2385)." }
+      - { id: digest, name: MD5 Digest, type: { kind: bytes, n: { kind: lit, value: 16 } }, category: checksum, doc: "128-bit MD5 digest authenticating the segment (RFC 2385)." }
+  "28":
+    id: userTimeout
+    fields:
+      - { id: kind, name: "Kind=28", type: { kind: bits, n: 8 }, category: type, doc: "User Timeout (UTO) option kind (RFC 5482)." }
+      - { id: length, name: "Len=4", type: { kind: bits, n: 8 }, category: length, doc: "Fixed option length of 4 bytes (RFC 5482)." }
+      - kind: group
+        id: utoValue
+        name: User Timeout
+        children:
+          - { id: granularity, name: Granularity, type: { kind: bits, n: 1 }, category: type, doc: "G bit: 0 = timeout in minutes, 1 = timeout in seconds (RFC 5482)." }
+          - { id: userTimeout, name: Timeout, type: { kind: int, bits: 15 }, category: variable, doc: "Advised user timeout value interpreted per the Granularity bit (RFC 5482)." }
+  "29":
+    id: tcpAo
+    fields:
+      - { id: kind, name: "Kind=29", type: { kind: bits, n: 8 }, category: type, doc: "TCP Authentication Option (TCP-AO) kind (RFC 5925)." }
+      - { id: length, name: Length, type: { kind: bits, n: 8 }, category: length, doc: "Total option length in bytes; covers header plus MAC (RFC 5925)." }
+      - { id: keyId, name: KeyID, type: { kind: int, bits: 8 }, category: identifier, doc: "Identifies the MKT used to generate the traffic keys for this segment (RFC 5925)." }
+      - { id: rNextKeyId, name: RNextKeyID, type: { kind: int, bits: 8 }, category: identifier, doc: "KeyID the sender expects to receive in the next segment (RFC 5925)." }
+      - { id: mac, name: MAC, type: { kind: bytes, n: { kind: ref, field: tcpAoMacLen } }, category: checksum, doc: "Message Authentication Code over the segment; length = option Length - 4 (RFC 5925)." }
+  "30":
+    id: mptcp
+    fields:
+      - { id: kind, name: "Kind=30", type: { kind: bits, n: 8 }, category: type, doc: "Multipath TCP (MPTCP) option kind (RFC 8684)." }
+      - { id: length, name: Length, type: { kind: bits, n: 8 }, category: length, doc: "Total MPTCP option length in bytes (RFC 8684)." }
+      - kind: group
+        id: mptcpHead
+        name: MPTCP Subtype
+        children:
+          - { id: mptcpSubtype, name: Subtype, type: { kind: bits, n: 4 }, category: type, doc: "MPTCP subtype selecting the option semantics (RFC 8684)." }
+          - { id: mptcpSubField, name: Sub-bits, type: { kind: bits, n: 4 }, category: variable, doc: "Subtype-specific 4 bits (e.g. version for MP_CAPABLE) (RFC 8684)." }
+      - kind: switch
+        id: bySubtype
+        on: { kind: ref, field: mptcpSubtype }
+        cases:
+          "0":
+            id: mpCapable
+            fields:
+              - { id: mpcVersion, name: Version, type: { kind: bits, n: 4 }, category: variable, doc: "MP_CAPABLE version field (RFC 8684)." }
+              - { id: mpcFlags, name: Flags, type: { kind: bits, n: 8 }, category: flags, doc: "MP_CAPABLE flags including checksum-required and crypto bits (RFC 8684)." }
+              - { id: mpcSenderKey, name: Sender's Key, type: { kind: int, bits: 64 }, category: identifier, doc: "64-bit key of the sender used to derive the connection token (RFC 8684)." }
+          "1":
+            id: mpJoin
+            fields:
+              - { id: mpjBody, name: MP_JOIN Body, type: { kind: bytes, n: { kind: ref, field: mptcpRest } }, category: identifier, doc: "MP_JOIN payload (token, nonce, HMAC) whose layout depends on the handshake phase (RFC 8684)." }
+        default:
+          id: mptcpOpaque
+          fields:
+            - { id: mptcpBody, name: Subtype Body, type: { kind: bytes, n: { kind: ref, field: mptcpRest } }, category: payload-marker, doc: "Opaque body for MPTCP subtypes not otherwise decoded (RFC 8684)." }
+  "34":
+    id: fastOpen
+    fields:
+      - { id: kind, name: "Kind=34", type: { kind: bits, n: 8 }, category: type, doc: "TCP Fast Open Cookie option kind (RFC 7413)." }
+      - { id: length, name: Length, type: { kind: bits, n: 8 }, category: length, doc: "Total option length 2..18 bytes; cookie length = Length - 2 (RFC 7413)." }
+      - { id: cookie, name: Cookie, type: { kind: bytes, n: { kind: ref, field: tcpFastOpenCookieLen } }, category: identifier, doc: "Fast Open Cookie used to authenticate the client for data in SYN (RFC 7413)." }
 
 body:
   - { id: srcPort, name: Source Port, type: { kind: int, bits: 16 }, category: addressing }

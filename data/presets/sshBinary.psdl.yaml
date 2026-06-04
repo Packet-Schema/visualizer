@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: SSH Binary Packet Protocol
+rowBits: 32
+byteOrder: BE
+description: SSH Binary Packet Protocol (RFC 4253 §6). Each packet consists of a length-prefixed payload with random padding and an optional MAC.
+body:
+  - { id: packetLength, name: Packet Length, type: { kind: int, bits: 32 }, category: length, doc: "Length of the packet in bytes, not including the MAC or the packet_length field itself (i.e. padding_length + payload + random_padding)." }
+  - { id: paddingLength, name: Padding Length, type: { kind: int, bits: 8 }, category: length, doc: "Length of the random padding in bytes. Must be between 4 and 255 inclusive, chosen so that the total packet length is a multiple of the cipher block size or 8." }
+  - { id: payload, name: Payload, type: { kind: bytes, n: { kind: ref, field: "sshPayloadBytes" } }, category: payload-marker, doc: "The actual payload data of the SSH packet." }
+  - { id: randomPadding, name: Random Padding, type: { kind: bytes, n: { kind: ref, field: "paddingLength" } }, category: reserved, doc: "Arbitrary-length padding such that payload + padding is a multiple of the cipher block size (minimum 8). The padding bytes should be random." }
+  - { id: mac, name: MAC, type: { kind: bytes, n: { kind: ref, field: "sshMacLen" } }, category: checksum, doc: "Message Authentication Code computed over the packet. Length is determined by the negotiated MAC algorithm; 0 bytes if MAC algorithm is none." }

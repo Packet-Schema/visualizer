@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LDP PDU
+rowBits: 32
+byteOrder: BE
+description: "Label Distribution Protocol (LDP) Protocol Data Unit (RFC 5036). LDP is used by MPLS routers (Label Switching Routers, LSRs) to exchange label bindings — the mappings from IP Forwarding Equivalence Classes (FECs) to MPLS labels — so that a consistent Label Switched Path (LSP) can be established through the network. Every LDP PDU begins with a 10-byte header carrying the LDP Version, PDU Length, LSR Identifier, and Label Space ID, followed by a sequence of LDP Messages. Each message has a 2-byte type field (with a U-bit), a 2-byte length, a 4-byte Message ID, and a variable-length TLV Parameters section. LDP sessions are carried over TCP port 646; LDP Hello discovery uses UDP port 646. Common message types: 0x0100=Hello, 0x0200=Initialization, 0x0300=KeepAlive, 0x0400=Address, 0x0500=Label Mapping."
+
+body:
+  - kind: group
+    id: ldpHeader
+    name: LDP PDU Header
+    children:
+      - id: ldpVersion
+        name: Version
+        type: { kind: int, bits: 16 }
+        category: type
+        defaultValue: 1
+        doc: "LDP protocol version number. MUST be 1 for this specification. A peer receiving an LDP PDU with any other version MUST send a Notification message with status code 'Bad LDP Identifier' and close the session. [RFC 5036 §3.5.1]"
+      - id: ldpPduLength
+        name: PDU Length
+        type: { kind: int, bits: 16 }
+        category: length
+        doc: "Total length in bytes of the LDP PDU, excluding the Version and PDU Length fields themselves (i.e. the byte count from the LSR ID through the end of the last enclosed LDP Message). The minimum value for an LDP PDU carrying no messages is 6 (4-byte LSR ID + 2-byte Label Space ID). [RFC 5036 §3.5.1]"
+      - id: ldpLsrId
+        name: LSR Identifier
+        type: { kind: int, bits: 32 }
+        category: identifier
+        doc: "Label Switching Router (LSR) Identifier — a 4-byte globally unique value assigned to the LSR. Typically the highest or loopback IPv4 address of the router, chosen to be unique within the MPLS domain. Together with the Label Space ID it forms the LDP Identifier used to name the LDP session peer. [RFC 5036 §2.1 / §3.5.1]"
+      - id: ldpLabelSpaceId
+        name: Label Space ID
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: "Label Space Identifier. Combined with the LSR Identifier to form the 6-byte LDP Identifier (LSR-ID:Label-Space-ID). A value of 0 indicates a platform-wide label space (per-platform label space), shared by all interfaces of the LSR; a non-zero value identifies an interface-specific label space. [RFC 5036 §2.1 / §3.5.1]"
+
+  - kind: repeat
+    id: ldpMessages
+    name: LDP Messages
+    category: variable
+    element:
+      id: ldpMessage
+      fields:
+        - kind: group
+          id: ldpMsgTypeGroup
+          name: U-bit / Message Type
+          children:
+            - id: ldpMsgUBit
+              name: U
+              type: { kind: int, bits: 1 }
+              category: flags
+              defaultValue: 0
+              doc: "Unknown Message bit. When set to 1 and the receiver does not recognise the Message Type, the message MUST be silently ignored rather than triggering a Notification. When 0, an unknown Message Type causes the receiver to send an Error Notification and optionally terminate the session. [RFC 5036 §3.5.1]"
+            - id: ldpMsgType
+              name: Message Type
+              type:
+                kind: enum
+                bits: 15
+                variants:
+                  256:  "Hello (0x0100)"
+                  512:  "Initialization (0x0200)"
+                  768:  "KeepAlive (0x0300)"
+                  1024: "Address (0x0400)"
+                  1280: "Label Mapping (0x0500)"
+                  1281: "Label Request (0x0501)"
+                  1282: "Label Withdraw (0x0502)"
+                  1283: "Label Release (0x0503)"
+                  1284: "Label Abort Request (0x0504)"
+                  769:  "Notification (0x0301)"
+              category: type
+              doc: "15-bit LDP message type (U-bit stripped). 0x0100=Hello (link/targeted discovery), 0x0200=Initialization (session parameter negotiation), 0x0300=KeepAlive (session liveness), 0x0301=Notification (error/status reporting), 0x0400=Address (advertising interface addresses), 0x0500=Label Mapping (FEC-to-label binding advertisement), 0x0501=Label Request, 0x0502=Label Withdraw, 0x0503=Label Release, 0x0504=Label Abort Request. [RFC 5036 §3.5]"
+        - id: ldpMsgLength
+          name: Message Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Length in bytes of the LDP message contents following the Message Length field — i.e. the combined length of the 4-byte Message ID plus the variable-length Parameters (TLVs). Does NOT include the 2-byte Message Type or the 2-byte Message Length fields. Minimum value is 4 (Message ID only, no TLVs). [RFC 5036 §3.5.1]"
+        - id: ldpMsgId
+          name: Message ID
+          type: { kind: int, bits: 32 }
+          category: identifier
+          doc: "32-bit value assigned by the message originator and used to uniquely identify the message within the LDP session. A Notification message echoes this ID in its Status TLV to indicate which message caused the error. Each LSR maintains a monotonically increasing counter and increments it for every new message; the counter wraps to 1 (not 0) after reaching 0xFFFFFFFF. [RFC 5036 §3.5.1]"
+        - id: ldpMsgParamBytes
+          name: Parameters Length
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: "Byte length of the Parameters (TLV) section that follows within this LDP message. Derived from ldpMsgLength minus 4 (Message ID) minus 2 (this field). Carried here as an explicit length so the PSDL bytes field can reference it directly. [RFC 5036 §3.5.1]"
+        - id: ldpMsgParams
+          name: Parameters (TLVs)
+          type: { kind: bytes, n: { kind: ref, field: ldpMsgParamBytes } }
+          category: variable
+          doc: "Variable-length sequence of Type-Length-Value (TLV) objects carrying the message-specific parameters. Each TLV begins with a 2-byte Type (with a U-bit and F-bit in the high two bits), a 2-byte Length, and a Length-byte Value. Example TLV types: 0x0001=FEC (Forwarding Equivalence Class, list of FEC elements), 0x0200=Generic Label (20-bit MPLS label + 3-bit TC + 1-bit S), 0x0300=Address List (AFI + list of interface addresses), 0x0301=Notification Status (32-bit status code + message ID + message type), 0x0400=Common Hello Parameters (hold time + flags for targeted/request). [RFC 5036 §3.4 / §3.5]"
+    count: { kind: ref, field: ldpMsgCount }

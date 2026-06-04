@@ -1,0 +1,205 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: NAT-PMP
+rowBits: 32
+byteOrder: BE
+description: "NAT Port Mapping Protocol (NAT-PMP) message format (RFC 6886). NAT-PMP is a lightweight UDP-based protocol that allows hosts behind a NAT device to request external port mappings and learn the router's external IP address without manual configuration. It is the precursor to the Port Control Protocol (PCP, RFC 6887). All messages begin with a 1-byte Version (always 0) and a 1-byte Opcode: requests use 0=public address query, 1=map UDP, 2=map TCP; responses set bit 7 (Opcode+128) and include a 2-byte Result Code and a 4-byte Epoch. A switch on natpmpOpcode dispatches the body per message type."
+
+body:
+  - id: natpmpVersion
+    name: Version
+    type: { kind: int, bits: 8 }
+    category: type
+    defaultValue: 0
+    doc: "NAT-PMP protocol version. MUST be 0; a device that receives a request with a version other than 0 MUST return a response with Result Code 1 (Unsupported Version). [RFC 6886 §3.2]"
+
+  - id: natpmpOpcode
+    name: Opcode
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "Public Address Request"
+        128: "Public Address Response"
+        1: "Map UDP Request"
+        129: "Map UDP Response"
+        2: "Map TCP Request"
+        130: "Map TCP Response"
+    category: type
+    defaultValue: 0
+    doc: "Message opcode. Request opcodes: 0=public address query, 1=map UDP port, 2=map TCP port. Response opcodes have the high bit set (0x80): 128=public address response, 129=map UDP response, 130=map TCP response. [RFC 6886 §3.2, §3.3]"
+
+  - kind: switch
+    id: natpmpBody
+    on: { kind: ref, field: natpmpOpcode }
+    cases:
+      "0":
+        id: natpmpPublicAddrRequest
+        name: Public Address Request
+        fields: []
+
+      "128":
+        id: natpmpPublicAddrResponse
+        name: Public Address Response
+        fields:
+          - id: natpmpPaResultCode
+            name: Result Code
+            type:
+              kind: enum
+              bits: 16
+              variants:
+                0: "Success"
+                1: "Unsupported Version"
+                2: "Not Authorized / Refused"
+                3: "Network Failure"
+                4: "Out of Resources"
+                5: "Unsupported Opcode"
+            category: type
+            doc: "Result code for the public address response. 0=Success, 1=Unsupported Version, 2=Not Authorized/Refused (NAT-PMP disabled by administrator), 3=Network Failure (router itself cannot determine external address), 4=Out of Resources, 5=Unsupported Opcode. [RFC 6886 §3.5]"
+          - id: natpmpPaEpoch
+            name: Seconds Since Start of Epoch
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Time in seconds since the NAT device last rebooted or had its port mapping table reset. Clients use this value to detect mapping loss after a NAT device restart (epoch regression indicates a reset). [RFC 6886 §3.6]"
+          - id: natpmpExternalAddress
+            name: External IP Address
+            type: { kind: bits, n: 32 }
+            category: addressing
+            doc: "The router's current external IPv4 address in network byte order. Clients cache this value; a change in this address or a regression in the epoch means previously issued mappings are no longer valid. [RFC 6886 §3.2]"
+
+      "1":
+        id: natpmpMapUdpRequest
+        name: Map UDP Request
+        fields:
+          - id: natpmpMapUdpReserved
+            name: Reserved
+            type: { kind: int, bits: 16 }
+            category: reserved
+            doc: "Reserved field, MUST be set to zero by the client and ignored by the NAT device. [RFC 6886 §3.3]"
+          - id: natpmpMapUdpInternalPort
+            name: Internal Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "The private-side UDP port that the client wishes to map. A value of 0 requests deletion of all UDP mappings for this client (when Requested Lifetime is also 0) or is treated as the wildcard. [RFC 6886 §3.3]"
+          - id: natpmpMapUdpSuggestedExtPort
+            name: Suggested External Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Suggested external UDP port. The client MAY request a specific port; the NAT device is free to assign a different port. A value of 0 means no preference. [RFC 6886 §3.3]"
+          - id: natpmpMapUdpLifetime
+            name: Requested Lifetime
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Requested lifetime of the mapping in seconds. A value of 0 requests deletion of the mapping. Clients SHOULD request a lifetime of 3600 seconds and refresh at half the granted lifetime. [RFC 6886 §3.3]"
+
+      "129":
+        id: natpmpMapUdpResponse
+        name: Map UDP Response
+        fields:
+          - id: natpmpMapUdpResResultCode
+            name: Result Code
+            type:
+              kind: enum
+              bits: 16
+              variants:
+                0: "Success"
+                1: "Unsupported Version"
+                2: "Not Authorized / Refused"
+                3: "Network Failure"
+                4: "Out of Resources"
+                5: "Unsupported Opcode"
+            category: type
+            doc: "Result code for the UDP mapping response. 0=Success, 1=Unsupported Version, 2=Not Authorized/Refused, 3=Network Failure, 4=Out of Resources, 5=Unsupported Opcode. Non-zero result codes SHOULD still include the epoch and zero values for port/lifetime fields. [RFC 6886 §3.5]"
+          - id: natpmpMapUdpResEpoch
+            name: Seconds Since Start of Epoch
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Time in seconds since the NAT device last rebooted or had its mapping table reset. Clients monitor this for epoch regression to detect unexpected table resets. [RFC 6886 §3.6]"
+          - id: natpmpMapUdpResInternalPort
+            name: Internal Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Echo of the internal UDP port from the request. Allows the client to correlate this response with its outstanding mapping request. [RFC 6886 §3.3]"
+          - id: natpmpMapUdpResExternalPort
+            name: External Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "The external UDP port assigned by the NAT device for this mapping. May differ from the client's suggested port. The client should use this value, not the suggested port, for advertising its reachability. [RFC 6886 §3.3]"
+          - id: natpmpMapUdpResLifetime
+            name: Lifetime
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Actual granted lifetime of the UDP mapping in seconds. May be less than or greater than the requested lifetime. A value of 0 indicates the mapping was deleted. Clients MUST refresh at half the granted lifetime. [RFC 6886 §3.3]"
+
+      "2":
+        id: natpmpMapTcpRequest
+        name: Map TCP Request
+        fields:
+          - id: natpmpMapTcpReserved
+            name: Reserved
+            type: { kind: int, bits: 16 }
+            category: reserved
+            doc: "Reserved field, MUST be set to zero by the client and ignored by the NAT device. [RFC 6886 §3.3]"
+          - id: natpmpMapTcpInternalPort
+            name: Internal Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "The private-side TCP port that the client wishes to map. A value of 0 requests deletion of all TCP mappings for this client (when Requested Lifetime is also 0). [RFC 6886 §3.3]"
+          - id: natpmpMapTcpSuggestedExtPort
+            name: Suggested External Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Suggested external TCP port. The NAT device is free to assign a different port. A value of 0 means no preference. [RFC 6886 §3.3]"
+          - id: natpmpMapTcpLifetime
+            name: Requested Lifetime
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Requested lifetime of the TCP mapping in seconds. A value of 0 requests deletion of the mapping. Clients SHOULD request a lifetime of 3600 seconds and refresh at half the granted lifetime. [RFC 6886 §3.3]"
+
+      "130":
+        id: natpmpMapTcpResponse
+        name: Map TCP Response
+        fields:
+          - id: natpmpMapTcpResResultCode
+            name: Result Code
+            type:
+              kind: enum
+              bits: 16
+              variants:
+                0: "Success"
+                1: "Unsupported Version"
+                2: "Not Authorized / Refused"
+                3: "Network Failure"
+                4: "Out of Resources"
+                5: "Unsupported Opcode"
+            category: type
+            doc: "Result code for the TCP mapping response. 0=Success, 1=Unsupported Version, 2=Not Authorized/Refused, 3=Network Failure, 4=Out of Resources, 5=Unsupported Opcode. Non-zero results SHOULD still include epoch and zero port/lifetime values. [RFC 6886 §3.5]"
+          - id: natpmpMapTcpResEpoch
+            name: Seconds Since Start of Epoch
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Time in seconds since the NAT device last rebooted or had its mapping table reset. Clients monitor this for epoch regression to detect unexpected table resets. [RFC 6886 §3.6]"
+          - id: natpmpMapTcpResInternalPort
+            name: Internal Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "Echo of the internal TCP port from the request. Allows the client to correlate this response with its outstanding mapping request. [RFC 6886 §3.3]"
+          - id: natpmpMapTcpResExternalPort
+            name: External Port
+            type: { kind: int, bits: 16 }
+            category: addressing
+            doc: "The external TCP port assigned by the NAT device for this mapping. May differ from the client's suggested port. The client should use this value for advertising its reachability. [RFC 6886 §3.3]"
+          - id: natpmpMapTcpResLifetime
+            name: Lifetime
+            type: { kind: int, bits: 32 }
+            category: variable
+            doc: "Actual granted lifetime of the TCP mapping in seconds. May differ from the requested lifetime. A value of 0 indicates the mapping was deleted. Clients MUST refresh at half the granted lifetime. [RFC 6886 §3.3]"
+
+    default:
+      id: natpmpUnknown
+      name: Unknown Message
+      fields:
+        - id: natpmpUnknownBody
+          name: Body
+          type: { kind: bytes, n: { kind: ref, field: natpmpBodyBytes } }
+          category: variable
+          doc: "Raw body bytes for unrecognised NAT-PMP opcodes. The byte count natpmpBodyBytes is supplied externally from the enclosing UDP payload length minus the 2-byte version+opcode header. [RFC 6886 §3.2]"

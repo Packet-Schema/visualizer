@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: IGMPv3 Membership Report
+rowBits: 32
+byteOrder: BE
+description: IGMPv3 Membership Report message (RFC 3376 §4.2). Sent by a host to report its multicast group memberships to routers on the attached link. Carried directly inside IPv4 (Protocol = 2) with IP TTL = 1 and the Router Alert option, addressed to 224.0.0.22 (All IGMPv3-capable multicast routers). Consists of a fixed 8-byte header followed by a variable number of Group Records, each of which contains a fixed per-group header, an optional source list, and optional auxiliary data. Record types range from 1 (MODE_IS_INCLUDE) to 6 (BLOCK_OLD_SOURCES); types 1–2 are Current-State Records, 3–4 are Filter-Mode-Change Records, and 5–6 are Source-List-Change Records.
+body:
+  - id: igmpv3Type
+    name: Type
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: IGMP message type. Fixed to 0x22 (decimal 34) for IGMPv3 Membership Report. Routers use this field to distinguish IGMPv3 Reports (0x22) from Membership Queries (0x11), IGMPv1/v2 Reports (0x12, 0x16), and Leave Group (0x17). [RFC 3376 §4.2]
+  - id: igmpv3Reserved1
+    name: Reserved
+    type: { kind: bits, n: 8 }
+    category: reserved
+    doc: Reserved. MUST be zero on transmission; ignored on receipt. Originally carried Max Response Code in query messages, but has no defined meaning in Report messages. [RFC 3376 §4.2]
+  - id: igmpv3Checksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: 16-bit one's-complement checksum over the entire IGMP message (header plus all Group Records). Computed with the Checksum field set to zero. A receiver MUST verify the checksum and silently discard the message if it fails. Uses the same algorithm as the IP header checksum (RFC 1071). [RFC 3376 §4.2.1]
+  - id: igmpv3Reserved2
+    name: Reserved
+    type: { kind: bits, n: 16 }
+    category: reserved
+    doc: Reserved. MUST be zero on transmission; ignored on receipt. Occupies bits 32–47 of the fixed header, padding it to 8 bytes total before the Group Record list. [RFC 3376 §4.2]
+  - id: igmpv3GroupCount
+    name: Number of Group Records
+    type: { kind: int, bits: 16 }
+    category: length
+    doc: Count of Group Record entries that follow this fixed header. May be zero (e.g. a Report sent in response to a General Query when the host has no group memberships). Each Group Record describes the sending host's membership state with respect to one multicast group. [RFC 3376 §4.2.2]
+  - kind: repeat
+    id: igmpv3GroupRecords
+    name: Group Records
+    category: variable
+    count: { kind: ref, field: igmpv3GroupCount }
+    element:
+      id: igmpv3GroupRecord
+      fields:
+        - id: igmpv3RecordType
+          name: Record Type
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: "MODE_IS_INCLUDE"
+              2: "MODE_IS_EXCLUDE"
+              3: "CHANGE_TO_INCLUDE_MODE"
+              4: "CHANGE_TO_EXCLUDE_MODE"
+              5: "ALLOW_NEW_SOURCES"
+              6: "BLOCK_OLD_SOURCES"
+          category: type
+          doc: "Specifies the semantics of this Group Record. Current-State Records: 1 = MODE_IS_INCLUDE (host listens only to the listed sources), 2 = MODE_IS_EXCLUDE (host listens to all sources except the listed ones, or all sources if the list is empty — equivalent to a 'join'). Filter-Mode-Change Records: 3 = CHANGE_TO_INCLUDE_MODE, 4 = CHANGE_TO_EXCLUDE_MODE. Source-List-Change Records: 5 = ALLOW_NEW_SOURCES (add sources to include list), 6 = BLOCK_OLD_SOURCES (remove sources from include list). [RFC 3376 §4.2.12]"
+        - id: igmpv3AuxDataLen
+          name: Aux Data Len
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: Length of the Auxiliary Data field at the end of this Group Record, expressed in units of 32-bit words (not bytes). A value of 0 means no Auxiliary Data is present. Current IGMPv3 semantics define no Auxiliary Data; senders SHOULD set this to 0 and receivers MUST ignore the content. [RFC 3376 §4.2.3]
+        - id: igmpv3SrcCount
+          name: Number of Sources
+          type: { kind: int, bits: 16 }
+          category: length
+          doc: Count of source addresses present in this Group Record's source list. Zero for MODE_IS_EXCLUDE with no source filter (full 'join') and for CHANGE_TO_EXCLUDE_MODE with an empty source list. The source list immediately follows the Multicast Address field. [RFC 3376 §4.2.4]
+        - id: igmpv3MulticastAddress
+          name: Multicast Address
+          type: { kind: int, bits: 32 }
+          category: addressing
+          doc: IPv4 multicast group address to which this Group Record applies. MUST be in the range 224.0.0.0 – 239.255.255.255. Each Group Record in a Report covers exactly one distinct multicast group address; a single Report message may carry records for multiple groups. [RFC 3376 §4.2.5]
+        - kind: repeat
+          id: igmpv3Sources
+          name: Source Addresses
+          category: variable
+          count: { kind: ref, field: igmpv3SrcCount }
+          element:
+            id: igmpv3SourceRecord
+            fields:
+              - id: igmpv3SourceAddress
+                name: Source Address
+                type: { kind: int, bits: 32 }
+                category: addressing
+                doc: A unicast IPv4 source address in the source list for this Group Record. Together with the Multicast Address and Record Type, determines what traffic the host wants to receive or suppress. For ALLOW_NEW_SOURCES/BLOCK_OLD_SOURCES this is the source being added to or removed from the filter. [RFC 3376 §4.2.6]
+        - id: igmpv3AuxData
+          name: Auxiliary Data
+          type:
+            kind: bytes
+            n:
+              kind: op
+              op: "*"
+              a: { kind: ref, field: igmpv3AuxDataLen }
+              b: { kind: lit, value: 4 }
+          category: variable
+          doc: Optional auxiliary data appended to the Group Record. Length is Aux Data Len × 4 bytes (0 bytes when Aux Data Len = 0). IGMPv3 currently defines no content for this field; senders MUST set Aux Data Len to 0 and receivers MUST ignore the contents. Reserved for potential future extensions. [RFC 3376 §4.2.10]

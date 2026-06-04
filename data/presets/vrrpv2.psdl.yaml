@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: VRRPv2
+rowBits: 32
+byteOrder: BE
+description: "Virtual Router Redundancy Protocol version 2 (VRRPv2) packet (RFC 3768). IPv4-only predecessor to VRRPv3 (RFC 5798). A single 8-byte fixed header — Version (4 bits, always 2) and Type (4 bits, always 1=Advertisement) packed in one byte, followed by Virtual Router ID, Priority, Count IP Addresses, Auth Type, Adver Int, and Checksum — then a variable-length list of IPv4 addresses (Count IP Addrs × 4 bytes) and a fixed 8-byte Authentication Data trailer. VRRPv2 is carried directly in IPv4 packets with protocol number 112 and TTL 255; the destination address is 224.0.0.18 (all VRRP routers). Authentication defined in RFC 3768 §5.3 is considered deprecated because it provides no real security (RFC 5798 dropped it entirely)."
+
+body:
+  - kind: group
+    id: vrrpVerType
+    name: Ver / Type
+    children:
+      - id: vrrpVersion
+        name: Version
+        type: { kind: int, bits: 4 }
+        category: type
+        defaultValue: 2
+        doc: "VRRP protocol version. MUST be 2 for VRRPv2; a packet with any other version value MUST be discarded. VRRPv3 (RFC 5798) uses version 3 and extends support to IPv6. [RFC 3768 §5.1]"
+      - id: vrrpType
+        name: Type
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            1: "Advertisement"
+        category: type
+        defaultValue: 1
+        doc: "VRRP packet type. Only one type is defined for VRRPv2: 1=Advertisement. All other values are reserved. A packet with an unknown type MUST be discarded. [RFC 3768 §5.1]"
+
+  - id: vrrpVirtualRtrId
+    name: Virtual Rtr ID
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: "Virtual Router Identifier (VRID). Identifies the virtual router this packet is associated with. The combination of (VRID, interface) uniquely identifies a virtual router on a LAN segment. Valid range 1–255; value 0 is reserved. [RFC 3768 §5.1]"
+
+  - id: vrrpPriority
+    name: Priority
+    type: { kind: int, bits: 8 }
+    category: variable
+    defaultValue: 100
+    doc: "Priority used in the Master election process. Higher value wins. 255 is reserved for the router that owns the IP address(es) associated with the virtual router; 0 is reserved for the current Master to indicate it is releasing the virtual router; the default is 100 for backup routers. [RFC 3768 §5.1]"
+
+  - id: vrrpCountIPAddrs
+    name: Count IP Addrs
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "Number of IPv4 addresses contained in this VRRP advertisement. Each address is 4 bytes and appears in the IP Address list that follows the fixed header. MUST match the number of addresses configured for the virtual router. [RFC 3768 §5.1]"
+
+  - id: vrrpAuthType
+    name: Auth Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "No Authentication"
+        1: "Simple Text Password"
+        2: "IP Authentication Header"
+    category: type
+    defaultValue: 0
+    doc: "Authentication type in use. 0=No Authentication, 1=Simple Text Password (the 8-byte Auth Data field carries a plain-text password — considered insecure), 2=IP Authentication Header (deprecated; was never widely implemented). RFC 5798 (VRRPv3) removed authentication entirely due to inadequate security. [RFC 3768 §5.1 / §5.3]"
+
+  - id: vrrpAdverInt
+    name: Adver Int
+    type: { kind: int, bits: 8 }
+    category: variable
+    defaultValue: 1
+    doc: "Advertisement interval in seconds. Specifies how often the Master sends VRRP Advertisement messages. The Backup routers use this value to determine whether the Master is still alive; the Master Down Interval is (3 × Adver Int) + Skew Time. Default is 1 second. [RFC 3768 §5.1]"
+
+  - id: vrrpChecksum
+    name: Checksum
+    type: { kind: int, bits: 16 }
+    category: checksum
+    doc: "16-bit one's complement checksum over the entire VRRP message starting at the VRRP Version field, computed with the Checksum field set to zero. The IP pseudo-header is NOT included (unlike TCP/UDP). A packet with an invalid checksum MUST be discarded. [RFC 3768 §5.1]"
+
+  - kind: repeat
+    id: vrrpIPAddresses
+    name: IP Addresses
+    category: addressing
+    element:
+      id: vrrpIPAddress
+      fields:
+        - id: vrrpIPAddr
+          name: IP Address
+          type: { kind: bits, n: 32 }
+          category: addressing
+          doc: "One of the IPv4 addresses associated with the virtual router. The list contains exactly Count IP Addrs entries, each 32 bits (4 bytes) in network byte order. The owner router (Priority=255) uses these as its real interface addresses; backup routers use them as the virtual addresses to protect. [RFC 3768 §5.1]"
+    count: { kind: ref, field: vrrpCountIPAddrs }
+
+  - id: vrrpAuthData
+    name: Auth Data
+    type: { kind: bits, n: 64 }
+    category: variable
+    doc: "Authentication data, always 8 bytes. For Auth Type 0 (No Authentication) this field MUST be set to zero on transmission and MUST be ignored on reception. For Auth Type 1 (Simple Text Password) it carries a null-padded ASCII password of up to 8 characters. For Auth Type 2 (IP AH) it is set to zero (the AH is in the IP header). [RFC 3768 §5.1 / §5.3]"

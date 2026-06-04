@@ -1,0 +1,270 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LACP (IEEE 802.3ad)
+rowBits: 32
+byteOrder: BE
+description: >-
+  Link Aggregation Control Protocol PDU (IEEE 802.3ad / IEEE 802.1AX-2014). Carried directly inside a Slow Protocol frame (EtherType 0x8809, Subtype 0x01) as the payload of an Ethernet frame addressed to the Slow Protocols multicast MAC 01:80:C2:00:00:02. The PDU begins with a 1-byte Subtype (always 0x01) and 1-byte Version (0x01), followed by four fixed TLVs in order: Actor Information (Type=0x01, 20 bytes), Partner Information (Type=0x02, 20 bytes), Collector Information (Type=0x03, 16 bytes), and Terminator (Type=0x00, 0 bytes). Total wire length is 60 bytes (480 bits). [IEEE 802.3ad-2000 §43, IEEE 802.1AX-2014 §6.4.2]
+body:
+  - id: subtype
+    name: Subtype
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: Slow Protocols subtype identifying this PDU as LACP. Always 0x01. Defined by IEEE 802.3 Annex 57A and carried inside an EtherType 0x8809 Slow Protocols frame. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+  - id: version
+    name: Version Number
+    type: { kind: int, bits: 8 }
+    category: type
+    doc: LACP version identifier. Always 0x01 for the version defined in IEEE 802.3ad-2000 and IEEE 802.1AX-2014. A receiver that does not recognise the version SHOULD discard the PDU. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+  - kind: group
+    id: actorInfo
+    name: Actor Information TLV
+    children:
+      - id: actorTlvType
+        name: Actor TLV Type
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type identifying the Actor Information block. Always 0x01. Allows a parser to locate each TLV positionally and sanity-check the PDU structure. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: actorTlvLength
+        name: Actor TLV Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Actor Information TLV in bytes, counting from the first byte of the TLV Type field. Always 0x14 (20 decimal). [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: actorSystemPriority
+        name: Actor System Priority
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Priority of the Actor's System — the 16-bit value prepended to the System ID to form the System Identifier used in aggregation selection. Lower values are more preferred. Configurable; default is typically 32768. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: actorSystem
+        name: Actor System ID
+        type: { kind: bits, n: 48 }
+        category: addressing
+        doc: 48-bit MAC address identifying the Actor's LACP System. Together with Actor System Priority forms the System Identifier that determines which ports may be aggregated. Usually the bridge MAC address of the actor's system. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: actorKey
+        name: Actor Key
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Operational Key identifying the aggregation group on the Actor's side. Ports with matching Key, System Priority, and System ID are candidates for the same Link Aggregation Group (LAG). The key encoding is implementation-specific. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: actorPortPriority
+        name: Actor Port Priority
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Priority of this specific port within the Actor's aggregation group. Lower value means higher priority. When the LAG has more ports than the maximum distributable count, lower-priority ports are placed in standby. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: actorPort
+        name: Actor Port
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Port identifier assigned by the Actor to the link on which this PDU is transmitted. Combined with Port Priority forms the Port Identifier used in LAG selection decisions. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - kind: group
+        id: actorState
+        name: Actor State
+        children:
+          - id: actorActivity
+            name: LACP Activity
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor LACP Activity bit (bit 0). 1=Active LACP — the Actor transmits LACPDUs periodically. 0=Passive LACP — the Actor transmits only in response to received LACPDUs. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorTimeout
+            name: LACP Timeout
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor LACP Timeout bit (bit 1). 1=Short Timeout (1 s transmission interval, 3 s expiry). 0=Long Timeout (30 s transmission interval, 90 s expiry). Short timeout is used for fast failover. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorAggregation
+            name: Aggregation
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor Aggregation bit (bit 2). 1=the link is aggregatable (may be part of a multi-link LAG). 0=Individual — the link can only operate as a single point-to-point link and will not be aggregated. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorSynchronization
+            name: Synchronization
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor Synchronization bit (bit 3). 1=this port has been allocated to the correct LAG and agrees with its Partner on key/system/port parameters. 0=out of sync. Both actor and partner must be In Sync before a port may distribute traffic. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorCollecting
+            name: Collecting
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor Collecting bit (bit 4). 1=the Actor's receive engine is enabled and collecting incoming frames on this link. Set only when Synchronization=1 and the Collector max-delay has elapsed. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorDistributing
+            name: Distributing
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor Distributing bit (bit 5). 1=the Actor's transmit engine is enabled and distributing (transmitting) frames on this link. Set only after Collecting is enabled. Collecting and Distributing are set/cleared together in most implementations. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorDefaulted
+            name: Defaulted
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor Defaulted bit (bit 6). 1=the Actor is using administratively configured default Partner information because no LACPDU has been received from the Partner. Cleared when a valid LACPDU is received. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: actorExpired
+            name: Expired
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Actor Expired bit (bit 7). 1=the Actor's receive machine is in the EXPIRED state — no LACPDU has arrived within the current timeout window and short-timeout recovery is in progress. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+      - id: actorReserved
+        name: Actor Reserved
+        type: { kind: bits, n: 24 }
+        category: reserved
+        doc: Reserved 3-byte field following the Actor State octet. MUST be transmitted as zero and MUST be ignored on receipt. Pad to align the next TLV to a word boundary. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+  - kind: group
+    id: partnerInfo
+    name: Partner Information TLV
+    children:
+      - id: partnerTlvType
+        name: Partner TLV Type
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type identifying the Partner Information block. Always 0x02. Mirrors the Actor TLV but carries the parameters the Actor has most recently received from its Partner. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: partnerTlvLength
+        name: Partner TLV Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Partner Information TLV in bytes, counting from the first byte of the TLV Type field. Always 0x14 (20 decimal). [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: partnerSystemPriority
+        name: Partner System Priority
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: System Priority of the Partner as last received in a LACPDU from the Partner. Used jointly with Partner System ID to identify the remote LAG peer. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: partnerSystem
+        name: Partner System ID
+        type: { kind: bits, n: 48 }
+        category: addressing
+        doc: 48-bit MAC address identifying the Partner's LACP System, as last received from the Partner. Together with Partner System Priority forms the remote System Identifier for LAG selection. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: partnerKey
+        name: Partner Key
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Operational Key of the Partner as last received. Must match the Actor Key for the two ports to be placed into the same LAG. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: partnerPortPriority
+        name: Partner Port Priority
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Port Priority of the Partner's port as last received. Used in port-selection decisions when the LAG has more candidate ports than allowed active ports. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - id: partnerPort
+        name: Partner Port
+        type: { kind: int, bits: 16 }
+        category: identifier
+        doc: Port identifier of the Partner's port as last received. Combined with Partner Port Priority forms the remote Port Identifier. [IEEE 802.3ad §43.4.2 / IEEE 802.1AX-2014 §6.3.4]
+
+      - kind: group
+        id: partnerState
+        name: Partner State
+        children:
+          - id: partnerActivity
+            name: LACP Activity
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner LACP Activity bit (bit 0) as last received. 1=Partner is in Active mode. Reflects the Partner's own Activity bit from the most recent LACPDU. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerTimeout
+            name: LACP Timeout
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner LACP Timeout bit (bit 1) as last received. 1=Short Timeout. Reflects the Partner's timeout preference from the most recent LACPDU. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerAggregation
+            name: Aggregation
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner Aggregation bit (bit 2) as last received. 1=Partner's port is aggregatable. Both Actor and Partner Aggregation bits must be 1 for the link to join a multi-port LAG. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerSynchronization
+            name: Synchronization
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner Synchronization bit (bit 3) as last received. 1=Partner considers this link In Sync. Both Actor and Partner Synchronization must be 1 before the link is placed into the active forwarding set. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerCollecting
+            name: Collecting
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner Collecting bit (bit 4) as last received. 1=Partner's receive engine is collecting on this link. Used by the Actor to confirm the bidirectional data path is established. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerDistributing
+            name: Distributing
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner Distributing bit (bit 5) as last received. 1=Partner's transmit engine is distributing frames on this link. When both sides have Collecting=1 and Distributing=1 the bonded link is fully operational. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerDefaulted
+            name: Defaulted
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner Defaulted bit (bit 6) as last received. 1=Partner is currently using default (administrative) Actor information because it has not received any LACPDU from the Actor within its timeout window. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+          - id: partnerExpired
+            name: Expired
+            type: { kind: bits, n: 1 }
+            category: flags
+            doc: Partner Expired bit (bit 7) as last received. 1=Partner's receive machine is in EXPIRED state. The Actor can use this to detect that the Partner is recovering from a timeout event. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2 Table 6-3]
+
+      - id: partnerReserved
+        name: Partner Reserved
+        type: { kind: bits, n: 24 }
+        category: reserved
+        doc: Reserved 3-byte field following the Partner State octet. MUST be transmitted as zero and MUST be ignored on receipt. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+  - kind: group
+    id: collectorInfo
+    name: Collector Information TLV
+    children:
+      - id: collectorTlvType
+        name: Collector TLV Type
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type identifying the Collector Information block. Always 0x03. The Collector Information TLV is 16 bytes and carries the maximum delay the Collector may introduce before frames become visible to the distribution function. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: collectorTlvLength
+        name: Collector TLV Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Collector Information TLV in bytes, counting from the first byte of the TLV Type field. Always 0x10 (16 decimal). [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: collectorMaxDelay
+        name: Collector Max Delay
+        type: { kind: int, bits: 16 }
+        category: variable
+        doc: Maximum delay in tens of microseconds that the Frame Collector may introduce between receiving a frame on an aggregated link and making it available to the higher layers (Aggregator). Used to synchronise the Collecting and Distributing state machines. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: collectorReserved
+        name: Collector Reserved
+        type: { kind: bits, n: 96 }
+        category: reserved
+        doc: Reserved 12-byte field following Collector Max Delay. MUST be transmitted as zero and MUST be ignored on receipt. Pads the TLV to 16 bytes total. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+  - kind: group
+    id: terminatorInfo
+    name: Terminator TLV
+    children:
+      - id: terminatorTlvType
+        name: Terminator TLV Type
+        type: { kind: int, bits: 8 }
+        category: type
+        doc: TLV type marking the end of the LACPDU TLV sequence. Always 0x00. A parser MUST stop processing TLVs upon encountering this type. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]
+
+      - id: terminatorTlvLength
+        name: Terminator TLV Length
+        type: { kind: int, bits: 8 }
+        category: length
+        doc: Length of the Terminator TLV. Always 0x00, indicating that no additional bytes follow this TLV. After the Terminator the remainder of the Ethernet payload (up to byte 60) is reserved and MUST be transmitted as zero. [IEEE 802.3ad §43.4.2.2 / IEEE 802.1AX-2014 §6.4.2]

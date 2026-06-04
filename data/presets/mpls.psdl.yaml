@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: MPLS Label Stack Entry
+rowBits: 32
+byteOrder: BE
+description: MPLS label stack entry (RFC 3032). Each 4-byte entry carries a 20-bit label, a 3-bit Traffic Class field (originally called Exp/Experimental), a Bottom-of-Stack indicator, and a TTL. Multiple entries can be stacked between the Layer 2 and Layer 3 headers; the forwarding decision is driven by the topmost label. When S=1 the encapsulated IP (or other) header follows directly.
+body:
+  - id: label
+    name: Label
+    type: { kind: int, bits: 20 }
+    category: addressing
+    doc: 20-bit label value. Locally significant between two adjacent Label Switched Routers (LSRs). Special labels — 0 IPv4 Explicit NULL (signals PHP to replace label 0 with IP forwarding), 2 IPv6 Explicit NULL, 3 Implicit NULL / Penultimate Hop Popping trigger (PHP — the previous-hop LSR removes the label before delivery), 4 OAM Alert, 13 Router Alert — are defined by RFC 3032 and updated by RFC 7274. All other values 0..15 are Reserved. [RFC 3032 §2.1 / RFC 7274]
+  - kind: group
+    id: tcSGroup
+    children:
+      - id: tc
+        name: TC
+        type: { kind: bits, n: 3 }
+        category: flags
+        doc: Traffic Class (renamed from Exp by RFC 5462). Used for QoS differentiation (per-hop behaviour selection) and ECN signalling between LSRs. The actual mapping of TC values to scheduling classes is local policy; the IETF recommends DSCP-to-TC inheritance on ingress. [RFC 3032 §2.1 / RFC 5462]
+      - id: s
+        name: S
+        type: { kind: bits, n: 1 }
+        category: flags
+        doc: Bottom-of-Stack indicator. 1 = this entry is the innermost (lowest) label in the stack; the IP or other encapsulated header follows immediately after this entry. 0 = at least one more label stack entry follows. Allows LSRs to detect PHP (the penultimate LSR pops the bottom label so the egress LSR receives an unlabelled IP packet). [RFC 3032 §2.1]
+  - id: ttl
+    name: TTL
+    type: { kind: int, bits: 8 }
+    category: identifier
+    doc: Time-to-Live. Decremented by 1 at each LSR. An LSR MUST discard any packet whose TTL reaches 0, optionally sending an ICMP Time Exceeded back toward the source. On ingress the IP TTL is typically copied into this field (Pipe or Uniform mode); on egress it may be copied back to the restored IP TTL. [RFC 3032 §2.1 / RFC 3443]

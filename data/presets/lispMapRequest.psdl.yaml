@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: LISP Map-Request
+rowBits: 32
+byteOrder: BE
+description: "LISP Map-Request message (RFC 6833). Sent by an ITR or PITR to a Map-Resolver (or directly to a Map-Server / ETR) to request the mapping of an EID prefix to one or more RLOCs. The fixed header carries a 4-bit Type (must be 1), seven 1-bit flags (A, M, P, S, p, s) and a 9-bit Reserved field, a 5-bit ITR-RLOC Count (IRC, zero-based — actual count = IRC+1), an 8-bit Record Count, and a 64-bit Nonce. Following the fixed header: a Source EID Address Record (2-byte AFI + variable-length address), an ITR-RLOC list of IRC+1 entries (each 2-byte AFI + variable-length address), and a list of EID Records (each 1-byte Reserved + 1-byte EID Mask Length + 2-byte EID Prefix AFI + variable-length EID Prefix). The Map-Server / ETR uses the Source EID and ITR-RLOCs to route the Map-Reply back to the requester. [RFC 6833 §5.2]"
+
+body:
+  - kind: group
+    id: lispMapReqHeader
+    name: Map-Request Fixed Header
+    children:
+      - id: lispType
+        name: Type
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            1: "Map-Request"
+        category: type
+        defaultValue: 1
+        doc: "LISP message type. MUST be 1 for a Map-Request. The 4-bit Type field is common to all LISP control messages; a receiver MUST discard any message with an unrecognised Type. [RFC 6833 §5.2]"
+
+      - id: lispA
+        name: A
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "A (Authoritative) flag. Set to 1 when the Map-Request originates from an authoritative source (e.g. a Map-Server performing a solicit-map-request). When 0, the request is from a data-plane ITR. [RFC 6833 §5.2]"
+
+      - id: lispM
+        name: M
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "M (Map-Data Present) flag. Set to 1 when a Map-Reply record is piggybacked immediately after the Map-Request, allowing an ITR to simultaneously request a mapping and supply its own mapping data. When 0, no piggybacked reply is present. [RFC 6833 §5.2]"
+
+      - id: lispP
+        name: P
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "P (Probe) flag. Set to 1 when the Map-Request is used as an RLOC-probe to test reachability of a specific RLOC rather than to look up a mapping. The target ETR MUST reply with a Map-Reply that has the Probe-Reply (P) bit set. [RFC 6833 §5.2]"
+
+      - id: lispS
+        name: S
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "S (Solicit-Map-Request) flag. Set to 1 to request that the ETR send a new Map-Request for the source EID, effectively allowing the ETR to learn the ITR's RLOC. Used during LISP database population. [RFC 6833 §5.2]"
+
+      - id: lispSmallP
+        name: p
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "p (PiTR) flag. Set to 1 when the Map-Request is sent by a Proxy-ITR (PiTR) on behalf of a non-LISP site. Informs the mapping system that the requester is a proxy, so the ETR can adjust its reply accordingly. [RFC 6833 §5.2]"
+
+      - id: lispSmallS
+        name: s
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "s (Solicit-Map-Request reserved) flag. Set to 1 when the originating ITR wants the ETR to rate-limit or suppress Solicit-Map-Request responses. MUST be 0 unless S flag is also set. [RFC 6833 §5.2]"
+
+      - id: lispReserved
+        name: Reserved
+        type: { kind: int, bits: 9 }
+        category: reserved
+        doc: "9-bit Reserved field. MUST be set to zero by the sender and ignored by the receiver. Reserved for future use. [RFC 6833 §5.2]"
+
+      - id: lispItrCount
+        name: ITR-RLOC Count
+        type: { kind: int, bits: 5 }
+        category: length
+        defaultValue: 0
+        doc: "ITR-RLOC Count (IRC). Encodes the number of ITR-RLOC address records that follow in a zero-based fashion; the actual count of ITR-RLOC entries in the ITR-RLOC list is IRC+1. A sender MUST include at least one ITR-RLOC (i.e. IRC MUST be >= 0). [RFC 6833 §5.2]"
+
+      - id: lispRecCount
+        name: Record Count
+        type: { kind: int, bits: 8 }
+        category: length
+        defaultValue: 1
+        doc: "Number of EID records included in this Map-Request. Each record carries one EID prefix for which mapping information is requested. Typically 1; a value of 0 is valid only for RLOC-probe requests. [RFC 6833 §5.2]"
+
+  - id: lispNonce
+    name: Nonce
+    type: { kind: int, bits: 64 }
+    category: identifier
+    doc: "64-bit nonce chosen by the ITR. The ETR MUST echo the Nonce unchanged in the corresponding Map-Reply, allowing the ITR to match replies to outstanding requests and providing basic replay detection. SHOULD be randomly generated for each new request. [RFC 6833 §5.2]"
+
+  - kind: group
+    id: lispSourceEid
+    name: Source EID
+    children:
+      - id: lispSrcEidAfi
+        name: Source EID AFI
+        type: { kind: int, bits: 16 }
+        category: type
+        defaultValue: 1
+        doc: "Address Family Identifier for the Source EID address, as assigned by IANA (RFC 3232). 0=No address, 1=IPv4, 2=IPv6. Determines the length of the Source EID Address field that follows. [RFC 6833 §5.2 / RFC 3232]"
+
+      - id: lispSrcEidAddr
+        name: Source EID Address
+        type: { kind: bytes, n: { kind: ref, field: lispSrcEidAddrLen } }
+        category: addressing
+        doc: "Source EID address whose byte length is determined by the Source EID AFI: 0 bytes for AFI=0, 4 bytes for IPv4 (AFI=1), 16 bytes for IPv6 (AFI=2). Identifies the EID of the ITR originating this Map-Request. lispSrcEidAddrLen is an external reference supplying the byte count derived from the AFI. [RFC 6833 §5.2]"
+
+  - kind: repeat
+    id: lispItrRlocs
+    name: ITR-RLOC List
+    category: addressing
+    element:
+      id: lispItrRloc
+      fields:
+        - id: lispItrRlocAfi
+          name: ITR-RLOC AFI
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Address Family Identifier for this ITR-RLOC address. 1=IPv4 (4 bytes), 2=IPv6 (16 bytes), per IANA AFI registry. Determines the length of the following RLOC Address field. [RFC 6833 §5.2 / RFC 3232]"
+        - id: lispItrRlocAddr
+          name: ITR-RLOC Address
+          type: { kind: bytes, n: { kind: ref, field: lispItrRlocAddrLen } }
+          category: addressing
+          doc: "RLOC address of this ITR, encoded in the address family indicated by the preceding ITR-RLOC AFI (4 bytes for IPv4, 16 bytes for IPv6). The Map-Server or ETR uses these addresses to route the Map-Reply back to the ITR. lispItrRlocAddrLen is an external reference supplying the byte count. [RFC 6833 §5.2]"
+    count: { kind: lit, value: 0 }
+
+  - kind: repeat
+    id: lispEidRecords
+    name: EID Records
+    category: variable
+    element:
+      id: lispEidRecord
+      fields:
+        - id: lispEidRecReserved
+          name: Reserved
+          type: { kind: int, bits: 8 }
+          category: reserved
+          doc: "8-bit Reserved field in the EID record. MUST be set to zero by the sender and ignored by the receiver. [RFC 6833 §5.2]"
+        - id: lispEidMaskLen
+          name: EID Mask Length
+          type: { kind: int, bits: 8 }
+          category: length
+          doc: "Prefix length (in bits) of the EID prefix being requested. For IPv4 EIDs the value is 0–32; for IPv6 EIDs it is 0–128. A length of 0 with a zero-valued EID Prefix requests a default mapping. [RFC 6833 §5.2]"
+        - id: lispEidPrefixAfi
+          name: EID Prefix AFI
+          type: { kind: int, bits: 16 }
+          category: type
+          doc: "Address Family Identifier for the EID prefix. 1=IPv4, 2=IPv6, per IANA AFI registry. Determines the length of the following EID Prefix field. [RFC 6833 §5.2 / RFC 3232]"
+        - id: lispEidPrefix
+          name: EID Prefix
+          type: { kind: bytes, n: { kind: ref, field: lispEidPrefixLen } }
+          category: addressing
+          doc: "EID prefix whose mapping is being requested, encoded in the address family given by EID Prefix AFI (4 bytes for IPv4, 16 bytes for IPv6). Only the most significant EID Mask Length bits are significant; remaining bits SHOULD be zero. lispEidPrefixLen is an external reference supplying the byte count derived from the AFI. [RFC 6833 §5.2]"
+    count: { kind: lit, value: 0 }

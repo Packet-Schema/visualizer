@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: RTCP Sender Report
+rowBits: 32
+byteOrder: BE
+description: RTCP Sender Report packet (RFC 3550). Contains sender information and zero or more reception report blocks.
+body:
+  - kind: group
+    id: flags
+    children:
+      - { id: v, name: Version, type: { kind: int, bits: 2 }, category: type, doc: "RTCP version, always 2." }
+      - { id: p, name: Padding, type: { kind: int, bits: 1 }, category: flags, doc: "If set, the packet contains additional padding octets at the end." }
+      - { id: rc, name: Reception Report Count, type: { kind: int, bits: 5 }, category: length, doc: "Number of reception report blocks contained in this packet." }
+  - { id: pt, name: Packet Type, type: { kind: int, bits: 8 }, category: type, doc: "RTCP packet type; 200 identifies a Sender Report." }
+  - { id: length, name: Length, type: { kind: int, bits: 16 }, category: length, doc: "Length of this RTCP packet in 32-bit words minus one, including the header and any padding." }
+  - { id: ssrc, name: SSRC, type: { kind: int, bits: 32 }, category: identifier, doc: "Synchronization source identifier of the originator of this SR packet." }
+  - { id: ntpTimestampHigh, name: NTP Timestamp (High), type: { kind: int, bits: 32 }, category: variable, doc: "Most significant 32 bits of the NTP timestamp indicating the wall-clock time when this report was sent." }
+  - { id: ntpTimestampLow, name: NTP Timestamp (Low), type: { kind: int, bits: 32 }, category: variable, doc: "Least significant 32 bits of the NTP timestamp." }
+  - { id: rtpTimestamp, name: RTP Timestamp, type: { kind: int, bits: 32 }, category: variable, doc: "RTP timestamp corresponding to the same moment as the NTP timestamp, using the same clock frequency as the RTP data packets." }
+  - { id: senderPktCount, name: Sender Packet Count, type: { kind: int, bits: 32 }, category: variable, doc: "Total number of RTP data packets transmitted by the sender since starting transmission, including packets in this SR." }
+  - { id: senderOctetCount, name: Sender Octet Count, type: { kind: int, bits: 32 }, category: variable, doc: "Total number of payload octets transmitted in RTP data packets by the sender since starting transmission." }
+  - kind: repeat
+    id: reportBlocks
+    count: { kind: ref, field: "rc" }
+    element:
+      id: reportBlock
+      fields:
+        - { id: rrSsrc, name: SSRC of Source, type: { kind: int, bits: 32 }, category: identifier, doc: "SSRC identifier of the source to which the information in this reception report block pertains." }
+        - kind: group
+          id: lossInfo
+          children:
+            - { id: fractionLost, name: Fraction Lost, type: { kind: int, bits: 8 }, category: variable, doc: "Fraction of RTP data packets from this source lost since the previous SR or RR packet was sent, expressed as a fixed-point number with the binary point at the left edge of the field." }
+            - { id: cumulativeLost, name: Cumulative Packets Lost, type: { kind: int, bits: 24 }, category: variable, doc: "Total number of RTP data packets from this source that have been lost since the beginning of reception." }
+        - { id: extendedSeq, name: Extended Highest Sequence Number, type: { kind: int, bits: 32 }, category: variable, doc: "The low 16 bits contain the highest sequence number received in an RTP data packet from this source; the most significant 16 bits extend that sequence number with the corresponding count of sequence number cycles." }
+        - { id: jitter, name: Interarrival Jitter, type: { kind: int, bits: 32 }, category: variable, doc: "Estimate of the statistical variance of the RTP data packet interarrival time, measured in timestamp units and expressed as an unsigned integer." }
+        - { id: lsr, name: Last SR Timestamp, type: { kind: int, bits: 32 }, category: variable, doc: "Middle 32 bits of the NTP timestamp in the most recent RTCP SR packet received from source SSRC. Zero if no SR has been received." }
+        - { id: dlsr, name: Delay Since Last SR, type: { kind: int, bits: 32 }, category: variable, doc: "Delay expressed in units of 1/65536 seconds between receiving the last SR packet from source SSRC and sending this reception report block. Zero if no SR has been received." }

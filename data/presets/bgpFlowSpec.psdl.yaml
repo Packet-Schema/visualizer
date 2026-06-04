@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: BGP Flow Specification NLRI
+rowBits: 32
+byteOrder: BE
+description: "BGP Flow Specification NLRI (RFC 8955). Carried inside a BGP UPDATE message as MP_REACH_NLRI / MP_UNREACH_NLRI (AFI=1 IPv4, SAFI=133) to distribute traffic filter rules to routers — primary use cases are DDoS mitigation and traffic-engineering policy enforcement without manual per-device ACL configuration. Each NLRI begins with a variable-length Length field: if the value is less than 240 the length is encoded in a single octet; if 240 or greater a two-octet encoding is used (high-order bits 11xxxxxx in the first octet signal the two-octet form). Following the Length field is a sequence of Flow Specification Components, each consisting of a one-octet Component Type followed by a type-specific value. Component Types: 1=Destination Prefix, 2=Source Prefix, 3=IP Protocol, 4=Port, 5=Destination Port, 6=Source Port, 7=ICMP Type, 8=ICMP Code, 9=TCP Flags, 10=Packet Length, 11=DSCP, 12=Fragment. Components MUST be ordered by ascending Type value. The PSDL model exposes the Length field (8-bit, covering values < 240 by default), followed by a repeat of Components (count controlled by flowSpecCompCount, default 0) each with a 1-octet Type and an opaque value region of flowSpecValBytes octets. [RFC 8955]"
+
+body:
+  - id: flowSpecLength
+    name: Length
+    type: { kind: int, bits: 8 }
+    category: length
+    doc: "NLRI length in octets, not including the Length field itself. Values 0–239 are encoded in this single octet. When the value is 240 or greater, a two-octet encoding is used instead: the first octet has its two high-order bits set to 1 (0xC0 mask), and the actual length is reconstructed from both octets. This preset models the common single-octet form; the extended form can be represented by treating this field as the first byte and adding a second via optional. [RFC 8955 §4]"
+
+  - kind: repeat
+    id: flowSpecComponents
+    name: Flow Specification Components
+    category: variable
+    doc: "Sequence of Flow Specification Components that together define the traffic filter rule. Each component has a 1-octet Type followed by type-specific value bytes. Components MUST appear in ascending order of Type value; a BGP speaker receiving out-of-order components MUST treat the NLRI as malformed. Iteration count is exposed as flowSpecCompCount (default 0). [RFC 8955 §4]"
+    count: { kind: ref, field: flowSpecCompCount }
+    element:
+      id: flowSpecComponent
+      fields:
+        - id: flowSpecCompType
+          name: Component Type
+          type:
+            kind: enum
+            bits: 8
+            variants:
+              1: "Destination Prefix"
+              2: "Source Prefix"
+              3: "IP Protocol"
+              4: "Port"
+              5: "Destination Port"
+              6: "Source Port"
+              7: "ICMP Type"
+              8: "ICMP Code"
+              9: "TCP Flags"
+              10: "Packet Length"
+              11: "DSCP"
+              12: "Fragment"
+          category: type
+          doc: "Flow Specification Component Type. 1=Destination Prefix (NLRI prefix match on packet destination address), 2=Source Prefix (source address match), 3=IP Protocol (next-header value, e.g. 6=TCP, 17=UDP), 4=Port (source or destination port, operator-encoded), 5=Destination Port, 6=Source Port, 7=ICMP Type, 8=ICMP Code, 9=TCP Flags (bitmask), 10=Packet Length, 11=DSCP, 12=Fragment (IS-F/DONT-F/IS-LAST/FIRST). Components with types 3–12 use a list of operator+value pairs for numeric or bitmask matching, enabling range and set expressions without explicit comparison operators in the encoding. [RFC 8955 §4.2 / §4.2.1–§4.2.12]"
+        - id: flowSpecCompValue
+          name: Component Value
+          type: { kind: bytes, n: { kind: ref, field: flowSpecValBytes } }
+          category: variable
+          doc: "Type-specific component value bytes, length given by flowSpecValBytes. For prefix components (Types 1–2) the layout is: 1-octet prefix length (bits) + 1-octet offset (must be 0 for simple prefixes) + the prefix address bytes ceil(length/8). For numeric/bitmask operator components (Types 3–12) the value is a list of operator+value pairs: each pair starts with a 1-octet Operator byte (bits: end-of-list, and/or, length-of-value 00=1B/01=2B/10=4B, less-than, greater-than, equal) followed by 1, 2, or 4 value octets as indicated by the length-of-value subfield. This encoding lets a single component express ranges and sets (e.g. TCP port 80 OR 443) without requiring comparison operators in the PSDL Expr language. [RFC 8955 §4.2.1–§4.2.12]"

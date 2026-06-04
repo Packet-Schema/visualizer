@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: PPP Frame
+rowBits: 32
+byteOrder: BE
+description: PPP frame with HDLC-like framing (RFC 1661 + RFC 1662). HDLC flag bytes (0x7E) and escaping are handled at the HDLC layer and are not included here.
+body:
+  - { id: address, name: Address, type: { kind: int, bits: 8 }, category: addressing, doc: "All-Stations broadcast address, always 0xFF per RFC 1662." }
+  - { id: control, name: Control, type: { kind: int, bits: 8 }, category: type, doc: "Unnumbered Information (UI) command, always 0x03 per RFC 1662." }
+  - { id: protocol, name: Protocol, type: { kind: int, bits: 16 }, category: type, doc: "Identifies the encapsulated protocol: 0x0021=IPv4, 0x0057=IPv6, 0x002B=IPX, 0x8021=IPCP, 0x8057=IPv6CP, 0xC021=LCP, 0xC023=PAP, 0xC025=LQR, 0xC223=CHAP." }
+  - { id: information, name: Information, type: { kind: bytes, n: { kind: ref, field: "pppInfoLen" } }, category: payload-marker, doc: "Variable-length payload carrying the encapsulated protocol data unit (PDU) identified by the Protocol field." }
+  - { id: fcs, name: FCS, type: { kind: int, bits: 16 }, category: checksum, doc: "Frame Check Sequence using CRC-16-CCITT computed over the Address, Control, Protocol, and Information fields." }

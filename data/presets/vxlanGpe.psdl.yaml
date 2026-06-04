@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: VXLAN-GPE Header
+rowBits: 32
+byteOrder: BE
+description: "VXLAN Generic Protocol Extension (VXLAN-GPE, draft-ietf-nvo3-vxlan-gpe) — fixed 8 bytes. Extends RFC 7348 VXLAN by adding a Next Protocol field so payloads other than Ethernet (IPv4, IPv6, NSH, etc.) can be carried directly without inner Ethernet headers. Transported over UDP; the same VNI concept and 24-bit identifier space as standard VXLAN are retained."
+
+body:
+  - kind: group
+    id: flags
+    name: Flags
+    children:
+      - id: r1
+        name: Reserved 1
+        type: { kind: int, bits: 1 }
+        category: reserved
+        doc: "Reserved bit, MUST be transmitted as zero and ignored on receipt. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+      - id: r2
+        name: Reserved 2
+        type: { kind: int, bits: 1 }
+        category: reserved
+        doc: "Reserved bit, MUST be transmitted as zero and ignored on receipt. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+      - id: ver
+        name: Version
+        type: { kind: int, bits: 2 }
+        category: type
+        doc: "VXLAN-GPE version. Indicates the format of the VXLAN-GPE header. The current version is 0; receivers MUST discard packets with an unrecognised version. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+      - id: iFlagGpe
+        name: Instance Flag (I)
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "VNI valid flag. When set to 1 the VXLAN Network Identifier (VNI) field contains a valid value; MUST be set to 1 for VXLAN-GPE packets. [draft-ietf-nvo3-vxlan-gpe §3.2, RFC 7348 §5]"
+      - id: pFlag
+        name: Next Protocol Flag (P)
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "Next Protocol present flag. When set to 1 the Next Protocol field is valid and indicates the inner payload type. MUST be set to 1 for VXLAN-GPE; distinguishes GPE from legacy VXLAN. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+      - id: r3
+        name: Reserved 3
+        type: { kind: int, bits: 1 }
+        category: reserved
+        doc: "Reserved bit, MUST be transmitted as zero and ignored on receipt. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+      - id: oFlag
+        name: OAM Flag (O)
+        type: { kind: int, bits: 1 }
+        category: flags
+        doc: "OAM flag. When set to 1 the packet is an OAM (Operations, Administration, and Maintenance) packet; the inner payload carries OAM data rather than a normal network protocol PDU. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+
+  - id: reserved1
+    name: Reserved
+    type: { kind: int, bits: 16 }
+    category: reserved
+    doc: "Reserved 16-bit field, MUST be transmitted as zero and ignored on receipt. [draft-ietf-nvo3-vxlan-gpe §3.2]"
+
+  - id: nextProtocol
+    name: Next Protocol
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        0: "Reserved"
+        1: "IPv4"
+        2: "IPv6"
+        3: "Ethernet"
+        4: "NSH"
+    category: type
+    doc: "Identifies the protocol carried in the inner payload. 0=Reserved, 1=IPv4, 2=IPv6, 3=Ethernet (legacy VXLAN mode), 4=NSH (Network Service Header, RFC 8300). Values 5–254 are unassigned; 255 is reserved. Valid only when the P flag is set. [draft-ietf-nvo3-vxlan-gpe §3.3]"
+
+  - id: vni
+    name: VXLAN Network Identifier
+    type: { kind: int, bits: 24 }
+    category: identifier
+    doc: "24-bit VXLAN Network Identifier (VNI) designating the individual VXLAN-GPE overlay network segment. Provides up to 16 million logically isolated overlay networks. Valid only when the I flag is set. [draft-ietf-nvo3-vxlan-gpe §3.2, RFC 7348 §5]"
+
+  - id: reserved2
+    name: Reserved
+    type: { kind: int, bits: 8 }
+    category: reserved
+    doc: "Reserved 8-bit field, MUST be transmitted as zero and ignored on receipt. [draft-ietf-nvo3-vxlan-gpe §3.2]"

@@ -3,6 +3,36 @@ name: IPv6 Header
 rowBits: 32
 byteOrder: Network byte order (big-endian, MSB-first). Addresses are transmitted high-group first; e.g. 2001:db8::1 is sent as 0x2001 0x0db8 ... 0x0001.
 description: Internet Protocol version 6 header (RFC 8200 §3). Fixed 40 bytes; optional features such as fragmentation and routing live in chained extension headers selected by Next Header.
+
+# Shared option-TLV element used by Hop-by-Hop Options (Next Header 0) and
+# Destination Options (Next Header 60). Both carry the same TLV option chain
+# (RFC 8200 §4.2): a single 0x00 byte is the Pad1 option (no length/value),
+# everything else is a Type-Length-Value triplet whose OptData runs OptDataLen
+# bytes. A magic-value Switch on the Option Type byte separates Pad1 from the
+# general TLV form because PSDL 0.4 has no comparison operator.
+_ipv6_opt_tlv: &ipv6_opt_tlv
+  - kind: switch
+    id: ipv6OptByType
+    on: { kind: ref, field: ipv6OptType }
+    doc: Splits the single-byte Pad1 option (Option Type 0) from every other option, which uses the OptionType / OptDataLen / OptData triplet. [RFC 8200 §4.2]
+    cases:
+      "0":
+        id: ipv6Opt_pad1
+        name: Pad1
+        fields:
+          - { id: ipv6OptType, name: Option Type, type: { kind: int, bits: 8 }, category: type, defaultValue: 0, doc: "Pad1 option — a single zero octet used to align subsequent options on their natural boundaries. It is the only option with no Opt Data Len and no Opt Data fields. [RFC 8200 §4.2]" }
+    default:
+      id: ipv6Opt_tlv
+      name: Option (TLV)
+      fields:
+        - { id: ipv6OptType, name: Option Type, type: { kind: int, bits: 8 }, category: type, doc: "Option identifier. The top 2 bits encode the action for a node that does not recognise the option (00 skip, 01 discard, 10 discard+ICMP, 11 discard+ICMP if non-multicast) and the 3rd bit (0x20) flags whether the option data may change en route. Common values — 1 PadN, 5 Router Alert (RFC 2711), 194/0xC2 Jumbo Payload (RFC 2675). [RFC 8200 §4.2]" }
+        - { id: ipv6OptDataLen, name: Opt Data Len, type: { kind: int, bits: 8 }, category: length, doc: "Length of the Opt Data field in octets, not counting the Option Type and Opt Data Len bytes. For PadN this is the number of zero padding bytes; for Router Alert it is 2 (RFC 2711); for Jumbo Payload it is 4 (RFC 2675). [RFC 8200 §4.2]" }
+        - id: ipv6OptData
+          name: Opt Data
+          type: { kind: bytes, n: { kind: ref, field: ipv6OptDataLen } }
+          category: variable
+          doc: Option-specific data, `ipv6OptDataLen` octets long. PadN fills it with zeros; Router Alert carries a 16-bit value (0 = MLD); Jumbo Payload carries a 32-bit packet length used when the base header Payload Length is 0. [RFC 8200 §4.2, RFC 2711, RFC 2675]
+
 body:
   - id: version
     name: Version
@@ -88,11 +118,15 @@ body:
                   type:
                     kind: bits
                     n: 8
-                - id: options
-                  name: Options + padding
-                  type:
-                    kind: bits
-                    n: 48
+                - kind: repeat
+                  id: ipv6HbhOptions
+                  name: Options
+                  category: variable
+                  doc: TLV-encoded option chain filling the 8*(Hdr Ext Len+1)-1 option-area bytes. Each option is either Pad1 (a single 0x00 byte, no length/data) or a Type-Length-Value triplet; the two high bits of the Option Type tell a node how to act on an unrecognised option and whether the option may change in transit. Common types — 0 Pad1, 1 PadN, 5 Router Alert (RFC 2711), 194 (0xC2) Jumbo Payload (RFC 2675). [RFC 8200 §4.2]
+                  element:
+                    id: ipv6HbhOptionRecord
+                    fields: *ipv6_opt_tlv
+                  count: { kind: ref, field: ipv6HbhOptCount }
             "43":
               id: nextHeader_proto_43
               name: Routing
@@ -122,6 +156,22 @@ body:
                   type:
                     kind: bits
                     n: 32
+                - kind: repeat
+                  id: ipv6SrhSegments
+                  name: Segment List
+                  category: addressing
+                  doc: For Routing Type 4 (Segment Routing Header, SRH) the Type-Specific Data above is read as Last Entry (8), Flags (8) and Tag (16), and is followed by this list of 128-bit IPv6 segments. Segment List[0] is the last segment of the path; Segments Left indexes the active segment. Other routing types do not use this list (kept empty by default). [RFC 8754 §2]
+                  element:
+                    id: ipv6SrhSegmentRecord
+                    fields:
+                      - id: ipv6SrhSegment
+                        name: Segment
+                        type:
+                          kind: bits
+                          n: 128
+                        category: addressing
+                        doc: One 128-bit IPv6 address in the Segment List. The list is stored in reverse path order, so Segment List[0] is the final destination of the SR path. [RFC 8754 §2]
+                  count: { kind: ref, field: ipv6SrhSegCount }
             "44":
               id: nextHeader_proto_44
               name: Fragment
@@ -223,11 +273,54 @@ body:
                   type:
                     kind: bits
                     n: 8
-                - id: options
-                  name: Options + padding
+                - kind: repeat
+                  id: ipv6DstOptions
+                  name: Options
+                  category: variable
+                  doc: TLV-encoded option chain identical in format to the Hop-by-Hop options, but examined only by the packet's destination(s) (or, if a Routing header precedes it, each visited destination). Carries options such as PadN, Tunnel Encapsulation Limit (RFC 2473) and Home Address (RFC 6275). [RFC 8200 §4.6]
+                  element:
+                    id: ipv6DstOptionRecord
+                    fields: *ipv6_opt_tlv
+                  count: { kind: ref, field: ipv6HbhOptCount }
+            "59":
+              id: nextHeader_proto_59
+              name: No Next Header
+              doc: Next Header value 59 means there is nothing after this header. Any octets that remain in the packet beyond the current header are not part of any upper-layer payload and are ignored (they should be zero on transmit). This case therefore emits no further fields and terminates the extension-header chain. [RFC 8200 §4.7]
+              fields: []
+            "135":
+              id: nextHeader_proto_135
+              name: Mobility
+              fields:
+                - id: nextHeader
+                  name: Next Header
                   type:
                     kind: bits
-                    n: 48
+                    n: 8
+                  doc: Identifies the header following the Mobility Header; commonly 59 (No Next Header) because a Mobility Header is usually the last header. [RFC 6275 §6.1]
+                - id: hdrExtLen
+                  name: Hdr Ext Len
+                  type:
+                    kind: bits
+                    n: 8
+                  doc: Length of the Mobility Header in 8-octet units, not counting the first 8 octets. [RFC 6275 §6.1]
+                - id: mhType
+                  name: MH Type
+                  type:
+                    kind: bits
+                    n: 8
+                  doc: Type of mobility message, e.g. 0 Binding Refresh Request, 1 Home Test Init, 5 Binding Update, 6 Binding Acknowledgement. Selects the format of the Message Data below. [RFC 6275 §6.1]
+                - id: mhReserved
+                  name: Reserved
+                  type:
+                    kind: bits
+                    n: 8
+                  doc: Reserved for future use. Sent as zero and ignored on receipt. [RFC 6275 §6.1]
+                - id: mhChecksum
+                  name: Checksum
+                  type:
+                    kind: bits
+                    n: 16
+                  doc: Internet checksum over the Mobility Header plus an IPv6 pseudo-header, protecting the whole message. [RFC 6275 §6.1]
     count:
       kind: ref
       field: nextHeader_chainCount

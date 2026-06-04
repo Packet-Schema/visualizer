@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: VRRPv3 Advertisement
+rowBits: 32
+byteOrder: BE
+description: Virtual Router Redundancy Protocol version 3 (RFC 5798). A single Advertisement message type — the only packet type defined in VRRPv3 — sent by the Master router at MaxAdverInt intervals to assert ownership of the virtual IP addresses. The fixed 8-byte header carries Version/Type, Virtual Router ID, Priority, address count, a 4-bit reserved field plus a 12-bit Maximum Advertisement Interval, and a 16-bit checksum (RFC 1071 / RFC 5798 §5.2.9). Following the header is a list of IP addresses (IPv4 32-bit each, or IPv6 128-bit each) whose count is given by Count IPvX. This preset models IPv4; for IPv6 each address element would be 128 bits but the structure is identical. Carried directly over IP (protocol 112), destination 224.0.0.18 (link-local multicast).
+
+body:
+  - kind: group
+    id: vrrpHeaderWord1
+    name: Version / Type
+    children:
+      - id: version
+        name: Version
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            2: VRRPv2
+            3: VRRPv3
+        category: type
+        defaultValue: 3
+        doc: "VRRP protocol version. Must be 3 for VRRPv3 (RFC 5798). Value 2 identifies the older VRRPv2 (RFC 3768, IPv4-only). A router receiving a packet with an unknown Version MUST discard it. [RFC 5798 §5.2.1]"
+      - id: msgType
+        name: Type
+        type:
+          kind: enum
+          bits: 4
+          variants:
+            1: Advertisement
+        category: type
+        defaultValue: 1
+        doc: "VRRP message type. The only type defined in RFC 5798 is 1 (Advertisement). All other values are reserved; a router receiving a packet with an unknown Type MUST discard it. [RFC 5798 §5.2.2]"
+  - id: virtualRtrId
+    name: Virtual Rtr ID
+    type:
+      kind: int
+      bits: 8
+    category: identifier
+    doc: "Virtual Router Identifier (VRID). Values 1–255 identify the virtual router being advertised. A physical router may back multiple VRIDs. All routers in a VRRP domain sharing the same VRID form one redundancy group. [RFC 5798 §5.2.3]"
+  - id: priority
+    name: Priority
+    type:
+      kind: int
+      bits: 8
+    category: identifier
+    doc: "Sender's priority for becoming Master. 255 (0xFF) is reserved for the router that owns the IPv4 address(es) and it MUST become Master. 0 (0x00) is sent by a Master that is releasing responsibility (e.g. shutting down gracefully), triggering an immediate election. Default is 100 for backup routers. Higher value wins. [RFC 5798 §5.2.4]"
+  - id: vrrpAddrCount
+    name: Count IPvX Addr
+    type:
+      kind: int
+      bits: 8
+    category: length
+    doc: "Number of virtual IP addresses contained in this Advertisement. Each address is a 32-bit IPv4 address (or 128-bit IPv6 address) in the IP Addresses list that follows the header. MUST match the number of addresses configured on the virtual router. [RFC 5798 §5.2.5]"
+  - kind: group
+    id: rsvdAndMaxAdverInt
+    name: Rsvd / Max Adver Int
+    children:
+      - id: rsvd
+        name: Rsvd
+        type:
+          kind: bits
+          n: 4
+        category: reserved
+        doc: "4-bit reserved field. MUST be set to zero on transmission; MUST be ignored on reception. [RFC 5798 §5.2.6]"
+      - id: maxAdverInt
+        name: Max Adver Int
+        type:
+          kind: int
+          bits: 12
+        category: variable
+        doc: "Maximum Advertisement Interval in centiseconds (1/100 s). The Master sends one Advertisement every MaxAdverInt centiseconds. Backup routers derive the Master_Down_Interval as (3 × MaxAdverInt) + Skew_Time. Default value is 100 (= 1 second). Range 1–4095 centiseconds. [RFC 5798 §5.2.7]"
+  - id: checksum
+    name: Checksum
+    type:
+      kind: int
+      bits: 16
+    category: checksum
+    doc: "16-bit one's complement checksum of the VRRP message (starting from the Version/Type byte through the last IP address), with the checksum field itself set to zero during computation. For IPv4, the pseudo-header used in VRRPv3 includes Source IP, Destination IP (224.0.0.18), Protocol (112), and VRRP message length — matching the format used by TCP/UDP. [RFC 5798 §5.2.8 / RFC 1071]"
+  - kind: repeat
+    id: ipAddresses
+    name: IP Addresses
+    category: addressing
+    doc: "List of virtual IPv4 addresses protected by this VRRP instance. Each entry is a 32-bit big-endian IPv4 address. The number of entries equals Count IPvX Addr. For IPv6 VRRPv3 operation each entry would instead be 128 bits, but the header structure is identical. [RFC 5798 §5.2.9]"
+    element:
+      id: ipAddress
+      fields:
+        - id: ipAddr
+          name: IP Address
+          type:
+            kind: int
+            bits: 32
+          category: addressing
+          doc: "One virtual IPv4 address in network byte order (big-endian). The VRRP Master responds to ARP requests for this address, ensuring hosts on the subnet can continue to reach the default gateway even during a failover. [RFC 5798 §5.2.9]"
+    count: { kind: ref, field: vrrpAddrCount }

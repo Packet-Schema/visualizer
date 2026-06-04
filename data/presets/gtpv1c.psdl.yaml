@@ -1,0 +1,181 @@
+# yaml-language-server: $schema=../../schemas/psdl.schema.json
+name: GTPv1-C
+rowBits: 32
+byteOrder: BE
+description: "GTP version 1 Control Plane (GTPv1-C) header (3GPP TS 29.060), used in 2G/3G GPRS and early 4G networks for signalling between SGSN and GGSN over UDP port 2123. The mandatory 8-byte header consists of a flags byte (Version=1, PT=1, Reserved, E, S, PN), an 8-bit Message Type, a 16-bit total Length, and a 32-bit Tunnel Endpoint Identifier (TEID). When any of the E, S, or PN flags is set, a 4-byte optional block follows: Sequence Number (16 bits), N-PDU Number (8 bits), and Next Extension Header Type (8 bits). Common messages include Echo Request/Response (1/2), Create PDP Context Request/Response (16/17), Update PDP Context Request/Response (18/19), and Delete PDP Context Request/Response (20/21). The message body carries Information Elements (IEs) in type-length-value (TLV) or type-value (TV) encoding as defined in 3GPP TS 29.060 §7."
+
+body:
+  - kind: group
+    id: gtpcFlags
+    name: Flags
+    children:
+      - id: gtpcVersion
+        name: Version
+        type: { kind: int, bits: 3 }
+        category: type
+        defaultValue: 1
+        doc: "GTP version. MUST be 1 (binary 001) for GTPv1-C. Receivers MUST discard packets with Version != 1. [3GPP TS 29.060 §6]"
+      - id: gtpcPT
+        name: PT
+        type:
+          kind: enum
+          bits: 1
+          variants:
+            0: "GTP' (charging)"
+            1: "GTP (signalling)"
+        category: type
+        defaultValue: 1
+        doc: "Protocol Type flag. 1 indicates GTP (signalling/user-plane); 0 indicates GTP' (charging protocol, TS 32.295). GTPv1-C messages MUST set PT=1. [3GPP TS 29.060 §6]"
+      - id: gtpcReserved
+        name: Reserved
+        type: { kind: int, bits: 1 }
+        category: reserved
+        defaultValue: 0
+        doc: "Reserved bit. MUST be set to 0 by the sender and MUST be ignored by the receiver. [3GPP TS 29.060 §6]"
+      - id: gtpcE
+        name: E
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Extension Header flag. Set to 1 when the optional 4-byte block (Sequence Number, N-PDU Number, Next Extension Header Type) is present and the Next Extension Header Type field is meaningful. When any of E, S, or PN is set, the optional block MUST be present. [3GPP TS 29.060 §6]"
+      - id: gtpcS
+        name: S
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "Sequence Number flag. Set to 1 when the Sequence Number in the optional block carries a meaningful value for reliable delivery and request/response matching. When S=0, the sequence number field SHOULD be set to 0 by the sender. [3GPP TS 29.060 §6]"
+      - id: gtpcPN
+        name: PN
+        type: { kind: int, bits: 1 }
+        category: flags
+        defaultValue: 0
+        doc: "N-PDU Number flag. Set to 1 when the N-PDU Number in the optional block carries a meaningful value (used for SNDCP in-order delivery over 2G/3G). When PN=0, the N-PDU Number SHOULD be set to 0 by the sender. [3GPP TS 29.060 §6]"
+
+  - id: gtpcMessageType
+    name: Message Type
+    type:
+      kind: enum
+      bits: 8
+      variants:
+        1: "Echo Request"
+        2: "Echo Response"
+        3: "Version Not Supported"
+        4: "Node Alive Request"
+        5: "Node Alive Response"
+        6: "Redirection Request"
+        7: "Redirection Response"
+        16: "Create PDP Context Request"
+        17: "Create PDP Context Response"
+        18: "Update PDP Context Request"
+        19: "Update PDP Context Response"
+        20: "Delete PDP Context Request"
+        21: "Delete PDP Context Response"
+        22: "Initiate PDP Context Activation Request"
+        23: "Initiate PDP Context Activation Response"
+        26: "Error Indication"
+        27: "PDU Notification Request"
+        28: "PDU Notification Response"
+        29: "PDU Notification Reject Request"
+        30: "PDU Notification Reject Response"
+        32: "Send Routeing Information for GPRS Request"
+        33: "Send Routeing Information for GPRS Response"
+        34: "Failure Report Request"
+        35: "Failure Report Response"
+        36: "Note MS GPRS Present Request"
+        37: "Note MS GPRS Present Response"
+        48: "Identification Request"
+        49: "Identification Response"
+        50: "SGSN Context Request"
+        51: "SGSN Context Response"
+        52: "SGSN Context Acknowledge"
+        53: "Forward Relocation Request"
+        54: "Forward Relocation Response"
+        55: "Forward Relocation Complete"
+        56: "Relocation Cancel Request"
+        57: "Relocation Cancel Response"
+        58: "Forward SRNS Context"
+        59: "Forward Relocation Complete Acknowledge"
+        60: "Forward SRNS Context Acknowledge"
+        70: "RAN Information Relay"
+        96: "MBMS Notification Request"
+        97: "MBMS Notification Response"
+        98: "MBMS Notification Reject Request"
+        99: "MBMS Notification Reject Response"
+        100: "Create MBMS Context Request"
+        101: "Create MBMS Context Response"
+        102: "Update MBMS Context Request"
+        103: "Update MBMS Context Response"
+        104: "Delete MBMS Context Request"
+        105: "Delete MBMS Context Response"
+        112: "MBMS Registration Request"
+        113: "MBMS Registration Response"
+        114: "MBMS De-Registration Request"
+        115: "MBMS De-Registration Response"
+        116: "MBMS Session Start Request"
+        117: "MBMS Session Start Response"
+        118: "MBMS Session Stop Request"
+        119: "MBMS Session Stop Response"
+        120: "MBMS Session Update Request"
+        121: "MBMS Session Update Response"
+        128: "MS Info Change Notification Request"
+        129: "MS Info Change Notification Response"
+        240: "Data Record Transfer Request"
+        241: "Data Record Transfer Response"
+        255: "G-PDU"
+    category: type
+    defaultValue: 16
+    doc: "Message Type octet identifying the GTPv1-C operation. Create PDP Context Request/Response (16/17) establishes a PDP context (bearer) between SGSN and GGSN; Update PDP Context Request/Response (18/19) modifies an existing context (e.g. after RAU); Delete PDP Context Request/Response (20/21) tears it down; Echo Request/Response (1/2) verify path liveness. [3GPP TS 29.060 §7 / Table 7.1]"
+
+  - id: gtpcLength
+    name: Length
+    type: { kind: int, bits: 16 }
+    category: length
+    defaultValue: 4
+    doc: "Total length in octets of the GTPv1-C message excluding the mandatory first 4 bytes (flags, Message Type, and this Length field itself). The value covers the TEID (4 bytes), optional block (4 bytes when present), and all IEs. [3GPP TS 29.060 §6]"
+
+  - id: gtpcTEID
+    name: TEID
+    type: { kind: int, bits: 32 }
+    category: identifier
+    defaultValue: 0
+    doc: "Tunnel Endpoint Identifier. A 32-bit value identifying the GTP tunnel at the receiving SGSN or GGSN. Set to 0 in initial requests (e.g. Create PDP Context Request) before a remote TEID has been assigned; populated from the peer's response IE thereafter. Uniquely identifies a PDP context at the receiving entity. [3GPP TS 29.060 §6]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpcOpt }
+    field:
+      id: gtpcSeqNum
+      name: Sequence Number
+      type: { kind: int, bits: 16 }
+      category: identifier
+      doc: "Sequence Number. Present when any of E, S, or PN flags is set (gtpcOpt). Monotonically increasing counter used to match requests with responses and to detect retransmissions. The responding entity copies this value verbatim into the corresponding response. When S=0, SHOULD be set to 0 by the sender and ignored by the receiver. [3GPP TS 29.060 §6]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpcOpt }
+    field:
+      id: gtpcNPDUNumber
+      name: N-PDU Number
+      type: { kind: int, bits: 8 }
+      category: identifier
+      doc: "N-PDU Number. Present when any of E, S, or PN flags is set (gtpcOpt). Carries the SNDCP N-PDU sequence number used for guaranteed delivery and in-order reconstruction on the GPRS radio link when PN=1. When PN=0, SHOULD be set to 0 by the sender and ignored by the receiver. [3GPP TS 29.060 §6]"
+
+  - kind: optional
+    when: { kind: ref, field: gtpcOpt }
+    field:
+      id: gtpcNextExtHdrType
+      name: Next Ext Header Type
+      type:
+        kind: enum
+        bits: 8
+        variants:
+          0: "No More Extension Headers"
+          192: "PDCP PDU Number"
+          193: "Suspend Request"
+          194: "Suspend Response"
+      category: type
+      doc: "Next Extension Header Type. Present when any of E, S, or PN flags is set (gtpcOpt). 0x00 indicates no extension header follows. Non-zero values identify the type of the first GTP Extension Header immediately following this field; each extension header carries its own Next Extension Header Type to form a chain. [3GPP TS 29.060 §6]"
+
+  - id: gtpcIEs
+    name: Information Elements
+    type: { kind: bytes, n: { kind: ref, field: gtpcIeBytes } }
+    category: variable
+    doc: "Information Elements (IEs) carrying all GTPv1-C signalling parameters, encoded in TV (type-value) or TLV (type-length-value) format. Type octets 1..127 use TV encoding (fixed length per type); type octets 128..254 use TLV encoding with a 2-byte length field after the type. Common IEs: 1=Cause (1B), 2=IMSI (8B TV), 14=Recovery (1B), 16=NSAPI (1B), 128=End User Address, 131=Access Point Name, 132=Protocol Config Options, 133=GSN Address, 134=MSISDN, 135=QoS Profile. gtpcIeBytes is an external reference supplying the byte count of this field. [3GPP TS 29.060 §7.7]"
