@@ -175,7 +175,14 @@ export function toAscii(
   if (absentOptionals.length > 0) {
     const interiorWidth = 2 * packet.rowBits - 1;
     for (const opt of absentOptionals) {
-      const label = `~ (Optional ${opt.field.name}) ~`;
+      const inner = opt.container;
+      const innerName =
+        (!("kind" in inner) || inner.kind === "field"
+          ? (inner as Field).name
+          : "name" in inner
+            ? inner.name
+            : undefined) ?? "field";
+      const label = `~ (Optional ${innerName}) ~`;
       // Pad to the ruler width when the label fits, otherwise keep the full
       // label intact (the row will be wider than rowBits — readers prefer a
       // truthful label to a truncated one).
@@ -227,8 +234,6 @@ function collectPsdl04(
         for (const v of Object.values(c.cases)) {
           collectPsdl04(v.fields, varints, berIds, absent, env);
         }
-        if (c.default)
-          collectPsdl04(c.default.fields, varints, berIds, absent, env);
         break;
       case "encrypted":
         collectPsdl04(
@@ -239,6 +244,15 @@ function collectPsdl04(
           env,
         );
         break;
+      case "bounded":
+        // PSDL 0.5 — a Bounded is a transparent wire-scope; descend into its
+        // children so any varint / berLength leaf inside still seeds.
+        collectPsdl04(c.fields, varints, berIds, absent, env);
+        break;
+      // PSDL 0.5 — "align" (padding, no leaf), "virtual" (zero-width computed
+      // field) and "ref" (resolved transparently by resolveLayout against
+      // packet.defs) carry no varint / berLength leaf for this seeding pass, so
+      // they need no case and fall through to the switch's implicit no-op.
       case "optional": {
         // Evaluate `when` against the (already seeded) env. Refs that don't
         // resolve are treated as "absent" — the placeholder row is the safer
@@ -250,11 +264,16 @@ function collectPsdl04(
           present = false;
         }
         if (present) {
-          // The inner field will lay out normally; recurse so any berLength /
-          // varint inside it (if we ever nest) still seeds correctly.
-          if (c.field.type.kind === "varint")
-            varints.set(c.field.id, c.field.type.encoding);
-          if (c.field.type.kind === "berLength") berIds.add(c.field.id);
+          // The inner container lays out normally; recurse so any berLength /
+          // varint inside it still seeds correctly.
+          const inner = c.container;
+          if (!("kind" in inner) || inner.kind === "field") {
+            const f = inner as Field;
+            if (f.type.kind === "varint") varints.set(f.id, f.type.encoding);
+            if (f.type.kind === "berLength") berIds.add(f.id);
+          } else {
+            collectPsdl04([inner], varints, berIds, absent, env);
+          }
         } else {
           absent.push(c);
         }

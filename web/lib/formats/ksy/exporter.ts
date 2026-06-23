@@ -8,6 +8,8 @@
 import { stringify as yamlStringify } from "yaml";
 
 import { sanitizeId } from "../common";
+import { isField } from "../../psdl/utils";
+import { isBytesDelimited } from "../../psdl/normalize";
 import type {
   Container,
   Encrypted,
@@ -143,15 +145,23 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       return first.fields.flatMap((ch) => containerToKsy(ch, ctx));
     }
     case "optional": {
-      // PSDL 0.4 Optional — emit `if:` if the predicate is a simple ref
-      // (Kaitai accepts a name), otherwise drop to a psdl-only comment.
-      const inner = fieldToKsy(c.field, ctx);
+      // PSDL 0.5 Optional may wrap any container. Kaitai's `if:` only attaches
+      // to a single seq entry, so we can only carry the predicate when the
+      // inner container is a leaf Field; compound containers are emitted
+      // unconditionally with a psdl-only note.
+      if (!isField(c.container)) {
+        ctx.psdlOnly.push(
+          `optional "${c.id ?? "?"}" wraps a compound container — predicate ${exprToString(c.when)} left unconditional`,
+        );
+        return containerToKsy(c.container, ctx);
+      }
+      const inner = fieldToKsy(c.container, ctx);
       const ifExpr = exprToKaitaiIf(c.when);
       if (ifExpr) {
         inner.if = ifExpr;
       } else {
         ctx.psdlOnly.push(
-          `optional "${c.id ?? c.field.id}" predicate ${exprToString(c.when)} not expressible in Kaitai — left unconditional`,
+          `optional "${c.id ?? c.container.id}" predicate ${exprToString(c.when)} not expressible in Kaitai — left unconditional`,
         );
       }
       return [inner];
@@ -184,6 +194,44 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
         },
       ];
     }
+    case "bounded": {
+      // PSDL 0.5 — a Bounded is a transparent wire-scope (a declared byte
+      // budget around its children). Kaitai has no equivalent scope, so we
+      // splice the children inline like a Group and record the dropped budget
+      // as a psdl-only note.
+      ctx.psdlOnly.push(
+        `bounded "${c.id}" byte budget (${exprToString(c.bytes)}) not representable in .ksy — children spliced inline`,
+      );
+      return c.fields.flatMap((ch) => containerToKsy(ch, ctx));
+    }
+    case "align":
+      // PSDL 0.5 — Align pads the cursor to a bit boundary. Emit a sized
+      // padding entry so the generated parser still advances the stream.
+      ctx.psdlOnly.push(
+        `align to ${c.to} bits lowered to a fixed padding placeholder`,
+      );
+      return [
+        {
+          id: toKsyId(c.id ?? "align"),
+          size: Math.max(1, Math.ceil(c.to / 8)),
+          doc: `psdl-only: align to ${c.to} bits`,
+        },
+      ];
+    case "virtual":
+      // PSDL 0.5 — Virtual is a zero-width computed field; it has no wire
+      // presence, so it cannot be a Kaitai seq entry. Record it as a note.
+      ctx.psdlOnly.push(
+        `virtual "${c.id}" (${exprToString(c.expr)}) is zero-width — dropped from .ksy seq`,
+      );
+      return [];
+    case "ref":
+      // PSDL 0.5 — RefContainer expands a named def transparently. Resolving it
+      // needs packet.defs, which the exporter doesn't thread; surface it as a
+      // psdl-only note rather than silently dropping the referenced shape.
+      ctx.psdlOnly.push(
+        `ref "${c.id}" → defs["${c.ref}"] not expanded in .ksy`,
+      );
+      return [];
     /* v8 ignore start */ // exhaustiveness guard: every Container kind is handled above
     default:
       return [];
@@ -216,7 +264,16 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
       entry.type = `b${f.type.n}`;
       break;
     case "bytes":
-      entry.size = exprToKsySize(f.type.n);
+      if (isBytesDelimited(f.type.n)) {
+        // 0.5 — delimiter-terminated bytes. Kaitai's `size` can't express a
+        // multi-byte delimiter; surface it as a psdl-only note and leave the
+        // field unsized.
+        ctx.psdlOnly.push(
+          `Field "${f.id}" delimited bytes (delimiter ${f.type.n.delimiter.join(",")}) not expressible as Kaitai size`,
+        );
+      } else {
+        entry.size = exprToKsySize(f.type.n);
+      }
       break;
     case "enum": {
       const bytes = Math.max(1, Math.ceil(f.type.bits / 8));
@@ -281,6 +338,10 @@ function exprToKaitaiIf(e: Expr): string | null {
     }
     case "peek":
       return null;
+    default:
+      // 0.5 exprs (lookup / wireSize / prevIter / remaining / enclosing*)
+      // have no Kaitai `if:` equivalent — fall back to a psdl-only comment.
+      return null;
   }
 }
 
@@ -302,6 +363,10 @@ function exprToString(e: Expr): string {
       return `(${exprToString(e.test)} ? ${exprToString(e.t)} : ${exprToString(e.f)})`;
     case "peek":
       return `peek(${e.bits}${e.offset !== undefined ? `, ${exprToString(e.offset)}` : ""})`;
+    default:
+      // 0.5 exprs (lookup / wireSize / prevIter / remaining / enclosing*) are
+      // surfaced by kind so the reader at least sees the construct name.
+      return `${(e as { kind: string }).kind}(…)`;
   }
 }
 

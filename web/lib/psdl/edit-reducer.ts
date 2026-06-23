@@ -149,7 +149,7 @@ function wrapNode(
   const id = `${describeKind(inner)}_wrap_${Math.random().toString(36).slice(2, 8)}`;
   switch (kind) {
     case "group":
-      return { kind: "group", id, children: [inner] };
+      return { kind: "group", id, name: id, children: [inner] };
     case "repeat":
       return {
         kind: "repeat",
@@ -176,7 +176,7 @@ function wrapNode(
       // Group containing the inner, which is the closest first-class
       // representation. Sibling agents that need a literal Struct can switch
       // to 'group' which carries the same on-wire semantics.
-      return { kind: "group", id, children: [inner] };
+      return { kind: "group", id, name: id, children: [inner] };
   }
 }
 

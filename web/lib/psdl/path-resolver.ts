@@ -15,7 +15,6 @@ import type {
   Group,
   PsdlPacket,
   Repeat,
-  Struct,
   Switch,
 } from "./types";
 
@@ -110,8 +109,12 @@ export function descendNamed(node: Container, slot: string): Container[] {
       assertEncrypted(node);
       return node.plaintext.fields;
     case "default":
-      assertSwitchDefault(node);
-      return node.default.fields;
+      assertSwitch(node);
+      // 0.5 — the default arm is the "_" case.
+      if (!node.cases["_"]) {
+        throw new Error("expected switch with a default ('_') case at path");
+      }
+      return node.cases["_"].fields;
     default: {
       if (slot.startsWith("cases:")) {
         assertSwitch(node);
@@ -155,15 +158,6 @@ function assertEncrypted(node: Container): asserts node is Encrypted {
 function assertSwitch(node: Container): asserts node is Switch {
   if (!("kind" in node) || node.kind !== "switch") {
     throw new Error(`expected switch at path; got ${describeKind(node)}`);
-  }
-}
-
-function assertSwitchDefault(
-  node: Container,
-): asserts node is Switch & { default: Struct } {
-  assertSwitch(node);
-  if (!node.default) {
-    throw new Error("expected switch with a default case at path");
   }
 }
 

@@ -143,18 +143,8 @@ function overlayFieldEdits(c: Container, mirror: RendererPacket): Container {
         fields: v.fields.map((f) => overlayFieldEdits(f, mirror)),
       };
     }
-    return {
-      ...c,
-      cases: nextCases,
-      ...(c.default
-        ? {
-            default: {
-              ...c.default,
-              fields: c.default.fields.map((f) => overlayFieldEdits(f, mirror)),
-            },
-          }
-        : {}),
-    };
+    // The 0.5 default arm is the "_" case, already handled by the loop above.
+    return { ...c, cases: nextCases };
   }
   if (c.kind === "encrypted") {
     return {
@@ -168,18 +158,48 @@ function overlayFieldEdits(c: Container, mirror: RendererPacket): Container {
   if (c.kind === "optional") {
     return {
       ...c,
-      field: overlayFieldEdits(c.field, mirror) as typeof c.field,
+      container: overlayFieldEdits(c.container, mirror) as typeof c.container,
+    };
+  }
+  if (c.kind === "bounded") {
+    return {
+      ...c,
+      fields: c.fields.map((f) => overlayFieldEdits(f, mirror)),
     };
   }
   return c;
 }
 
-function mergeContainer(c: Container, mirror: RendererPacket): Container {
+function mergeContainer(c: Container, mirror: RendererPacket): Container[] {
   const overlaid = overlayFieldEdits(c, mirror);
   // After overlay we know the leaf-level merges are done; now handle
   // container-level Repeat merges (which need to descend through
   // Group / Switch / Encrypted / Optional too, sub-agent H2).
-  return mergeRepeats(overlaid, mirror);
+  const merged = mergeRepeats(overlaid, mirror);
+  // PSDL 0.5 wraps the TLV / chain Repeat in a transparent `bounded`
+  // wire-scope (e.g. IPv4's `optionsArea`). The renderer mirror flattens
+  // that scope (`flattenForMirror`), so a diagram-driven TLV / chain id
+  // (`options`) maps onto a field at the mirror's *top* level. To keep the
+  // exported PSDL addressable by those same flat ids — and so downstream
+  // body walks find the merged Repeat where the mirror put it — we splice a
+  // `bounded` that holds a merge-target Repeat inline rather than re-wrapping
+  // it. Scopes with no merge-target Repeat are kept intact so unrelated wire
+  // scopes round-trip untouched.
+  if (merged.kind === "bounded" && containsMergeTargetRepeat(merged.fields)) {
+    return merged.fields;
+  }
+  return [merged];
+}
+
+/** Does this container list hold a Repeat that a merge would target
+ *  (recursing through nested transparent scopes / groups)? */
+function containsMergeTargetRepeat(containers: Container[]): boolean {
+  return containers.some((c) => {
+    if (c.kind === "repeat") return true;
+    if (c.kind === "bounded") return containsMergeTargetRepeat(c.fields);
+    if (c.kind === "group") return containsMergeTargetRepeat(c.children);
+    return false;
+  });
 }
 
 function mergeRepeats(c: Container, mirror: RendererPacket): Container {
@@ -198,18 +218,8 @@ function mergeRepeats(c: Container, mirror: RendererPacket): Container {
         fields: v.fields.map((f) => mergeRepeats(f, mirror)),
       };
     }
-    return {
-      ...c,
-      cases: nextCases,
-      ...(c.default
-        ? {
-            default: {
-              ...c.default,
-              fields: c.default.fields.map((f) => mergeRepeats(f, mirror)),
-            },
-          }
-        : {}),
-    };
+    // The 0.5 default arm is the "_" case, already handled by the loop above.
+    return { ...c, cases: nextCases };
   }
   if (c.kind === "encrypted") {
     return {
@@ -218,6 +228,12 @@ function mergeRepeats(c: Container, mirror: RendererPacket): Container {
         ...c.plaintext,
         fields: c.plaintext.fields.map((f) => mergeRepeats(f, mirror)),
       },
+    };
+  }
+  if (c.kind === "bounded") {
+    return {
+      ...c,
+      fields: c.fields.map((f) => mergeRepeats(f, mirror)),
     };
   }
   // Field / Optional carry no Repeat — already overlaid above, no-op here.
@@ -241,6 +257,6 @@ export function mergeInstancesIntoPsdl(
 ): PsdlPacket {
   return {
     ...psdl,
-    body: psdl.body.map((c) => mergeContainer(c, mirror)),
+    body: psdl.body.flatMap((c) => mergeContainer(c, mirror)),
   };
 }

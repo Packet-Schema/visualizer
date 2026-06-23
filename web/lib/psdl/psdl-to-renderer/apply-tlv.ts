@@ -49,16 +49,61 @@ export function applyTlvInstances(
   if (tlvByRepeatId.size === 0) return psdl;
 
   let mutated = false;
-  const newBody: Container[] = [];
-  for (const c of psdl.body) {
+
+  // Will this TLV Repeat actually be rewritten (vs. left as a Repeat in
+  // Stage 3 — no instances and no slot)? Mirrors the Stage-3 guard below.
+  const tlvExpands = (id: string): boolean => {
+    const tlv = tlvByRepeatId.get(id);
+    if (!tlv) return false;
+    const slot = Math.max(0, Math.floor(slotBytes[id] ?? 0));
+    return !(tlv.instances.length === 0 && slot === 0);
+  };
+
+  // Does this container list (recursively through transparent scopes /
+  // groups) hold a TLV Repeat that will be expanded? Used to decide whether
+  // a `bounded` scope should be spliced inline (so the flattened TLV ids
+  // match the renderer mirror) or kept intact.
+  const containsExpandedTlv = (containers: Container[]): boolean =>
+    containers.some((c) => {
+      if (c.kind === "repeat") return tlvExpands(c.id);
+      if (c.kind === "bounded") return containsExpandedTlv(c.fields);
+      if (c.kind === "group") return containsExpandedTlv(c.children);
+      return false;
+    });
+
+  // Expand a single container into its replacement list. A TLV Repeat becomes
+  // the per-instance Groups (+ placeholders); `group`s are descended so a
+  // nested TLV Repeat is still found and replaced in place.
+  //
+  // `bounded` (e.g. IPv4's `optionsArea` wrapping the options Repeat) is a
+  // PSDL 0.5 transparent wire-scope. The renderer mirror flattens it
+  // (`flattenForMirror`), so the TLV id (`options`) surfaces at the top
+  // level there. To keep the expanded body addressable by the same flat ids
+  // — and so the per-instance Groups land where the diagram / downstream
+  // walkers expect them — we splice the bounded's expanded children inline
+  // here too rather than re-wrapping them. Only do so when the bounded
+  // actually contains a TLV Repeat we expanded; otherwise leave it intact so
+  // unrelated wire-scopes round-trip untouched.
+  const expand = (c: Container): Container[] => {
+    if (c.kind === "bounded") {
+      // Detect whether this scope holds a TLV Repeat we will expand, so the
+      // splice-vs-wrap decision keys off *this* bounded rather than the
+      // shared `mutated` flag (which a prior sibling may already have set).
+      const expandsHere = containsExpandedTlv(c.fields);
+      const inner = c.fields.flatMap(expand);
+      return expandsHere ? inner : [{ ...c, fields: inner }];
+    }
+    if (c.kind === "group") {
+      return [{ ...c, children: c.children.flatMap(expand) }];
+    }
     if (c.kind === "repeat" && tlvByRepeatId.has(c.id)) {
       const tlv = tlvByRepeatId.get(c.id)!;
       const slot = Math.max(0, Math.floor(slotBytes[c.id] ?? 0));
+      const newBody: Container[] = [];
 
       // Stage 3: neither instances nor a slot → leave the Repeat alone.
       if (tlv.instances.length === 0 && slot === 0) {
-        newBody.push(c);
-        continue;
+        return [c];
       }
 
       mutated = true;
@@ -72,7 +117,7 @@ export function applyTlvInstances(
           ...(c.category ? { category: c.category } : {}),
           ...(c.doc ? { doc: c.doc } : {}),
         });
-        continue;
+        return newBody;
       }
 
       // Stage 2: populated → one Group per instance.
@@ -136,9 +181,11 @@ export function applyTlvInstances(
       // diagram without a visible warning — a follow-up should surface
       // this as a banner above the diagram or auto-grow IHL to match.
       // See PR #115 sub-agent review for the rationale.
-      continue;
+      return newBody;
     }
-    newBody.push(c);
-  }
+    return [c];
+  };
+
+  const newBody = psdl.body.flatMap(expand);
   return mutated ? { ...psdl, body: newBody } : psdl;
 }

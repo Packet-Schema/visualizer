@@ -409,8 +409,8 @@ function wrapInIfSwitch(
     id: `${id}_if`,
     name,
     on,
-    cases: { "1": present, "0": absent },
-    default: present,
+    // 0.5 — the default arm is the "_" case; mirror `present` there.
+    cases: { "1": present, "0": absent, _: present },
   };
 }
 

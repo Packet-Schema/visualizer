@@ -12,7 +12,7 @@
 // still consults when a category is missing.
 
 import type { ColorToken } from "../render-tokens";
-import type { CategoryToken } from "./types";
+import type { CategoryToken, VarintEncoding } from "./types";
 
 export type { ColorToken } from "../render-tokens";
 export type { CategoryToken } from "./types";
@@ -27,7 +27,7 @@ export type SubField = {
    *  override surface lives inside a subfield rather than a top-level
    *  Field (e.g. WebSocket's `payloadLength7` inside the byte-0 group). */
   switchCases?: { value: number; label: string }[];
-  varintEncoding?: "quic" | "protobuf" | "cbor";
+  varintEncoding?: VarintEncoding;
   isBerLength?: boolean;
   optionalGateFor?: string[];
   enumVariants?: Record<number, string>;
@@ -154,7 +154,7 @@ export type Field = {
    * width picker in OverridePanel. The runtime width is the env value
    * keyed by this field's id (the same convention PSDL normalize uses).
    */
-  varintEncoding?: "quic" | "protobuf" | "cbor";
+  varintEncoding?: VarintEncoding;
   /** True when this field's PSDL type is `berLength`. Same env override
    *  convention as `varintEncoding`. */
   isBerLength?: boolean;

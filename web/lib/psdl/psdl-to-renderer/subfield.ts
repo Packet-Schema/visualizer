@@ -5,10 +5,25 @@
 // can draw e.g. IPv4 flag bits R/DF/MF as sub-cells inside one Field).
 
 import { isField } from "../utils";
-import type { Field as PsdlField, Group } from "../types";
+import type { EnumVariant, Field as PsdlField, Group } from "../types";
 import type { Field as RendererField, SubField } from "../renderer";
 
 import { typeBits } from "./shared";
+
+/**
+ * Flatten 0.5 enum variants (`string | { label; … }`) down to the renderer's
+ * `Record<number, string>` label map. The renderer only paints the label;
+ * per-variant docs/levels are dropped here.
+ */
+function enumLabels(
+  variants: Record<number, EnumVariant>,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const [k, v] of Object.entries(variants)) {
+    out[Number(k)] = typeof v === "string" ? v : v.label;
+  }
+  return out;
+}
 
 /**
  * Collapse a Group of leaf fields into one renderer Field whose
@@ -28,7 +43,8 @@ export function groupToSubfieldField(g: Group): RendererField | null {
     if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
     if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
     if (child.type.kind === "berLength") sf.isBerLength = true;
-    if (child.type.kind === "enum") sf.enumVariants = child.type.variants;
+    if (child.type.kind === "enum")
+      sf.enumVariants = enumLabels(child.type.variants);
     subs.push(sf);
     total += bits;
     if (child.category && !category) category = child.category;
@@ -57,7 +73,7 @@ export function plainFieldToRenderer(f: PsdlField): RendererField {
   // Data-dependent type widths get an env-override widget in OverridePanel.
   if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
   if (f.type.kind === "berLength") out.isBerLength = true;
-  if (f.type.kind === "enum") out.enumVariants = f.type.variants;
+  if (f.type.kind === "enum") out.enumVariants = enumLabels(f.type.variants);
   if (f.byteOrder) out.byteOrder = f.byteOrder;
   return out;
 }

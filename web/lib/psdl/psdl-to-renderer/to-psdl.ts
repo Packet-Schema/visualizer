@@ -89,7 +89,7 @@ export function rendererToPsdl(packet: RendererPacket): PsdlPacket {
   return {
     name: packet.name,
     rowBits: packet.rowBits,
-    byteOrder: packet.byteOrder ?? "BE",
+    byteOrder: packet.byteOrder === "LE" ? "LE" : "BE",
     ...(packet.description ? { description: packet.description } : {}),
     body,
   };

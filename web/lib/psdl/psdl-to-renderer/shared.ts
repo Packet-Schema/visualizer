@@ -5,6 +5,7 @@
 // live here so we don't have a cycle through `index.ts`.
 
 import { evalExpr, MissingRefError } from "../expr";
+import { isBytesDelimited } from "../normalize";
 import { isField } from "../utils";
 import type { Field as PsdlField, Repeat, Struct, Switch } from "../types";
 import type { TlvCatalogField } from "../renderer";
@@ -22,6 +23,9 @@ export function typeBits(type: PsdlField["type"]): number {
     case "bits":
       return type.n;
     case "bytes":
+      // 0.5 — `n` may be a delimiter spec instead of an Expr; delimited
+      // length is dynamic, so treat it as zero-width at design time.
+      if (isBytesDelimited(type.n)) return 0;
       try {
         return evalExpr(type.n, new Map()) * 8;
       } catch (e) {
@@ -79,17 +83,17 @@ function flattenContainersToTlvFields(
         out.push(...flattenContainersToTlvFields(child.children));
         break;
       case "switch": {
-        // Representative shape: prefer the explicit `default` branch;
-        // otherwise take the first numerically-keyed case. Anything else
-        // would need user-driven dispatch which TLV editing doesn't
-        // currently expose.
-        const repr = child.default ?? Object.values(child.cases)[0] ?? null;
+        // Representative shape: prefer the explicit default branch (the "_"
+        // case in 0.5); otherwise take the first numerically-keyed case.
+        // Anything else would need user-driven dispatch which TLV editing
+        // doesn't currently expose.
+        const repr = child.cases["_"] ?? Object.values(child.cases)[0] ?? null;
         if (repr) out.push(...flattenContainersToTlvFields(repr.fields));
         break;
       }
       case "optional":
-        // Treat the inner field as always-present for catalog purposes.
-        out.push(...flattenContainersToTlvFields([child.field]));
+        // Treat the inner container as always-present for catalog purposes.
+        out.push(...flattenContainersToTlvFields([child.container]));
         break;
       // `repeat` / `encrypted` inside a TLV case body would need real
       // dispatch metadata; skip silently for now (no shipping preset
