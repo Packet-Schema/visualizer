@@ -13,3 +13,7 @@
 # (also runs via `prebuild` and `pretest` hooks).
 web/lib/psdl/presets.generated.ts
 web/lib/psdl/psdl.schema.generated.ts
+
+# Lazy-load preset artifacts (generated at build time from @packet-schema/presets)
+web/lib/psdl/preset-index.generated.ts
+web/public/presets/
