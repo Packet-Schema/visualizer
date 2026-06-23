@@ -1,18 +1,19 @@
-// PSDL 0.2 — Packet Schema Definition Language.
-// Simple bidirectional equality-constraint solver.
+// PSDL — interactive bidirectional equality-constraint solver.
+//
+// NOTE: this is deliberately NOT `@packet-schema/core`'s `propagate`. Core's
+// solver treats the env as authoritative for every ref: when both sides of a
+// constraint already have values it reports a conflict. The visualizer's
+// interactive model is different — when the user drags a field (`changedKey`),
+// that side is authoritative and the *dependent* side must be recomputed
+// (overwriting its now-stale value). So we keep the visualizer's own solver.
 //
 // Each Constraint expresses `lhs == rhs` where exactly one side reduces to a
 // single field reference. After the user mutates that reference (the
-// `changedKey`), we recompute the other side's expression against the new
-// env and write the result back into the corresponding ref on the opposite
-// side. If both sides reduce to non-ref expressions and disagree, that's a
-// conflict.
-//
-// We also support the inverse case for the canonical IHL ⇔ headerBytes:
-// if `headerBytes` is what changed, solving `IHL * 4 == headerBytes` for IHL
-// requires inverting `* 4` into `/ 4`. The solver knows how to invert a
-// limited family of single-operator expressions (the ones used by our
-// presets).
+// `changedKey`), we recompute the other side's expression against the new env
+// and write the result back into the corresponding ref on the opposite side.
+// The solver knows how to invert a limited family of single-operator
+// expressions (the ones used by our presets), e.g. solving `IHL * 4 ==
+// headerBytes` for IHL by inverting `* 4` into `/ 4`.
 
 import { evalExpr, MissingRefError } from "./expr";
 import type { Constraint, Expr, PacketEnv } from "./types";
@@ -31,12 +32,6 @@ function singleRef(expr: Expr): string | null {
  * Try to invert `expr` so it solves for `targetRef`, assuming `expr == known`.
  * Returns the numeric value that should be assigned to `targetRef`, or null
  * if we cannot invert this shape.
- *
- * Supported shapes:
- *   ref                                   → known
- *   ref op lit / lit op ref               → invert one of +,-,*,/,%,<<,>>
- *   (expr containing exactly one ref)     → traverse, peeling one operator
- *                                            at a time.
  */
 function solveFor(
   expr: Expr,
@@ -47,12 +42,10 @@ function solveFor(
   if (expr.kind === "ref") {
     return expr.field === targetRef ? known : null;
   }
-  if (expr.kind === "lit") return null;
-  if (expr.kind === "cond") return null;
-  // PSDL 0.4 — peek dispatches on lookahead bytes; treated as constant for
-  // solver purposes, so it can never carry the target ref.
-  if (expr.kind === "peek") return null;
-  // expr.kind === 'op'
+  // Only single-operator `op` expressions are invertible. Literals, conds,
+  // peeks and the 0.5 nullary/contextual exprs (lookup / wireSize / prevIter /
+  // remaining / enclosing*) cannot carry the target ref in a solvable shape.
+  if (expr.kind !== "op") return null;
   const aHas = containsRef(expr.a, targetRef);
   const bHas = containsRef(expr.b, targetRef);
   if (aHas === bHas) return null; // ambiguous or absent on both sides.
@@ -75,7 +68,6 @@ function solveFor(
 
 function containsRef(expr: Expr, target: string): boolean {
   if (expr.kind === "ref") return expr.field === target;
-  if (expr.kind === "lit") return false;
   if (expr.kind === "cond")
     return (
       containsRef(expr.test, target) ||
@@ -87,6 +79,9 @@ function containsRef(expr: Expr, target: string): boolean {
     // mention a ref; it's not solvable here, just searched.
     return expr.offset !== undefined && containsRef(expr.offset, target);
   }
+  // Only `op` recurses into operands; every other kind (lit + 0.5 nullary /
+  // contextual exprs) carries no nested ref the solver acts on.
+  if (expr.kind !== "op") return false;
   return containsRef(expr.a, target) || containsRef(expr.b, target);
 }
 
@@ -171,11 +166,6 @@ export function propagate(
       const lhsVal = evalConst(c.lhs, next);
       if (lhsVal === null) continue;
       if (rhsRef) {
-        const existing = next.get(rhsRef);
-        if (existing !== undefined && existing !== lhsVal) {
-          // Try solving for rhsRef in case the rhs was a literal-bearing
-          // expression — but here rhs IS a single ref so just set.
-        }
         next.set(rhsRef, lhsVal);
       } else {
         // RHS is an expression with one ref — solve for that ref.
@@ -229,8 +219,6 @@ function uniqueRefs(expr: Expr): string[] {
 
 function collectRefs(expr: Expr, set: Set<string>): void {
   switch (expr.kind) {
-    case "lit":
-      return;
     case "ref":
       set.add(expr.field);
       return;
@@ -244,12 +232,11 @@ function collectRefs(expr: Expr, set: Set<string>): void {
       collectRefs(expr.f, set);
       return;
     case "peek":
-      // peek.bits is a literal but peek.offset is itself an Expr, so a
-      // lookahead like `peek(8, ref("hdr_len"))` does pull a ref into
-      // the constraint graph. Missing this case made `uniqueRefs`
-      // under-count and the propagator skip valid drivers.
+      // peek.offset is itself an Expr, so a lookahead like
+      // `peek(8, ref("hdr_len"))` does pull a ref into the constraint graph.
       if (expr.offset) collectRefs(expr.offset, set);
       return;
+    // lit + 0.5 nullary / contextual exprs carry no solver-relevant refs.
   }
 }
 
