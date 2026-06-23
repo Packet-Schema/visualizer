@@ -2,7 +2,7 @@
 // detection, ref-only direction, and validate().
 
 import { describe, expect, it } from "vitest";
-import { lit, op, ref } from "../../lib/psdl/expr";
+import { lit, lookup, op, ref } from "../../lib/psdl/expr";
 import { propagate, validate } from "../../lib/psdl/constraint";
 import type { Constraint, PacketEnv } from "../../lib/psdl/types";
 
@@ -178,6 +178,40 @@ describe("propagate — non-invertible inverse path", () => {
     );
     if ("conflict" in r) throw new Error(r.conflict);
     expect(r.ok.get("ihl")).toBe(0);
+  });
+});
+
+describe("propagate — 0.5 lookup expr refs", () => {
+  // `lookup(ref("x"), table) == ref("y")`: the controlling ref `x` lives
+  // *inside* the lookup key. Before exprRefs the hand-rolled walk only
+  // recursed into op/cond/peek, so changing `x` never touched `y`.
+  const lookupConstraint: Constraint = {
+    lhs: lookup(ref("x"), { 0: 10, 1: 20, 2: 40 }),
+    rhs: ref("y"),
+  };
+
+  it("propagates a lookup-key change through to the dependent ref", () => {
+    // x=2 → table[2]=40 → y must follow. Before exprRefs, `containsRef` never
+    // saw `x` inside the lookup key so this constraint was skipped entirely.
+    const start: PacketEnv = new Map([
+      ["x", 2],
+      ["y", 10],
+    ]);
+    const r = propagate([lookupConstraint], start, "x");
+    if ("conflict" in r) throw new Error(r.conflict);
+    expect(r.ok.get("y")).toBe(40);
+  });
+
+  it("inverse direction: lookup is non-invertible, so the controlling ref is left untouched", () => {
+    // Changing `y` can't be solved back into `x` (lookup isn't invertible);
+    // `solveFor` declines and `x` is left as-is (no spurious conflict).
+    const start: PacketEnv = new Map([
+      ["x", 1],
+      ["y", 99],
+    ]);
+    const r = propagate([lookupConstraint], start, "y");
+    if ("conflict" in r) throw new Error(r.conflict);
+    expect(r.ok.get("x")).toBe(1);
   });
 });
 

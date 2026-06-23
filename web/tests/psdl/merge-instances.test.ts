@@ -44,9 +44,9 @@ describe("mergeInstancesIntoPsdl", () => {
     opts.tlv.instances = [{ kind: 1 }, { kind: 7, extras: { addrCount: 3 } }];
 
     const merged = mergeInstancesIntoPsdl(studio, mirror);
-    const optionsRepeat = merged.body.find(
-      (c): c is Repeat => c.kind === "repeat" && c.id === "options",
-    );
+    // 0.5: the merged options Repeat stays nested inside the `optionsArea`
+    // Bounded (the wire-scope is preserved on export), so descend to find it.
+    const optionsRepeat = findOptionsRepeat(merged.body);
     expect(optionsRepeat?.instances).toEqual([
       { kind: 1 },
       { kind: 7, extras: { addrCount: 3 } },
@@ -63,9 +63,7 @@ describe("mergeInstancesIntoPsdl", () => {
     const studio = structuredClone(PRESETS.ipv4!);
     const mirror = psdlToRenderer(PRESETS.ipv4!);
     const merged = mergeInstancesIntoPsdl(studio, mirror);
-    const optionsRepeat = merged.body.find(
-      (c): c is Repeat => c.kind === "repeat" && c.id === "options",
-    );
+    const optionsRepeat = findOptionsRepeat(merged.body);
     expect(optionsRepeat?.instances).toBeUndefined();
   });
 
@@ -169,12 +167,10 @@ describe("mergeInstancesIntoPsdl", () => {
   });
 
   it("keeps a bounded intact when it holds only a plain (non-TLV/chain) Repeat", () => {
-    // The mirror-aware unwrap in `mergeContainer` only splices a `bounded`
-    // inline when it wraps a *merge-target* Repeat (one the mirror keys by a
-    // TLV or chain catalog). A `bounded` whose inner Repeat has no such mirror
-    // entry must survive the merge so its `bytes` wire-budget round-trips.
-    // This exercises `isMergeTargetRepeat` returning false → the bounded is
-    // NOT unwrapped.
+    // `mergeContainer` never unwraps a `bounded`: `mergeRepeats` recurses into
+    // `bounded.fields` to update any inner Repeat in place, and the wrapper —
+    // with its `bytes` wire-budget — must round-trip so the exported PSDL still
+    // matches the built-in preset (share / "Save as preset" rely on it).
     const plainRepeat: Repeat = {
       kind: "repeat",
       id: "rows",

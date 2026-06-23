@@ -1634,7 +1634,7 @@ describe("toKsy — Optional predicate translation branches", () => {
 // model directly (bounded / align / virtual / ref) plus delimiter-terminated
 // bytes and the 0.5-only Expr forms in the `if:` / size stringifiers.
 describe("toKsy — PSDL 0.5 containers", () => {
-  it("bounded splices its children inline with a psdl-only budget note", () => {
+  it("bounded emits a sized substream entry with a synthetic user type carrying the children", () => {
     const yaml = toKsy({
       name: "Bnd",
       rowBits: 32,
@@ -1648,16 +1648,33 @@ describe("toKsy — PSDL 0.5 containers", () => {
             { id: "b", name: "B", type: { kind: "int", bits: 8 } },
           ],
         },
+        // A trailing field proves the budget is preserved (it parses AFTER the
+        // 16-byte sub-stream, not after `a`+`b`).
+        { id: "tail", name: "Tail", type: { kind: "int", bits: 8 } },
       ],
     });
-    // children spliced inline (no `region` wrapper survives)
     const obj = yamlParse(yaml);
-    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a", "b"]);
-    // budget surfaced as a psdl-only comment naming the byte expression
-    expect(yaml).toMatch(/# psdl-only: bounded "region" byte budget \(16\)/);
+    // Single substream seq entry for the bounded region + the trailing field.
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual([
+      "region",
+      "tail",
+    ]);
+    const region = obj.seq[0];
+    // The substream carries the declared byte budget + a synthetic user type.
+    expect(region.size).toBe(16);
+    expect(region.type).toBe("region_body");
+    // The user type's seq holds the bounded's children, parsed against the
+    // sub-stream.
+    expect(obj.types.region_body.seq.map((e: { id: string }) => e.id)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(yaml).toMatch(
+      /# psdl-only: bounded "region" byte budget \(16\) emitted as a sized Kaitai substream/,
+    );
   });
 
-  it("bounded with a non-literal byte budget stringifies the expression in the note", () => {
+  it("bounded with a non-literal byte budget emits the expression as the substream size", () => {
     const yaml = toKsy({
       name: "BndExpr",
       rowBits: 32,
@@ -1675,7 +1692,37 @@ describe("toKsy — PSDL 0.5 containers", () => {
         },
       ],
     });
-    expect(yaml).toMatch(/bounded "scope" byte budget \(\(len \* 4\)\)/);
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].size).toBe("(len * 4)");
+    expect(obj.seq[0].type).toBe("scope_body");
+    expect(yaml).toMatch(
+      /bounded "scope" byte budget \(\(len \* 4\)\) emitted as a sized Kaitai substream/,
+    );
+  });
+
+  it("bounded whose children produce no seq entries falls back to a size-only opaque substream", () => {
+    const yaml = toKsy({
+      name: "BndEmpty",
+      rowBits: 32,
+      body: [
+        {
+          kind: "bounded",
+          id: "opaque",
+          bytes: { kind: "lit", value: 8 },
+          // A zero-width virtual produces no seq entry, so there are no
+          // children to put in a user type — the entry degrades to size-only.
+          fields: [
+            { kind: "virtual", id: "v", expr: { kind: "lit", value: 1 } },
+          ],
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0].id).toBe("opaque");
+    expect(obj.seq[0].size).toBe(8);
+    // No user type registered for an empty child seq.
+    expect(obj.seq[0].type).toBeUndefined();
+    expect(obj.types).toBeUndefined();
   });
 
   it("align emits a position-dependent Kaitai size expression + psdl-only note", () => {
@@ -1746,7 +1793,30 @@ describe("toKsy — PSDL 0.5 containers", () => {
     );
   });
 
-  it("delimiter-terminated bytes surface a psdl-only note and emit no size", () => {
+  it("single-byte-delimited bytes emit a Kaitai `terminator:`", () => {
+    const yaml = toKsy({
+      name: "DelimOne",
+      rowBits: 32,
+      body: [
+        {
+          id: "line",
+          name: "Line",
+          // NUL-terminated string-style field — single-byte delimiter.
+          type: { kind: "bytes", n: { delimiter: [0] } },
+        },
+        // A trailing field proves the terminated entry survives in the seq.
+        { id: "tail", name: "Tail", type: { kind: "int", bits: 8 } },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["line", "tail"]);
+    // `terminator:` keeps the typeless byte array valid/compilable.
+    expect(obj.seq[0].terminator).toBe(0);
+    // No psdl-only note for the single-byte case — it maps cleanly.
+    expect(yaml).not.toMatch(/Field "line" delimited bytes/);
+  });
+
+  it("multi-byte-delimited bytes drop the seq entry and surface only a psdl-only note", () => {
     const yaml = toKsy({
       name: "Delim",
       rowBits: 32,
@@ -1756,12 +1826,13 @@ describe("toKsy — PSDL 0.5 containers", () => {
           name: "Line",
           type: { kind: "bytes", n: { delimiter: [13, 10] } },
         },
+        // A trailing field is the ONLY surviving seq entry.
+        { id: "tail", name: "Tail", type: { kind: "int", bits: 8 } },
       ],
     });
     const obj = yamlParse(yaml);
-    // No `size:` key — Kaitai can't express a multi-byte delimiter.
-    expect(obj.seq[0].size).toBeUndefined();
-    expect(obj.seq[0].id).toBe("line");
+    // The uncompilable typeless/sizeless entry is dropped entirely.
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["tail"]);
     expect(yaml).toMatch(
       /# psdl-only: Field "line" delimited bytes \(delimiter 13,10\)/,
     );

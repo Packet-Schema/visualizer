@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { validatePacket } from "../../lib/psdl/renderer-helpers";
 import { validatePsdlPacket } from "../../lib/psdl/validate";
 import type { Packet } from "../../lib/psdl/renderer";
+import type { Encrypted, Packet as PsdlPacket } from "../../lib/psdl/types";
 
 function pkt(fields: Packet["fields"]): Packet {
   return { name: "Test", rowBits: 32, fields };
@@ -274,5 +275,38 @@ describe("validatePsdlPacket — reserved cell-id tokens (Codex P2)", () => {
         ]),
       ),
     ).not.toThrow();
+  });
+});
+
+describe("validatePsdlPacket — Encrypted headerProtected ref collection (Codex P2)", () => {
+  // Regression: `collectIdsFromContainer` must descend `bounded` so a
+  // `headerProtected` ref can resolve a field that lives behind a PSDL 0.5
+  // wire-scope inside the plaintext. Before the fix this threw a false
+  // "does not name a field inside plaintext" error.
+  it("resolves headerProtected ids for fields nested inside a bounded", () => {
+    const enc: Encrypted = {
+      kind: "encrypted",
+      id: "enc",
+      name: "Protected Payload",
+      contextNote: "TLS 1.3 handshake keys",
+      headerProtected: ["pn", "leaf"],
+      plaintext: {
+        id: "qpkt",
+        fields: [
+          { id: "pn", name: "Packet Number", type: { kind: "bits", n: 32 } },
+          {
+            kind: "bounded",
+            id: "scope",
+            name: "Scope",
+            bytes: { kind: "lit", value: 16 },
+            fields: [
+              { id: "leaf", name: "Leaf", type: { kind: "bits", n: 8 } },
+            ],
+          },
+        ],
+      },
+    };
+    const packet: PsdlPacket = { name: "QuicShort", rowBits: 32, body: [enc] };
+    expect(() => validatePsdlPacket(packet)).not.toThrow();
   });
 });
