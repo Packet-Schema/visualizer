@@ -1,8 +1,10 @@
 // Ajv-backed JSON Schema validator for PSDL (editor lint 用)。
 //
-// `schemas/psdl.schema.json` は wire JSON (= `format: "psdl"`, `version:
-// "0.4"`, name, rowBits, body, ...) の構造を canonical に定義しているので、
-// editor (SourcePane) の入力もこれに合わせて検証すると、
+// schema は `@packet-schema/core` が ship する canonical な PSDL 0.5 JSON
+// Schema (`schemas/psdl-0.5.yaml`)。 0.5 では top-level document が Packet
+// オブジェクトそのもの (= `name`, `rowBits`, `body`, ...) を表すので、 wire
+// JSON 用の `format` / `version` マーカーは付けない。 editor (SourcePane) の
+// 入力をこれに合わせて検証すると、
 //   - field 名 typo
 //   - 必須キー欠落
 //   - enum 不一致 (`type.kind` が `bytes` でないなど)
@@ -17,9 +19,6 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 import { PSDL_JSON_SCHEMA } from "./psdl.schema.generated";
-
-const FORMAT_TAG = "psdl";
-const FORMAT_VERSION = "0.4";
 
 export type SchemaIssue = {
   /** JSON Pointer 風のパス (`/body/0/type/n` など)。 空ならルート。 */
@@ -57,19 +56,16 @@ function getValidator() {
 }
 
 /**
- * PSDL wire shape を Ajv で検証する。 失敗時は `SchemaIssue[]` を返す。
- * 成功時は空配列。 schema は `format` / `version` を必須としているので、
- * editor 側で剥がした後の packet には呼び出し側で再注入してから渡す。
+ * PSDL packet shape を Ajv で検証する。 失敗時は `SchemaIssue[]` を返す。
+ * 成功時は空配列。 PSDL 0.5 schema は top-level document を Packet として
+ * 直接検証するので、 wire JSON 用の `format` / `version` は注入しない
+ * (top-level は `unevaluatedProperties: false` なので付けると弾かれる)。
  */
 export function validatePsdlWireShape(
   packet: Record<string, unknown>,
 ): SchemaIssue[] {
   const validate = getValidator();
-  const ok = validate({
-    format: FORMAT_TAG,
-    version: FORMAT_VERSION,
-    ...packet,
-  });
+  const ok = validate(packet);
   if (ok) return [];
   return (validate.errors ?? []).map((e) => ({
     path: e.instancePath ?? "",
