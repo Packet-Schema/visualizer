@@ -11,7 +11,8 @@ import {
   mergeInstancesIntoPsdl,
   psdlToRenderer,
 } from "@/lib/psdl/psdl-to-renderer";
-import type { Container, Repeat } from "@/lib/psdl/types";
+import type { Bounded, Container, Packet, Repeat } from "@/lib/psdl/types";
+import type { Packet as RendererPacket } from "@/lib/psdl/renderer";
 
 // In PSDL 0.5 the ipv4 `options` Repeat is no longer a top-level body
 // container: it lives nested inside the `optionsArea` Bounded wire-scope
@@ -165,6 +166,54 @@ describe("mergeInstancesIntoPsdl", () => {
       { proto: 0, extras: { hdrExtLen: 1 } },
       { proto: 60 },
     ]);
+  });
+
+  it("keeps a bounded intact when it holds only a plain (non-TLV/chain) Repeat", () => {
+    // The mirror-aware unwrap in `mergeContainer` only splices a `bounded`
+    // inline when it wraps a *merge-target* Repeat (one the mirror keys by a
+    // TLV or chain catalog). A `bounded` whose inner Repeat has no such mirror
+    // entry must survive the merge so its `bytes` wire-budget round-trips.
+    // This exercises `isMergeTargetRepeat` returning false → the bounded is
+    // NOT unwrapped.
+    const plainRepeat: Repeat = {
+      kind: "repeat",
+      id: "rows",
+      element: {
+        id: "row",
+        fields: [{ id: "byte", name: "Byte", type: { kind: "int", bits: 8 } }],
+      },
+      count: "eos",
+    };
+    const bounded: Bounded = {
+      kind: "bounded",
+      id: "region",
+      bytes: { kind: "lit", value: 16 },
+      fields: [plainRepeat],
+    };
+    const studio: Packet = {
+      name: "PlainBounded",
+      rowBits: 32,
+      body: [bounded],
+    };
+    // Mirror carries no field at id "rows" (and no chain catalog), so the
+    // Repeat is not a merge target.
+    const mirror: RendererPacket = {
+      name: "PlainBounded",
+      rowBits: 32,
+      fields: [],
+    };
+
+    const merged = mergeInstancesIntoPsdl(studio, mirror);
+    // The bounded must still be present at top level (not spliced away), and
+    // it must still carry its byte budget.
+    expect(merged.body).toHaveLength(1);
+    const survived = merged.body[0] as Bounded;
+    expect(survived.kind).toBe("bounded");
+    expect(survived.id).toBe("region");
+    expect(survived.bytes).toEqual({ kind: "lit", value: 16 });
+    const inner = survived.fields[0] as Repeat;
+    expect(inner.kind).toBe("repeat");
+    expect(inner.id).toBe("rows");
   });
 
   it("persists chainFinalProto onto the chain Repeat (H1)", () => {

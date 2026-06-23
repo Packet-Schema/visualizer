@@ -486,6 +486,57 @@ describe("toAscii — PSDL 0.4 decorations", () => {
     expect(txt).not.toMatch(/\bTrailing\s*\|/);
   });
 
+  it("uses the compound container's `name` in the placeholder when the inner is not a field", () => {
+    // An absent Optional wrapping a *compound* container (a Group here, which
+    // is not a Field but carries a `name`) exercises the `"name" in inner`
+    // branch of the placeholder-label resolution.
+    const pkt: Packet = {
+      name: "OptGroup",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          container: {
+            kind: "group",
+            id: "grp",
+            name: "Extension",
+            children: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map([["present", 0]]));
+    expect(txt).toContain("~ (Optional Extension) ~");
+  });
+
+  it("falls back to 'field' in the placeholder when the compound container has no name", () => {
+    // A Bounded carries no required `name`; an absent Optional wrapping a
+    // name-less Bounded exercises the `: undefined` arm → `?? "field"` default.
+    const pkt: Packet = {
+      name: "OptBounded",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          container: {
+            kind: "bounded",
+            id: "region",
+            bytes: { kind: "lit", value: 1 },
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map([["present", 0]]));
+    expect(txt).toContain("~ (Optional field) ~");
+  });
+
   it("does NOT emit the placeholder when the predicate is truthy", () => {
     const pkt: Packet = {
       name: "Opt",

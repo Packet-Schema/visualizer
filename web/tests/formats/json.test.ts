@@ -68,9 +68,14 @@ describe("toJson — preset shape", () => {
         },
       ],
     };
-    const obj = JSON.parse(toJson(pkt, new Map()));
+    const text = toJson(pkt, new Map());
+    const obj = JSON.parse(text);
     expect(Array.isArray(obj.constraints)).toBe(true);
     expect(obj.constraints.length).toBeGreaterThan(0);
+    // Parse it back so the `Array.isArray(r.constraints)` *true* branch in
+    // fromJson is exercised (the 0.5 presets carry no top-level constraints).
+    const { packet: re } = fromJson(text);
+    expect(re.constraints).toEqual(pkt.constraints);
   });
 
   it("omits constraints when the array is empty", () => {

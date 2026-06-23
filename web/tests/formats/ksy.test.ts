@@ -1630,6 +1630,240 @@ describe("toKsy — Optional predicate translation branches", () => {
   });
 });
 
+// PSDL 0.5 — exporter behaviour for the new container kinds Kaitai cannot
+// model directly (bounded / align / virtual / ref) plus delimiter-terminated
+// bytes and the 0.5-only Expr forms in the `if:` / size stringifiers.
+describe("toKsy — PSDL 0.5 containers", () => {
+  it("bounded splices its children inline with a psdl-only budget note", () => {
+    const yaml = toKsy({
+      name: "Bnd",
+      rowBits: 32,
+      body: [
+        {
+          kind: "bounded",
+          id: "region",
+          bytes: { kind: "lit", value: 16 },
+          fields: [
+            { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+            { id: "b", name: "B", type: { kind: "int", bits: 8 } },
+          ],
+        },
+      ],
+    });
+    // children spliced inline (no `region` wrapper survives)
+    const obj = yamlParse(yaml);
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a", "b"]);
+    // budget surfaced as a psdl-only comment naming the byte expression
+    expect(yaml).toMatch(/# psdl-only: bounded "region" byte budget \(16\)/);
+  });
+
+  it("bounded with a non-literal byte budget stringifies the expression in the note", () => {
+    const yaml = toKsy({
+      name: "BndExpr",
+      rowBits: 32,
+      body: [
+        {
+          kind: "bounded",
+          id: "scope",
+          bytes: {
+            kind: "op",
+            op: "*",
+            a: { kind: "ref", field: "len" },
+            b: { kind: "lit", value: 4 },
+          },
+          fields: [{ id: "a", name: "A", type: { kind: "int", bits: 8 } }],
+        },
+      ],
+    });
+    expect(yaml).toMatch(/bounded "scope" byte budget \(\(len \* 4\)\)/);
+  });
+
+  it("align emits a position-dependent Kaitai size expression + psdl-only note", () => {
+    const yaml = toKsy({
+      name: "Aln",
+      rowBits: 32,
+      body: [
+        { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+        { kind: "align", id: "pad", to: 32 },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    const padEntry = obj.seq.find((e: { id: string }) => e.id === "pad");
+    // to=32 bits → 4 bytes; size is position-dependent over `_io.pos`.
+    expect(padEntry.size).toBe("(4 - _io.pos % 4) % 4");
+    expect(padEntry.doc).toBe("psdl-only: align to 32 bits");
+    expect(yaml).toMatch(
+      /# psdl-only: align to 32 bits lowered to a position-dependent padding size/,
+    );
+  });
+
+  it("align with no id falls back to the literal 'align' id", () => {
+    const yaml = toKsy({
+      name: "AlnNoId",
+      rowBits: 32,
+      body: [{ kind: "align", to: 16 }],
+    });
+    const obj = yamlParse(yaml);
+    // to=16 bits → 2 bytes.
+    expect(obj.seq[0].id).toBe("align");
+    expect(obj.seq[0].size).toBe("(2 - _io.pos % 2) % 2");
+  });
+
+  it("virtual is dropped from the seq with a psdl-only note", () => {
+    const yaml = toKsy({
+      name: "Virt",
+      rowBits: 32,
+      body: [
+        { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+        {
+          kind: "virtual",
+          id: "computed",
+          expr: { kind: "ref", field: "a" },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    // Only the real field survives; the zero-width virtual is dropped.
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a"]);
+    expect(yaml).toMatch(
+      /# psdl-only: virtual "computed" \(a\) is zero-width — dropped from .ksy seq/,
+    );
+  });
+
+  it("ref is not expanded and surfaces a psdl-only note naming the def", () => {
+    const yaml = toKsy({
+      name: "Ref",
+      rowBits: 32,
+      body: [
+        { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+        { kind: "ref", id: "sub", ref: "subStruct" },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a"]);
+    expect(yaml).toMatch(
+      /# psdl-only: ref "sub" → defs\["subStruct"\] not expanded in .ksy/,
+    );
+  });
+
+  it("delimiter-terminated bytes surface a psdl-only note and emit no size", () => {
+    const yaml = toKsy({
+      name: "Delim",
+      rowBits: 32,
+      body: [
+        {
+          id: "line",
+          name: "Line",
+          type: { kind: "bytes", n: { delimiter: [13, 10] } },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    // No `size:` key — Kaitai can't express a multi-byte delimiter.
+    expect(obj.seq[0].size).toBeUndefined();
+    expect(obj.seq[0].id).toBe("line");
+    expect(yaml).toMatch(
+      /# psdl-only: Field "line" delimited bytes \(delimiter 13,10\)/,
+    );
+  });
+
+  it("Optional wrapping a compound container is emitted unconditionally with a psdl-only note", () => {
+    // Kaitai's `if:` only attaches to a single seq entry, so an Optional whose
+    // inner is a compound container (a Group here) can't carry the predicate.
+    // The exporter splices the children in unconditionally and records a note.
+    const yaml = toKsy({
+      name: "OptGroup",
+      rowBits: 32,
+      body: [
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          container: {
+            kind: "group",
+            id: "grp",
+            name: "Grp",
+            children: [
+              { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+              { id: "b", name: "B", type: { kind: "int", bits: 8 } },
+            ],
+          },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    // children spliced inline, no `if:` attached
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a", "b"]);
+    expect(yaml).not.toMatch(/if:/);
+    expect(yaml).toMatch(
+      /# psdl-only: optional "maybe" wraps a compound container — predicate present left unconditional/,
+    );
+  });
+
+  it("Optional with no id wrapping a compound container uses '?' in the note", () => {
+    // Covers the `c.id ?? "?"` nullish fallback in the compound-container note.
+    const yaml = toKsy({
+      name: "OptGroupNoId",
+      rowBits: 32,
+      body: [
+        {
+          kind: "optional",
+          when: { kind: "ref", field: "present" },
+          container: {
+            kind: "group",
+            id: "grp",
+            name: "Grp",
+            children: [{ id: "a", name: "A", type: { kind: "int", bits: 8 } }],
+          },
+        },
+      ],
+    });
+    expect(yaml).toMatch(
+      /# psdl-only: optional "\?" wraps a compound container/,
+    );
+  });
+
+  it("a 0.5-only Expr in an Optional predicate falls back to a psdl-only note (exprToKaitaiIf default)", () => {
+    // `remaining` is a 0.5 Expr the Kaitai `if:` walker can't translate, so the
+    // exporter must drop the predicate and emit a psdl-only note. This hits the
+    // `default` branch of exprToKaitaiIf (returns null) AND the `default` branch
+    // of exprToString (`remaining(…)`).
+    const yaml = toKsy({
+      name: "OptRemaining",
+      rowBits: 8,
+      body: [
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "remaining" } as never,
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+        },
+      ],
+    });
+    // No `if:` key (the predicate could not be lowered).
+    expect(yaml).not.toMatch(/if:/);
+    expect(yaml).toMatch(
+      /# psdl-only: optional "maybe" predicate remaining\(…\)/,
+    );
+  });
+
+  it("a 0.5-only Expr as a bytes size stringifies by kind (exprToString default)", () => {
+    const yaml = toKsy({
+      name: "SizeWireSize",
+      rowBits: 32,
+      body: [
+        {
+          id: "blob",
+          name: "Blob",
+          type: { kind: "bytes", n: { kind: "wireSize" } as never },
+        },
+      ],
+    });
+    // exprToKsySize → exprToString default → "wireSize(…)".
+    expect(yamlParse(yaml).seq[0].size).toBe("wireSize(…)");
+  });
+});
+
 describe("toKsy — peek expression with explicit offset stringifies fully", () => {
   it("renders `peek(bits, offset)` in the psdl-only fallback message", () => {
     const out = toKsy({
