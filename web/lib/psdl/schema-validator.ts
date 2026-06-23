@@ -61,7 +61,7 @@ function getValidator() {
  * 直接検証するので、 wire JSON 用の `format` / `version` は注入しない
  * (top-level は `unevaluatedProperties: false` なので付けると弾かれる)。
  */
-export function validatePsdlWireShape(
+export function validatePsdlPacketShape(
   packet: Record<string, unknown>,
 ): SchemaIssue[] {
   const validate = getValidator();
@@ -72,3 +72,10 @@ export function validatePsdlWireShape(
     message: e.message ?? "schema validation failed",
   }));
 }
+
+/**
+ * @deprecated 0.5 では wire envelope (`format` / `version`) を付けず Packet を
+ * 直接検証するため、実態に即した `validatePsdlPacketShape` を使うこと。これは
+ * 後方互換のための alias。
+ */
+export const validatePsdlWireShape = validatePsdlPacketShape;

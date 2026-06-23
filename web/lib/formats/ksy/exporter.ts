@@ -204,19 +204,25 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       );
       return c.fields.flatMap((ch) => containerToKsy(ch, ctx));
     }
-    case "align":
-      // PSDL 0.5 — Align pads the cursor to a bit boundary. Emit a sized
-      // padding entry so the generated parser still advances the stream.
+    case "align": {
+      // PSDL 0.5 — Align pads the cursor to a `c.to`-bit boundary. The number
+      // of padding bytes depends on the CURRENT stream position, not a fixed
+      // width, so emit a Kaitai expression over `_io.pos` rather than a
+      // constant size (a fixed size would over-/under-read and shift every
+      // following field). `c.to` is a multiple of 8 (schema-enforced), so work
+      // in whole bytes: pad = (toBytes - pos % toBytes) % toBytes.
+      const toBytes = Math.max(1, Math.ceil(c.to / 8));
       ctx.psdlOnly.push(
-        `align to ${c.to} bits lowered to a fixed padding placeholder`,
+        `align to ${c.to} bits lowered to a position-dependent padding size`,
       );
       return [
         {
           id: toKsyId(c.id ?? "align"),
-          size: Math.max(1, Math.ceil(c.to / 8)),
+          size: `(${toBytes} - _io.pos % ${toBytes}) % ${toBytes}`,
           doc: `psdl-only: align to ${c.to} bits`,
         },
       ];
+    }
     case "virtual":
       // PSDL 0.5 — Virtual is a zero-width computed field; it has no wire
       // presence, so it cannot be a Kaitai seq entry. Record it as a note.

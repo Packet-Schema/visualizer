@@ -185,19 +185,42 @@ function mergeContainer(c: Container, mirror: RendererPacket): Container[] {
   // `bounded` that holds a merge-target Repeat inline rather than re-wrapping
   // it. Scopes with no merge-target Repeat are kept intact so unrelated wire
   // scopes round-trip untouched.
-  if (merged.kind === "bounded" && containsMergeTargetRepeat(merged.fields)) {
+  if (
+    merged.kind === "bounded" &&
+    containsMergeTargetRepeat(merged.fields, mirror)
+  ) {
     return merged.fields;
   }
   return [merged];
 }
 
+/** True when `mergeRepeat` would actually act on this Repeat — i.e. the mirror
+ *  carries a TLV or chain catalog keyed by its id (the same condition
+ *  `mergeRepeat` uses). A Repeat with no such mirror entry is left untouched,
+ *  so its enclosing `bounded` wire-scope must NOT be unwrapped. */
+function isMergeTargetRepeat(c: Repeat, mirror: RendererPacket): boolean {
+  const sameIdMirror = findRendererField(mirror, c.id);
+  if (sameIdMirror?.tlv) return true;
+  const chainBaseId = c.id.replace(/_chain$/, "");
+  const chainBaseMirror =
+    chainBaseId !== c.id ? findRendererField(mirror, chainBaseId) : undefined;
+  return Boolean(chainBaseMirror?.chainCatalog || sameIdMirror?.chainCatalog);
+}
+
 /** Does this container list hold a Repeat that a merge would target
- *  (recursing through nested transparent scopes / groups)? */
-function containsMergeTargetRepeat(containers: Container[]): boolean {
+ *  (recursing through nested transparent scopes / groups)? Only a Repeat with
+ *  a real TLV/chain mirror counts — a plain Repeat inside a `bounded` does not,
+ *  so the scope's `bounded.bytes` budget survives the export round-trip. */
+function containsMergeTargetRepeat(
+  containers: Container[],
+  mirror: RendererPacket,
+): boolean {
   return containers.some((c) => {
-    if (c.kind === "repeat") return true;
-    if (c.kind === "bounded") return containsMergeTargetRepeat(c.fields);
-    if (c.kind === "group") return containsMergeTargetRepeat(c.children);
+    if (c.kind === "repeat") return isMergeTargetRepeat(c, mirror);
+    if (c.kind === "bounded")
+      return containsMergeTargetRepeat(c.fields, mirror);
+    if (c.kind === "group")
+      return containsMergeTargetRepeat(c.children, mirror);
     return false;
   });
 }
