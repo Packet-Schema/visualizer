@@ -43,10 +43,32 @@ describe("toJson — preset shape", () => {
     expect(obj.env).toEqual({ ihl: 7 });
   });
 
-  it("preserves byteOrder, description, and constraints when present", () => {
+  it("preserves byteOrder and description when present", () => {
+    // The 0.5 ipv4 preset keeps top-level byteOrder + description, but no
+    // longer carries top-level `constraints`: the old "IHL*4 == headerBytes"
+    // length relation moved onto the `optionsArea` Bounded scope's `bytes`
+    // expression. Constraint serialization is covered separately below.
     const obj = JSON.parse(toJson(ALL_PRESETS.ipv4, new Map()));
     expect(obj.byteOrder).toBe("BE");
     expect(typeof obj.description).toBe("string");
+  });
+
+  it("preserves top-level constraints when present", () => {
+    // Round-trip a packet that genuinely carries top-level constraints — the
+    // 0.5 presets no longer do, so build one explicitly to keep this coverage
+    // load-bearing.
+    const pkt: Packet = {
+      name: "Constrained",
+      rowBits: 8,
+      body: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
+      constraints: [
+        {
+          lhs: { kind: "ref", field: "a" },
+          rhs: { kind: "lit", value: 1 },
+        },
+      ],
+    };
+    const obj = JSON.parse(toJson(pkt, new Map()));
     expect(Array.isArray(obj.constraints)).toBe(true);
     expect(obj.constraints.length).toBeGreaterThan(0);
   });
@@ -271,6 +293,7 @@ describe("toJson / fromJson — PSDL 0.3 Encrypted Container", () => {
         {
           kind: "group",
           id: "outer",
+          name: "outer",
           children: [
             { id: "hdr", name: "Header", type: { kind: "bits", n: 8 } },
             {
@@ -381,7 +404,7 @@ describe("toJson / fromJson — PSDL 0.4 primitives round-trip", () => {
           kind: "optional",
           id: "maybeFlag",
           when: { kind: "ref", field: "present" },
-          field: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
+          container: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
         },
       ],
     };

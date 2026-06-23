@@ -345,12 +345,11 @@ seq:
     const c = packet.body[0] as {
       kind: string;
       cases: Record<string, unknown>;
-      default: unknown;
     };
     expect(c.kind).toBe("switch");
     expect(c.cases["1"]).toBeDefined();
     expect(c.cases["0"]).toBeDefined();
-    expect(c.default).toBeDefined();
+    expect(c.cases["_"]).toBeDefined();
   });
 
   it("if: <complex expr> warns and falls back to env ref", () => {
@@ -977,6 +976,7 @@ describe("toKsy — exporter", () => {
         {
           kind: "group",
           id: "g",
+          name: "g",
           children: [
             { id: "a", name: "A", type: { kind: "int", bits: 8 } },
             { id: "b", name: "B", type: { kind: "int", bits: 8 } },
@@ -1024,6 +1024,7 @@ describe("toKsy — exporter", () => {
               {
                 kind: "group",
                 id: "inner",
+                name: "inner",
                 children: [
                   { id: "x", name: "X", type: { kind: "int", bits: 8 } },
                 ],
@@ -1392,6 +1393,7 @@ describe("toKsy — PSDL 0.3 Encrypted container", () => {
         {
           kind: "group",
           id: "outer",
+          name: "outer",
           children: [
             { id: "hdr", name: "Hdr", type: { kind: "int", bits: 8 } },
             {
@@ -1447,7 +1449,7 @@ describe("toKsy — PSDL 0.4 primitives", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "ref", field: "present" },
-          field: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
+          container: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1464,7 +1466,7 @@ describe("toKsy — PSDL 0.4 primitives", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "peek", bits: 8 },
-          field: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
+          container: { id: "flag", name: "Flag", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1537,7 +1539,7 @@ describe("toKsy — Optional predicate translation branches", () => {
         {
           kind: "optional",
           when: { kind: "lit", value: 1 },
-          field: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1558,7 +1560,7 @@ describe("toKsy — Optional predicate translation branches", () => {
             a: { kind: "ref", field: "x" },
             b: { kind: "lit", value: 0 },
           } as never,
-          field: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1580,7 +1582,7 @@ describe("toKsy — Optional predicate translation branches", () => {
             t: { kind: "lit", value: 1 },
             f: { kind: "lit", value: 0 },
           },
-          field: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1600,7 +1602,7 @@ describe("toKsy — Optional predicate translation branches", () => {
             a: { kind: "peek", bits: 8 },
             b: { kind: "lit", value: 1 },
           },
-          field: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1620,7 +1622,7 @@ describe("toKsy — Optional predicate translation branches", () => {
             t: { kind: "lit", value: 1 },
             f: { kind: "lit", value: 0 },
           },
-          field: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
         },
       ],
     });
@@ -1637,7 +1639,7 @@ describe("toKsy — peek expression with explicit offset stringifies fully", () 
         {
           kind: "optional",
           when: { kind: "peek", bits: 8, offset: { kind: "lit", value: 16 } },
-          field: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
+          container: { id: "f", name: "F", type: { kind: "bits", n: 8 } },
         },
       ],
     });

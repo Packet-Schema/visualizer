@@ -109,6 +109,7 @@ describe("editReducer — actions", () => {
     const container: Container = {
       kind: "group",
       id: "g",
+      name: "g",
       children: [{ id: "x", name: "X", type: bits(4) }],
     };
     const next = apply(state, {
@@ -121,7 +122,7 @@ describe("editReducer — actions", () => {
 
   it("update-container merges a patch", () => {
     const init = basePacket();
-    init.body.push({ kind: "group", id: "g", children: [] });
+    init.body.push({ kind: "group", id: "g", name: "g", children: [] });
     const state = makeInitialState(init);
     const next = apply(state, {
       type: "update-container",

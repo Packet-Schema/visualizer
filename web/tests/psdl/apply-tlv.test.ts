@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import { applyTlvInstances, psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 describe("applyTlvInstances", () => {

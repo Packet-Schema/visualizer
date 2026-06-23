@@ -8,7 +8,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import OverridePanel from "@/components/field-details/OverridePanel";
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 let activeRoot: Root | null = null;
@@ -166,7 +166,9 @@ describe("OverridePanel widgets", () => {
     );
     const text = container.textContent ?? "";
     expect(text).toMatch(/Repeats in this packet/);
-    expect(text).toMatch(/Neighbor List/);
+    // The 0.5 ospfHello preset names the neighbour Repeat "Neighbors" (eos),
+    // surfaced via freeRepeats; it was "Neighbor List" in 0.4.
+    expect(text).toMatch(/Neighbors/);
   });
 
   it("renders a peek-switch picker for tlsExtensionsBlock on empty selection", async () => {
@@ -218,8 +220,12 @@ describe("OverridePanel widgets", () => {
         onControllerChange={() => {}}
       />,
     );
+    // TTL itself carries no runtime override → read-only message, no
+    // field-level slider/checkbox. (In 0.5 the EmptyState also renders the
+    // packet-level "Peek-based switches" picker, since the ipv4 Options TLV
+    // now surfaces a peek Switch; that <select> is a packet-level extra, not
+    // a TTL override, so we no longer assert the panel is select-free.)
     expect(container.querySelector('input[type="range"]')).toBeNull();
-    expect(container.querySelector("select")).toBeNull();
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
     expect(container.textContent).toMatch(/no runtime override/i);
   });

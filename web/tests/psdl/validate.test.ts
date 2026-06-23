@@ -136,6 +136,7 @@ describe("validatePsdlPacket — reserved cell-id tokens (Codex P2)", () => {
           {
             kind: "group",
             id: "grp__remaining",
+            name: "grp__remaining",
             children: [{ id: "c", name: "C", type: { kind: "bits", n: 8 } }],
           },
         ]),
@@ -168,6 +169,7 @@ describe("validatePsdlPacket — reserved cell-id tokens (Codex P2)", () => {
           {
             kind: "group",
             id: "flags",
+            name: "flags",
             children: [
               { id: "df", name: "DF", type: { kind: "bits", n: 1 } },
               { id: "mf", name: "MF", type: { kind: "bits", n: 1 } },
@@ -221,11 +223,13 @@ describe("validatePsdlPacket — reserved cell-id tokens (Codex P2)", () => {
           {
             kind: "group",
             id: "dup",
+            name: "dup",
             children: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
           },
           {
             kind: "group",
             id: "dup",
+            name: "dup",
             children: [{ id: "b", name: "B", type: { kind: "bits", n: 8 } }],
           },
         ]),
@@ -240,10 +244,12 @@ describe("validatePsdlPacket — reserved cell-id tokens (Codex P2)", () => {
           {
             kind: "group",
             id: "outer1",
+            name: "outer1",
             children: [
               {
                 kind: "group",
                 id: "inner",
+                name: "inner",
                 children: [
                   { id: "a", name: "A", type: { kind: "bits", n: 8 } },
                 ],
@@ -253,10 +259,12 @@ describe("validatePsdlPacket — reserved cell-id tokens (Codex P2)", () => {
           {
             kind: "group",
             id: "outer2",
+            name: "outer2",
             children: [
               {
                 kind: "group",
                 id: "inner",
+                name: "inner",
                 children: [
                   { id: "b", name: "B", type: { kind: "bits", n: 8 } },
                 ],

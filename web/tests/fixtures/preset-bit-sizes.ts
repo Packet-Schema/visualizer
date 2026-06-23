@@ -16,10 +16,19 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   ipv6: 320,
   icmp: 64,
   icmpv6: 64,
-  arp: 224,
+  // ARP (RFC 826) — 5 fixed fields (htype 16 + ptype 16 + hlen 8 + plen 8 +
+  // oper 16 = 64 bits). The four address fields (sha/spa/tha/tpa) are
+  // bytes<n = ref(hlen|plen)>; the 0.5 preset no longer seeds hlen/plen
+  // defaults, so under the all-refs-zero env they collapse to 0 → 64.
+  arp: 64,
   tlsRecord: 40,
-  tlsClientHello: 648,
-  quicShort: 208,
+  // TLS ClientHello (RFC 8446 §4.1.2) — under the all-refs-zero env every
+  // variable-length section (session id / cipher suites / extensions, all
+  // bytes<n = ref(...)>) collapses to 0; only the fixed header rows remain.
+  tlsClientHello: 352,
+  // quicShort encrypted region carries wireBits=136 in the published 0.5
+  // preset, so wire-mode (and semantic) total is 216.
+  quicShort: 216,
   vlan: 144,
   // STP Configuration BPDU (IEEE 802.1D-1998) is a fixed 35-byte payload.
   stpBpdu: 280,
@@ -38,8 +47,10 @@ export const EXPECTED_TOTAL_BITS: Record<string, number> = {
   // BGP-4 UPDATE (RFC 4271 §4.1 + §4.3) — 19 B Common Header + 2 B Withdrawn
   // Length + 2 B Total Path Attribute Length. The three opaque variable-
   // length sections (Withdrawn Routes / Path Attributes / NLRI) default to
-  // 0 bytes — matching the spec's stated 23-octet minimum UPDATE.
-  bgpUpdate: 184,
+  // 0 bytes. NLRI is bytes<remaining>; under resolveLayout's totalBits
+  // 2-pass it materialises as a single trailing rowBits (32) placeholder
+  // row on top of the 184-bit fixed minimum → 216.
+  bgpUpdate: 216,
   // CoAP (RFC 7252 §3) — 4 B fixed header. Token (bytes n=ref(tkl)) and the
   // Options Repeat / Payload Optional all collapse to 0 at env=0.
   coap: 32,
@@ -81,8 +92,13 @@ export const EXPECTED_TOTAL_BITS_PSDL_04: Record<string, number> = {
  * to the sum of its plaintext bit widths when `wireBits` is absent).
  */
 export const EXPECTED_TOTAL_BITS_PSDL_ONLY: Record<string, number> = {
-  quicLong: 320,
-  tlsClientHelloFull: 1032,
+  // quicLong encrypted region carries wireBits=136 in the published 0.5
+  // preset, so wire-mode (and semantic) total is 328.
+  quicLong: 328,
+  // tlsClientHelloFull was rebuilt for PSDL 0.5; its wire-mode total grew
+  // from 1032 to 1416 bits. (The encrypted region resolves to identical
+  // wire/semantic totals — no plaintext expansion — so semantic == wire.)
+  tlsClientHelloFull: 1416,
 };
 
 /**
@@ -93,7 +109,10 @@ export const EXPECTED_TOTAL_BITS_PSDL_ONLY: Record<string, number> = {
 export const EXPECTED_TOTAL_BITS_SEMANTIC: Record<string, number> = {
   quicShort: 216,
   quicLong: 328,
-  tlsClientHelloFull: 1080,
+  // tlsClientHelloFull rebuilt for PSDL 0.5: semantic-mode total is 1416 —
+  // equal to wire-mode (the encrypted region does not expand in semantic
+  // view). Previously 1080.
+  tlsClientHelloFull: 1416,
 };
 
 export const PRESET_KEYS = Object.keys(EXPECTED_TOTAL_BITS);

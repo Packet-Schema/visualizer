@@ -10,7 +10,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import HybridDiagram from "@/components/diagram/HybridDiagram";
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 

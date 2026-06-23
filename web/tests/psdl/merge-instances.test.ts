@@ -6,12 +6,29 @@
 
 import { describe, it, expect } from "vitest";
 
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import {
   mergeInstancesIntoPsdl,
   psdlToRenderer,
 } from "@/lib/psdl/psdl-to-renderer";
-import type { Repeat } from "@/lib/psdl/types";
+import type { Container, Repeat } from "@/lib/psdl/types";
+
+// In PSDL 0.5 the ipv4 `options` Repeat is no longer a top-level body
+// container: it lives nested inside the `optionsArea` Bounded wire-scope
+// (the IHL length relation moved from top-level constraints to
+// `bounded.bytes`). Descend through Bounded.fields to locate it.
+function findOptionsRepeat(
+  containers: readonly Container[],
+): Repeat | undefined {
+  for (const c of containers) {
+    if (c.kind === "repeat" && c.id === "options") return c;
+    if (c.kind === "bounded") {
+      const found = findOptionsRepeat(c.fields);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
 
 describe("mergeInstancesIntoPsdl", () => {
   it("copies TLV instances from the renderer mirror onto the studio packet", () => {
@@ -72,9 +89,9 @@ describe("mergeInstancesIntoPsdl", () => {
     // diagram. Without an explicit overwrite the export would keep the
     // baked-in records.
     const studio = structuredClone(PRESETS.ipv4!);
-    const optionsRepeat = studio.body.find(
-      (c): c is Repeat => c.kind === "repeat" && c.id === "options",
-    );
+    // 0.5: the options Repeat is nested inside the `optionsArea` Bounded
+    // scope, not at studio.body top-level.
+    const optionsRepeat = findOptionsRepeat(studio.body);
     if (!optionsRepeat) throw new Error("options Repeat missing");
     optionsRepeat.instances = [{ kind: 1 }, { kind: 1 }];
 
