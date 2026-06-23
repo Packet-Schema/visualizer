@@ -1,4 +1,4 @@
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESET_INDEX } from "@/lib/psdl/presets";
 import { PRESET_GROUPS } from "@/lib/constants";
 import type { PacketRegistry } from "@/lib/psdl/renderer";
 import type { PsdlPacket } from "@/lib/psdl/types";
@@ -28,7 +28,7 @@ export default function PresetPicker({
   for (const group of PRESET_GROUPS) {
     for (const k of group.keys) assigned.add(k);
   }
-  const otherKeys = Object.keys(PRESETS).filter((k) => !assigned.has(k));
+  const otherKeys = Object.keys(PRESET_INDEX).filter((k) => !assigned.has(k));
   const importedEntries = imported ? Object.entries(imported) : [];
   const customEntries = customPresets ? Object.entries(customPresets) : [];
 
@@ -55,13 +55,13 @@ export default function PresetPicker({
         }}
       >
         {PRESET_GROUPS.map((group) => {
-          const keys = group.keys.filter((k) => PRESETS[k]);
+          const keys = group.keys.filter((k) => PRESET_INDEX[k]);
           if (keys.length === 0) return null;
           return (
             <optgroup key={group.label} label={group.label}>
               {keys.map((key) => (
                 <option key={key} value={key}>
-                  {PRESETS[key].name}
+                  {PRESET_INDEX[key].name}
                 </option>
               ))}
             </optgroup>
@@ -71,7 +71,7 @@ export default function PresetPicker({
           <optgroup label="Other">
             {otherKeys.map((key) => (
               <option key={key} value={key}>
-                {PRESETS[key].name}
+                {PRESET_INDEX[key].name}
               </option>
             ))}
           </optgroup>

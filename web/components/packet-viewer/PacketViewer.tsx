@@ -9,7 +9,13 @@ import {
   useState,
 } from "react";
 
-import { PRESETS } from "@/lib/psdl/presets";
+import {
+  PRESET_INDEX,
+  getLoadedPreset,
+  loadPreset,
+  loadedPresets,
+  primePreset,
+} from "@/lib/psdl/presets";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
@@ -86,7 +92,7 @@ import { initialUiState, uiReducer } from "./ui-state-reducer";
 import { stableStringify } from "@/lib/stable-stringify";
 
 const DEFAULT_PACKET_KEY = "ipv4";
-const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
+const BUILT_IN_PRESET_KEYS = Object.keys(PRESET_INDEX);
 const CUSTOM_PRESET_NAME_MAX = 80;
 const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 
@@ -127,16 +133,35 @@ type PacketViewerProps = {
   initialPacketKey?: string;
   initialControllers?: ControllerState;
   initialPsdlPacket?: PsdlPacket;
+  /** The built-in preset body the server resolved for `initialPacketKey`. Lets
+   *  the client seed its state without fetching; absent for a `psdl` share. */
+  initialBuiltInPacket?: PsdlPacket;
 };
 
 export default function PacketViewer({
   initialPacketKey = DEFAULT_PACKET_KEY,
   initialControllers,
   initialPsdlPacket,
+  initialBuiltInPacket,
 }: PacketViewerProps) {
-  const [packetKey, setPacketKey] = useState<string>(
-    initialPsdlPacket ? PSDL_INITIAL_KEY : initialPacketKey,
+  // The PSDL packet that seeds initial state: the shared psdl, or the built-in
+  // body the server resolved. Always defined (one of the two is set). Built-in
+  // bodies are now lazy-fetched, so prime the load cache with this one up front
+  // and use it as the synchronous fallback before other presets arrive.
+  const seedPsdl: PsdlPacket = (initialPsdlPacket ??
+    initialBuiltInPacket) as PsdlPacket;
+  if (initialBuiltInPacket && !initialPsdlPacket) {
+    primePreset(initialPacketKey, initialBuiltInPacket);
+  }
+  const seedKey = initialPsdlPacket ? PSDL_INITIAL_KEY : initialPacketKey;
+  const seedRendered = useMemo(
+    () => psdlToRenderer(seedPsdl),
+    // seedPsdl is derived from immutable props; lower it once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
+
+  const [packetKey, setPacketKey] = useState<string>(seedKey);
   // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
   // エラー中のテキストは studio reducer の history に乗らないので、 Discard
   // 確認をこのフラグでも引っ掛ける (Codex P2)。
@@ -150,16 +175,13 @@ export default function PacketViewer({
       [PSDL_INITIAL_KEY]: psdlToRenderer(initialPsdlPacket),
     } as PacketRegistry;
   });
-  // The renderer-shape mirror of every built-in PSDL preset. Lowered once on
-  // mount; TLV/Chain edits replace the relevant packet entry immutably via
-  // `updatePacketField` (the format hub re-lifts back to PSDL at export time).
-  const [renderedPresets, setRenderedPresets] = useState<PacketRegistry>(() => {
-    const out: PacketRegistry = {};
-    for (const [k, v] of Object.entries(PRESETS)) {
-      out[k] = psdlToRenderer(v);
-    }
-    return out;
-  });
+  // Lazy cache of lowered built-in presets. Seeded with just the initial
+  // preset; other built-ins are fetched + lowered on demand by the effect that
+  // watches `packetKey` (see below). TLV/Chain edits replace the relevant entry
+  // immutably via `updatePacketField`.
+  const [renderedPresets, setRenderedPresets] = useState<PacketRegistry>(
+    () => ({ [seedKey]: seedRendered }) as PacketRegistry,
+  );
 
   // Custom Packet Studio — user-saved presets pulled out of localStorage.
   // Keyed `custom:<name>`; PresetPicker renders these under a 'My presets'
@@ -177,30 +199,51 @@ export default function PacketViewer({
     return cp ? psdlToRenderer(cp) : null;
   }, [customPresets, packetKey]);
 
-  // Renderer mirror — the shape the UI editors / detail panels consume.
+  // Lazy-fetch + lower a built-in preset the first time it becomes active. The
+  // preset switch handlers stay synchronous (they just set `packetKey`); this
+  // effect fetches the body from `/presets/<key>.json` and lowers it into the
+  // cache, at which point the component re-renders with the real mirror. Until
+  // then the synchronous fallbacks below show the seed/previous mirror.
+  useEffect(() => {
+    if (!(packetKey in PRESET_INDEX)) return; // psdl / custom / imported key
+    if (renderedPresets[packetKey]) return; // already lowered
+    let cancelled = false;
+    loadPreset(packetKey)
+      .then((p) => {
+        if (cancelled) return;
+        setRenderedPresets((prev) =>
+          prev[packetKey] ? prev : { ...prev, [packetKey]: psdlToRenderer(p) },
+        );
+      })
+      .catch(() => {
+        /* keep showing the seed/previous mirror if the fetch fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [packetKey, renderedPresets]);
+
+  // Renderer mirror — the shape the UI editors / detail panels consume. Falls
+  // back to the seed mirror while a freshly-selected preset's body is in flight.
   const packet: Packet =
     renderedPresets[packetKey] ??
     importedPackets[packetKey] ??
     customRenderer ??
-    renderedPresets[DEFAULT_PACKET_KEY];
+    seedRendered;
 
   const [controllers, setControllers] = useState<ControllerState>(() => {
     if (initialPsdlPacket) {
       const rendered = psdlToRenderer(initialPsdlPacket);
       return { ...initialState(rendered), ...(initialControllers ?? {}) };
     }
-    const packet = PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY];
-    return initialControllers ?? initialState(psdlToRenderer(packet));
+    return initialControllers ?? initialState(seedRendered);
   });
 
-  // Custom Packet Studio reducer. Seeded from the default preset; we
-  // reseed via 'replace-packet' on preset switch so history doesn't span
-  // unrelated packets.
+  // Custom Packet Studio reducer. Seeded from the initial packet; we reseed via
+  // 'replace-packet' on preset switch so history doesn't span unrelated packets.
   const [studioState, dispatch] = useReducer(
     editReducer,
-    initialPsdlPacket ??
-      PRESETS[initialPacketKey] ??
-      PRESETS[DEFAULT_PACKET_KEY],
+    seedPsdl,
     makeInitialState,
   );
   // UI shell state — visibility toggles, selection, drawer mode, etc.
@@ -275,15 +318,24 @@ export default function PacketViewer({
     } else if (parsed.kind === "preset") {
       setCustomPresets(stored);
       setPacketKey(parsed.presetKey);
-      setControllers({
-        ...initialState(renderedPresets[parsed.presetKey]),
-        ...parsed.controllers,
-      });
+      // The preset body may not be lazily loaded yet — resolve it (cache hit if
+      // it's the server-seeded preset) before seeding controllers from its
+      // defaults.
+      const presetKey = parsed.presetKey;
+      const urlControllers = parsed.controllers;
+      void loadPreset(presetKey)
+        .then((p) =>
+          setControllers({
+            ...initialState(psdlToRenderer(p)),
+            ...urlControllers,
+          }),
+        )
+        .catch(() => setControllers({ ...urlControllers }));
     } else {
       setCustomPresets(stored);
       if (Object.keys(parsed.controllers).length > 0) {
         setControllers({
-          ...initialState(renderedPresets[DEFAULT_PACKET_KEY]),
+          ...initialState(renderedPresets[DEFAULT_PACKET_KEY] ?? seedRendered),
           ...parsed.controllers,
         });
       }
@@ -303,13 +355,16 @@ export default function PacketViewer({
   // packet (lossy but acceptable as a starting point for editing).
   const activePsdlPacket: PsdlPacket = useMemo(() => {
     return (
-      PRESETS[packetKey] ??
+      getLoadedPreset(packetKey) ??
       customPresets[packetKey] ??
       (importedPackets[packetKey]
         ? rendererToPsdl(importedPackets[packetKey])
-        : PRESETS[DEFAULT_PACKET_KEY])
+        : seedPsdl)
     );
-  }, [packetKey, customPresets, importedPackets]);
+    // `renderedPresets` is included so this recomputes once a lazily-fetched
+    // built-in body lands in the load cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packetKey, customPresets, importedPackets, renderedPresets]);
 
   // Re-seed the studio reducer in-place when the active PSDL packet swaps
   // (preset change, custom preset selection, import). Detecting the change
@@ -527,7 +582,12 @@ export default function PacketViewer({
   // so the URL stays canonical — but keep edit mode open.
   useEffect(() => {
     if (!editMode || !urlHydrated) return;
-    for (const [key, preset] of Object.entries(PRESETS)) {
+    // Compare only against built-ins already fetched this session. With lazy
+    // loading we don't hold all 184 bodies client-side; the common case (the
+    // user edited a preset they're viewing back to its canonical form) is
+    // covered because that preset is loaded. An edit that happens to match an
+    // unvisited preset simply won't auto-canonicalise — an acceptable trade.
+    for (const [key, preset] of loadedPresets()) {
       // Canonicalization only matters when switching TO a different preset.
       // If packetKey is already `key`, all state is already correct and we
       // must not call setRenderedPresets/setControllers — writing new object
@@ -740,7 +800,7 @@ export default function PacketViewer({
 
   const buildCurrentShareUrl = useCallback(() => {
     if (typeof window === "undefined") return "";
-    const builtInPsdl = PRESETS[packetKey];
+    const builtInPsdl = getLoadedPreset(packetKey);
     const customSource = builtInPsdl ? undefined : customPresets[packetKey];
     // Custom preset edits live in `renderedPresets` (see
     // `replaceActivePacket` custom arm) and the source PSDL in
@@ -999,7 +1059,9 @@ export default function PacketViewer({
     // 同じ reducer を経由するので、 上の diagram は常にここを映す。
     const base = editMode
       ? studioState.packet
-      : (PRESETS[packetKey] ?? activeCustomPreset ?? rendererToPsdl(packet));
+      : (getLoadedPreset(packetKey) ??
+        activeCustomPreset ??
+        rendererToPsdl(packet));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances

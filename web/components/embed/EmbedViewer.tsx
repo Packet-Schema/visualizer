@@ -22,7 +22,7 @@ import { THEME_STORAGE_KEY } from "@/lib/constants";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESET_INDEX, getLoadedPreset, loadPreset } from "@/lib/psdl/presets";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
@@ -36,7 +36,7 @@ import type {
 import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 const DEFAULT_PACKET_KEY = "ipv4";
-const BUILT_IN_PRESET_KEYS = Object.keys(PRESETS);
+const BUILT_IN_PRESET_KEYS = Object.keys(PRESET_INDEX);
 
 type EmbedState = {
   packet: Packet;
@@ -57,19 +57,55 @@ export default function EmbedViewer() {
   const searchString = searchParamsString || windowSearchString;
 
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const embedState = useMemo(
-    () => readEmbedState(searchString ? `?${searchString}` : ""),
+  const intent = useMemo(
+    () => readEmbedIntent(searchString ? `?${searchString}` : ""),
     [searchString],
   );
 
-  useEmbedTheme(embedState.theme);
+  // Resolve the PSDL body: a `psdl` share has it inline; a preset share fetches
+  // it lazily (from the session cache first, then `/presets/<key>.json`).
+  const [psdlBody, setPsdlBody] = useState<PsdlPacket | null>(
+    () => intent.psdl ?? getLoadedPreset(intent.presetKey ?? "") ?? null,
+  );
+  useEffect(() => {
+    if (intent.psdl) {
+      setPsdlBody(intent.psdl);
+      return;
+    }
+    const key = intent.presetKey ?? DEFAULT_PACKET_KEY;
+    const cached = getLoadedPreset(key);
+    if (cached) {
+      setPsdlBody(cached);
+      return;
+    }
+    let cancelled = false;
+    loadPreset(key)
+      .catch(() => loadPreset(DEFAULT_PACKET_KEY))
+      .then((p) => {
+        if (!cancelled) setPsdlBody(p);
+      })
+      .catch(() => {
+        /* leave psdlBody null → loading placeholder */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [intent]);
+
+  const embedState = useMemo(
+    () => (psdlBody ? makeEmbedState(psdlBody, intent) : null),
+    [psdlBody, intent],
+  );
+
+  useEmbedTheme(embedState?.theme ?? null);
   useEmbedSizeReporter(rootRef);
 
   const refs = useMemo(
-    () => collectPsdlRefs(embedState.psdl),
-    [embedState.psdl],
+    () => (embedState ? collectPsdlRefs(embedState.psdl) : new Set<string>()),
+    [embedState],
   );
   const layout = useMemo(() => {
+    if (!embedState) return null;
     const env = new Map(
       Object.entries(embedState.controllers).map(
         ([k, v]) => [k, Number(v)] as const,
@@ -87,7 +123,7 @@ export default function EmbedViewer() {
     }
 
     return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
-  }, [embedState.psdl, embedState.controllers, refs]);
+  }, [embedState, refs]);
 
   const handleFieldClick = useCallback((field: Field) => {
     setSelectedFieldId(field.id);
@@ -98,6 +134,13 @@ export default function EmbedViewer() {
     },
     [],
   );
+
+  // Preset body still loading (lazy fetch) — render nothing visible yet.
+  if (!embedState || !layout) {
+    return (
+      <main ref={rootRef} className="embed-root" aria-label="Packet embed" />
+    );
+  }
 
   if (embedState.error) {
     return (
@@ -129,52 +172,71 @@ export default function EmbedViewer() {
   );
 }
 
-function readEmbedState(search: string): EmbedState {
+// What the URL asks for, before the (now lazily-fetched) preset body resolves.
+// A `psdl` share carries its own packet; a preset share carries only a key
+// whose body is fetched from `/presets/<key>.json`.
+type EmbedIntent = {
+  psdl?: PsdlPacket;
+  presetKey?: string;
+  controllers: ControllerState;
+  error: string | null;
+  theme: EmbedTheme | null;
+};
+
+function readEmbedIntent(search: string): EmbedIntent {
   try {
     const parsed = parseShareParams(search, BUILT_IN_PRESET_KEYS);
     const theme = parseEmbedThemeParam(search);
     if (parsed.kind === "psdl") {
-      const packet = psdlToRenderer(parsed.packet);
       return {
-        packet,
         psdl: parsed.packet,
-        controllers: { ...initialState(packet), ...parsed.controllers },
+        controllers: parsed.controllers,
         error: null,
         theme,
       };
     }
     if (parsed.kind === "preset") {
-      return makePresetState(parsed.presetKey, parsed.controllers, null, theme);
+      return {
+        presetKey: parsed.presetKey,
+        controllers: parsed.controllers,
+        error: null,
+        theme,
+      };
     }
     if (parsed.error) {
-      return makePresetState(DEFAULT_PACKET_KEY, {}, parsed.error, theme);
+      return {
+        presetKey: DEFAULT_PACKET_KEY,
+        controllers: {},
+        error: parsed.error,
+        theme,
+      };
     }
-    return makePresetState(DEFAULT_PACKET_KEY, parsed.controllers, null, theme);
+    return {
+      presetKey: DEFAULT_PACKET_KEY,
+      controllers: parsed.controllers,
+      error: null,
+      theme,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return makePresetState(
-      DEFAULT_PACKET_KEY,
-      {},
-      message || "Invalid embed URL.",
-      parseEmbedThemeParam(search),
-    );
+    return {
+      presetKey: DEFAULT_PACKET_KEY,
+      controllers: {},
+      error: message || "Invalid embed URL.",
+      theme: parseEmbedThemeParam(search),
+    };
   }
 }
 
-function makePresetState(
-  presetKey: string,
-  controllers: ControllerState,
-  error: string | null,
-  theme: EmbedTheme | null,
-): EmbedState {
-  const psdl = PRESETS[presetKey] ?? PRESETS[DEFAULT_PACKET_KEY];
+/** Build the renderable embed state once the PSDL body is resolved. */
+function makeEmbedState(psdl: PsdlPacket, intent: EmbedIntent): EmbedState {
   const packet = psdlToRenderer(psdl);
   return {
     packet,
     psdl,
-    controllers: { ...initialState(packet), ...controllers },
-    error,
-    theme,
+    controllers: { ...initialState(packet), ...intent.controllers },
+    error: intent.error,
+    theme: intent.theme,
   };
 }
 

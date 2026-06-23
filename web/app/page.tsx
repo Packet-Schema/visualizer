@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import SiteHeader from "@/components/app-shell/SiteHeader";
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
@@ -117,6 +117,12 @@ export default async function Page({ searchParams }: Props) {
   const initialPacketKey =
     parsed.kind === "preset" ? parsed.presetKey : DEFAULT_PACKET_KEY;
   const initialPsdlPacket = parsed.kind === "psdl" ? parsed.packet : undefined;
+  // Resolve the initial built-in preset body server-side and hand it to the
+  // client so it can seed its state without fetching — the client otherwise
+  // only ships the lightweight preset index and lazy-fetches bodies on demand.
+  const initialBuiltInPacket = initialPsdlPacket
+    ? undefined
+    : (PRESETS[initialPacketKey] ?? PRESETS[DEFAULT_PACKET_KEY]);
   // For PSDL, pass raw controllers so PacketViewer can merge them with the
   // packet's own defaults. For preset/none, merge server-side as before.
   const initialControllers = initialPsdlPacket
@@ -129,6 +135,7 @@ export default async function Page({ searchParams }: Props) {
       <PacketViewer
         initialPacketKey={initialPacketKey}
         initialPsdlPacket={initialPsdlPacket}
+        initialBuiltInPacket={initialBuiltInPacket}
         initialControllers={initialControllers}
       />
     </div>
