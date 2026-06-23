@@ -175,54 +175,16 @@ function mergeContainer(c: Container, mirror: RendererPacket): Container[] {
   // After overlay we know the leaf-level merges are done; now handle
   // container-level Repeat merges (which need to descend through
   // Group / Switch / Encrypted / Optional too, sub-agent H2).
-  const merged = mergeRepeats(overlaid, mirror);
-  // PSDL 0.5 wraps the TLV / chain Repeat in a transparent `bounded`
-  // wire-scope (e.g. IPv4's `optionsArea`). The renderer mirror flattens
-  // that scope (`flattenForMirror`), so a diagram-driven TLV / chain id
-  // (`options`) maps onto a field at the mirror's *top* level. To keep the
-  // exported PSDL addressable by those same flat ids — and so downstream
-  // body walks find the merged Repeat where the mirror put it — we splice a
-  // `bounded` that holds a merge-target Repeat inline rather than re-wrapping
-  // it. Scopes with no merge-target Repeat are kept intact so unrelated wire
-  // scopes round-trip untouched.
-  if (
-    merged.kind === "bounded" &&
-    containsMergeTargetRepeat(merged.fields, mirror)
-  ) {
-    return merged.fields;
-  }
-  return [merged];
-}
-
-/** True when `mergeRepeat` would actually act on this Repeat — i.e. the mirror
- *  carries a TLV or chain catalog keyed by its id (the same condition
- *  `mergeRepeat` uses). A Repeat with no such mirror entry is left untouched,
- *  so its enclosing `bounded` wire-scope must NOT be unwrapped. */
-function isMergeTargetRepeat(c: Repeat, mirror: RendererPacket): boolean {
-  const sameIdMirror = findRendererField(mirror, c.id);
-  if (sameIdMirror?.tlv) return true;
-  const chainBaseId = c.id.replace(/_chain$/, "");
-  const chainBaseMirror =
-    chainBaseId !== c.id ? findRendererField(mirror, chainBaseId) : undefined;
-  return Boolean(chainBaseMirror?.chainCatalog || sameIdMirror?.chainCatalog);
-}
-
-/** Does this container list hold a Repeat that a merge would target
- *  (recursing through nested transparent scopes / groups)? Only a Repeat with
- *  a real TLV/chain mirror counts — a plain Repeat inside a `bounded` does not,
- *  so the scope's `bounded.bytes` budget survives the export round-trip. */
-function containsMergeTargetRepeat(
-  containers: Container[],
-  mirror: RendererPacket,
-): boolean {
-  return containers.some((c) => {
-    if (c.kind === "repeat") return isMergeTargetRepeat(c, mirror);
-    if (c.kind === "bounded")
-      return containsMergeTargetRepeat(c.fields, mirror);
-    if (c.kind === "group")
-      return containsMergeTargetRepeat(c.children, mirror);
-    return false;
-  });
+  // NOTE: do NOT unwrap a `bounded` here. PSDL 0.5 wraps the TLV / chain
+  // Repeat in a transparent `bounded` wire-scope (e.g. IPv4's `optionsArea`);
+  // `mergeRepeats` already recurses into `bounded.fields` and updates the
+  // inner Repeat in place, so the wrapper — and its `bounded.bytes` budget —
+  // must be preserved. Stripping it made the exported PSDL diverge from the
+  // built-in preset (no instance change but a missing length scope), breaking
+  // the `samePsdlPacket` check that share / "Save as preset" rely on. The
+  // renderer mirror flattens the scope for *display* (`flattenForMirror`); the
+  // exported PSDL stays canonical.
+  return [mergeRepeats(overlaid, mirror)];
 }
 
 function mergeRepeats(c: Container, mirror: RendererPacket): Container {

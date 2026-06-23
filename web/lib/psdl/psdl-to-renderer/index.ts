@@ -17,6 +17,7 @@
 //   - `./shared.ts`    — `typeBits` + helpers used across the modules
 
 import { isField } from "../utils";
+import { exprRefs } from "../expr";
 import type {
   Constraint,
   Container,
@@ -111,44 +112,18 @@ function constraintToController(constraint: Constraint): string | null {
 }
 
 /**
- * Collect every distinct field-ref id mentioned anywhere in an `Expr`.
- *
- * Used to decide whether a `bounded.bytes` length expression has *exactly
- * one* controller field (e.g. `ihl*4 - 20` → just `ihl`). When a single
- * ref drives the scope length, that field is the slider controller — the
- * same role IHL / Data Offset played via top-level constraints in 0.4.
- * Multi-ref expressions are ambiguous (no single slider semantics) and are
- * left without a controller annotation.
- */
-function collectRefs(expr: Expr, acc: Set<string>): void {
-  switch (expr.kind) {
-    case "ref":
-      acc.add(expr.field);
-      return;
-    case "lit":
-    case "peek":
-      return;
-    case "op":
-      collectRefs(expr.a, acc);
-      collectRefs(expr.b, acc);
-      return;
-    case "cond":
-      collectRefs(expr.test, acc);
-      collectRefs(expr.t, acc);
-      collectRefs(expr.f, acc);
-      return;
-  }
-}
-
-/**
  * Return the sole field-ref id in `expr`, or `null` if the expression
  * mentions zero or more than one distinct field. This is the
  * `bounded.bytes` analogue of `constraintToController`: a length scope
  * whose byte budget is `ihl*4 - 20` nominates `ihl` as its controller.
+ *
+ * Distinctness is computed via core's `exprRefs`, which walks every 0.5 Expr
+ * shape (lookup keys, peek offsets, cond branches, …). A length expression
+ * like `lookup(ref("lenCode"), …)` therefore correctly nominates `lenCode`
+ * — the old hand-rolled walk only descended `op`/`cond`/`peek` and missed it.
  */
 function singleRefController(expr: Expr): string | null {
-  const refs = new Set<string>();
-  collectRefs(expr, refs);
+  const refs = new Set(exprRefs(expr));
   return refs.size === 1 ? [...refs][0] : null;
 }
 
@@ -496,22 +471,12 @@ function attachOverrideMetadata(
     return null;
   };
 
-  // Try to pull a single ref id out of an Expr — `ref(X)` returns X,
-  // `op` / `cond` walks operands recursively and returns the first ref
-  // found. Complex expressions with multiple refs are accepted but the
-  // first ref wins ("primary" controller).
-  const primaryRef = (expr: import("../types").Expr): string | null => {
-    if (expr.kind === "ref") return expr.field;
-    if (expr.kind === "lit") return null;
-    if (expr.kind === "peek") return null;
-    if (expr.kind === "op") {
-      return primaryRef(expr.a) ?? primaryRef(expr.b);
-    }
-    if (expr.kind === "cond") {
-      return primaryRef(expr.test) ?? primaryRef(expr.t) ?? primaryRef(expr.f);
-    }
-    return null;
-  };
+  // Pull the primary ref id out of an Expr — the first field referenced
+  // anywhere in it, or null. Backed by core's `exprRefs`, so 0.5 shapes
+  // (lookup keys, peek offsets, …) surface a controller too; `op` / `cond`
+  // behaviour is unchanged (first ref in walk order still wins).
+  const primaryRef = (expr: import("../types").Expr): string | null =>
+    exprRefs(expr)[0] ?? null;
 
   const visit = (containers: PsdlPacket["body"]): void => {
     for (const c of flattenForMirror(containers)) {

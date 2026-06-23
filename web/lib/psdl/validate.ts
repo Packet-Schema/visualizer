@@ -334,6 +334,9 @@ function collectIdsFromContainer(c: Container, into: Set<string>): void {
     case "group":
       for (const child of c.children) collectIdsFromContainer(child, into);
       return;
+    case "bounded":
+      for (const child of c.fields) collectIdsFromContainer(child, into);
+      return;
     case "repeat":
       collectFieldIds(c.element, into);
       return;

@@ -68,6 +68,7 @@ export function applyTlvInstances(
       if (c.kind === "repeat") return tlvExpands(c.id);
       if (c.kind === "bounded") return containsExpandedTlv(c.fields);
       if (c.kind === "group") return containsExpandedTlv(c.children);
+      if (c.kind === "optional") return containsExpandedTlv([c.container]);
       return false;
     });
 
@@ -95,6 +96,29 @@ export function applyTlvInstances(
     }
     if (c.kind === "group") {
       return [{ ...c, children: c.children.flatMap(expand) }];
+    }
+    // `optional` (PSDL 0.5 §10.8) wraps exactly one container, which may be a
+    // TLV Repeat (or a group/bounded that holds one). Descend into the wrapped
+    // container so the TLV is expanded in place; otherwise the diagram would
+    // show the raw Repeat. Expanding may yield multiple containers (the TLV's
+    // per-instance Groups, or a spliced bounded) — since an Optional wraps a
+    // single container, collapse a multi-result into a Group so the Optional
+    // keeps wrapping exactly one container.
+    if (c.kind === "optional") {
+      const inner = expand(c.container);
+      const wrapped: Container =
+        inner.length === 1
+          ? inner[0]
+          : {
+              kind: "group",
+              id: `${c.id}__opt`,
+              name:
+                "name" in c.container
+                  ? (c.container.name ?? "Options")
+                  : "Options",
+              children: inner,
+            };
+      return [{ ...c, container: wrapped }];
     }
     if (c.kind === "repeat" && tlvByRepeatId.has(c.id)) {
       const tlv = tlvByRepeatId.get(c.id)!;

@@ -70,7 +70,15 @@ type ToCtx = {
 function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
   // Field?
   if (!("kind" in c) || c.kind === "field") {
-    return [fieldToKsy(c as Field, ctx)];
+    const f = c as Field;
+    // Multi-byte delimited bytes have no valid Kaitai seq form (terminator: is
+    // a single byte). Drop the entry entirely — fieldToKsy already records the
+    // psdl-only note — rather than emit an uncompilable typeless/sizeless array.
+    if (isMultiByteDelimitedBytes(f)) {
+      fieldToKsy(f, ctx); // record the psdl-only note (side effect)
+      return [];
+    }
+    return [fieldToKsy(f, ctx)];
   }
   switch (c.kind) {
     case "group":
@@ -195,14 +203,29 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       ];
     }
     case "bounded": {
-      // PSDL 0.5 — a Bounded is a transparent wire-scope (a declared byte
-      // budget around its children). Kaitai has no equivalent scope, so we
-      // splice the children inline like a Group and record the dropped budget
-      // as a psdl-only note.
+      // PSDL 0.5 — a Bounded is a declared byte budget around its children.
+      // Splicing the children inline (the old behaviour) loses the budget, so
+      // when `bounded.bytes` exceeds the sum of its children every following
+      // seq entry reads from the wrong offset. Kaitai models a fixed byte
+      // budget as a SUBSTREAM: a seq entry with `size:` and a synthetic user
+      // `type` whose own seq is the bounded's children (parsed against the
+      // sub-stream). This preserves the budget and keeps downstream fields
+      // aligned regardless of how much of the region the children consume.
+      const sanitizedId = toKsyId(c.id);
+      const size = exprToKsySize(c.bytes);
+      const childSeq = c.fields.flatMap((ch) => containerToKsy(ch, ctx));
+      const entry: KsySeqEntry = { id: sanitizedId, size };
+      if (childSeq.length > 0) {
+        const typeName = `${sanitizedId}_body`;
+        ctx.types[typeName] = { seq: childSeq };
+        entry.type = typeName;
+      }
+      // If childSeq is empty (all children were zero-width / dropped) we fall
+      // back to a sized opaque byte array, which still consumes the budget.
       ctx.psdlOnly.push(
-        `bounded "${c.id}" byte budget (${exprToString(c.bytes)}) not representable in .ksy — children spliced inline`,
+        `bounded "${c.id}" byte budget (${exprToString(c.bytes)}) emitted as a sized Kaitai substream`,
       );
-      return c.fields.flatMap((ch) => containerToKsy(ch, ctx));
+      return [entry];
     }
     case "align": {
       // PSDL 0.5 — Align pads the cursor to a `c.to`-bit boundary. The number
@@ -271,12 +294,22 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
       break;
     case "bytes":
       if (isBytesDelimited(f.type.n)) {
-        // 0.5 — delimiter-terminated bytes. Kaitai's `size` can't express a
-        // multi-byte delimiter; surface it as a psdl-only note and leave the
-        // field unsized.
-        ctx.psdlOnly.push(
-          `Field "${f.id}" delimited bytes (delimiter ${f.type.n.delimiter.join(",")}) not expressible as Kaitai size`,
-        );
+        const delimiter = f.type.n.delimiter;
+        if (delimiter.length === 1) {
+          // 0.5 — single-byte delimiter maps cleanly onto Kaitai's
+          // `terminator:` (a typeless byte array terminated by one byte).
+          // Without a size/terminator a typeless byte field is uncompilable,
+          // so this keeps the emitted .ksy valid.
+          entry.terminator = delimiter[0];
+        } else {
+          // Multi-byte delimiter: Kaitai's `terminator:` is a single byte, so
+          // there is no valid seq form. Surface a psdl-only note; the caller
+          // drops the entry (see `containerToKsy`) rather than emit an
+          // uncompilable, typeless, sizeless byte array.
+          ctx.psdlOnly.push(
+            `Field "${f.id}" delimited bytes (delimiter ${delimiter.join(",")}) not expressible as Kaitai size`,
+          );
+        }
       } else {
         entry.size = exprToKsySize(f.type.n);
       }
@@ -378,4 +411,18 @@ function exprToString(e: Expr): string {
 
 function toKsyId(name: string): string {
   return sanitizeId(name, "packet");
+}
+
+/**
+ * True when a Field is a delimiter-terminated `bytes` whose delimiter is more
+ * than one byte. Kaitai's `terminator:` only models a single byte, so such a
+ * field has no valid seq representation and must be dropped (the caller emits
+ * a psdl-only note instead).
+ */
+function isMultiByteDelimitedBytes(f: Field): boolean {
+  return (
+    f.type.kind === "bytes" &&
+    isBytesDelimited(f.type.n) &&
+    f.type.n.delimiter.length !== 1
+  );
 }

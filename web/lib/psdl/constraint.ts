@@ -15,7 +15,7 @@
 // expressions (the ones used by our presets), e.g. solving `IHL * 4 ==
 // headerBytes` for IHL by inverting `* 4` into `/ 4`.
 
-import { evalExpr, MissingRefError } from "./expr";
+import { evalExpr, exprRefs, MissingRefError } from "./expr";
 import type { Constraint, Expr, PacketEnv } from "./types";
 
 export type PropagateOk = { ok: PacketEnv };
@@ -66,23 +66,13 @@ function solveFor(
   }
 }
 
+// Whether `target` appears anywhere in `expr`. Delegates to core's `exprRefs`,
+// which knows every 0.5 Expr shape (lookup / cond / op / peek / wireSize / …) —
+// the hand-rolled walk used to miss refs hidden inside lookup keys, so a
+// constraint like `lookup(ref("lenCode"), …) == ref("len")` failed to
+// propagate when `lenCode` changed.
 function containsRef(expr: Expr, target: string): boolean {
-  if (expr.kind === "ref") return expr.field === target;
-  if (expr.kind === "cond")
-    return (
-      containsRef(expr.test, target) ||
-      containsRef(expr.t, target) ||
-      containsRef(expr.f, target)
-    );
-  if (expr.kind === "peek") {
-    // peek's offset (if present) is the only sub-expression that could
-    // mention a ref; it's not solvable here, just searched.
-    return expr.offset !== undefined && containsRef(expr.offset, target);
-  }
-  // Only `op` recurses into operands; every other kind (lit + 0.5 nullary /
-  // contextual exprs) carries no nested ref the solver acts on.
-  if (expr.kind !== "op") return false;
-  return containsRef(expr.a, target) || containsRef(expr.b, target);
+  return exprRefs(expr).includes(target);
 }
 
 /** Evaluate `expr` only if it doesn't depend on `MissingRef` lookups. */
@@ -211,33 +201,10 @@ export function propagate(
   return { ok: next };
 }
 
+// Distinct field refs in `expr`, via core's `exprRefs` so every 0.5 shape
+// (lookup keys, peek offsets, cond branches, …) is covered.
 function uniqueRefs(expr: Expr): string[] {
-  const set = new Set<string>();
-  collectRefs(expr, set);
-  return [...set];
-}
-
-function collectRefs(expr: Expr, set: Set<string>): void {
-  switch (expr.kind) {
-    case "ref":
-      set.add(expr.field);
-      return;
-    case "op":
-      collectRefs(expr.a, set);
-      collectRefs(expr.b, set);
-      return;
-    case "cond":
-      collectRefs(expr.test, set);
-      collectRefs(expr.t, set);
-      collectRefs(expr.f, set);
-      return;
-    case "peek":
-      // peek.offset is itself an Expr, so a lookahead like
-      // `peek(8, ref("hdr_len"))` does pull a ref into the constraint graph.
-      if (expr.offset) collectRefs(expr.offset, set);
-      return;
-    // lit + 0.5 nullary / contextual exprs carry no solver-relevant refs.
-  }
+  return [...new Set(exprRefs(expr))];
 }
 
 /** Validate that the current env satisfies every constraint. */
