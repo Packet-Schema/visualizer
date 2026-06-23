@@ -300,9 +300,18 @@ export function findPresetKeyForPacket(
   packet: PsdlPacket,
   presets: Record<string, PsdlPacket>,
 ): string | null {
-  const target = stableStringify(packet);
+  // Compare canonical WIRE forms, not the raw packets. PSDL 0.5 presets carry
+  // metadata (`meta`, `version`) that the share-URL wire format (`toJson`)
+  // intentionally drops, so a packet decoded from `?psdl=` never has those
+  // fields while the built-in preset does. Normalising both sides through
+  // `toJson` strips that metadata symmetrically, so a shared packet still
+  // matches the built-in preset it was derived from (and the homepage can
+  // redirect `?psdl=…` → `?preset=<key>`).
+  const wireForm = (p: PsdlPacket): string =>
+    stableStringify(JSON.parse(toJson(p, new Map())));
+  const target = wireForm(packet);
   for (const [key, presetPacket] of Object.entries(presets)) {
-    if (stableStringify(presetPacket) === target) return key;
+    if (wireForm(presetPacket) === target) return key;
   }
   return null;
 }

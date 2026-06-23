@@ -10,7 +10,6 @@
 import type {
   Container,
   Encrypted,
-  Expr,
   Field,
   Group,
   Packet,
@@ -21,54 +20,14 @@ import type {
 } from "./types";
 import { VARINT_ENCODINGS } from "./types";
 import { isField } from "./utils";
+import { isBytesDelimited } from "./normalize";
+// Structural Expr shape-check, delegated to core so it stays in lock-step with
+// the full PSDL 0.5 expression set (lookup / wireSize / prevIter / remaining /
+// enclosing* and the extended operator family). Re-exported for callers that
+// imported it from here.
+import { isValidExpr } from "@packet-schema/core";
 
-/**
- * Shape-check an Expr — purely structural (no env evaluation). Catches typos
- * like a missing operand or an unknown operator slipping past TypeScript when
- * the schema comes in from JSON.
- */
-export function isValidExpr(expr: unknown): expr is Expr {
-  if (typeof expr !== "object" || expr === null) return false;
-  const e = expr as { kind?: unknown };
-  switch (e.kind) {
-    case "lit": {
-      const v = (expr as { value?: unknown }).value;
-      return typeof v === "number" && Number.isFinite(v);
-    }
-    case "ref":
-      return typeof (expr as { field?: unknown }).field === "string";
-    case "op": {
-      const o = expr as { op?: unknown; a?: unknown; b?: unknown };
-      const ops = ["+", "-", "*", "/", "%", "<<", ">>"];
-      return (
-        typeof o.op === "string" &&
-        ops.includes(o.op) &&
-        isValidExpr(o.a) &&
-        isValidExpr(o.b)
-      );
-    }
-    case "cond": {
-      const c = expr as { test?: unknown; t?: unknown; f?: unknown };
-      return isValidExpr(c.test) && isValidExpr(c.t) && isValidExpr(c.f);
-    }
-    case "peek": {
-      // PSDL 0.4 — bits 1..64, optional offset must validate when present.
-      const p = expr as { bits?: unknown; offset?: unknown };
-      if (
-        typeof p.bits !== "number" ||
-        !Number.isInteger(p.bits) ||
-        p.bits < 1 ||
-        p.bits > 64
-      ) {
-        return false;
-      }
-      if (p.offset !== undefined && !isValidExpr(p.offset)) return false;
-      return true;
-    }
-    default:
-      return false;
-  }
-}
+export { isValidExpr };
 
 function validateType(type: Type, ctx: string): void {
   switch (type.kind) {
@@ -87,7 +46,8 @@ function validateType(type: Type, ctx: string): void {
       }
       return;
     case "bytes":
-      if (!isValidExpr(type.n)) {
+      // 0.5 — `n` is either a length Expr or a delimiter spec (BytesDelimited).
+      if (!isBytesDelimited(type.n) && !isValidExpr(type.n)) {
         throw new Error(`${ctx}: bytes type has malformed length expression.`);
       }
       return;
@@ -343,7 +303,6 @@ function validateSwitch(s: Switch, ctx: string): void {
   for (const [k, v] of Object.entries(s.cases)) {
     validateStruct(v, `${sub}[${k}]`);
   }
-  if (s.default) validateStruct(s.default, `${sub}[default]`);
 }
 
 function validateStruct(s: Struct, ctx: string): void {
@@ -375,18 +334,20 @@ function collectIdsFromContainer(c: Container, into: Set<string>): void {
     case "group":
       for (const child of c.children) collectIdsFromContainer(child, into);
       return;
+    case "bounded":
+      for (const child of c.fields) collectIdsFromContainer(child, into);
+      return;
     case "repeat":
       collectFieldIds(c.element, into);
       return;
     case "switch":
       for (const v of Object.values(c.cases)) collectFieldIds(v, into);
-      if (c.default) collectFieldIds(c.default, into);
       return;
     case "encrypted":
       collectFieldIds(c.plaintext, into);
       return;
     case "optional":
-      into.add(c.field.id);
+      collectIdsFromContainer(c.container, into);
       return;
   }
 }
@@ -454,15 +415,53 @@ function validateContainer(c: Container, ctx: string): void {
       if (!isValidExpr(c.when)) {
         throw new Error(`${sub}: optional 'when' expression is malformed.`);
       }
-      if (!c.field) {
-        throw new Error(`${sub}: optional is missing inner field.`);
+      if (!c.container) {
+        throw new Error(`${sub}: optional is missing inner container.`);
       }
-      if (!c.field.type) {
-        throw new Error(`${sub}: optional inner field is missing a type.`);
-      }
-      validateField(c.field, sub);
+      // 0.5 — Optional may wrap any container, not just a Field.
+      validateContainer(c.container, sub);
       return;
     }
+    case "bounded": {
+      // 0.5 — a declared byte budget scoping its children. Validate the budget
+      // expression and recurse into the scoped containers.
+      const sub = `${ctx}/${c.id}`;
+      if (!isValidExpr(c.bytes)) {
+        throw new Error(`${sub}: bounded 'bytes' budget is malformed.`);
+      }
+      for (const child of c.fields) validateContainer(child, sub);
+      return;
+    }
+    case "align":
+      // 0.5 — pure padding to a bit boundary; `to` must be a positive
+      // power-of-two multiple of 8. JSON / share / format imports only pass
+      // through this structural check (not the Ajv 0.5 schema), so enforce the
+      // boundary here too — a non-pow2 / non-byte `to` (e.g. 7 or 24) would
+      // break the byte-aligned padding assumptions in normalize / export.
+      if (
+        !Number.isInteger(c.to) ||
+        c.to <= 0 ||
+        c.to % 8 !== 0 ||
+        (c.to & (c.to - 1)) !== 0
+      ) {
+        throw new Error(
+          `${ctx}/${c.id ?? "align"}: align 'to' must be a positive power-of-two multiple of 8 bits, got ${String(c.to)}.`,
+        );
+      }
+      return;
+    case "virtual":
+      // 0.5 — zero-width computed field; only its expression needs checking.
+      if (!isValidExpr(c.expr)) {
+        throw new Error(`${ctx}/${c.id}: virtual 'expr' is malformed.`);
+      }
+      return;
+    case "ref":
+      // 0.5 — def expansion. Structural reference only; the def itself is
+      // validated where it's declared (packet.defs).
+      if (typeof c.ref !== "string" || c.ref.length === 0) {
+        throw new Error(`${ctx}/${c.id}: ref must name a def.`);
+      }
+      return;
     default: {
       const bad = (c as { kind: string }).kind;
       throw new Error(`${ctx}: unknown container kind "${bad}".`);

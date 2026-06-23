@@ -148,7 +148,9 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
     name: r.name,
     rowBits: r.rowBits,
     body: r.body as Packet["body"],
-    ...(typeof r.byteOrder === "string" ? { byteOrder: r.byteOrder } : {}),
+    ...(r.byteOrder === "BE" || r.byteOrder === "LE"
+      ? { byteOrder: r.byteOrder }
+      : {}),
     ...(typeof r.description === "string"
       ? { description: r.description }
       : {}),

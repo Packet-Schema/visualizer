@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import { psdlToRenderer, rendererToPsdl } from "@/lib/psdl/psdl-to-renderer";
 
 describe("TLV instances round-trip", () => {

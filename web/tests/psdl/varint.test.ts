@@ -9,7 +9,7 @@
 //     the correct total bit width (8/16/32/64).
 
 import { describe, expect, it } from "vitest";
-import { typeBits } from "../../lib/psdl/normalize";
+import { typeBits, varintBitsEnvKey } from "../../lib/psdl/normalize";
 import { validatePsdlPacket } from "../../lib/psdl/validate";
 import type { Packet, PacketEnv, TypeVarint } from "../../lib/psdl/types";
 
@@ -28,7 +28,9 @@ function mkPacket(encoding: TypeVarint["encoding"] | string): Packet {
 }
 
 describe("validatePsdlPacket — Varint encoding", () => {
-  it.each(["quic", "protobuf", "cbor"] as const)(
+  // PSDL 0.5 widened the predefined varint encoding set to include
+  // `ea-terminated` and `leb128` (core's VARINT_ENCODINGS).
+  it.each(["quic", "protobuf", "cbor", "ea-terminated", "leb128"] as const)(
     "accepts encoding=%s",
     (enc) => {
       expect(() => validatePsdlPacket(mkPacket(enc))).not.toThrow();
@@ -36,7 +38,9 @@ describe("validatePsdlPacket — Varint encoding", () => {
   );
 
   it("rejects an unknown encoding", () => {
-    expect(() => validatePsdlPacket(mkPacket("leb128"))).toThrow(
+    // `leb128` is a recognised 0.5 encoding now, so use a genuinely
+    // unrecognised token to exercise the allow-list rejection path.
+    expect(() => validatePsdlPacket(mkPacket("bogus-encoding"))).toThrow(
       /varint encoding must be one of/,
     );
   });
@@ -65,12 +69,14 @@ describe("typeBits — Varint", () => {
   });
 
   it("returns the env override keyed by the field id", () => {
-    const env: PacketEnv = new Map([["vlen", 32]]);
+    // 0.5 reads the decoder-injected width under the synthetic varint key,
+    // not the bare field id.
+    const env: PacketEnv = new Map([[varintBitsEnvKey("vlen"), 32]]);
     expect(typeBits(t, env, "vlen")).toBe(32);
   });
 
   it("returns 0 when no field id is supplied (anonymous lookup)", () => {
-    const env: PacketEnv = new Map([["vlen", 32]]);
+    const env: PacketEnv = new Map([[varintBitsEnvKey("vlen"), 32]]);
     expect(typeBits(t, env)).toBe(0);
   });
 });
@@ -109,7 +115,7 @@ describe("QUIC varint — 2-bit prefix encoding", () => {
     const t = { kind: "varint" as const, encoding: "quic" as const };
     for (const prefix of [0b00, 0b01, 0b10, 0b11]) {
       const bits = quicVarintBits(prefix);
-      const env: PacketEnv = new Map([["len", bits]]);
+      const env: PacketEnv = new Map([[varintBitsEnvKey("len"), bits]]);
       expect(typeBits(t, env, "len")).toBe(bits);
     }
   });

@@ -162,11 +162,23 @@ export function lintSource(text: string): SourceLintIssue[] {
 /**
  * import/export 経由で wire JSON shape (`format` / `version` 付き) が
  * 流入する場合に備え、 そういうマーカーキーは parse 時に剥がす。
- * preset YAML はもともと持たないので、 通常はノーオペ。
+ *
+ * ただし PSDL 0.5 の packet は `version: "0.5"` を **packet metadata** として
+ * 正規に持つ (preset も全部持つ)。 これは wire JSON envelope の `version`
+ * (常に `format: psdl` と対で出てくる) とは別物なので、 envelope 判定には
+ * `format` の有無を使う:
+ *   - `format` がある → wire envelope なので `format` / `version` を剥がす。
+ *   - `format` が無い → 素の PSDL source。 `version` は packet metadata
+ *     として残す (round-trip で落とさない)。
  */
 function stripWireMarkers(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (!("format" in obj)) {
+    // 素の PSDL source — wire envelope ではない。 `version` は packet
+    // metadata なので保持する。
+    return obj;
+  }
   const { format: _f, version: _v, ...rest } = obj;
   void _f;
   void _v;

@@ -8,12 +8,22 @@
 // surface-level — they only need to know how to read cells).
 
 import type {
+  Container,
+  Normalized,
   NormalizedField,
   PacketEnv,
   Packet as PsdlPacket,
   ViewMode,
 } from "./types";
-import { initialEnv, normalize } from "./normalize";
+import {
+  berLenEnvKey,
+  bytesDelimLenEnvKey,
+  initialEnv,
+  isBytesDelimited,
+  normalize,
+  varintBitsEnvKey,
+} from "./normalize";
+import { isField } from "./utils";
 import type {
   Cell,
   Field as RendererField,
@@ -31,7 +41,22 @@ export type LayoutOptions = {
    * contract.
    */
   viewMode?: ViewMode;
+  /**
+   * Total packet wire size (bits) to budget the top-level scope with. Required
+   * by core's normalize when the packet uses top-level `remaining` /
+   * `enclosingBits` (§4/§11.2). When omitted, `resolveLayout` measures the
+   * fixed prefix and budgets a default variable region so the diagram still
+   * renders a representative cell (see `normalizeWithBudget`).
+   */
+  totalBits?: number;
 };
+
+/**
+ * Default bit budget given to a top-level variable region (`remaining`) at
+ * design time when the caller did not pin a concrete packet size — one full
+ * row, so the variable tail renders as a visible, representative cell.
+ */
+const DEFAULT_VARIABLE_REGION_BITS_FALLBACK = 32;
 
 /** Compute a renderer-shaped layout for a PSDL packet. */
 export function resolveLayout(
@@ -49,8 +74,13 @@ export function resolveLayout(
     );
   }
   const env: PacketEnv = new Map(options.env ?? initialEnv(packet));
+  // Bridge the visualizer's field-id-keyed dynamic-width overrides to the
+  // synthetic env keys core's `typeBits` reads (PSDL 0.5 separates a field's
+  // value from its wire width). Controllers / share-URLs stay keyed by field
+  // id; this is the single boundary where they become core's env contract.
+  bridgeDynamicWidthKeys(packet, env);
   const viewMode: ViewMode = options.viewMode ?? "wire";
-  const norm = normalize(packet, env, { viewMode });
+  const norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
   const cells: Cell[] = [];
   let bitPos = 0;
   // Renderer interpretation pass (see PSDL design principles —
@@ -134,6 +164,94 @@ export function resolveLayout(
     );
   }
   return { cells, totalBits: norm.totalBits };
+}
+
+/**
+ * Run core's `normalize`, supplying a top-level wire-size budget when the
+ * packet needs one. Most packets normalize in a single pass. Packets that use
+ * top-level `remaining` / `enclosingBits` (PSDL 0.5, §4/§11.2) require a
+ * `totalBits` budget — at design time we don't know the real packet size, so:
+ *   1. measure the fixed prefix by normalizing with a zero budget (`remaining`
+ *      clamps to 0), then
+ *   2. re-normalize budgeting the fixed prefix plus one default row for the
+ *      variable region, so it renders as a representative cell.
+ * An explicit `totalBits` (e.g. a future "packet size" control) short-circuits
+ * the estimation.
+ */
+function normalizeWithBudget(
+  packet: PsdlPacket,
+  env: PacketEnv,
+  viewMode: ViewMode,
+  totalBits?: number,
+): Normalized {
+  if (totalBits !== undefined) {
+    return normalize(packet, env, { viewMode, totalBits });
+  }
+  try {
+    return normalize(packet, env, { viewMode });
+  } catch (e) {
+    if (
+      !(e instanceof Error) ||
+      !e.message.includes("did not inject the total packet size")
+    ) {
+      throw e;
+    }
+    const fixed = normalize(packet, new Map(env), { viewMode, totalBits: 0 });
+    const budget =
+      fixed.totalBits +
+      Math.max(packet.rowBits, DEFAULT_VARIABLE_REGION_BITS_FALLBACK);
+    return normalize(packet, env, { viewMode, totalBits: budget });
+  }
+}
+
+/**
+ * Copy field-id-keyed dynamic-width overrides into the synthetic env keys
+ * core's `typeBits` reads. In PSDL 0.4 the visualizer overloaded a field's id
+ * env key to carry both its value and (for varint / berLength / delimited
+ * bytes) its wire bit-width. PSDL 0.5 keeps those namespaces distinct
+ * (`__varintBits__<id>` etc.), so we bridge the value the controllers wrote
+ * under the field id over to the width key the engine expects. Existing
+ * (synthetic) keys win, so an explicit width key is never clobbered.
+ */
+function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        const v = env.get(c.id);
+        if (v !== undefined) {
+          let key: string | null = null;
+          if (c.type.kind === "varint") key = varintBitsEnvKey(c.id);
+          else if (c.type.kind === "berLength") key = berLenEnvKey(c.id);
+          else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
+            key = bytesDelimLenEnvKey(c.id);
+          if (key && !env.has(key)) env.set(key, v);
+        }
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        // virtual / align / ref expose no dynamic-width leaf to bridge.
+      }
+    }
+  };
+  visit(packet.body);
 }
 
 type GroupedRun =

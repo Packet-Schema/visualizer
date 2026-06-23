@@ -1,20 +1,21 @@
-// PSDL 0.2 — Packet Schema Definition Language.
-// Simple bidirectional equality-constraint solver.
+// PSDL — interactive bidirectional equality-constraint solver.
+//
+// NOTE: this is deliberately NOT `@packet-schema/core`'s `propagate`. Core's
+// solver treats the env as authoritative for every ref: when both sides of a
+// constraint already have values it reports a conflict. The visualizer's
+// interactive model is different — when the user drags a field (`changedKey`),
+// that side is authoritative and the *dependent* side must be recomputed
+// (overwriting its now-stale value). So we keep the visualizer's own solver.
 //
 // Each Constraint expresses `lhs == rhs` where exactly one side reduces to a
 // single field reference. After the user mutates that reference (the
-// `changedKey`), we recompute the other side's expression against the new
-// env and write the result back into the corresponding ref on the opposite
-// side. If both sides reduce to non-ref expressions and disagree, that's a
-// conflict.
-//
-// We also support the inverse case for the canonical IHL ⇔ headerBytes:
-// if `headerBytes` is what changed, solving `IHL * 4 == headerBytes` for IHL
-// requires inverting `* 4` into `/ 4`. The solver knows how to invert a
-// limited family of single-operator expressions (the ones used by our
-// presets).
+// `changedKey`), we recompute the other side's expression against the new env
+// and write the result back into the corresponding ref on the opposite side.
+// The solver knows how to invert a limited family of single-operator
+// expressions (the ones used by our presets), e.g. solving `IHL * 4 ==
+// headerBytes` for IHL by inverting `* 4` into `/ 4`.
 
-import { evalExpr, MissingRefError } from "./expr";
+import { evalExpr, exprRefs, MissingRefError } from "./expr";
 import type { Constraint, Expr, PacketEnv } from "./types";
 
 export type PropagateOk = { ok: PacketEnv };
@@ -31,12 +32,6 @@ function singleRef(expr: Expr): string | null {
  * Try to invert `expr` so it solves for `targetRef`, assuming `expr == known`.
  * Returns the numeric value that should be assigned to `targetRef`, or null
  * if we cannot invert this shape.
- *
- * Supported shapes:
- *   ref                                   → known
- *   ref op lit / lit op ref               → invert one of +,-,*,/,%,<<,>>
- *   (expr containing exactly one ref)     → traverse, peeling one operator
- *                                            at a time.
  */
 function solveFor(
   expr: Expr,
@@ -47,12 +42,10 @@ function solveFor(
   if (expr.kind === "ref") {
     return expr.field === targetRef ? known : null;
   }
-  if (expr.kind === "lit") return null;
-  if (expr.kind === "cond") return null;
-  // PSDL 0.4 — peek dispatches on lookahead bytes; treated as constant for
-  // solver purposes, so it can never carry the target ref.
-  if (expr.kind === "peek") return null;
-  // expr.kind === 'op'
+  // Only single-operator `op` expressions are invertible. Literals, conds,
+  // peeks and the 0.5 nullary/contextual exprs (lookup / wireSize / prevIter /
+  // remaining / enclosing*) cannot carry the target ref in a solvable shape.
+  if (expr.kind !== "op") return null;
   const aHas = containsRef(expr.a, targetRef);
   const bHas = containsRef(expr.b, targetRef);
   if (aHas === bHas) return null; // ambiguous or absent on both sides.
@@ -73,21 +66,13 @@ function solveFor(
   }
 }
 
+// Whether `target` appears anywhere in `expr`. Delegates to core's `exprRefs`,
+// which knows every 0.5 Expr shape (lookup / cond / op / peek / wireSize / …) —
+// the hand-rolled walk used to miss refs hidden inside lookup keys, so a
+// constraint like `lookup(ref("lenCode"), …) == ref("len")` failed to
+// propagate when `lenCode` changed.
 function containsRef(expr: Expr, target: string): boolean {
-  if (expr.kind === "ref") return expr.field === target;
-  if (expr.kind === "lit") return false;
-  if (expr.kind === "cond")
-    return (
-      containsRef(expr.test, target) ||
-      containsRef(expr.t, target) ||
-      containsRef(expr.f, target)
-    );
-  if (expr.kind === "peek") {
-    // peek's offset (if present) is the only sub-expression that could
-    // mention a ref; it's not solvable here, just searched.
-    return expr.offset !== undefined && containsRef(expr.offset, target);
-  }
-  return containsRef(expr.a, target) || containsRef(expr.b, target);
+  return exprRefs(expr).includes(target);
 }
 
 /** Evaluate `expr` only if it doesn't depend on `MissingRef` lookups. */
@@ -171,11 +156,6 @@ export function propagate(
       const lhsVal = evalConst(c.lhs, next);
       if (lhsVal === null) continue;
       if (rhsRef) {
-        const existing = next.get(rhsRef);
-        if (existing !== undefined && existing !== lhsVal) {
-          // Try solving for rhsRef in case the rhs was a literal-bearing
-          // expression — but here rhs IS a single ref so just set.
-        }
         next.set(rhsRef, lhsVal);
       } else {
         // RHS is an expression with one ref — solve for that ref.
@@ -221,36 +201,10 @@ export function propagate(
   return { ok: next };
 }
 
+// Distinct field refs in `expr`, via core's `exprRefs` so every 0.5 shape
+// (lookup keys, peek offsets, cond branches, …) is covered.
 function uniqueRefs(expr: Expr): string[] {
-  const set = new Set<string>();
-  collectRefs(expr, set);
-  return [...set];
-}
-
-function collectRefs(expr: Expr, set: Set<string>): void {
-  switch (expr.kind) {
-    case "lit":
-      return;
-    case "ref":
-      set.add(expr.field);
-      return;
-    case "op":
-      collectRefs(expr.a, set);
-      collectRefs(expr.b, set);
-      return;
-    case "cond":
-      collectRefs(expr.test, set);
-      collectRefs(expr.t, set);
-      collectRefs(expr.f, set);
-      return;
-    case "peek":
-      // peek.bits is a literal but peek.offset is itself an Expr, so a
-      // lookahead like `peek(8, ref("hdr_len"))` does pull a ref into
-      // the constraint graph. Missing this case made `uniqueRefs`
-      // under-count and the propagator skip valid drivers.
-      if (expr.offset) collectRefs(expr.offset, set);
-      return;
-  }
+  return [...new Set(exprRefs(expr))];
 }
 
 /** Validate that the current env satisfies every constraint. */

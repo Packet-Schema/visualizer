@@ -57,11 +57,13 @@ describe("normalize — fields and groups", () => {
       {
         kind: "group",
         id: "outer",
+        name: "outer",
         children: [
           { id: "x", name: "X", type: bits(4) },
           {
             kind: "group",
             id: "inner",
+            name: "inner",
             children: [
               { id: "y", name: "Y", type: bits(4) },
               { id: "z", name: "Z", type: bits(8) },
@@ -219,6 +221,7 @@ describe("normalize — Repeat", () => {
     const g: Group = {
       kind: "group",
       id: "g",
+      name: "g",
       children: [{ id: "leaf", name: "Leaf", type: bits(8) }],
     };
     const p = mk("rep-group", [
@@ -254,8 +257,7 @@ describe("normalize — Switch", () => {
         kind: "switch",
         id: "byKind",
         on: ref("kind"),
-        cases: { "0": opt0, "1": opt1 },
-        default: def,
+        cases: { "0": opt0, "1": opt1, _: def },
       },
     ]);
     const env = new Map([["kind", 1]]);
@@ -271,8 +273,7 @@ describe("normalize — Switch", () => {
         kind: "switch",
         id: "byKind",
         on: ref("kind"),
-        cases: { "0": opt0, "1": opt1 },
-        default: def,
+        cases: { "0": opt0, "1": opt1, _: def },
       },
     ]);
     const env = new Map([["kind", 99]]);
@@ -299,6 +300,7 @@ describe("normalize — Switch", () => {
         {
           kind: "group",
           id: "g",
+          name: "g",
           children: [
             { id: "a", name: "A", type: bits(4) },
             { id: "b", name: "B", type: bits(4) },

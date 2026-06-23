@@ -116,6 +116,7 @@ describe("normalize — Encrypted (semantic mode)", () => {
         {
           kind: "group",
           id: "outer",
+          name: "outer",
           children: [{ id: "header", name: "Header", type: bits(8) }, enc],
         },
       ],

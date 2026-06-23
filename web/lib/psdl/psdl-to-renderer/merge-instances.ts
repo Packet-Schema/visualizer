@@ -143,18 +143,8 @@ function overlayFieldEdits(c: Container, mirror: RendererPacket): Container {
         fields: v.fields.map((f) => overlayFieldEdits(f, mirror)),
       };
     }
-    return {
-      ...c,
-      cases: nextCases,
-      ...(c.default
-        ? {
-            default: {
-              ...c.default,
-              fields: c.default.fields.map((f) => overlayFieldEdits(f, mirror)),
-            },
-          }
-        : {}),
-    };
+    // The 0.5 default arm is the "_" case, already handled by the loop above.
+    return { ...c, cases: nextCases };
   }
   if (c.kind === "encrypted") {
     return {
@@ -168,18 +158,33 @@ function overlayFieldEdits(c: Container, mirror: RendererPacket): Container {
   if (c.kind === "optional") {
     return {
       ...c,
-      field: overlayFieldEdits(c.field, mirror) as typeof c.field,
+      container: overlayFieldEdits(c.container, mirror) as typeof c.container,
+    };
+  }
+  if (c.kind === "bounded") {
+    return {
+      ...c,
+      fields: c.fields.map((f) => overlayFieldEdits(f, mirror)),
     };
   }
   return c;
 }
 
-function mergeContainer(c: Container, mirror: RendererPacket): Container {
+function mergeContainer(c: Container, mirror: RendererPacket): Container[] {
   const overlaid = overlayFieldEdits(c, mirror);
   // After overlay we know the leaf-level merges are done; now handle
   // container-level Repeat merges (which need to descend through
   // Group / Switch / Encrypted / Optional too, sub-agent H2).
-  return mergeRepeats(overlaid, mirror);
+  // NOTE: do NOT unwrap a `bounded` here. PSDL 0.5 wraps the TLV / chain
+  // Repeat in a transparent `bounded` wire-scope (e.g. IPv4's `optionsArea`);
+  // `mergeRepeats` already recurses into `bounded.fields` and updates the
+  // inner Repeat in place, so the wrapper — and its `bounded.bytes` budget —
+  // must be preserved. Stripping it made the exported PSDL diverge from the
+  // built-in preset (no instance change but a missing length scope), breaking
+  // the `samePsdlPacket` check that share / "Save as preset" rely on. The
+  // renderer mirror flattens the scope for *display* (`flattenForMirror`); the
+  // exported PSDL stays canonical.
+  return [mergeRepeats(overlaid, mirror)];
 }
 
 function mergeRepeats(c: Container, mirror: RendererPacket): Container {
@@ -198,18 +203,8 @@ function mergeRepeats(c: Container, mirror: RendererPacket): Container {
         fields: v.fields.map((f) => mergeRepeats(f, mirror)),
       };
     }
-    return {
-      ...c,
-      cases: nextCases,
-      ...(c.default
-        ? {
-            default: {
-              ...c.default,
-              fields: c.default.fields.map((f) => mergeRepeats(f, mirror)),
-            },
-          }
-        : {}),
-    };
+    // The 0.5 default arm is the "_" case, already handled by the loop above.
+    return { ...c, cases: nextCases };
   }
   if (c.kind === "encrypted") {
     return {
@@ -218,6 +213,12 @@ function mergeRepeats(c: Container, mirror: RendererPacket): Container {
         ...c.plaintext,
         fields: c.plaintext.fields.map((f) => mergeRepeats(f, mirror)),
       },
+    };
+  }
+  if (c.kind === "bounded") {
+    return {
+      ...c,
+      fields: c.fields.map((f) => mergeRepeats(f, mirror)),
     };
   }
   // Field / Optional carry no Repeat — already overlaid above, no-op here.
@@ -241,6 +242,6 @@ export function mergeInstancesIntoPsdl(
 ): PsdlPacket {
   return {
     ...psdl,
-    body: psdl.body.map((c) => mergeContainer(c, mirror)),
+    body: psdl.body.flatMap((c) => mergeContainer(c, mirror)),
   };
 }

@@ -41,10 +41,9 @@ function collectLeafFieldIds(containers: Container[]): string[] {
           break;
         case "switch":
           for (const branch of Object.values(c.cases)) walk(branch.fields);
-          if (c.default) walk(c.default.fields);
           break;
         case "optional":
-          walk([c.field]);
+          walk([c.container]);
           break;
         case "encrypted":
           // Encrypted-in-encrypted: keep the recursive ids reachable for

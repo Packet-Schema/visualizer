@@ -6,12 +6,30 @@
 
 import { describe, it, expect } from "vitest";
 
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import {
   mergeInstancesIntoPsdl,
   psdlToRenderer,
 } from "@/lib/psdl/psdl-to-renderer";
-import type { Repeat } from "@/lib/psdl/types";
+import type { Bounded, Container, Packet, Repeat } from "@/lib/psdl/types";
+import type { Packet as RendererPacket } from "@/lib/psdl/renderer";
+
+// In PSDL 0.5 the ipv4 `options` Repeat is no longer a top-level body
+// container: it lives nested inside the `optionsArea` Bounded wire-scope
+// (the IHL length relation moved from top-level constraints to
+// `bounded.bytes`). Descend through Bounded.fields to locate it.
+function findOptionsRepeat(
+  containers: readonly Container[],
+): Repeat | undefined {
+  for (const c of containers) {
+    if (c.kind === "repeat" && c.id === "options") return c;
+    if (c.kind === "bounded") {
+      const found = findOptionsRepeat(c.fields);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
 
 describe("mergeInstancesIntoPsdl", () => {
   it("copies TLV instances from the renderer mirror onto the studio packet", () => {
@@ -26,9 +44,9 @@ describe("mergeInstancesIntoPsdl", () => {
     opts.tlv.instances = [{ kind: 1 }, { kind: 7, extras: { addrCount: 3 } }];
 
     const merged = mergeInstancesIntoPsdl(studio, mirror);
-    const optionsRepeat = merged.body.find(
-      (c): c is Repeat => c.kind === "repeat" && c.id === "options",
-    );
+    // 0.5: the merged options Repeat stays nested inside the `optionsArea`
+    // Bounded (the wire-scope is preserved on export), so descend to find it.
+    const optionsRepeat = findOptionsRepeat(merged.body);
     expect(optionsRepeat?.instances).toEqual([
       { kind: 1 },
       { kind: 7, extras: { addrCount: 3 } },
@@ -45,9 +63,7 @@ describe("mergeInstancesIntoPsdl", () => {
     const studio = structuredClone(PRESETS.ipv4!);
     const mirror = psdlToRenderer(PRESETS.ipv4!);
     const merged = mergeInstancesIntoPsdl(studio, mirror);
-    const optionsRepeat = merged.body.find(
-      (c): c is Repeat => c.kind === "repeat" && c.id === "options",
-    );
+    const optionsRepeat = findOptionsRepeat(merged.body);
     expect(optionsRepeat?.instances).toBeUndefined();
   });
 
@@ -72,9 +88,9 @@ describe("mergeInstancesIntoPsdl", () => {
     // diagram. Without an explicit overwrite the export would keep the
     // baked-in records.
     const studio = structuredClone(PRESETS.ipv4!);
-    const optionsRepeat = studio.body.find(
-      (c): c is Repeat => c.kind === "repeat" && c.id === "options",
-    );
+    // 0.5: the options Repeat is nested inside the `optionsArea` Bounded
+    // scope, not at studio.body top-level.
+    const optionsRepeat = findOptionsRepeat(studio.body);
     if (!optionsRepeat) throw new Error("options Repeat missing");
     optionsRepeat.instances = [{ kind: 1 }, { kind: 1 }];
 
@@ -148,6 +164,52 @@ describe("mergeInstancesIntoPsdl", () => {
       { proto: 0, extras: { hdrExtLen: 1 } },
       { proto: 60 },
     ]);
+  });
+
+  it("keeps a bounded intact when it holds only a plain (non-TLV/chain) Repeat", () => {
+    // `mergeContainer` never unwraps a `bounded`: `mergeRepeats` recurses into
+    // `bounded.fields` to update any inner Repeat in place, and the wrapper —
+    // with its `bytes` wire-budget — must round-trip so the exported PSDL still
+    // matches the built-in preset (share / "Save as preset" rely on it).
+    const plainRepeat: Repeat = {
+      kind: "repeat",
+      id: "rows",
+      element: {
+        id: "row",
+        fields: [{ id: "byte", name: "Byte", type: { kind: "int", bits: 8 } }],
+      },
+      count: "eos",
+    };
+    const bounded: Bounded = {
+      kind: "bounded",
+      id: "region",
+      bytes: { kind: "lit", value: 16 },
+      fields: [plainRepeat],
+    };
+    const studio: Packet = {
+      name: "PlainBounded",
+      rowBits: 32,
+      body: [bounded],
+    };
+    // Mirror carries no field at id "rows" (and no chain catalog), so the
+    // Repeat is not a merge target.
+    const mirror: RendererPacket = {
+      name: "PlainBounded",
+      rowBits: 32,
+      fields: [],
+    };
+
+    const merged = mergeInstancesIntoPsdl(studio, mirror);
+    // The bounded must still be present at top level (not spliced away), and
+    // it must still carry its byte budget.
+    expect(merged.body).toHaveLength(1);
+    const survived = merged.body[0] as Bounded;
+    expect(survived.kind).toBe("bounded");
+    expect(survived.id).toBe("region");
+    expect(survived.bytes).toEqual({ kind: "lit", value: 16 });
+    const inner = survived.fields[0] as Repeat;
+    expect(inner.kind).toBe("repeat");
+    expect(inner.id).toBe("rows");
   });
 
   it("persists chainFinalProto onto the chain Repeat (H1)", () => {

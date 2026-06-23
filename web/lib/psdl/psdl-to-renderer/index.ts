@@ -17,11 +17,47 @@
 //   - `./shared.ts`    — `typeBits` + helpers used across the modules
 
 import { isField } from "../utils";
-import type { Constraint, Expr, Packet as PsdlPacket } from "../types";
+import { exprRefs } from "../expr";
+import type {
+  Constraint,
+  Container,
+  Expr,
+  NamedStruct,
+  Packet as PsdlPacket,
+} from "../types";
 import type {
   Field as RendererField,
   Packet as RendererPacket,
 } from "../renderer";
+
+/**
+ * Flatten PSDL 0.5 transparent scope containers (`bounded`, resolved `ref`)
+ * into an inline container list for the renderer mirror. The mirror cares
+ * about override targets and TLV/chain catalogs, not wire scoping, so a
+ * `bounded` region (e.g. IPv4's `optionsArea` wrapping the options Repeat) is
+ * spliced inline just like a `group`'s children. `align` / `virtual` carry no
+ * override surface and are dropped. Nested transparent scopes flatten
+ * recursively; an unresolvable `ref` is skipped.
+ */
+function flattenForMirror(
+  containers: Container[],
+  defs?: Record<string, NamedStruct>,
+): Container[] {
+  const out: Container[] = [];
+  for (const c of containers) {
+    if (!isField(c) && c.kind === "bounded") {
+      out.push(...flattenForMirror(c.fields, defs));
+    } else if (!isField(c) && c.kind === "ref") {
+      const def = defs?.[c.ref];
+      if (def) out.push(...flattenForMirror(def.fields, defs));
+    } else if (!isField(c) && (c.kind === "align" || c.kind === "virtual")) {
+      // no renderer-mirror representation
+    } else {
+      out.push(c);
+    }
+  }
+  return out;
+}
 
 import { isLikelyChainRepeat, repeatToChainField } from "./chain";
 import { groupToSubfieldField, plainFieldToRenderer } from "./subfield";
@@ -76,6 +112,75 @@ function constraintToController(constraint: Constraint): string | null {
 }
 
 /**
+ * Return the sole field-ref id in `expr`, or `null` if the expression
+ * mentions zero or more than one distinct field. This is the
+ * `bounded.bytes` analogue of `constraintToController`: a length scope
+ * whose byte budget is `ihl*4 - 20` nominates `ihl` as its controller.
+ *
+ * Distinctness is computed via core's `exprRefs`, which walks every 0.5 Expr
+ * shape (lookup keys, peek offsets, cond branches, …). A length expression
+ * like `lookup(ref("lenCode"), …)` therefore correctly nominates `lenCode`
+ * — the old hand-rolled walk only descended `op`/`cond`/`peek` and missed it.
+ */
+function singleRefController(expr: Expr): string | null {
+  const refs = new Set(exprRefs(expr));
+  return refs.size === 1 ? [...refs][0] : null;
+}
+
+/**
+ * Walk the PSDL body (descending only through *transparent wire scopes* —
+ * `bounded` itself plus already-resolved containers via `flattenForMirror`)
+ * and collect, for each `Bounded` whose `bytes` expression has exactly one
+ * field ref, that controller field's id. In 0.5 the IPv4/TCP "options"
+ * length relation (`IHL*4 == headerBytes`, `dataOffset*4 == headerBytes`)
+ * no longer lives in top-level `constraints`; it moved onto the options
+ * `bounded.bytes` (`ihl*4 - 20` / `dataOffset*4 - 20`). Surfacing those as
+ * length controllers keeps IHL / Data Offset overridable sliders.
+ */
+function collectBoundedControllers(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  acc: Set<string>,
+): void {
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "bounded") {
+      const controller = singleRefController(c.bytes);
+      if (controller) acc.add(controller);
+      collectBoundedControllers(c.fields, defs, acc);
+      continue;
+    }
+    if (c.kind === "ref") {
+      const def = defs?.[c.ref];
+      if (def) collectBoundedControllers(def.fields, defs, acc);
+      continue;
+    }
+    if (c.kind === "group") {
+      collectBoundedControllers(c.children, defs, acc);
+      continue;
+    }
+    if (c.kind === "optional") {
+      collectBoundedControllers([c.container], defs, acc);
+      continue;
+    }
+    if (c.kind === "repeat") {
+      collectBoundedControllers(c.element.fields, defs, acc);
+      continue;
+    }
+    if (c.kind === "switch") {
+      for (const struct of Object.values(c.cases)) {
+        collectBoundedControllers(struct.fields, defs, acc);
+      }
+      continue;
+    }
+    if (c.kind === "encrypted") {
+      collectBoundedControllers(c.plaintext.fields, defs, acc);
+      continue;
+    }
+  }
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -87,7 +192,7 @@ function constraintToController(constraint: Constraint): string | null {
  */
 export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   const fields: RendererField[] = [];
-  for (const c of packet.body) {
+  for (const c of flattenForMirror(packet.body, packet.defs)) {
     if (isField(c)) {
       fields.push(plainFieldToRenderer(c));
       continue;
@@ -170,6 +275,21 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       }
     }
   }
+  // 0.5: the IPv4/TCP options-length relation moved from `constraints` onto
+  // the options `bounded.bytes` (`ihl*4 - 20`, `dataOffset*4 - 20`). Derive
+  // length controllers from those single-ref bounded scopes the same way as
+  // the constraint-driven path above, so IHL / Data Offset stay overridable.
+  const boundedControllers = new Set<string>();
+  collectBoundedControllers(packet.body, packet.defs, boundedControllers);
+  for (const fromId of boundedControllers) {
+    const target = fields.find((f) => f.id === fromId);
+    if (target && !target.controlsLength) {
+      target.controlsLength = fromId;
+      if (target.bits != null) {
+        target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
+      }
+    }
+  }
   attachOverrideMetadata(packet.body, fields);
   const freeRepeats = collectFreeRepeats(packet.body, fields);
   const peekSwitches = collectPeekSwitches(packet.body);
@@ -199,7 +319,7 @@ function collectFreeRepeats(
 ): NonNullable<RendererPacket["freeRepeats"]> {
   const out: NonNullable<RendererPacket["freeRepeats"]> = [];
   const visit = (containers: PsdlPacket["body"]): void => {
-    for (const c of containers) {
+    for (const c of flattenForMirror(containers)) {
       if (c.kind === "repeat") {
         if (!isLikelyChainRepeat(c) && !isTlvRepeat(c)) {
           let countKey: string | null = null;
@@ -231,11 +351,10 @@ function collectFreeRepeats(
       }
       if (c.kind === "switch") {
         for (const struct of Object.values(c.cases)) visit(struct.fields);
-        if (c.default) visit(c.default.fields);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.field]);
+        visit([c.container]);
         continue;
       }
       if (c.kind === "encrypted") {
@@ -260,7 +379,7 @@ function collectPeekSwitches(
 ): NonNullable<RendererPacket["peekSwitches"]> {
   const out: NonNullable<RendererPacket["peekSwitches"]> = [];
   const visit = (containers: PsdlPacket["body"]): void => {
-    for (const c of containers) {
+    for (const c of flattenForMirror(containers)) {
       if (c.kind === "switch") {
         if (c.on.kind === "peek") {
           const cases: { value: number; label: string }[] = [];
@@ -292,7 +411,6 @@ function collectPeekSwitches(
           }
         }
         for (const struct of Object.values(c.cases)) visit(struct.fields);
-        if (c.default) visit(c.default.fields);
         continue;
       }
       if (c.kind === "group") {
@@ -304,7 +422,7 @@ function collectPeekSwitches(
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.field]);
+        visit([c.container]);
         continue;
       }
       if (c.kind === "encrypted") {
@@ -353,25 +471,15 @@ function attachOverrideMetadata(
     return null;
   };
 
-  // Try to pull a single ref id out of an Expr — `ref(X)` returns X,
-  // `op` / `cond` walks operands recursively and returns the first ref
-  // found. Complex expressions with multiple refs are accepted but the
-  // first ref wins ("primary" controller).
-  const primaryRef = (expr: import("../types").Expr): string | null => {
-    if (expr.kind === "ref") return expr.field;
-    if (expr.kind === "lit") return null;
-    if (expr.kind === "peek") return null;
-    if (expr.kind === "op") {
-      return primaryRef(expr.a) ?? primaryRef(expr.b);
-    }
-    if (expr.kind === "cond") {
-      return primaryRef(expr.test) ?? primaryRef(expr.t) ?? primaryRef(expr.f);
-    }
-    return null;
-  };
+  // Pull the primary ref id out of an Expr — the first field referenced
+  // anywhere in it, or null. Backed by core's `exprRefs`, so 0.5 shapes
+  // (lookup keys, peek offsets, …) surface a controller too; `op` / `cond`
+  // behaviour is unchanged (first ref in walk order still wins).
+  const primaryRef = (expr: import("../types").Expr): string | null =>
+    exprRefs(expr)[0] ?? null;
 
   const visit = (containers: PsdlPacket["body"]): void => {
-    for (const c of containers) {
+    for (const c of flattenForMirror(containers)) {
       if (c.kind === "switch") {
         const cases: { value: number; label: string }[] = [];
         for (const [key, struct] of Object.entries(c.cases)) {
@@ -382,7 +490,6 @@ function attachOverrideMetadata(
           // Recurse into each variant's fields.
           visit(struct.fields);
         }
-        if (c.default) visit(c.default.fields);
         if (cases.length === 0) continue;
         if (c.on.kind === "ref") {
           const t = findTarget(c.on.field);
@@ -407,7 +514,12 @@ function attachOverrideMetadata(
         continue;
       }
       if (c.kind === "optional") {
-        const gated = c.field.name || c.field.id;
+        const inner = c.container;
+        const gated =
+          ("name" in inner ? inner.name : undefined) ??
+          ("id" in inner ? inner.id : undefined) ??
+          inner.kind ??
+          "container";
         const ref = c.when.kind === "ref" ? c.when.field : primaryRef(c.when);
         if (ref) {
           const t = findTarget(ref);
@@ -423,7 +535,7 @@ function attachOverrideMetadata(
           }
         }
         // Recurse into the inner field (treat it as a 1-element body).
-        visit([c.field]);
+        visit([c.container]);
         continue;
       }
       if (c.kind === "group") {

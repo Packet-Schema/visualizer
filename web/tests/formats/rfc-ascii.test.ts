@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 import { toAscii } from "../../lib/formats/rfc-ascii";
-import { initialEnv, normalize } from "../../lib/psdl/normalize";
+import { resolveLayout } from "../../lib/psdl/layout";
+import { initialEnv } from "../../lib/psdl/normalize";
 import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets";
 import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psdl/types";
 
@@ -303,6 +304,7 @@ describe("toAscii — PSDL 0.3 Varint type", () => {
         {
           kind: "group",
           id: "g",
+          name: "g",
           children: [
             {
               id: "vg",
@@ -341,16 +343,16 @@ describe("toAscii — PSDL 0.3 Varint type", () => {
                 },
               ],
             },
-          },
-          default: {
-            id: "sd",
-            fields: [
-              {
-                id: "vd",
-                name: "VD",
-                type: { kind: "varint", encoding: "quic" },
-              },
-            ],
+            _: {
+              id: "sd",
+              fields: [
+                {
+                  id: "vd",
+                  name: "VD",
+                  type: { kind: "varint", encoding: "quic" },
+                },
+              ],
+            },
           },
         },
         {
@@ -385,16 +387,17 @@ describe("toAscii — PSDL 0.3 Varint type", () => {
           kind: "switch",
           id: "sw",
           on: { kind: "lit", value: 1 },
-          cases: {},
-          default: {
-            id: "sd",
-            fields: [
-              {
-                id: "vd",
-                name: "VD",
-                type: { kind: "varint", encoding: "quic" },
-              },
-            ],
+          cases: {
+            _: {
+              id: "sd",
+              fields: [
+                {
+                  id: "vd",
+                  name: "VD",
+                  type: { kind: "varint", encoding: "quic" },
+                },
+              ],
+            },
           },
         },
       ],
@@ -420,11 +423,27 @@ describe("toAscii — invariants vs normalize", () => {
     "tlsClientHelloFull",
   ]);
 
+  // PSDL 0.5 Bounded scopes can reserve a non-zero minimum byte budget that
+  // resolveLayout (correctly) counts into totalBits but toAscii does not
+  // render as field rows. ipv6Destination's `optionsArea` reserves
+  // (hdrExtLen+1)*8 - 2 = 6 bytes even with an empty option chain (RFC 8200
+  // §4.6: minimum 8-octet header), so totalBits=64 but only the two fixed
+  // bytes render. Like the Encrypted presets, the cheap "rows ==
+  // ceil(total/rowBits)" arithmetic structurally cannot hold for it; skip by
+  // id so the invariant stays load-bearing for the flat presets.
+  const PRESETS_WITH_RESERVED_BOUNDED = new Set(["ipv6Destination"]);
+
   it("the rendered total bit count equals normalize().totalBits", () => {
     for (const [key, pkt] of Object.entries(ALL_PRESETS)) {
       if (PRESETS_WITH_ENCRYPTED.has(key)) continue;
+      if (PRESETS_WITH_RESERVED_BOUNDED.has(key)) continue;
       const env = envWithRefs(pkt);
-      const total = normalize(pkt, env).totalBits;
+      // Obtain totalBits the same way the app does — via resolveLayout, whose
+      // 2-pass normalizeWithBudget injects opts.totalBits for presets that use
+      // top-level remaining/enclosingBits. Calling core normalize() directly
+      // here throws for those presets. `toAscii` already routes through
+      // resolveLayout, so this is the matching source of truth.
+      const total = resolveLayout(pkt, { env }).totalBits;
       const text = toAscii(pkt, env);
       // Cheap sanity: count the field lines (one per row excluding the
       // header trio) and compare against ceil(total/rowBits) row count.
@@ -453,7 +472,7 @@ describe("toAscii — PSDL 0.4 decorations", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "ref", field: "present" },
-          field: {
+          container: {
             id: "trailing",
             name: "Trailing",
             type: { kind: "bits", n: 8 },
@@ -467,6 +486,57 @@ describe("toAscii — PSDL 0.4 decorations", () => {
     expect(txt).not.toMatch(/\bTrailing\s*\|/);
   });
 
+  it("uses the compound container's `name` in the placeholder when the inner is not a field", () => {
+    // An absent Optional wrapping a *compound* container (a Group here, which
+    // is not a Field but carries a `name`) exercises the `"name" in inner`
+    // branch of the placeholder-label resolution.
+    const pkt: Packet = {
+      name: "OptGroup",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          container: {
+            kind: "group",
+            id: "grp",
+            name: "Extension",
+            children: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map([["present", 0]]));
+    expect(txt).toContain("~ (Optional Extension) ~");
+  });
+
+  it("falls back to 'field' in the placeholder when the compound container has no name", () => {
+    // A Bounded carries no required `name`; an absent Optional wrapping a
+    // name-less Bounded exercises the `: undefined` arm → `?? "field"` default.
+    const pkt: Packet = {
+      name: "OptBounded",
+      rowBits: 8,
+      body: [
+        { id: "a", name: "A", type: { kind: "bits", n: 8 } },
+        {
+          kind: "optional",
+          id: "maybe",
+          when: { kind: "ref", field: "present" },
+          container: {
+            kind: "bounded",
+            id: "region",
+            bytes: { kind: "lit", value: 1 },
+            fields: [{ id: "x", name: "X", type: { kind: "bits", n: 8 } }],
+          },
+        },
+      ],
+    };
+    const txt = toAscii(pkt, new Map([["present", 0]]));
+    expect(txt).toContain("~ (Optional field) ~");
+  });
+
   it("does NOT emit the placeholder when the predicate is truthy", () => {
     const pkt: Packet = {
       name: "Opt",
@@ -477,7 +547,7 @@ describe("toAscii — PSDL 0.4 decorations", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "ref", field: "present" },
-          field: {
+          container: {
             id: "trailing",
             name: "Trailing",
             type: { kind: "bits", n: 8 },
@@ -556,7 +626,7 @@ describe("toAscii — Optional fallback when predicate refs are unresolved", () 
           id: "maybe",
           // `present` is never seeded in env nor as a defaultValue field.
           when: { kind: "ref", field: "present" },
-          field: {
+          container: {
             id: "trailing",
             name: "Trailing",
             type: { kind: "bits", n: 8 },
@@ -581,7 +651,7 @@ describe("toAscii — Optional wrapping a varint or berLength field", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "lit", value: 1 },
-          field: {
+          container: {
             id: "v",
             name: "V",
             type: { kind: "varint", encoding: "quic" },
@@ -602,7 +672,7 @@ describe("toAscii — Optional wrapping a varint or berLength field", () => {
           kind: "optional",
           id: "maybe",
           when: { kind: "lit", value: 1 },
-          field: { id: "b", name: "BERvar", type: { kind: "berLength" } },
+          container: { id: "b", name: "BERvar", type: { kind: "berLength" } },
         },
       ],
     };

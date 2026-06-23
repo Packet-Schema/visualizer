@@ -23,7 +23,7 @@ function mkOptional(overrides: Partial<Optional> = {}): Optional {
     kind: "optional",
     id: "maybeOpt",
     when: lit(1),
-    field: mkInner(),
+    container: mkInner(),
     ...overrides,
   };
 }
@@ -148,16 +148,19 @@ describe("validatePsdlPacket — Optional", () => {
   });
 
   it("rejects a missing inner field", () => {
-    const bad = { ...mkOptional(), field: undefined } as unknown as Optional;
+    const bad = {
+      ...mkOptional(),
+      container: undefined,
+    } as unknown as Optional;
     expect(() => validatePsdlPacket(mkPacket(bad))).toThrow(
-      /missing inner field/,
+      /missing inner container/,
     );
   });
 
   it("rejects an inner field with no type", () => {
     const bad = {
       ...mkOptional(),
-      field: { id: "x", name: "X" } as unknown as Field,
+      container: { id: "x", name: "X" } as unknown as Field,
     };
     expect(() => validatePsdlPacket(mkPacket(bad))).toThrow(/missing a type/);
   });

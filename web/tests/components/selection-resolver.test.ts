@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 
 import { resolveSelection } from "@/components/field-details/selection-resolver";
-import { PRESETS } from "@/lib/psdl/presets.generated";
+import { PRESETS } from "@/lib/psdl/presets";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 describe("resolveSelection", () => {

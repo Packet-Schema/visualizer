@@ -1,16 +1,7 @@
-// PSDL — shared structural utilities.
+// PSDL structural utilities — delegated to @packet-schema/core.
 //
-// Type guards and tiny helpers reused across normalize / validate /
-// psdl-to-renderer. Keeping them here avoids three copies of `isField`
-// drifting apart.
+// `isField` is the Container type guard reused across normalize / validate /
+// psdl-to-renderer. It now lives in core; re-exported here so existing
+// `@/lib/psdl/utils` imports keep working.
 
-import type { Container, Field } from "./types";
-
-/**
- * True if a Container node is a plain Field. The Container union uses a
- * discriminated tag (`kind`) on every compound variant; a Field omits the
- * tag entirely (or carries `kind === "field"` from PSDL 0.4+).
- */
-export function isField(c: Container): c is Field {
-  return !("kind" in c) || c.kind === "field";
-}
+export { isField } from "@packet-schema/core";
