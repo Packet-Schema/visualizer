@@ -8,7 +8,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import OverridePanel from "@/components/field-details/OverridePanel";
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 
 let activeRoot: Root | null = null;

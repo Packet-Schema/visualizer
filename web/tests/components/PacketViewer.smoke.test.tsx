@@ -17,7 +17,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
 import { STORAGE_KEY } from "@/lib/psdl/custom-presets";
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import { encodePsdlParam } from "@/lib/share-url";
 import type { PsdlPacket } from "@/lib/psdl/types";
 
@@ -276,11 +276,19 @@ async function mountPacketViewer(path = "/"): Promise<{
   let root: Root | null = null;
   await act(async () => {
     root = createRoot(container);
-    root.render(<PacketViewer />);
+    // The server resolves the initial built-in body and passes it in; mirror
+    // that here so the viewer seeds synchronously (built-in bodies are now
+    // lazy-fetched, but the initial one is provided up front).
+    root.render(<PacketViewer initialBuiltInPacket={PRESETS.ipv4} />);
   });
-  await act(async () => {
-    await Promise.resolve();
-  });
+  // Flush the URL-hydration effect and any lazy preset fetch it triggers
+  // (hydration → packetKey change → loadPreset fetch → JSON → setState →
+  // re-render spans several async hops).
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
   return {
     container,
     cleanup: async () => {

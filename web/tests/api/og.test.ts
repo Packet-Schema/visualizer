@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "../../app/api/og/route";
-import { PRESETS } from "../../lib/psdl/presets";
+import { PRESETS } from "../../lib/psdl/presets.server";
 
 describe("OG API endpoint", () => {
   async function testOGImageGeneration(url: string) {

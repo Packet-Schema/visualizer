@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import {
   decodeSource,
   encodeSource,

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { toAscii } from "../../lib/formats/rfc-ascii";
 import { resolveLayout } from "../../lib/psdl/layout";
 import { initialEnv } from "../../lib/psdl/normalize";
-import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets";
+import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets.server";
 import type { Encrypted, Expr, Packet, PacketEnv } from "../../lib/psdl/types";
 
 function envWithRefs(p: Packet): PacketEnv {

@@ -22,6 +22,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import PacketViewer from "@/components/packet-viewer/PacketViewer";
+import { PRESETS } from "@/lib/psdl/presets.server";
 
 let activeRoot: Root | null = null;
 let activeContainer: HTMLElement | null = null;
@@ -48,10 +49,10 @@ async function mount(): Promise<HTMLElement> {
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<PacketViewer />);
+    root.render(<PacketViewer initialBuiltInPacket={PRESETS.ipv4} />);
   });
   await act(async () => {
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
   });
   activeRoot = root;
   activeContainer = container;

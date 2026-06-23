@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { fromJson, toJson } from "../../lib/formats/json";
 import { initialEnv } from "../../lib/psdl/normalize";
-import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets";
+import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets.server";
 import type { Packet, PacketEnv } from "../../lib/psdl/types";
 
 describe("toJson / fromJson — every preset round-trips", () => {
