@@ -310,3 +310,34 @@ describe("validatePsdlPacket — Encrypted headerProtected ref collection (Codex
     expect(() => validatePsdlPacket(packet)).not.toThrow();
   });
 });
+
+describe("validatePsdlPacket — align boundary (Codex P2)", () => {
+  const withAlign = (to: number): PsdlPacket => ({
+    name: "Aligned",
+    rowBits: 32,
+    body: [
+      { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+      {
+        kind: "align",
+        id: "pad",
+        to,
+      } as import("../../lib/psdl/types").Container,
+    ],
+  });
+
+  it("accepts a power-of-two multiple of 8 (32)", () => {
+    expect(() => validatePsdlPacket(withAlign(32))).not.toThrow();
+  });
+
+  it("rejects a non-multiple-of-8 boundary (7)", () => {
+    expect(() => validatePsdlPacket(withAlign(7))).toThrow(
+      /align 'to' must be a positive power-of-two multiple of 8/,
+    );
+  });
+
+  it("rejects a multiple-of-8 that is not a power of two (24)", () => {
+    expect(() => validatePsdlPacket(withAlign(24))).toThrow(
+      /power-of-two multiple of 8/,
+    );
+  });
+});

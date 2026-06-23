@@ -71,10 +71,11 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
   // Field?
   if (!("kind" in c) || c.kind === "field") {
     const f = c as Field;
-    // Multi-byte delimited bytes have no valid Kaitai seq form (terminator: is
-    // a single byte). Drop the entry entirely — fieldToKsy already records the
-    // psdl-only note — rather than emit an uncompilable typeless/sizeless array.
-    if (isMultiByteDelimitedBytes(f)) {
+    // A `bytes` field with no valid Kaitai seq form (multi-byte delimiter, or a
+    // size expression that isn't Kaitai-representable and isn't `remaining`)
+    // would emit an uncompilable typeless/sizeless array. Drop the entry —
+    // fieldToKsy still records the psdl-only note as a side effect.
+    if (isUnemittableSizedBytes(f)) {
       fieldToKsy(f, ctx); // record the psdl-only note (side effect)
       return [];
     }
@@ -158,10 +159,24 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       // inner container is a leaf Field; compound containers are emitted
       // unconditionally with a psdl-only note.
       if (!isField(c.container)) {
+        const childSeq = containerToKsy(c.container, ctx);
+        const ifExpr = exprToKaitaiIf(c.when);
+        // When the predicate is Kaitai-expressible, wrap the children in a
+        // synthetic substream type carrying the `if:` so the region is only
+        // consumed when `when` is true — otherwise a false predicate would
+        // still read the bytes and shift every following field. If the
+        // predicate isn't expressible (peek / 0.5 expr) or there is nothing to
+        // wrap, fall back to splicing unconditionally with a note.
+        if (ifExpr && childSeq.length > 0) {
+          const optId = toKsyId(c.id ?? "opt");
+          const typeName = `${optId}_opt`;
+          ctx.types[typeName] = { seq: childSeq };
+          return [{ id: optId, type: typeName, if: ifExpr }];
+        }
         ctx.psdlOnly.push(
           `optional "${c.id ?? "?"}" wraps a compound container — predicate ${exprToString(c.when)} left unconditional`,
         );
-        return containerToKsy(c.container, ctx);
+        return childSeq;
       }
       const inner = fieldToKsy(c.container, ctx);
       const ifExpr = exprToKaitaiIf(c.when);
@@ -212,6 +227,15 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       // sub-stream). This preserves the budget and keeps downstream fields
       // aligned regardless of how much of the region the children consume.
       const sanitizedId = toKsyId(c.id);
+      if (!isKsySizeRepresentable(c.bytes)) {
+        // A 0.5 contextual budget expr (remaining / lookup / …) has no Kaitai
+        // `size` form. Rather than emit `size: remaining(…)`, fall back to
+        // splicing the children inline (lossy: the byte budget is dropped).
+        ctx.psdlOnly.push(
+          `bounded "${c.id}" byte budget (${exprToString(c.bytes)}) not representable in Kaitai — children spliced inline`,
+        );
+        return c.fields.flatMap((ch) => containerToKsy(ch, ctx));
+      }
       const size = exprToKsySize(c.bytes);
       const childSeq = c.fields.flatMap((ch) => containerToKsy(ch, ctx));
       const entry: KsySeqEntry = { id: sanitizedId, size };
@@ -310,8 +334,22 @@ function fieldToKsy(f: Field, ctx: ToCtx): KsySeqEntry {
             `Field "${f.id}" delimited bytes (delimiter ${delimiter.join(",")}) not expressible as Kaitai size`,
           );
         }
-      } else {
+      } else if (isKsySizeRepresentable(f.type.n)) {
         entry.size = exprToKsySize(f.type.n);
+      } else if (f.type.n.kind === "remaining") {
+        // 0.5 `remaining` = "rest of the enclosing scope" → Kaitai `size-eos`
+        // (reads to the end of the current stream / substream).
+        entry["size-eos"] = true;
+        ctx.psdlOnly.push(
+          `Field "${f.id}" size = remaining → Kaitai size-eos (reads to end of scope)`,
+        );
+      } else {
+        // A 0.5 contextual size expr (lookup / wireSize / …) has no Kaitai
+        // form. The caller drops this entry (isUnemittableSizedBytes); record
+        // the note rather than emit `size: lookup(…)`.
+        ctx.psdlOnly.push(
+          `Field "${f.id}" size expression (${exprToString(f.type.n)}) not representable in Kaitai — field omitted`,
+        );
       }
       break;
     case "enum": {
@@ -414,15 +452,41 @@ function toKsyId(name: string): string {
 }
 
 /**
- * True when a Field is a delimiter-terminated `bytes` whose delimiter is more
- * than one byte. Kaitai's `terminator:` only models a single byte, so such a
- * field has no valid seq representation and must be dropped (the caller emits
- * a psdl-only note instead).
+ * True when an Expr can be lowered to a valid Kaitai `size:` value. Kaitai
+ * accepts integer literals, field references, arithmetic (`op`) and ternary
+ * (`cond`) over those. The PSDL 0.5 contextual exprs (`peek`, `lookup`,
+ * `wireSize`, `prevIter`, `remaining`, `enclosing*`) have no Kaitai expression
+ * form — emitting them produces `kind(…)` strings (with a Unicode ellipsis)
+ * that fail kaitai-struct-compiler, so callers must NOT pass them to `size:`.
  */
-function isMultiByteDelimitedBytes(f: Field): boolean {
-  return (
-    f.type.kind === "bytes" &&
-    isBytesDelimited(f.type.n) &&
-    f.type.n.delimiter.length !== 1
-  );
+function isKsySizeRepresentable(e: Expr): boolean {
+  switch (e.kind) {
+    case "lit":
+    case "ref":
+      return true;
+    case "op":
+      return isKsySizeRepresentable(e.a) && isKsySizeRepresentable(e.b);
+    case "cond":
+      return (
+        isKsySizeRepresentable(e.test) &&
+        isKsySizeRepresentable(e.t) &&
+        isKsySizeRepresentable(e.f)
+      );
+    default:
+      // peek + every 0.5 contextual expr
+      return false;
+  }
+}
+
+/**
+ * True when a `bytes` field has no emittable Kaitai seq form and must be
+ * dropped (with a psdl-only note) rather than producing uncompilable YAML:
+ * a multi-byte delimiter, or a size expression that is neither Kaitai-
+ * representable nor `remaining` (which maps to `size-eos`).
+ */
+function isUnemittableSizedBytes(f: Field): boolean {
+  if (f.type.kind !== "bytes") return false;
+  const n = f.type.n;
+  if (isBytesDelimited(n)) return n.delimiter.length !== 1;
+  return !isKsySizeRepresentable(n) && n.kind !== "remaining";
 }

@@ -434,10 +434,18 @@ function validateContainer(c: Container, ctx: string): void {
     }
     case "align":
       // 0.5 — pure padding to a bit boundary; `to` must be a positive
-      // power-of-two multiple of 8 (the schema layer already enforces this).
-      if (!Number.isInteger(c.to) || c.to <= 0) {
+      // power-of-two multiple of 8. JSON / share / format imports only pass
+      // through this structural check (not the Ajv 0.5 schema), so enforce the
+      // boundary here too — a non-pow2 / non-byte `to` (e.g. 7 or 24) would
+      // break the byte-aligned padding assumptions in normalize / export.
+      if (
+        !Number.isInteger(c.to) ||
+        c.to <= 0 ||
+        c.to % 8 !== 0 ||
+        (c.to & (c.to - 1)) !== 0
+      ) {
         throw new Error(
-          `${ctx}/${c.id ?? "align"}: align 'to' must be a positive integer.`,
+          `${ctx}/${c.id ?? "align"}: align 'to' must be a positive power-of-two multiple of 8 bits, got ${String(c.to)}.`,
         );
       }
       return;

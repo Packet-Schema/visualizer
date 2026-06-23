@@ -1838,10 +1838,10 @@ describe("toKsy — PSDL 0.5 containers", () => {
     );
   });
 
-  it("Optional wrapping a compound container is emitted unconditionally with a psdl-only note", () => {
-    // Kaitai's `if:` only attaches to a single seq entry, so an Optional whose
-    // inner is a compound container (a Group here) can't carry the predicate.
-    // The exporter splices the children in unconditionally and records a note.
+  it("Optional wrapping a compound container with an expressible predicate carries `if:` on a synthetic substream type", () => {
+    // Kaitai's `if:` attaches to a single seq entry, so a compound Optional is
+    // wrapped in a synthetic type and the predicate rides the wrapper entry —
+    // a false predicate then consumes nothing instead of shifting later fields.
     const yaml = toKsy({
       name: "OptGroup",
       rowBits: 32,
@@ -1863,18 +1863,23 @@ describe("toKsy — PSDL 0.5 containers", () => {
       ],
     });
     const obj = yamlParse(yaml);
-    // children spliced inline, no `if:` attached
-    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a", "b"]);
-    expect(yaml).not.toMatch(/if:/);
-    expect(yaml).toMatch(
-      /# psdl-only: optional "maybe" wraps a compound container — predicate present left unconditional/,
-    );
+    expect(obj.seq).toHaveLength(1);
+    expect(obj.seq[0]).toMatchObject({
+      id: "maybe",
+      type: "maybe_opt",
+      if: "present",
+    });
+    // The wrapper type holds the children.
+    expect(obj.types.maybe_opt.seq.map((e: { id: string }) => e.id)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 
-  it("Optional with no id wrapping a compound container uses '?' in the note", () => {
-    // Covers the `c.id ?? "?"` nullish fallback in the compound-container note.
+  it("Optional (no id) with an expressible predicate wraps under the synthetic 'opt' id", () => {
+    // Covers the `c.id ?? "opt"` nullish fallback on the wrap path.
     const yaml = toKsy({
-      name: "OptGroupNoId",
+      name: "OptGroupNoIdWrap",
       rowBits: 32,
       body: [
         {
@@ -1889,6 +1894,37 @@ describe("toKsy — PSDL 0.5 containers", () => {
         },
       ],
     });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0]).toMatchObject({
+      id: "opt",
+      type: "opt_opt",
+      if: "present",
+    });
+  });
+
+  it("Optional (no id) wrapping a compound container with a non-expressible predicate falls back to a '?' note", () => {
+    // `remaining` can't be lowered to a Kaitai `if:`, so the predicate is
+    // dropped and the children spliced unconditionally — covering the
+    // `c.id ?? "?"` nullish fallback in the compound-container note.
+    const yaml = toKsy({
+      name: "OptGroupNoId",
+      rowBits: 32,
+      body: [
+        {
+          kind: "optional",
+          when: { kind: "remaining" } as never,
+          container: {
+            kind: "group",
+            id: "grp",
+            name: "Grp",
+            children: [{ id: "a", name: "A", type: { kind: "int", bits: 8 } }],
+          },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a"]);
+    expect(yaml).not.toMatch(/if:/);
     expect(yaml).toMatch(
       /# psdl-only: optional "\?" wraps a compound container/,
     );
@@ -1918,7 +1954,9 @@ describe("toKsy — PSDL 0.5 containers", () => {
     );
   });
 
-  it("a 0.5-only Expr as a bytes size stringifies by kind (exprToString default)", () => {
+  it("a non-representable 0.5 bytes size omits the field instead of emitting an uncompilable `size:`", () => {
+    // `wireSize` has no Kaitai expression form; emitting `size: wireSize(…)`
+    // would be uncompilable. The field is dropped with a psdl-only note.
     const yaml = toKsy({
       name: "SizeWireSize",
       rowBits: 32,
@@ -1930,8 +1968,49 @@ describe("toKsy — PSDL 0.5 containers", () => {
         },
       ],
     });
-    // exprToKsySize → exprToString default → "wireSize(…)".
-    expect(yamlParse(yaml).seq[0].size).toBe("wireSize(…)");
+    const obj = yamlParse(yaml);
+    expect(obj.seq ?? []).toHaveLength(0);
+    expect(yaml).toMatch(
+      /# psdl-only: Field "blob" size expression \(wireSize\(…\)\) not representable in Kaitai — field omitted/,
+    );
+  });
+
+  it("a `remaining` bytes size lowers to Kaitai `size-eos`", () => {
+    const yaml = toKsy({
+      name: "SizeRemaining",
+      rowBits: 32,
+      body: [
+        {
+          id: "rest",
+          name: "Rest",
+          type: { kind: "bytes", n: { kind: "remaining" } as never },
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    expect(obj.seq[0]).toMatchObject({ id: "rest", "size-eos": true });
+    expect(yaml).toMatch(/# psdl-only: Field "rest" size = remaining/);
+  });
+
+  it("a bounded with a non-representable byte budget splices children inline", () => {
+    const yaml = toKsy({
+      name: "BoundedRemaining",
+      rowBits: 32,
+      body: [
+        {
+          kind: "bounded",
+          id: "region",
+          bytes: { kind: "remaining" } as never,
+          fields: [{ id: "a", name: "A", type: { kind: "int", bits: 8 } }],
+        },
+      ],
+    });
+    const obj = yamlParse(yaml);
+    // No substream wrapper — children spliced inline, budget dropped.
+    expect(obj.seq.map((e: { id: string }) => e.id)).toEqual(["a"]);
+    expect(yaml).toMatch(
+      /# psdl-only: bounded "region" byte budget \(remaining\(…\)\) not representable in Kaitai — children spliced inline/,
+    );
   });
 });
 
