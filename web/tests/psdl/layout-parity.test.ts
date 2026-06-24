@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { resolveLayout } from "../../lib/psdl/layout";
 import { initialEnv, normalize } from "../../lib/psdl/normalize";
 import { validatePsdlPacket } from "../../lib/psdl/validate";
-import { PRESETS } from "../../lib/psdl/presets";
+import { PRESETS } from "../../lib/psdl/presets.server";
 import type { Expr, Packet } from "../../lib/psdl/types";
 import {
   EXPECTED_TOTAL_BITS,

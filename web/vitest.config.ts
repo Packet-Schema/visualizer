@@ -4,9 +4,17 @@ import path from "node:path";
 
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { "@": path.resolve(__dirname, ".") } },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "."),
+      // `server-only` throws outside a React Server Component build; stub it to
+      // a no-op so Node tests can import server modules (e.g. presets.server).
+      "server-only": path.resolve(__dirname, "tests/stubs/server-only.ts"),
+    },
+  },
   test: {
     environment: "node",
+    setupFiles: ["tests/setup.ts"],
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["tests/integration/**", "tests/e2e/**", "**/*.spec.ts"],
     // Component and storage tests pick up jsdom via a per-file `@vitest-environment`

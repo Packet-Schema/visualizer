@@ -12,7 +12,7 @@ import {
   getFormat,
   type FormatKey,
 } from "../../lib/formats/registry";
-import { PRESETS } from "../../lib/psdl/presets";
+import { PRESETS } from "../../lib/psdl/presets.server";
 
 describe("format registry shape", () => {
   it("exposes every format with id, label, extension and mime", () => {

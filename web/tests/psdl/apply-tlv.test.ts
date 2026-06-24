@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import { applyTlvInstances, psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import type { Container, Optional, Repeat } from "@/lib/psdl/types";
 

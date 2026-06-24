@@ -108,7 +108,9 @@ describe("EmbedViewer", () => {
 
     const { cleanup } = await mountEmbedViewer("/embed?preset=tcp");
     try {
-      expect(observedLabels[0]).toBe("TCP Header embed");
+      // The preset body is lazy-fetched, so the first paint is a placeholder
+      // ("Packet embed") and the resolved label arrives once the body loads.
+      expect(observedLabels).toContain("TCP Header embed");
     } finally {
       await cleanup();
     }
@@ -222,9 +224,13 @@ async function mountEmbedViewer(path: string): Promise<{
     root = createRoot(container);
     root.render(<EmbedViewer />);
   });
-  await act(async () => {
-    await Promise.resolve();
-  });
+  // Flush the lazy preset-body fetch (effect → loadPreset → fetch → JSON →
+  // setState → re-render spans several async hops).
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
   return {
     container,
     cleanup: async () => {

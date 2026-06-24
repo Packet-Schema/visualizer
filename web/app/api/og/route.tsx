@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import { LIGHT_DIAGRAM_THEME, LIGHT_UI_THEME } from "@/lib/theme";
 import { createExportTheme, convertOklchInString } from "@/lib/colors";
 import { resolveLayout } from "@/lib/psdl/layout";

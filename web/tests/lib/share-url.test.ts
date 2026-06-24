@@ -9,7 +9,7 @@ import {
   normalizeShareQuery,
   parseShareParams,
 } from "@/lib/share-url";
-import { PRESETS } from "@/lib/psdl/presets";
+import { PRESETS } from "@/lib/psdl/presets.server";
 import type { Packet } from "@/lib/psdl/types";
 
 const BUILT_INS = Object.keys(PRESETS);

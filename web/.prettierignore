@@ -12,3 +12,5 @@ next-env.d.ts
 # Cloudflare Workers & Open Next
 .wrangler
 .open-next
+public/presets/
+lib/psdl/preset-index.generated.ts
