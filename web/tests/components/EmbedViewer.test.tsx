@@ -116,6 +116,21 @@ describe("EmbedViewer", () => {
     }
   });
 
+  it("degrades to a placeholder instead of crashing when controllers over-consume a bounded scope", async () => {
+    // override-audit A8 (embed surface): a malformed shared link whose
+    // controllers push a bounded-scope repeat past its byte budget makes core
+    // normalize throw. The embed must not white-screen the iframe.
+    const { container, cleanup } = await mountEmbedViewer(
+      "/embed?preset=bgpUpdateFull&controllers.bgpWithdrawnRoutes=2",
+    );
+    try {
+      expect(container.querySelector(".embed-root")).not.toBeNull();
+      expect(container.querySelector(".hybrid-diagram")).toBeNull();
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("renders an encoded PSDL payload", async () => {
     const shared = mkPacket("Embedded Packet", "embedded-field");
     const { container, cleanup } = await mountEmbedViewer(

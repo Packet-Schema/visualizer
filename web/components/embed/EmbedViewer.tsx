@@ -124,7 +124,15 @@ export default function EmbedViewer() {
       if (!env.has(ref)) env.set(ref, 0);
     }
 
-    return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
+    // A malformed shared link (controllers that over-consume a `bounded`
+    // scope, etc.) makes core normalize throw. The embed is read-only with no
+    // previous frame to fall back to, so degrade to the loading placeholder
+    // instead of white-screening the iframe (override-audit finding A8).
+    try {
+      return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
+    } catch {
+      return null;
+    }
   }, [embedState, refs]);
 
   const handleFieldClick = useCallback((field: Field) => {
