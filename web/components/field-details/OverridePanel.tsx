@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 
 import type {
+  Cell,
   ChainInstance,
   ControllerState,
   Field,
@@ -36,6 +37,9 @@ type Props = {
   /** Controller-derived slot bytes per TLV field id (= `(IHL−5)*4` for
    *  IPv4 / TCP). Used to warn the user when records exceed the slot. */
   tlvSlotBytes?: Record<string, number>;
+  /** Diagram cells, used to resolve clicks on cells that have no renderer
+   *  mirror field (records inside a plain repeat). */
+  cells?: readonly Cell[];
 };
 
 function EmptyState({
@@ -176,6 +180,7 @@ export default function OverridePanel({
   onControllerChange,
   onByteOrderChange,
   tlvSlotBytes,
+  cells,
 }: Props) {
   // TLV cells emitted by `applyTlvInstances` carry synthetic ids that
   // don't live in `packet.fields`. `parseTlvCellId` peels back the role
@@ -229,7 +234,7 @@ export default function OverridePanel({
     }
   }
 
-  const r = resolveSelection(packet, selectedFieldId);
+  const r = resolveSelection(packet, selectedFieldId, cells);
 
   const emptyProps = {
     packet,

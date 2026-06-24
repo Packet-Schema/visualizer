@@ -10,6 +10,9 @@ import { createRoot, type Root } from "react-dom/client";
 import OverridePanel from "@/components/field-details/OverridePanel";
 import { PRESETS } from "@/lib/psdl/presets.server";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
+import { resolveLayout } from "@/lib/psdl/layout";
+import { initialEnv } from "@/lib/psdl/normalize";
+import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 
 let activeRoot: Root | null = null;
 let activeContainer: HTMLElement | null = null;
@@ -228,5 +231,35 @@ describe("OverridePanel widgets", () => {
     expect(container.querySelector('input[type="range"]')).toBeNull();
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
     expect(container.textContent).toMatch(/no runtime override/i);
+  });
+
+  it("resolves a plain-repeat leaf cell (dnsResponse RR Type) via diagram cells, not 'Field not found' (A1)", async () => {
+    const dns = PRESETS.dnsResponse!;
+    const packet = psdlToRenderer(dns);
+    // Build the diagram cells the way PacketViewer does: preset defaults +
+    // a controller to materialise one answer record + 0-filled refs.
+    const env = new Map<string, number>();
+    for (const [k, v] of initialEnv(dns)) env.set(k, v);
+    env.set("dnsAnCount", 1);
+    for (const r of collectPsdlRefs(dns)) if (!env.has(r)) env.set(r, 0);
+    const { cells } = resolveLayout(dns, { env });
+    // The RR Type leaf renders as a `#0` repeat cell that has NO mirror field
+    // (the dnsAnswers repeat is a plain multi-field struct, dropped at
+    // psdl-to-renderer/index.ts), so without `cells` it dead-ends.
+    expect(cells.some((c) => c.field.id === "dnsRrType#0")).toBe(true);
+    expect(packet.fields.some((f) => f.id === "dnsRrType")).toBe(false);
+
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="dnsRrType#0"
+        controllers={{}}
+        onControllerChange={() => {}}
+        cells={cells}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/Field not found/);
+    expect(text).toMatch(/no runtime override/i);
   });
 });

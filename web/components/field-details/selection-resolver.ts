@@ -13,7 +13,7 @@
 // Two panels (DetailPanel and OverridePanel) need the same resolution, so
 // the lookup lives here.
 
-import type { Field, Packet, SubField } from "@/lib/psdl/renderer";
+import type { Cell, Field, Packet, SubField } from "@/lib/psdl/renderer";
 import { parseTlvCellId } from "@/lib/psdl/psdl-to-renderer/tlv-cell-id";
 
 export type Resolution =
@@ -24,6 +24,48 @@ export type Resolution =
   | { kind: "field-not-found" };
 
 export function resolveSelection(
+  packet: Packet,
+  selectedFieldId: string | null,
+  cells?: readonly Cell[],
+): Resolution {
+  const mirror = resolveFromMirror(packet, selectedFieldId);
+  // The renderer mirror only carries fields for the TLV/chain idioms plus flat
+  // top-level fields; cells emitted from inside a plain (non-TLV/non-chain)
+  // repeat have no mirror field, so a click on one used to dead-end at "Field
+  // not found". The diagram cells ARE the source of truth for what is on
+  // screen, so fall back to them — every clickable cell resolves by
+  // construction (override-audit finding A1).
+  if (
+    cells &&
+    selectedFieldId &&
+    (mirror.kind === "field-not-found" || mirror.kind === "subfield-not-found")
+  ) {
+    const fromCells = resolveFromCells(cells, selectedFieldId);
+    if (fromCells) return fromCells;
+  }
+  return mirror;
+}
+
+/** Resolve a clicked cell id against the diagram's own cells. The cell `field`
+ *  (and group `subCells`) carry name/bits/category/description straight from
+ *  the normalized layout, so this covers every rendered cell — including the
+ *  ~170 presets whose repeated records never reach the renderer mirror. */
+function resolveFromCells(
+  cells: readonly Cell[],
+  id: string,
+): Resolution | null {
+  for (const cell of cells) {
+    if (cell.field.id === id) return { kind: "field", field: cell.field };
+    for (const sc of cell.subCells ?? []) {
+      if (sc.id === id) {
+        return { kind: "subfield", parent: sc.parentField, sub: sc.subfield };
+      }
+    }
+  }
+  return null;
+}
+
+function resolveFromMirror(
   packet: Packet,
   selectedFieldId: string | null,
 ): Resolution {

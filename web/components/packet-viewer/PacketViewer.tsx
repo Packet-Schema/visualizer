@@ -1321,6 +1321,7 @@ export default function PacketViewer({
               packet={packet}
               selectedFieldId={selectedFieldId}
               controllers={controllers}
+              cells={layout.cells}
             />
           </section>
 
@@ -1344,6 +1345,7 @@ export default function PacketViewer({
               onControllerChange={handleControllerChange}
               onByteOrderChange={handleByteOrderChange}
               tlvSlotBytes={tlvSlotBytes}
+              cells={layout.cells}
             />
           </section>
         </div>
