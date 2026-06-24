@@ -263,6 +263,34 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("does not leak the previous preset's controllers while switching to an unloaded built-in (D3)", async () => {
+    // override-audit D3: switching to a never-fetched built-in defers the
+    // controller reset until loadPreset resolves. In that load window the share
+    // URL must not carry the previous preset's controllers under the new key.
+    const { container, cleanup } = await mountPacketViewer(
+      "/?preset=ipv4&controllers.ihl=8",
+    );
+    const realFetch = globalThis.fetch;
+    try {
+      expect(window.location.search).toContain("controllers.ihl=8");
+      // Make the next preset body hang so the load window stays open.
+      vi.stubGlobal("fetch", () => new Promise<Response>(() => {}));
+      const picker = container.querySelector<HTMLSelectElement>("select");
+      await act(async () => {
+        if (!picker) throw new Error("preset picker missing");
+        picker.value = "dhcpv6"; // not primed → lazy-fetched (and now hanging)
+        picker.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      // In-flight: clean preset URL, no stale ipv4 ihl controller.
+      expect(picker?.value).toBe("dhcpv6");
+      expect(window.location.search).toContain("preset=dhcpv6");
+      expect(window.location.search).not.toContain("controllers.ihl");
+    } finally {
+      vi.stubGlobal("fetch", realFetch);
+      await cleanup();
+    }
+  });
+
   it("keeps a built-in's TLV edit (made outside edit mode) in the share URL", async () => {
     // override-audit D1: adding a TLV record to a built-in preset via the
     // OverridePanel WITHOUT entering edit mode used to be dropped from the

@@ -920,7 +920,12 @@ export default function PacketViewer({
       baseUrl: window.location.href,
       packetKey,
       packet: sharePacket,
-      controllers,
+      // While a freshly-switched built-in is still lazy-loading, its body (and
+      // thus `defaultControllers`) isn't available, so the stale controllers
+      // from the PREVIOUS preset would leak into the URL as
+      // `controllers.<prev>=…` under the new key. Drop them — they self-correct
+      // once the body loads and resets controllers (override-audit D3).
+      controllers: isUnloadedBuiltIn ? {} : controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultControllers,
       // An unloaded built-in still shares as a clean preset URL (its controllers

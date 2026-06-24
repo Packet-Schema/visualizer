@@ -536,6 +536,10 @@ function collectFreeRepeats(
             // PER-ITERATION field, but a single global stepper can't give
             // distinct per-instance counts and would also corrupt the rendered
             // value of that field (override-audit A7).
+            // NOTE: op/cond counts (e.g. SRv6 `srhLastEntry + 1`) are
+            // deliberately NOT surfaced — those repeats are gated by a separate
+            // length field (hdrExtLen), so a stepper on the count ref alone is
+            // inert and misleading (override-audit A5, left as a known gap).
             const ref = c.count.field;
             const covered = fields.find(
               (f) =>
