@@ -200,6 +200,17 @@ export type Packet = {
     cases: { value: number; label: string }[];
     peekKey: string;
   }[];
+  /** Switches inside a plain (non-TLV/non-chain) repeat whose `on` is a
+   *  `ref` to a discriminator field. That repeat is not lifted into the mirror,
+   *  so the discriminator has no override widget — surface a packet-level
+   *  variant picker keyed on the discriminator's env id instead (override-audit
+   *  A2). Selecting a case sets which variant the repeated records display. */
+  refSwitches?: {
+    id: string;
+    name: string;
+    cases: { value: number; label: string }[];
+    refKey: string;
+  }[];
 };
 
 /** A laid-out cell within a row. May span multiple rows via segmentation. */

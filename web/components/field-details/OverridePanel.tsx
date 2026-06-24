@@ -62,6 +62,7 @@ function EmptyState({
   // that aren't anchored to a single cell.
   const free = packet.freeRepeats ?? [];
   const peeks = packet.peekSwitches ?? [];
+  const refs = packet.refSwitches ?? [];
   // TLVs without an explicit slot (= preset not in TLV_LENGTH_SYNC) won't
   // emit a placeholder cell in the diagram. Surface them here so TLS /
   // CoAP / etc. have a persistent first-edit entry point — and KEEP them
@@ -117,6 +118,23 @@ function EmptyState({
                 switchName={p.name}
                 peekKey={p.peekKey}
                 cases={p.cases}
+                controllers={controllers}
+                onChange={onControllerChange}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {refs.length > 0 && onControllerChange ? (
+        <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+          <WidgetLabel>Record variants</WidgetLabel>
+          <div className="space-y-2">
+            {refs.map((r) => (
+              <PeekSwitchPicker
+                key={r.id}
+                switchName={r.name}
+                peekKey={r.refKey}
+                cases={r.cases}
                 controllers={controllers}
                 onChange={onControllerChange}
               />

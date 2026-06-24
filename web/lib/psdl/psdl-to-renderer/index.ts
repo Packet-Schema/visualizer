@@ -294,6 +294,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   attachOverrideMetadata(packet.body, fields);
   const freeRepeats = collectFreeRepeats(packet.body, fields);
   const peekSwitches = collectPeekSwitches(packet.body);
+  const refSwitches = collectRefSwitches(packet.body, fields);
   return {
     name: packet.name,
     rowBits: packet.rowBits,
@@ -302,7 +303,74 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
     ...(freeRepeats.length > 0 ? { freeRepeats } : {}),
     ...(peekSwitches.length > 0 ? { peekSwitches } : {}),
+    ...(refSwitches.length > 0 ? { refSwitches } : {}),
   };
+}
+
+/**
+ * Find Switches inside a plain (non-TLV/non-chain) repeat whose `on` is a
+ * `ref(X)`. Because that repeat is dropped from the renderer mirror, the
+ * discriminator X has no override widget and the per-record variant is stuck at
+ * its default — so surface a packet-level variant picker keyed on X's env id
+ * (override-audit A2). Skipped when X already carries a field-bearing widget.
+ */
+function collectRefSwitches(
+  body: PsdlPacket["body"],
+  fields: RendererField[],
+): NonNullable<RendererPacket["refSwitches"]> {
+  const out: NonNullable<RendererPacket["refSwitches"]> = [];
+  const seen = new Set<string>();
+  const visit = (
+    containers: PsdlPacket["body"],
+    insidePlainRepeat: boolean,
+  ): void => {
+    for (const c of flattenForMirror(containers)) {
+      if (c.kind === "repeat") {
+        const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
+        visit(c.element.fields, insidePlainRepeat || plain);
+        continue;
+      }
+      if (c.kind === "switch") {
+        if (insidePlainRepeat && c.on.kind === "ref") {
+          const refKey = c.on.field;
+          const covered = fields.find(
+            (f) =>
+              f.id === refKey &&
+              (f.controlsLength || f.switchCases || f.enumVariants),
+          );
+          if (!covered && !seen.has(refKey)) {
+            const cases: { value: number; label: string }[] = [];
+            for (const [key, struct] of Object.entries(c.cases)) {
+              const v = Number(key);
+              if (!Number.isFinite(v)) continue;
+              cases.push({ value: v, label: struct.name ?? `case ${key}` });
+            }
+            if (cases.length > 0) {
+              seen.add(refKey);
+              out.push({ id: c.id, name: c.name ?? refKey, cases, refKey });
+            }
+          }
+        }
+        for (const struct of Object.values(c.cases))
+          visit(struct.fields, insidePlainRepeat);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children, insidePlainRepeat);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.container], insidePlainRepeat);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields, insidePlainRepeat);
+        continue;
+      }
+    }
+  };
+  visit(body, false);
+  return out;
 }
 
 /**
