@@ -342,13 +342,21 @@ export default function PacketViewer({
       const presetKey = parsed.presetKey;
       const urlControllers = parsed.controllers;
       void loadPreset(presetKey)
-        .then((p) =>
+        .then((p) => {
+          // Guard against a switch-away while the body resolves (mirrors
+          // handlePacketChange) so a stale completion can't clobber the newly
+          // selected preset's controllers.
+          if (packetKeyRef.current !== presetKey) return;
           setControllers({
             ...initialState(psdlToRenderer(p)),
             ...urlControllers,
-          }),
-        )
-        .catch(() => setControllers({ ...urlControllers }));
+          });
+        })
+        .catch(() => {
+          if (packetKeyRef.current === presetKey) {
+            setControllers({ ...urlControllers });
+          }
+        });
     } else {
       setCustomPresets(stored);
       if (Object.keys(parsed.controllers).length > 0) {
