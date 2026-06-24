@@ -52,4 +52,19 @@ describe("collectRefSwitches", () => {
     const ipv4 = psdlToRenderer(PRESETS.ipv4!);
     expect(ipv4.refSwitches ?? []).toHaveLength(0);
   });
+
+  it("excludes length/format-encoder switches, keeping only record-type codes", () => {
+    // review HIGH: driving a length encoder (BGP Extended-Length flag,
+    // CoAP option nibbles) over-consumes a scope / explodes the render instead
+    // of choosing a record variant — they must NOT be surfaced.
+    const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
+    const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
+    expect(bgpKeys).toContain("attrTypeCode"); // 8-bit type code — kept
+    expect(bgpKeys).not.toContain("attrExtLen"); // 1-bit flag — dropped
+
+    // CoAP's optDelta/optLength are 4-bit nibbles whose cases add
+    // length-extension fields — both dropped (no record-variant switch left).
+    const coap = psdlToRenderer(PRESETS.coap!);
+    expect(coap.refSwitches ?? []).toHaveLength(0);
+  });
 });

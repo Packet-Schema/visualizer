@@ -314,11 +314,104 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
  * its default — so surface a packet-level variant picker keyed on X's env id
  * (override-audit A2). Skipped when X already carries a field-bearing widget.
  */
+/** Collect every `ref` field id reachable inside an arbitrary value (Expr tree,
+ *  type node, …). Generic so it doesn't need to enumerate the Expr union. */
+function refsIn(value: unknown, acc: Set<string>): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const v of value) refsIn(v, acc);
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  if (obj.kind === "ref" && typeof obj.field === "string") acc.add(obj.field);
+  for (const v of Object.values(obj)) refsIn(v, acc);
+}
+
+/** Field ids that drive a LENGTH or byte-budget somewhere in the packet:
+ *  `bounded.bytes`, a field's length-bearing `type`, or a `repeat.count`.
+ *  A Switch discriminator that also appears here is a length/format encoder
+ *  (BGP Extended-Length flag, CoAP option nibble), NOT a record-variant
+ *  selector — driving it desyncs lengths / over-consumes scopes, so we must not
+ *  surface it as a "Record variants" picker. */
+function collectLengthDrivingRefs(body: PsdlPacket["body"]): Set<string> {
+  const acc = new Set<string>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        refsIn(c.type, acc);
+        continue;
+      }
+      if (c.kind === "bounded") {
+        refsIn(c.bytes, acc);
+        visit(c.fields);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        refsIn(c.count, acc);
+        visit(c.element.fields);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases)) visit(struct.fields);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.container]);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields);
+        continue;
+      }
+    }
+  };
+  visit(body);
+  return acc;
+}
+
+/** Map each int/enum/bits field id to its bit width. Used to tell a record-type
+ *  code (≥ 8 bits — dnsRrType, attrTypeCode) from a length/format nibble or flag
+ *  (≤ 4 bits — CoAP optDelta/optLength, BGP attrExtLen), whose extension fields
+ *  are coupled to byte lengths and must not be user-driven as a variant. */
+function collectFieldBits(body: PsdlPacket["body"]): Map<string, number> {
+  const bits = new Map<string, number>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        const t = c.type as { kind?: string; bits?: number; n?: unknown };
+        const w =
+          typeof t.bits === "number"
+            ? t.bits
+            : typeof t.n === "number"
+              ? t.n
+              : undefined;
+        if (w !== undefined) bits.set(c.id, w);
+        continue;
+      }
+      if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+    }
+  };
+  visit(body);
+  return bits;
+}
+
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
 ): NonNullable<RendererPacket["refSwitches"]> {
   const out: NonNullable<RendererPacket["refSwitches"]> = [];
+  const lengthDriving = collectLengthDrivingRefs(body);
+  const fieldBits = collectFieldBits(body);
   const seen = new Set<string>();
   const visit = (
     containers: PsdlPacket["body"],
@@ -338,7 +431,17 @@ function collectRefSwitches(
               f.id === refKey &&
               (f.controlsLength || f.switchCases || f.enumVariants),
           );
-          if (!covered && !seen.has(refKey)) {
+          // Skip length/format-encoder switches (BGP Extended-Length flag,
+          // CoAP option nibbles): driving their discriminator desyncs lengths
+          // or over-consumes a bounded scope rather than choosing a record
+          // variant (review HIGH). Two signals: the discriminator is itself a
+          // length ref, or it's a sub-byte nibble/flag (< 8 bits) whose cases
+          // add length-extension fields — a record-type code is ≥ 8 bits.
+          const discBits = fieldBits.get(refKey);
+          const isEncoder =
+            lengthDriving.has(refKey) ||
+            (discBits !== undefined && discBits < 8);
+          if (!covered && !isEncoder && !seen.has(refKey)) {
             const cases: { value: number; label: string }[] = [];
             for (const [key, struct] of Object.entries(c.cases)) {
               const v = Number(key);
