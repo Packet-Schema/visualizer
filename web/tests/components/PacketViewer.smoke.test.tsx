@@ -222,6 +222,10 @@ describe("PacketViewer (smoke)", () => {
       // controllers once its body arrives, so the stale ipv4 `ihl` controller
       // is gone from the canonical share URL (not leaked onto ipv6).
       expect(window.location.search).not.toContain("controllers.ihl");
+      // Codex P2 regression: a built-in (even mid-lazy-load) shares as a clean
+      // `preset=<key>` URL, never a psdl-encoded copy of the fallback packet.
+      expect(window.location.search).toContain("preset=ipv6");
+      expect(window.location.search).not.toContain("psdl=");
       expect(
         container.querySelector('[data-field-id="srcAddr"]'),
       ).not.toBeNull();

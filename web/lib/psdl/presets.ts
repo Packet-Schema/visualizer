@@ -47,7 +47,9 @@ export function loadPreset(key: string): Promise<Packet> {
   })();
   inFlight.set(key, request);
   // Clear the in-flight slot once settled so a failed fetch can be retried.
-  void request.finally(() => inFlight.delete(key));
+  // Swallow the cleanup chain's rejection (callers handle `request` itself) so
+  // a failed fetch doesn't surface as an unhandled rejection here.
+  request.finally(() => inFlight.delete(key)).catch(() => {});
   return request;
 }
 

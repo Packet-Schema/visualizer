@@ -218,14 +218,20 @@ export default function PacketViewer({
   // then the synchronous fallbacks below show the seed/previous mirror.
   useEffect(() => {
     if (!(packetKey in PRESET_INDEX)) return; // psdl / custom / imported key
-    if (renderedPresets[packetKey]) return; // already lowered
+    // Guard on the network cache, NOT `renderedPresets`: if the user edits the
+    // stale fallback mirror during load, `replaceActivePacket` writes a (wrong)
+    // entry under `packetKey`; we must still fetch and OVERWRITE it with the
+    // canonical mirror so the selected preset can't get stuck on another
+    // packet's shape (Codex P2).
+    if (getLoadedPreset(packetKey)) return; // canonical body already fetched
     let cancelled = false;
     loadPreset(packetKey)
       .then((p) => {
         if (cancelled) return;
-        setRenderedPresets((prev) =>
-          prev[packetKey] ? prev : { ...prev, [packetKey]: psdlToRenderer(p) },
-        );
+        setRenderedPresets((prev) => ({
+          ...prev,
+          [packetKey]: psdlToRenderer(p),
+        }));
       })
       .catch(() => {
         /* keep showing the seed/previous mirror if the fetch fails */
@@ -233,7 +239,7 @@ export default function PacketViewer({
     return () => {
       cancelled = true;
     };
-  }, [packetKey, renderedPresets]);
+  }, [packetKey]);
 
   // Renderer mirror — the shape the UI editors / detail panels consume. Falls
   // back to the seed mirror while a freshly-selected preset's body is in flight.
@@ -829,6 +835,10 @@ export default function PacketViewer({
   const buildCurrentShareUrl = useCallback(() => {
     if (typeof window === "undefined") return "";
     const builtInPsdl = getLoadedPreset(packetKey);
+    // A built-in whose body is still lazy-loading: we know it's a preset by its
+    // key even before the body arrives, so it must share as `preset=<key>` —
+    // NOT psdl-encode the stale fallback packet currently on screen (Codex P2).
+    const isUnloadedBuiltIn = !builtInPsdl && packetKey in PRESET_INDEX;
     const customSource = builtInPsdl ? undefined : customPresets[packetKey];
     // Custom preset edits live in `renderedPresets` (see
     // `replaceActivePacket` custom arm) and the source PSDL in
@@ -883,7 +893,9 @@ export default function PacketViewer({
       controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultControllers,
-      forcePsdl: editHasDiff || !builtInPsdl,
+      // An unloaded built-in still shares as a clean preset URL (its controllers
+      // self-correct once the body loads and resets them).
+      forcePsdl: editHasDiff || (!builtInPsdl && !isUnloadedBuiltIn),
     });
   }, [
     controllers,
