@@ -893,7 +893,13 @@ export default function PacketViewer({
           ? builtInMerged
           : builtInPsdl
         : hasCustomRendererOverride
-          ? rendererToPsdl(packet)
+          ? // A custom preset edited via the diagram: prefer the lossless
+            // source + instance merge (same as the export lift) so its
+            // Switch / Encrypted / variable-length payloads survive; only an
+            // imported packet with no source PSDL falls back to the lossy lift.
+            customSource
+            ? mergeInstancesIntoPsdl(customSource, packet)
+            : rendererToPsdl(packet)
           : (customSource ?? rendererToPsdl(packet));
     const defaultControllers = builtInPsdl
       ? initialState(psdlToRenderer(builtInPsdl))

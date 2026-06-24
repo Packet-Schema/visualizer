@@ -221,7 +221,15 @@ function mergeRepeats(c: Container, mirror: RendererPacket): Container {
       fields: c.fields.map((f) => mergeRepeats(f, mirror)),
     };
   }
-  // Field / Optional carry no Repeat — already overlaid above, no-op here.
+  if (c.kind === "optional") {
+    // A TLV/chain Repeat can sit inside an Optional container; recurse so its
+    // instances ride the lift/share merge (mirrors `overlayFieldEdits`).
+    return {
+      ...c,
+      container: mergeRepeats(c.container, mirror) as typeof c.container,
+    };
+  }
+  // Field carries no Repeat — already overlaid above, no-op here.
   return c;
 }
 

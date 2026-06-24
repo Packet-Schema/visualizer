@@ -79,8 +79,10 @@ describe("TLV instances round-trip", () => {
 // mirror's instances onto the source PSDL instead; this pins that the lift is
 // valid and survives a full JSON export → re-import.
 describe("lossless export lift", () => {
-  // Every built-in single-Switch TLV preset (the ones with a variable payload /
-  // enum label / `_` arm that the lossy reconstruction mangles).
+  // A sample of built-in single-Switch TLV presets. This loop is a positive
+  // correctness check (the merge lift is valid + re-importable for each); the
+  // dedicated dhcpv4 test below pins that the OLD lossy path was genuinely
+  // broken, so the lift is load-bearing rather than a no-op.
   const TLV_PRESETS = ["ipv4", "dhcpv4", "ipv6Destination"] as const;
 
   for (const key of TLV_PRESETS) {
