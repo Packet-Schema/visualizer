@@ -140,6 +140,27 @@ describe("OverridePanel widgets", () => {
     expect(text).toMatch(/TLV variant/);
   });
 
+  it("warns about slot overshoot on the inline variant dropdown (D2)", async () => {
+    // override-audit D2: swapping a record's variant via the inline dropdown
+    // (reached by clicking the record cell) must surface the same overshoot
+    // warning as the full TlvEditor. Seed a 15 B Record Route into a 4 B slot.
+    const packet = psdlToRenderer(PRESETS.ipv4!);
+    const optionsField = packet.fields.find((f) => f.id === "options");
+    if (optionsField?.tlv) optionsField.tlv.instances = [{ kind: 7 }];
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="options__inst_0"
+        controllers={{ ihl: 6 }}
+        onTlvChange={() => {}}
+        onControllerChange={() => {}}
+        tlvSlotBytes={{ options: 4 }}
+      />,
+    );
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent ?? "").toMatch(/slot is only 4 B/);
+  });
+
   it("renders a ByteOrderToggle for pcieTlpFragment.address (LE override)", async () => {
     const packet = psdlToRenderer(PRESETS.pcieTlpFragment!);
     const { container } = await mount(

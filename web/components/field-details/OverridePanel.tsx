@@ -12,7 +12,8 @@ import type {
 
 import SliderTooltip from "../controls/SliderTooltip";
 import ChainEditor from "./ChainEditor";
-import TlvEditor from "./TlvEditor";
+import TlvEditor, { SlotOvershootWarning } from "./TlvEditor";
+import { tlvTotalBits } from "@/lib/psdl/renderer-helpers";
 import { resolveSelection } from "./selection-resolver";
 import { parseTlvCellId } from "./tlv-cell-id";
 
@@ -223,6 +224,7 @@ export default function OverridePanel({
               tlvField={parent}
               instanceIndex={role.instanceIndex}
               onChange={(next) => onTlvChange(parent, next)}
+              slotBytes={tlvSlotBytes?.[parent.id]}
             />
           );
         }
@@ -798,16 +800,21 @@ type TlvInnerProps = {
   tlvField: Field;
   instanceIndex: number;
   onChange: (next: TlvInstance[]) => void;
+  slotBytes?: number;
 };
 
 function TlvInnerVariantDropdown({
   tlvField,
   instanceIndex,
   onChange,
+  slotBytes,
 }: TlvInnerProps) {
   const tlv = tlvField.tlv!;
   const instance = tlv.instances[instanceIndex]!;
   const selectId = `detail-tlv-inner-${tlvField.id}-${instanceIndex}`;
+  // A variant swap here can push the records past the upstream length slot just
+  // like the full editor — surface the same warning (override-audit D2).
+  const totalBytesUsed = Math.ceil(tlvTotalBits(tlvField).totalBits / 8);
   return (
     <div>
       <label htmlFor={selectId}>
@@ -815,6 +822,10 @@ function TlvInnerVariantDropdown({
           TLV variant · {tlvField.name} #{instanceIndex}
         </WidgetLabel>
       </label>
+      <SlotOvershootWarning
+        totalBytesUsed={totalBytesUsed}
+        slotBytes={slotBytes}
+      />
       <select
         id={selectId}
         value={instance.kind}

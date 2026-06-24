@@ -145,10 +145,6 @@ export default function TlvEditor({
   };
 
   const totalBytesUsed = Math.ceil(summary.totalBits / 8);
-  const overshootBy =
-    slotBytes !== undefined && totalBytesUsed > slotBytes
-      ? totalBytesUsed - slotBytes
-      : 0;
 
   return (
     <div>
@@ -157,22 +153,10 @@ export default function TlvEditor({
         Recursive TLV container. Add typed records below; the total length
         drives <code className="font-mono">{tlv.drivesController || ""}</code>.
       </p>
-      {overshootBy > 0 ? (
-        <p
-          role="alert"
-          className="text-xs m-0 mb-2 px-2 py-1.5 rounded border"
-          style={{
-            borderColor: "var(--field-rose)",
-            background:
-              "color-mix(in oklch, var(--field-rose) 12%, transparent)",
-            color: "var(--fg)",
-          }}
-        >
-          ⚠ Records total {totalBytesUsed} B but the slot is only {slotBytes} B
-          ({overshootBy} B over). Grow the upstream length controller or remove
-          records to keep the wire format valid.
-        </p>
-      ) : null}
+      <SlotOvershootWarning
+        totalBytesUsed={totalBytesUsed}
+        slotBytes={slotBytes}
+      />
 
       <div
         className="rounded-md border divide-y"
@@ -398,5 +382,37 @@ function IconBtn({
     >
       {children}
     </button>
+  );
+}
+
+/** Shared slot-overshoot banner. Rendered by both the full TlvEditor and the
+ *  inline variant dropdown so a size-increasing edit on EITHER surface flags
+ *  the same "records exceed the slot" warning (override-audit D2). */
+export function SlotOvershootWarning({
+  totalBytesUsed,
+  slotBytes,
+}: {
+  totalBytesUsed: number;
+  slotBytes: number | undefined;
+}) {
+  const overshootBy =
+    slotBytes !== undefined && totalBytesUsed > slotBytes
+      ? totalBytesUsed - slotBytes
+      : 0;
+  if (overshootBy <= 0) return null;
+  return (
+    <p
+      role="alert"
+      className="text-xs m-0 mb-2 px-2 py-1.5 rounded border"
+      style={{
+        borderColor: "var(--field-rose)",
+        background: "color-mix(in oklch, var(--field-rose) 12%, transparent)",
+        color: "var(--fg)",
+      }}
+    >
+      ⚠ Records total {totalBytesUsed} B but the slot is only {slotBytes} B (
+      {overshootBy} B over). Grow the upstream length controller or remove
+      records to keep the wire format valid.
+    </p>
   );
 }
