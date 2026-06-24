@@ -868,6 +868,19 @@ export default function PacketViewer({
     //  - imported → no source PSDL available, lift from renderer.
     const hasCustomRendererOverride =
       !builtInPsdl && renderedPresets[packetKey] !== undefined;
+    // A built-in can be edited (TLV/chain instances) via the OverridePanel
+    // WITHOUT entering editMode — those edits land on the renderer mirror
+    // (`packet`), not the pristine preset. Outside editMode the share path used
+    // to emit the raw preset and silently drop them (override-audit D1). Detect
+    // the override by shape-preserving-merging the mirror's instances back onto
+    // the preset and comparing; share the merged PSDL when they differ.
+    const builtInMerged = builtInPsdl
+      ? mergeInstancesIntoPsdl(builtInPsdl, packet)
+      : undefined;
+    const builtInHasOverride =
+      builtInPsdl !== undefined &&
+      builtInMerged !== undefined &&
+      !samePsdlPacket(builtInMerged, builtInPsdl);
     const sharePacket = editMode
       ? // In editMode the diagram draws from studioState.packet but TLV /
         // chain edits only land on the renderer mirror — without the
@@ -876,7 +889,9 @@ export default function PacketViewer({
         // memo so we don't walk the body twice per share click.
         mergedStudioPacket
       : builtInPsdl
-        ? builtInPsdl
+        ? builtInHasOverride && builtInMerged
+          ? builtInMerged
+          : builtInPsdl
         : hasCustomRendererOverride
           ? rendererToPsdl(packet)
           : (customSource ?? rendererToPsdl(packet));
@@ -903,7 +918,10 @@ export default function PacketViewer({
       defaultControllers,
       // An unloaded built-in still shares as a clean preset URL (its controllers
       // self-correct once the body loads and resets them).
-      forcePsdl: editHasDiff || (!builtInPsdl && !isUnloadedBuiltIn),
+      forcePsdl:
+        editHasDiff ||
+        builtInHasOverride ||
+        (!builtInPsdl && !isUnloadedBuiltIn),
     });
   }, [
     controllers,

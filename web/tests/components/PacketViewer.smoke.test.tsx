@@ -263,6 +263,58 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("keeps a built-in's TLV edit (made outside edit mode) in the share URL", async () => {
+    // override-audit D1: adding a TLV record to a built-in preset via the
+    // OverridePanel WITHOUT entering edit mode used to be dropped from the
+    // share URL (the raw `preset=ipv4` was emitted instead of the edited
+    // packet). The edit must now survive as a `psdl=` payload.
+    const { container, cleanup } = await mountPacketViewer(
+      "/?preset=ipv4&controllers.ihl=7",
+    );
+    try {
+      // Sanity: not in edit mode, clean preset URL with no psdl payload yet.
+      expect(window.location.search).toContain("preset=ipv4");
+      expect(window.location.search).not.toContain("psdl=");
+
+      // Open the Options TLV editor by clicking the placeholder slot cell.
+      const placeholder = container.querySelector<HTMLElement>(
+        '[data-field-id="options"]',
+      );
+      await act(async () => {
+        placeholder?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      // Append a NOP record through the TlvEditor's "+ Add record" select.
+      const overrideSection = Array.from(container.querySelectorAll("h2")).find(
+        (h) => h.textContent?.includes("Override"),
+      )?.parentElement;
+      const appendSelect =
+        overrideSection?.querySelector<HTMLSelectElement>("select");
+      await act(async () => {
+        if (!appendSelect) throw new Error("TLV append select missing");
+        appendSelect.value = "1"; // NOP
+        appendSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      const addBtn = Array.from(
+        overrideSection?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+      ).find((b) => b.textContent === "Add");
+      await act(async () => {
+        addBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      // Flush the URL-sync effect.
+      for (let i = 0; i < 5; i++) {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 0));
+        });
+      }
+
+      // The TLV instance must now be encoded in the share URL.
+      expect(window.location.search).toContain("psdl=");
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("stores a same-named shared packet under the next custom key when content differs", async () => {
     const name = "Shared URL Packet";
     const storedPacket = mkPacket(name, "stored-field");
