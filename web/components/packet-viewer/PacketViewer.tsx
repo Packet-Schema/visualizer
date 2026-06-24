@@ -27,6 +27,7 @@ import {
   syncTlvControllers,
 } from "@/lib/psdl/renderer-helpers";
 import {
+  applyChainInstances,
   applyTlvInstances,
   mergeInstancesIntoPsdl,
   psdlToRenderer,
@@ -1155,7 +1156,12 @@ export default function PacketViewer({
     // either emits an empty placeholder of this size (when no instances
     // are attached yet) or a trailing "remaining" placeholder after the
     // instance Groups.
-    return applyTlvInstances(base, packet, tlvSlotBytes);
+    // Materialise TLV slots, then the IPv6 ext-header chain (the chain's eos
+    // repeat renders nothing on its own — see applyChainInstances).
+    return applyChainInstances(
+      applyTlvInstances(base, packet, tlvSlotBytes),
+      packet,
+    );
   }, [
     editMode,
     studioState.packet,
