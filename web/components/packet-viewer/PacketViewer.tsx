@@ -651,8 +651,9 @@ export default function PacketViewer({
         // Keys not in the preset's renderer (e.g. fields from a different
         // preset that the studio packet was edited from) are dropped so
         // they don't pollute the canonical URL. freeRepeats countKeys are
-        // included because initialState() does not seed them. Start from
-        // presetDefaults so new-preset-specific keys are always seeded.
+        // carried explicitly too (initialState seeds only those freeRepeats
+        // that declare a `defaultCount`). Start from presetDefaults so
+        // new-preset-specific keys are always seeded.
         setControllers((prev) => {
           const next = { ...presetDefaults } as typeof prev;
           for (const [k, v] of Object.entries(prev)) {
