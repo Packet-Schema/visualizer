@@ -185,8 +185,12 @@ export type Packet = {
   fields: Field[];
   /** Non-TLV / non-chain Repeat counts the user can drive via OverridePanel.
    *  Surfaced as a "Repeats" stepper section because these counts don't
-   *  belong to a single field (they're synthetic env keys). */
-  freeRepeats?: { name: string; countKey: string }[];
+   *  belong to a single field (they're synthetic env keys).
+   *  `defaultCount`, when set, seeds an initial iteration count so the diagram
+   *  shows a representative record on load instead of an empty section. Only
+   *  set for eos/until repeats NOT nested in a `bounded` byte-scope (seeding a
+   *  bounded-nested repeat would over-consume its budget). */
+  freeRepeats?: { name: string; countKey: string; defaultCount?: number }[];
   /** Switches whose `on` is a `peek` expression — discriminator can't be
    *  surfaced via a real cell, so OverridePanel offers a synthetic
    *  case-picker. */

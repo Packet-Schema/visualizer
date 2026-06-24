@@ -319,18 +319,41 @@ function collectFreeRepeats(
   fields: RendererField[],
 ): NonNullable<RendererPacket["freeRepeats"]> {
   const out: NonNullable<RendererPacket["freeRepeats"]> = [];
-  const visit = (containers: PsdlPacket["body"]): void => {
-    for (const c of flattenForMirror(containers)) {
+  // `insideBounded` tracks whether the current scope is inside a `bounded`
+  // byte-budget. A repeat nested in a bounded must NOT be auto-seeded with a
+  // default count — increasing its iterations consumes the bounded budget and
+  // would over-consume (the count is meant to follow the scope's length field).
+  // We can't use `flattenForMirror` here because it erases bounded boundaries;
+  // recurse manually so the flag survives.
+  const visit = (
+    containers: PsdlPacket["body"],
+    insideBounded: boolean,
+  ): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "bounded") {
+        visit(c.fields, true);
+        continue;
+      }
+      if (c.kind === "align" || c.kind === "virtual" || c.kind === "ref") {
+        // align/virtual carry no override surface; ref is left unresolved here
+        // (matches the previous flattenForMirror(no-defs) behaviour).
+        continue;
+      }
       if (c.kind === "repeat") {
         if (!isLikelyChainRepeat(c) && !isTlvRepeat(c)) {
           let countKey: string | null = null;
           let label = c.name ?? c.id;
+          let defaultCount: number | undefined;
           if (
             c.count === "eos" ||
             (typeof c.count === "object" && "until" in c.count)
           ) {
             countKey = c.id;
             label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
+            // Show one representative record on load when it's safe (not
+            // constrained by an enclosing bounded byte-budget).
+            if (!insideBounded) defaultCount = 1;
           } else if (typeof c.count === "object" && c.count.kind === "ref") {
             // Only surface when no existing field-bearing widget covers it.
             const ref = c.count.field;
@@ -341,30 +364,37 @@ function collectFreeRepeats(
             );
             if (!covered) countKey = ref;
           }
-          if (countKey) out.push({ name: label, countKey });
+          if (countKey) {
+            out.push({
+              name: label,
+              countKey,
+              ...(defaultCount !== undefined ? { defaultCount } : {}),
+            });
+          }
         }
-        visit(c.element.fields);
+        visit(c.element.fields, insideBounded);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children);
+        visit(c.children, insideBounded);
         continue;
       }
       if (c.kind === "switch") {
-        for (const struct of Object.values(c.cases)) visit(struct.fields);
+        for (const struct of Object.values(c.cases))
+          visit(struct.fields, insideBounded);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container]);
+        visit([c.container], insideBounded);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields);
+        visit(c.plaintext.fields, insideBounded);
         continue;
       }
     }
   };
-  visit(body);
+  visit(body, false);
   return out;
 }
 

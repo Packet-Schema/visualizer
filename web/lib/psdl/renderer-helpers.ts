@@ -177,6 +177,16 @@ export function initialState(packet: Packet): ControllerState {
       state[field.controlsLength] = field.defaultValue ?? 0;
     }
   }
+  // Seed a default iteration count for plain (non-TLV/non-chain) repeats that
+  // declare one, so the diagram shows a representative record on load instead
+  // of an empty section (e.g. lldp's body is a single until-repeat → otherwise
+  // a blank diagram). Seeded via initialState, which feeds BOTH the active
+  // controllers and the share-url default set, so it stays out of the URL.
+  for (const fr of packet.freeRepeats ?? []) {
+    if (fr.defaultCount !== undefined && state[fr.countKey] === undefined) {
+      state[fr.countKey] = fr.defaultCount;
+    }
+  }
   syncTlvControllers(packet, state);
   // `syncChainControllers` now returns a fresh object so callers that
   // depend on reference equality see the update; for the bootstrap
