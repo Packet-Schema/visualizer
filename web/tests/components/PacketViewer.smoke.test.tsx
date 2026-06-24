@@ -245,6 +245,24 @@ describe("PacketViewer (smoke)", () => {
     }
   });
 
+  it("degrades gracefully instead of crashing when an override count over-consumes a bounded scope", async () => {
+    // Override-audit finding A8: bumping the free-repeat stepper for a repeat
+    // nested inside a `bounded` byte scope (here bgpUpdateFull's
+    // `bgpWithdrawnRoutes`, bounded by `bgpWithdrawnRoutesLength`) makes core's
+    // normalize throw "bounded scope over-consumed". That throw used to reach
+    // React render and white-screen the whole app. The layout memo now catches
+    // it and falls back to the last good layout, so mounting must NOT throw.
+    const { container, cleanup } = await mountPacketViewer(
+      "/?preset=bgpUpdateFull&controllers.bgpWithdrawnRoutes=2",
+    );
+    try {
+      const picker = container.querySelector<HTMLSelectElement>("select");
+      expect(picker?.value).toBe("bgpUpdateFull");
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("stores a same-named shared packet under the next custom key when content differs", async () => {
     const name = "Shared URL Packet";
     const storedPacket = mkPacket(name, "stored-field");

@@ -1130,6 +1130,12 @@ export default function PacketViewer({
   // leaves the body untouched) does not re-walk the AST 60×/sec.
   const psdlRefs = useMemo(() => collectPsdlRefs(targetPsdl), [targetPsdl]);
 
+  // Last successfully-resolved layout, kept so a normalize throw can degrade to
+  // the previous frame instead of white-screening (see the try/catch below).
+  const lastGoodLayoutRef = useRef<ReturnType<typeof resolveLayout> | null>(
+    null,
+  );
+
   const layout = useMemo(() => {
     // Every preset is PSDL now — route the diagram through resolveLayout so
     // Encrypted-container decoration and viewMode toggling are uniform.
@@ -1160,7 +1166,18 @@ export default function PacketViewer({
     for (const r of psdlRefs) {
       if (!env.has(r)) env.set(r, 0);
     }
-    return resolveLayout(targetPsdl, { env, viewMode });
+    // 0-fill above only absorbs MissingRefError. Other normalize throws —
+    // notably a `bounded` scope being over-consumed when an override stepper
+    // bumps a repeat count past its byte budget — must not crash React render
+    // into the "Application error" screen. Fall back to the last good layout
+    // (or an empty one on first paint) so the diagram freezes gracefully.
+    try {
+      const next = resolveLayout(targetPsdl, { env, viewMode });
+      lastGoodLayoutRef.current = next;
+      return next;
+    } catch {
+      return lastGoodLayoutRef.current ?? { cells: [], totalBits: 0 };
+    }
   }, [targetPsdl, psdlRefs, controllers, viewMode]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
