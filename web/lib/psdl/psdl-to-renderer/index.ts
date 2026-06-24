@@ -499,11 +499,12 @@ function collectFreeRepeats(
   const visit = (
     containers: PsdlPacket["body"],
     insideBounded: boolean,
+    insideRepeat: boolean,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
       if (c.kind === "bounded") {
-        visit(c.fields, true);
+        visit(c.fields, true, insideRepeat);
         continue;
       }
       if (c.kind === "align" || c.kind === "virtual" || c.kind === "ref") {
@@ -525,8 +526,16 @@ function collectFreeRepeats(
             // Show one representative record on load when it's safe (not
             // constrained by an enclosing bounded byte-budget).
             if (!insideBounded) defaultCount = 1;
-          } else if (typeof c.count === "object" && c.count.kind === "ref") {
+          } else if (
+            typeof c.count === "object" &&
+            c.count.kind === "ref" &&
+            !insideRepeat
+          ) {
             // Only surface when no existing field-bearing widget covers it.
+            // Skipped inside an enclosing repeat: the count ref then names a
+            // PER-ITERATION field, but a single global stepper can't give
+            // distinct per-instance counts and would also corrupt the rendered
+            // value of that field (override-audit A7).
             const ref = c.count.field;
             const covered = fields.find(
               (f) =>
@@ -543,29 +552,29 @@ function collectFreeRepeats(
             });
           }
         }
-        visit(c.element.fields, insideBounded);
+        visit(c.element.fields, insideBounded, true);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, insideBounded);
+        visit(c.children, insideBounded, insideRepeat);
         continue;
       }
       if (c.kind === "switch") {
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, insideBounded);
+          visit(struct.fields, insideBounded, insideRepeat);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], insideBounded);
+        visit([c.container], insideBounded, insideRepeat);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, insideBounded);
+        visit(c.plaintext.fields, insideBounded, insideRepeat);
         continue;
       }
     }
   };
-  visit(body, false);
+  visit(body, false, false);
   return out;
 }
 
