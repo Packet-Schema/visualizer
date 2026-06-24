@@ -54,6 +54,7 @@ vi.mock("@/lib/diagram-export", async () => {
 });
 
 import ImportExportDrawer from "@/components/import-export/ImportExportDrawer";
+import { rendererToPsdl } from "@/lib/psdl/psdl-to-renderer";
 
 let mounted: { container: HTMLDivElement; root: Root }[] = [];
 
@@ -114,6 +115,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        liftToPsdl={() => rendererToPsdl(packet as never)}
         buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
@@ -155,6 +157,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        liftToPsdl={() => rendererToPsdl(packet as never)}
         buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
@@ -208,6 +211,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        liftToPsdl={() => rendererToPsdl(packet as never)}
         buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
@@ -268,6 +272,7 @@ describe("ImportExportDrawer", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        liftToPsdl={() => rendererToPsdl(packet as never)}
         buildShareUrl={() => window.location.href}
         controllers={{}}
         layout={layout as never}
@@ -333,6 +338,7 @@ describe("ImportExportDrawer iframe export", () => {
         open={true}
         mode="export"
         packet={packet as never}
+        liftToPsdl={() => rendererToPsdl(packet as never)}
         buildShareUrl={buildShareUrl}
         controllers={{}}
         layout={layout as never}

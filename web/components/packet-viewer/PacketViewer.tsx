@@ -933,6 +933,22 @@ export default function PacketViewer({
     renderedPresets,
   ]);
 
+  // Lift the active packet to PSDL for export — losslessly. The renderer mirror
+  // throws away constructs (variable-length payloads, enum labels, switch `_`
+  // arms, plain repeats), so reconstructing via `rendererToPsdl` yields PSDL the
+  // app itself rejects on re-import (override-audit C1/C2/C3/C5/A3). Instead,
+  // shape-preserving-merge the mirror's instances back onto the *source* PSDL
+  // whenever one exists (built-in body / custom source / studio draft); only a
+  // genuinely imported renderer packet (no source) falls back to the lossy lift.
+  const liftActivePacketToPsdl = useCallback((): PsdlPacket => {
+    if (editMode) return mergedStudioPacket;
+    const builtIn = getLoadedPreset(packetKey);
+    if (builtIn) return mergeInstancesIntoPsdl(builtIn, packet);
+    const custom = customPresets[packetKey];
+    if (custom) return mergeInstancesIntoPsdl(custom, packet);
+    return rendererToPsdl(packet);
+  }, [editMode, mergedStudioPacket, packet, packetKey, customPresets]);
+
   useEffect(() => {
     if (!urlHydrated || typeof window === "undefined") return;
     try {
@@ -1385,6 +1401,7 @@ export default function PacketViewer({
         open={drawerMode !== null}
         mode={drawerMode ?? "export"}
         packet={exportPacket}
+        liftToPsdl={liftActivePacketToPsdl}
         buildShareUrl={buildCurrentShareUrl}
         controllers={controllers}
         layout={layout}
