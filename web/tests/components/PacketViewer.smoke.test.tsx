@@ -207,14 +207,21 @@ describe("PacketViewer (smoke)", () => {
         picker.value = "ipv6";
         picker.dispatchEvent(new Event("change", { bubbles: true }));
       });
-      await act(async () => {
-        await Promise.resolve();
-      });
+      // ipv6 is lazy-fetched on switch; flush the load + controller reset.
+      for (let i = 0; i < 5; i++) {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 0));
+        });
+      }
 
       // After the switch we should see IPv6's `srcAddr` field and *not* the
       // IPv4 IHL controller — which would prove `controllers` was reset
       // and the layout was rebuilt against the new packet shape.
       expect(picker?.value).toBe("ipv6");
+      // Codex P1 regression: switching to a not-yet-loaded built-in must reset
+      // controllers once its body arrives, so the stale ipv4 `ihl` controller
+      // is gone from the canonical share URL (not leaked onto ipv6).
+      expect(window.location.search).not.toContain("controllers.ihl");
       expect(
         container.querySelector('[data-field-id="srcAddr"]'),
       ).not.toBeNull();

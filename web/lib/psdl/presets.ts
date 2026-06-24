@@ -18,24 +18,37 @@ import { PRESET_INDEX } from "./preset-index.generated";
 export { PRESET_INDEX, PRESET_KEYS } from "./preset-index.generated";
 
 const cache = new Map<string, Packet>();
+// In-flight fetches, memoised so concurrent callers for the same key (e.g. the
+// PacketViewer `packetKey` effect and a switch handler firing together) share
+// one request instead of racing two.
+const inFlight = new Map<string, Promise<Packet>>();
 
 /**
  * Fetch a single built-in preset's full Packet from its static JSON asset.
- * Results are memoised for the session so re-selecting a preset is free. The
- * served JSON is already `rowBits`-adapted at build time (see
+ * Results are memoised for the session so re-selecting a preset is free, and
+ * concurrent loads of the same key share a single in-flight request. The served
+ * JSON is already `rowBits`-adapted at build time (see
  * `scripts/build-presets.ts`), so callers get the same shape the server's
  * `presets.server.ts` produces.
  */
-export async function loadPreset(key: string): Promise<Packet> {
+export function loadPreset(key: string): Promise<Packet> {
   const cached = cache.get(key);
-  if (cached) return cached;
-  const res = await fetch(`/presets/${encodeURIComponent(key)}.json`);
-  if (!res.ok) {
-    throw new Error(`Failed to load preset "${key}" (HTTP ${res.status}).`);
-  }
-  const packet = (await res.json()) as Packet;
-  cache.set(key, packet);
-  return packet;
+  if (cached) return Promise.resolve(cached);
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const request = (async () => {
+    const res = await fetch(`/presets/${encodeURIComponent(key)}.json`);
+    if (!res.ok) {
+      throw new Error(`Failed to load preset "${key}" (HTTP ${res.status}).`);
+    }
+    const packet = (await res.json()) as Packet;
+    cache.set(key, packet);
+    return packet;
+  })();
+  inFlight.set(key, request);
+  // Clear the in-flight slot once settled so a failed fetch can be retried.
+  void request.finally(() => inFlight.delete(key));
+  return request;
 }
 
 /**

@@ -145,14 +145,22 @@ export default function PacketViewer({
   initialBuiltInPacket,
 }: PacketViewerProps) {
   // The PSDL packet that seeds initial state: the shared psdl, or the built-in
-  // body the server resolved. Always defined (one of the two is set). Built-in
-  // bodies are now lazy-fetched, so prime the load cache with this one up front
-  // and use it as the synchronous fallback before other presets arrive.
-  const seedPsdl: PsdlPacket = (initialPsdlPacket ??
-    initialBuiltInPacket) as PsdlPacket;
-  if (initialBuiltInPacket && !initialPsdlPacket) {
-    primePreset(initialPacketKey, initialBuiltInPacket);
+  // body the server resolved. page.tsx always provides exactly one; guard the
+  // invariant explicitly rather than casting so a misuse fails loudly.
+  const seedPsdl = initialPsdlPacket ?? initialBuiltInPacket;
+  if (!seedPsdl) {
+    throw new Error(
+      "PacketViewer requires either initialPsdlPacket or initialBuiltInPacket.",
+    );
   }
+  // Prime the lazy-load cache once with the server-resolved built-in body so
+  // the synchronous `getLoadedPreset` paths recognise the initial preset
+  // (its body never goes through `loadPreset`). Idempotent; runs on mount only.
+  useState(() => {
+    if (initialBuiltInPacket && !initialPsdlPacket) {
+      primePreset(initialPacketKey, initialBuiltInPacket);
+    }
+  });
   const seedKey = initialPsdlPacket ? PSDL_INITIAL_KEY : initialPacketKey;
   const seedRendered = useMemo(
     () => psdlToRenderer(seedPsdl),
@@ -162,6 +170,10 @@ export default function PacketViewer({
   );
 
   const [packetKey, setPacketKey] = useState<string>(seedKey);
+  // Mirrors `packetKey` for async callbacks (a lazily-resolved preset must only
+  // reset controllers if that preset is still the active one).
+  const packetKeyRef = useRef(packetKey);
+  packetKeyRef.current = packetKey;
   // source ビュー (SourcePane) の未反映編集フラグ。 debounce 前 / parse
   // エラー中のテキストは studio reducer の history に乗らないので、 Discard
   // 確認をこのフラグでも引っ掛ける (Codex P2)。
@@ -416,7 +428,23 @@ export default function PacketViewer({
         renderedPresets[nextKey] ??
         importedPackets[nextKey] ??
         (customPreset ? psdlToRenderer(customPreset) : null);
-      if (next) setControllers(initialState(next));
+      if (next) {
+        setControllers(initialState(next));
+      } else if (nextKey in PRESET_INDEX) {
+        // Built-in not lazily loaded yet: its body arrives via the load effect,
+        // but controllers must also reset to the new preset's defaults (else
+        // the previous preset's controllers render and leak into the share
+        // URL — Codex P1). Reset once the body resolves, if still selected.
+        void loadPreset(nextKey)
+          .then((p) => {
+            if (packetKeyRef.current === nextKey) {
+              setControllers(initialState(psdlToRenderer(p)));
+            }
+          })
+          .catch(() => {
+            /* the load effect surfaces failure; keep current controllers */
+          });
+      }
       // `preset-switched` resets selection, popover anchor, edit mode, and
       // the json pane in one shot. Otherwise `targetPsdl` would briefly
       // fall back to `studioState.packet` (still pointing at the previous

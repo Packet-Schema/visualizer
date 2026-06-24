@@ -133,4 +133,7 @@ async function main(): Promise<void> {
   await writePresetArtifacts();
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

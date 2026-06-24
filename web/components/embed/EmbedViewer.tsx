@@ -90,7 +90,9 @@ export default function EmbedViewer() {
     return () => {
       cancelled = true;
     };
-  }, [intent]);
+    // Only the body source matters here; controllers/theme changes must not
+    // re-trigger a preset fetch.
+  }, [intent.psdl, intent.presetKey]);
 
   const embedState = useMemo(
     () => (psdlBody ? makeEmbedState(psdlBody, intent) : null),
