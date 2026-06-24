@@ -1,6 +1,6 @@
 ---
 name: verify-change
-description: packet-view リポジトリで変更後の検証方針を決めたいときに使う。UI、TypeScript、preset、format 実装などの変更内容に応じて run-format、run-lint、run-test、run-typecheck、run-build-presets の実行順と報告内容を判断する。
+description: Packet Schema Visualizer リポジトリで変更後の検証方針を決めたいときに使う。UI、TypeScript、preset、format 実装などの変更内容に応じて run-format、run-lint、run-test、run-typecheck、run-build-presets の実行順と報告内容を判断する。
 ---
 
 # 変更検証

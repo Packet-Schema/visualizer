@@ -7,7 +7,7 @@ Packet Schema Visualizer は「PSDL を中央 hub にした N+M 設計」のパ�
 ## リポジトリ構成
 
 ```
-packet-view/
+visualizer/
 ├── docs/                 仕様・ガイド (本ファイル含む)
 │   ├── psdl-0.4.md       PSDL 仕様 (canonical)
 │   ├── psdl-cheatsheet.md PSDL 1 ページ要約

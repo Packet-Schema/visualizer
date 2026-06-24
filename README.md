@@ -1,6 +1,6 @@
 # Packet Schema Visualizer
 
-[![tests](https://github.com/HackU-5/packet-view/actions/workflows/test.yml/badge.svg)](https://github.com/HackU-5/packet-view/actions/workflows/test.yml)
+[![tests](https://github.com/Packet-Schema/visualizer/actions/workflows/test.yml/badge.svg)](https://github.com/Packet-Schema/visualizer/actions/workflows/test.yml)
 
 Interactive packet diagrams for teaching, learning, and authoring network
 protocols.
