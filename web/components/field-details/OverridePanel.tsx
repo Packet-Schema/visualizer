@@ -11,7 +11,7 @@ import type {
 } from "@/lib/psdl/renderer";
 
 import SliderTooltip from "../controls/SliderTooltip";
-import ChainEditor from "./ChainEditor";
+import ChainEditor, { FINAL_PROTOS } from "./ChainEditor";
 import TlvEditor, { SlotOvershootWarning } from "./TlvEditor";
 import { tlvTotalBits } from "@/lib/psdl/renderer-helpers";
 import { resolveSelection } from "./selection-resolver";
@@ -902,9 +902,12 @@ type ChainInnerProps = {
   onChange: (next: { instances: ChainInstance[]; finalProto?: number }) => void;
 };
 
-/** Per-instance editor for a materialised IPv6 extension header: change THIS
- *  header's type or remove it, in place. Full add/reorder stays in the chain
- *  editor reached from the base Next Header cell. */
+/** Per-instance editor for a materialised IPv6 extension header. Edits this
+ *  header's **Next Header** field, which — per the wire format — selects what
+ *  FOLLOWS this header: another extension header (chain continues) or an
+ *  upper-layer protocol (chain ends here). Changing it therefore changes the
+ *  NEXT element, not this one (this header's own type is set by the PREVIOUS
+ *  header's Next Header). Full add/reorder stays in the base chain editor. */
 function ChainInnerVariantDropdown({
   field,
   instanceIndex,
@@ -915,28 +918,51 @@ function ChainInnerVariantDropdown({
   const instance = instances[instanceIndex];
   const selectId = `detail-chain-inner-${field.id}-${instanceIndex}`;
   if (!instance) return null;
-  const entry = catalog.find((c) => c.proto === instance.proto);
-  const emit = (next: ChainInstance[]) =>
-    onChange({ instances: next, finalProto: field.chainFinalProto });
+  const thisEntry = catalog.find((c) => c.proto === instance.proto);
+  // What this header's Next Header currently points to: the following
+  // extension header, or the terminal upper-layer protocol when it's last.
+  const nextInstance = instances[instanceIndex + 1];
+  const isExt = (proto: number) => catalog.some((c) => c.proto === proto);
+  // Upper-layer enders: the terminal protocols that are NOT themselves
+  // extension headers (so the catalog protos aren't duplicated).
+  const enders = FINAL_PROTOS.filter((f) => !isExt(f.v));
+  const currentNext =
+    nextInstance?.proto ?? field.chainFinalProto ?? FINAL_PROTOS[5].v; // 59 No Next Header
+
+  const setNext = (proto: number) => {
+    if (isExt(proto)) {
+      // Continue the chain: the immediately-following header becomes `proto`.
+      const list = instances.slice();
+      if (instanceIndex + 1 < list.length) {
+        list[instanceIndex + 1] = { proto };
+      } else {
+        list.push({ proto });
+      }
+      onChange({ instances: list, finalProto: field.chainFinalProto });
+    } else {
+      // End the chain here: drop everything after this header, set the
+      // terminal upper-layer protocol.
+      onChange({
+        instances: instances.slice(0, instanceIndex + 1),
+        finalProto: proto,
+      });
+    }
+  };
+
   return (
     <div>
       <label htmlFor={selectId}>
         <WidgetLabel>
-          Extension header · #{instanceIndex}
-          {entry ? ` · ${entry.name}` : ""}
+          Next Header after {thisEntry?.name ?? `proto ${instance.proto}`} #
+          {instanceIndex}
         </WidgetLabel>
       </label>
       <select
         id={selectId}
-        value={instance.proto}
+        value={currentNext}
         onChange={(e) => {
           const proto = Number(e.target.value);
-          if (!Number.isFinite(proto)) return;
-          emit(
-            instances.map((inst, i) =>
-              i === instanceIndex ? { ...inst, proto } : inst,
-            ),
-          );
+          if (Number.isFinite(proto)) setNext(proto);
         }}
         className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"
         style={{
@@ -945,16 +971,30 @@ function ChainInnerVariantDropdown({
           color: "var(--fg)",
         }}
       >
-        {catalog.map((c) => (
-          <option key={c.proto} value={c.proto}>
-            {c.name} (proto {c.proto})
-          </option>
-        ))}
+        <optgroup label="Extension header (chain continues)">
+          {catalog.map((c) => (
+            <option key={`ext-${c.proto}`} value={c.proto}>
+              {c.name} (proto {c.proto})
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Upper-layer protocol (chain ends)">
+          {enders.map((f) => (
+            <option key={`end-${f.v}`} value={f.v}>
+              {f.name} ({f.v})
+            </option>
+          ))}
+        </optgroup>
       </select>
       <div className="mt-2 flex items-center gap-2">
         <button
           type="button"
-          onClick={() => emit(instances.filter((_, i) => i !== instanceIndex))}
+          onClick={() =>
+            onChange({
+              instances: instances.filter((_, i) => i !== instanceIndex),
+              finalProto: field.chainFinalProto,
+            })
+          }
           className="text-3xs px-2 py-0.5 rounded border"
           style={{
             borderColor: "var(--border-strong)",
@@ -962,11 +1002,11 @@ function ChainInnerVariantDropdown({
             background: "var(--bg-elevated)",
           }}
         >
-          Remove
+          Remove this header
         </button>
         <p className="m-0 text-3xs text-fg-muted">
-          Add / reorder lives in the chain editor — select the base Next Header
-          cell.
+          Sets what follows this header. Add / reorder: select the base Next
+          Header cell.
         </p>
       </div>
     </div>

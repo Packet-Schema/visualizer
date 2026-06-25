@@ -178,18 +178,22 @@ describe("OverridePanel widgets", () => {
     expect(labels).toContain("LE");
   });
 
-  it("routes a chain extension-header cell click to a per-instance editor", async () => {
-    // The user can edit/remove a SINGLE IPv6 extension header at its own cell
-    // instead of going back to the whole-chain editor on the base Next Header.
+  it("edits a chain header's Next Header (selects what FOLLOWS it)", async () => {
+    // Per IPv6 wire semantics, a header's Next Header field selects the NEXT
+    // element. Clicking header #0 (Hop-by-Hop) and changing its Next Header
+    // must change header #1's type — not header #0's own type.
     const packet = psdlToRenderer(PRESETS.ipv6!);
     const chainField = packet.fields.find((f) => f.chainCatalog);
     if (!chainField) throw new Error("ipv6 mirror missing chain field");
-    chainField.chainInstances = [{ proto: 0 }, { proto: 43 }];
-    let received: { instances: { proto: number }[] } | null = null;
+    chainField.chainInstances = [{ proto: 0 }, { proto: 43 }]; // HBH, Routing
+    let received: {
+      instances: { proto: number }[];
+      finalProto?: number;
+    } | null = null;
     const { container } = await mount(
       <OverridePanel
         packet={packet}
-        selectedFieldId="nextHeader_chain__chain_1"
+        selectedFieldId="nextHeader_chain__chain_0"
         controllers={{}}
         onChainChange={(_f, next) => {
           received = next;
@@ -198,19 +202,51 @@ describe("OverridePanel widgets", () => {
       />,
     );
     const select = container.querySelector<HTMLSelectElement>("select");
-    expect(select, "per-instance chain dropdown must render").not.toBeNull();
-    // Readable variant names, not "proto N".
+    expect(
+      select,
+      "per-header Next Header dropdown must render",
+    ).not.toBeNull();
     const text = container.textContent ?? "";
-    expect(text).toMatch(/Routing/);
-    // Current instance #1 is Routing (43).
+    // Label frames it as the NEXT header, with readable names.
+    expect(text).toMatch(/Next Header after Hop-by-Hop/);
+    // #0's Next Header currently points to header #1 = Routing (43).
     expect(Number(select!.value)).toBe(43);
-    // Changing it edits only that instance.
+    // Change it to Fragment (44): header #1 becomes Fragment, #0 unchanged.
     await act(async () => {
-      select!.value = "44"; // Fragment
+      select!.value = "44";
       select!.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(received).not.toBeNull();
     expect(received!.instances.map((i) => i.proto)).toEqual([0, 44]);
+  });
+
+  it("ending a chain header on an upper-layer protocol truncates the tail", async () => {
+    const packet = psdlToRenderer(PRESETS.ipv6!);
+    const chainField = packet.fields.find((f) => f.chainCatalog)!;
+    chainField.chainInstances = [{ proto: 0 }, { proto: 43 }]; // HBH, Routing
+    let received: {
+      instances: { proto: number }[];
+      finalProto?: number;
+    } | null = null;
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="nextHeader_chain__chain_0"
+        controllers={{}}
+        onChainChange={(_f, next) => {
+          received = next;
+        }}
+        onControllerChange={() => {}}
+      />,
+    );
+    const select = container.querySelector<HTMLSelectElement>("select");
+    // Set #0's Next Header to TCP (6): chain ends after #0, Routing dropped.
+    await act(async () => {
+      select!.value = "6";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(received!.instances.map((i) => i.proto)).toEqual([0]);
+    expect(received!.finalProto).toBe(6);
   });
 
   it("renders a free Repeat stepper for ospfHello on empty selection", async () => {

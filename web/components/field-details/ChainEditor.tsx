@@ -12,7 +12,7 @@ import type {
   Field,
 } from "@/lib/psdl/renderer";
 
-const FINAL_PROTOS: Array<{ v: number; name: string }> = [
+export const FINAL_PROTOS: Array<{ v: number; name: string }> = [
   { v: 6, name: "TCP" },
   { v: 17, name: "UDP" },
   { v: 58, name: "ICMPv6" },
