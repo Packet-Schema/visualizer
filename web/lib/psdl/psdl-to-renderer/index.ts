@@ -65,7 +65,7 @@ import { isTlvRepeat, repeatToTlvField } from "./tlv";
 
 export { rendererToPsdl } from "./to-psdl";
 export { applyTlvInstances } from "./apply-tlv";
-export { applyChainInstances } from "./apply-chain";
+export { applyChainInstances, parseChainCellId } from "./apply-chain";
 export { mergeInstancesIntoPsdl } from "./merge-instances";
 
 /**

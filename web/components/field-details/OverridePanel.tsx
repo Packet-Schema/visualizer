@@ -16,6 +16,7 @@ import TlvEditor, { SlotOvershootWarning } from "./TlvEditor";
 import { tlvTotalBits } from "@/lib/psdl/renderer-helpers";
 import { resolveSelection } from "./selection-resolver";
 import { parseTlvCellId } from "./tlv-cell-id";
+import { parseChainCellId } from "@/lib/psdl/psdl-to-renderer";
 
 // `OverridePanel` is the editing surface for a selected diagram cell. It
 // dispatches one of six widgets based on what the cell's logical parent
@@ -248,6 +249,30 @@ export default function OverridePanel({
             controllers={controllers}
             onChange={(next) => onTlvChange(parent, next)}
             slotBytes={tlvSlotBytes?.[parent.id]}
+          />
+        );
+      }
+    }
+  }
+
+  // A click on a materialised IPv6 extension-header cell routes to a
+  // per-instance editor (change this header's type / remove it) instead of
+  // sending the user back to the whole-chain editor on the base Next Header.
+  if (selectedFieldId && onChainChange) {
+    const chainRole = parseChainCellId(selectedFieldId);
+    if (chainRole) {
+      const baseId = chainRole.chainRepeatId.replace(/_chain$/, "");
+      const chainField = packet.fields.find(
+        (f) =>
+          (f.id === baseId || f.id === chainRole.chainRepeatId) &&
+          f.chainCatalog,
+      );
+      if (chainField?.chainInstances?.[chainRole.instanceIndex]) {
+        return (
+          <ChainInnerVariantDropdown
+            field={chainField}
+            instanceIndex={chainRole.instanceIndex}
+            onChange={(next) => onChainChange(chainField, next)}
           />
         );
       }
@@ -867,6 +892,83 @@ function TlvInnerVariantDropdown({
         Changes the variant of this {tlvField.name} record. Full list edit (add
         / remove / reorder) lives in the TLV editor when you select the parent.
       </p>
+    </div>
+  );
+}
+
+type ChainInnerProps = {
+  field: Field;
+  instanceIndex: number;
+  onChange: (next: { instances: ChainInstance[]; finalProto?: number }) => void;
+};
+
+/** Per-instance editor for a materialised IPv6 extension header: change THIS
+ *  header's type or remove it, in place. Full add/reorder stays in the chain
+ *  editor reached from the base Next Header cell. */
+function ChainInnerVariantDropdown({
+  field,
+  instanceIndex,
+  onChange,
+}: ChainInnerProps) {
+  const catalog = field.chainCatalog ?? [];
+  const instances = field.chainInstances ?? [];
+  const instance = instances[instanceIndex];
+  const selectId = `detail-chain-inner-${field.id}-${instanceIndex}`;
+  if (!instance) return null;
+  const entry = catalog.find((c) => c.proto === instance.proto);
+  const emit = (next: ChainInstance[]) =>
+    onChange({ instances: next, finalProto: field.chainFinalProto });
+  return (
+    <div>
+      <label htmlFor={selectId}>
+        <WidgetLabel>
+          Extension header · #{instanceIndex}
+          {entry ? ` · ${entry.name}` : ""}
+        </WidgetLabel>
+      </label>
+      <select
+        id={selectId}
+        value={instance.proto}
+        onChange={(e) => {
+          const proto = Number(e.target.value);
+          if (!Number.isFinite(proto)) return;
+          emit(
+            instances.map((inst, i) =>
+              i === instanceIndex ? { ...inst, proto } : inst,
+            ),
+          );
+        }}
+        className="w-full px-2 py-1.5 rounded-md border font-mono text-sm-tight"
+        style={{
+          borderColor: "var(--border-strong)",
+          background: "var(--bg-elevated)",
+          color: "var(--fg)",
+        }}
+      >
+        {catalog.map((c) => (
+          <option key={c.proto} value={c.proto}>
+            {c.name} (proto {c.proto})
+          </option>
+        ))}
+      </select>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => emit(instances.filter((_, i) => i !== instanceIndex))}
+          className="text-3xs px-2 py-0.5 rounded border"
+          style={{
+            borderColor: "var(--border-strong)",
+            color: "var(--fg)",
+            background: "var(--bg-elevated)",
+          }}
+        >
+          Remove
+        </button>
+        <p className="m-0 text-3xs text-fg-muted">
+          Add / reorder lives in the chain editor — select the base Next Header
+          cell.
+        </p>
+      </div>
     </div>
   );
 }

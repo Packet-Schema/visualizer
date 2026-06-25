@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import { PRESETS } from "@/lib/psdl/presets.server";
 import {
   applyChainInstances,
+  parseChainCellId,
   psdlToRenderer,
 } from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
@@ -63,5 +64,37 @@ describe("applyChainInstances", () => {
     chainField.chainInstances = [{ proto: 44 }]; // Fragment
     const after = cellsOf(applyChainInstances(src, mirror)).length;
     expect(after).toBeGreaterThan(before);
+  });
+
+  it("gives chain catalog entries readable names (from doc, not 'proto N')", () => {
+    const chainField = psdlToRenderer(PRESETS.ipv6!).fields.find(
+      (f) => f.chainCatalog,
+    )!;
+    const byProto = new Map(
+      chainField.chainCatalog!.map((c) => [c.proto, c.name]),
+    );
+    expect(byProto.get(0)).toBe("Hop-by-Hop Options");
+    expect(byProto.get(43)).toBe("Routing");
+    expect(byProto.get(44)).toBe("Fragment");
+    expect(byProto.get(60)).toBe("Destination Options");
+    // None should fall back to the bare "proto N" form.
+    for (const name of byProto.values()) expect(name).not.toMatch(/^proto \d/i);
+  });
+
+  it("parseChainCellId recovers the repeat id + instance index", () => {
+    expect(parseChainCellId("nextHeader_chain__chain_0")).toEqual({
+      chainRepeatId: "nextHeader_chain",
+      instanceIndex: 0,
+    });
+    expect(parseChainCellId("nextHeader_chain__chain_2__hdrExtLen")).toEqual({
+      chainRepeatId: "nextHeader_chain",
+      instanceIndex: 2,
+    });
+    expect(
+      parseChainCellId(
+        "nextHeader_chain__chain_1:nextHeader_chain__chain_1__x",
+      ),
+    ).toEqual({ chainRepeatId: "nextHeader_chain", instanceIndex: 1 });
+    expect(parseChainCellId("srcAddr")).toBeNull();
   });
 });

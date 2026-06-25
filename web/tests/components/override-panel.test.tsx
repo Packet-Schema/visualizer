@@ -178,6 +178,41 @@ describe("OverridePanel widgets", () => {
     expect(labels).toContain("LE");
   });
 
+  it("routes a chain extension-header cell click to a per-instance editor", async () => {
+    // The user can edit/remove a SINGLE IPv6 extension header at its own cell
+    // instead of going back to the whole-chain editor on the base Next Header.
+    const packet = psdlToRenderer(PRESETS.ipv6!);
+    const chainField = packet.fields.find((f) => f.chainCatalog);
+    if (!chainField) throw new Error("ipv6 mirror missing chain field");
+    chainField.chainInstances = [{ proto: 0 }, { proto: 43 }];
+    let received: { instances: { proto: number }[] } | null = null;
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="nextHeader_chain__chain_1"
+        controllers={{}}
+        onChainChange={(_f, next) => {
+          received = next;
+        }}
+        onControllerChange={() => {}}
+      />,
+    );
+    const select = container.querySelector<HTMLSelectElement>("select");
+    expect(select, "per-instance chain dropdown must render").not.toBeNull();
+    // Readable variant names, not "proto N".
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/Routing/);
+    // Current instance #1 is Routing (43).
+    expect(Number(select!.value)).toBe(43);
+    // Changing it edits only that instance.
+    await act(async () => {
+      select!.value = "44"; // Fragment
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(received).not.toBeNull();
+    expect(received!.instances.map((i) => i.proto)).toEqual([0, 44]);
+  });
+
   it("renders a free Repeat stepper for ospfHello on empty selection", async () => {
     const packet = psdlToRenderer(PRESETS.ospfHello!);
     const { container } = await mount(

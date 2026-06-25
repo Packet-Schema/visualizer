@@ -22,21 +22,12 @@ import type {
   Group as PsdlGroup,
   Packet as PsdlPacket,
   Repeat as PsdlRepeat,
-  Struct,
 } from "../types";
 import type { ChainInstance, Packet as RendererPacket } from "../renderer";
 import { isField } from "../utils";
 
-import { isLikelyChainRepeat } from "./chain";
+import { chainCaseLabel, isLikelyChainRepeat } from "./chain";
 import { getSwitchFromRepeat } from "./shared";
-
-/** A readable label for a chain case: explicit name, else the leading phrase of
- *  its doc (these presets put "Routing" / "Fragment" there), else the proto. */
-function caseLabel(struct: Struct, proto: number): string {
-  if (struct.name) return struct.name;
-  const lead = struct.doc?.split(/[.[(]/, 1)[0]?.trim();
-  return lead && lead.length > 0 ? lead : `Proto ${proto}`;
-}
 
 /** Expand a chain Repeat into one Group per instance. Child ids are prefixed
  *  with the per-instance group id so repeated variants don't collide (mirrors
@@ -57,7 +48,7 @@ function expandChainRepeat(
     const group: PsdlGroup = {
       kind: "group",
       id: groupId,
-      name: caseLabel(caseStruct, inst.proto),
+      name: chainCaseLabel(caseStruct, inst.proto),
       children: caseStruct.fields.map((f) =>
         isField(f) ? ({ ...f, id: `${groupId}__${f.id}` } as PsdlField) : f,
       ),
@@ -93,6 +84,19 @@ function expandContainer(c: Container, mirror: RendererPacket): Container[] {
     ];
   }
   return [c];
+}
+
+/** Parse a diagram cell id minted by `expandChainRepeat` back to its chain
+ *  repeat id + instance index, so a click on a rendered extension-header cell
+ *  can be routed to a per-instance editor. Matches the group cell
+ *  (`<repeatId>__chain_<i>`), its child fields (`…__chain_<i>__<field>`) and
+ *  subcells (`…__chain_<i>:…`). Returns null for any other id. */
+export function parseChainCellId(
+  id: string,
+): { chainRepeatId: string; instanceIndex: number } | null {
+  const m = id.match(/^(.+?)__chain_(\d+)(?:__|:|$)/);
+  if (!m) return null;
+  return { chainRepeatId: m[1], instanceIndex: Number(m[2]) };
 }
 
 /** Materialise the renderer mirror's chain edits into the PSDL body for layout.

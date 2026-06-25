@@ -23,6 +23,19 @@ export function isLikelyChainRepeat(r: Repeat): boolean {
   return /(^|_)chain($|[A-Z_])/.test(r.id);
 }
 
+/** A readable label for a chain case: explicit `name`, else the leading phrase
+ *  of its `doc` (the IPv6 preset puts "Routing" / "Fragment" / "Destination
+ *  Options" there), else the bare proto number. Shared with the diagram
+ *  expansion (`apply-chain.ts`) so the editor and cells show the same label. */
+export function chainCaseLabel(
+  struct: { name?: string; doc?: string },
+  proto: number,
+): string {
+  if (struct.name) return struct.name;
+  const lead = struct.doc?.split(/[.[(]/, 1)[0]?.trim();
+  return lead && lead.length > 0 ? lead : `Proto ${proto}`;
+}
+
 export function switchToChainCatalog(sw: Switch): ChainCatalogEntry[] {
   const out: ChainCatalogEntry[] = [];
   for (const [key, struct] of Object.entries(sw.cases)) {
@@ -30,8 +43,9 @@ export function switchToChainCatalog(sw: Switch): ChainCatalogEntry[] {
     if (!Number.isFinite(protoNum)) continue;
     out.push({
       proto: protoNum,
-      name: struct.name ?? `proto ${protoNum}`,
+      name: chainCaseLabel(struct, protoNum),
       fields: structFieldsToTlvFields(struct),
+      ...(struct.doc ? { description: struct.doc } : {}),
     });
   }
   return out;
