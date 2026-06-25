@@ -10,17 +10,32 @@ import type {
   Field as RendererField,
 } from "../renderer";
 
+import { isField } from "../utils";
 import { getSwitchFromRepeat, structFieldsToTlvFields } from "./shared";
 
 type ChainCatalogEntry = RendererChainCatalogEntry;
 
 /**
- * True when `r.id` looks like the IPv6 extension-header chain repeat. The
- * heuristic matches the literal "chain" word so we never confuse a regular
- * Repeat<Switch> (TLV catalog) with the chain shape.
+ * Structural test for a forward-linked chain repeat (IPv6 extension headers).
+ *
+ * A chain is a `Repeat<Switch>` whose Switch dispatches on a `ref(X)` where X
+ * is a field that EACH CASE redefines — i.e. every record carries its own copy
+ * of the discriminator, forward-linking to the next iteration (IPv6's
+ * "Next Header" points at what FOLLOWS). This is detected from the AST shape,
+ * not a `*_chain` id convention, so it generalises to any forward-linked header
+ * chain regardless of naming.
+ *
+ * A TLV catalog (the other `Repeat<Switch>` idiom) differs structurally: it
+ * dispatches on a `peek` of the wire, or on a sibling field read once per
+ * record — never on a discriminator that the cases themselves redefine.
  */
 export function isLikelyChainRepeat(r: Repeat): boolean {
-  return /(^|_)chain($|[A-Z_])/.test(r.id);
+  const sw = getSwitchFromRepeat(r);
+  if (!sw || sw.on.kind !== "ref") return false;
+  const discId = sw.on.field;
+  return Object.values(sw.cases).some((struct) =>
+    struct.fields.some((f) => isField(f) && f.id === discId),
+  );
 }
 
 /** A readable label for a chain case: explicit `name`, else the leading phrase

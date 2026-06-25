@@ -928,6 +928,11 @@ function ChainInnerVariantDropdown({
   const enders = FINAL_PROTOS.filter((f) => !isExt(f.v));
   const currentNext =
     nextInstance?.proto ?? field.chainFinalProto ?? FINAL_PROTOS[5].v; // 59 No Next Header
+  // If the chain currently terminates on a proto not in the curated label list
+  // (any 8-bit value is valid), surface it as a bare "proto N" so the <select>
+  // stays controlled and the hardcoded list never constrains what's editable.
+  const currentIsKnown =
+    isExt(currentNext) || enders.some((e) => e.v === currentNext);
 
   const setNext = (proto: number) => {
     if (isExt(proto)) {
@@ -979,6 +984,9 @@ function ChainInnerVariantDropdown({
           ))}
         </optgroup>
         <optgroup label="Upper-layer protocol (chain ends)">
+          {!currentIsKnown ? (
+            <option value={currentNext}>proto {currentNext}</option>
+          ) : null}
           {enders.map((f) => (
             <option key={`end-${f.v}`} value={f.v}>
               {f.name} ({f.v})

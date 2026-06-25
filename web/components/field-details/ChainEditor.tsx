@@ -12,6 +12,13 @@ import type {
   Field,
 } from "@/lib/psdl/renderer";
 
+// Friendly LABELS for common chain-terminating protocols. This list is display
+// sugar only — it is NOT load-bearing: the chain logic decides "extension
+// header (continue) vs terminal (end)" structurally, by whether a proto has a
+// Switch case in the catalog. Any value not listed here still works and shows
+// as a bare "proto N". There is no structured per-preset source for these names
+// (the Next Header field is a plain 8-bit int), so they live here as a curated
+// convenience rather than being derived.
 export const FINAL_PROTOS: Array<{ v: number; name: string }> = [
   { v: 6, name: "TCP" },
   { v: 17, name: "UDP" },
