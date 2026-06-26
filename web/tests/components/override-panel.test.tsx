@@ -249,8 +249,10 @@ describe("OverridePanel widgets", () => {
     expect(received!.finalProto).toBe(6);
   });
 
-  it("renders a free Repeat stepper for ospfHello on empty selection", async () => {
-    const packet = psdlToRenderer(PRESETS.ospfHello!);
+  it("renders a free Repeat stepper for a top-level eos repeat (diameter)", async () => {
+    // diameter's AVP list is a top-level eos repeat (not bounded), so its count
+    // is a free env key and the stepper is a safe, working control.
+    const packet = psdlToRenderer(PRESETS.diameter!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -261,9 +263,23 @@ describe("OverridePanel widgets", () => {
     );
     const text = container.textContent ?? "";
     expect(text).toMatch(/Repeats in this packet/);
-    // The 0.5 ospfHello preset names the neighbour Repeat "Neighbors" (eos),
-    // surfaced via freeRepeats; it was "Neighbor List" in 0.4.
-    expect(text).toMatch(/Neighbors/);
+    expect(text).toMatch(/AVPs/);
+  });
+
+  it("does NOT surface a free Repeat stepper for a bounded-nested repeat (ospfHello)", async () => {
+    // ospfHello's neighbour list is governed by the packet-length bounded
+    // budget, so a naked count stepper would over-consume it. It must be driven
+    // by the length slider, not surfaced as a destructive stepper.
+    const packet = psdlToRenderer(PRESETS.ospfHello!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{}}
+        onControllerChange={() => {}}
+      />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/Repeats in this packet/);
   });
 
   it("renders a peek-switch picker for tlsExtensionsBlock on empty selection", async () => {

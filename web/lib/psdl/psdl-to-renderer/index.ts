@@ -521,11 +521,20 @@ function collectFreeRepeats(
             c.count === "eos" ||
             (typeof c.count === "object" && "until" in c.count)
           ) {
-            countKey = c.id;
-            label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
-            // Show one representative record on load when it's safe (not
-            // constrained by an enclosing bounded byte-budget).
-            if (!insideBounded) defaultCount = 1;
+            // A bounded-scoped eos/until repeat's iteration count is governed by
+            // its enclosing `bounded` byte-budget (driven by a length
+            // controller / slider), NOT a free count env key. Surfacing a naked
+            // stepper there lets the user push the count past the (default 0)
+            // budget, which makes normalize throw "bounded scope over-consumed"
+            // and the layout guard freezes the diagram — a destructive control.
+            // So only surface (and seed a representative record) when the repeat
+            // is NOT bounded; bounded ones are grown via the length slider, which
+            // expands the budget and the eos repeat fills it (override-audit).
+            if (!insideBounded) {
+              countKey = c.id;
+              label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
+              defaultCount = 1;
+            }
           } else if (
             typeof c.count === "object" &&
             c.count.kind === "ref" &&

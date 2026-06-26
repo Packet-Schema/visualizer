@@ -74,6 +74,35 @@ describe("free-repeat default count", () => {
     expect(keys).not.toContain("bgpAsSegLength");
   });
 
+  it("never surfaces a freeRepeat stepper that over-consumes its bounded scope", () => {
+    // override-design-audit: a bounded-nested eos/until repeat used to get a
+    // naked stepper (insideBounded only gated defaultCount, not surfacing), so
+    // bumping it pushed the count past the scope's 0-default budget → normalize
+    // throws "bounded scope over-consumed" → the layout guard freezes the
+    // diagram. No SURFACED stepper may do that, across all presets.
+    for (const key of Object.keys(PRESETS)) {
+      const src = PRESETS[key]!;
+      const mirror = psdlToRenderer(src);
+      const controllers = initialState(mirror);
+      for (const fr of mirror.freeRepeats ?? []) {
+        const env = new Map<string, number>(
+          Object.entries(controllers).map(([k, v]) => [k, Number(v)]),
+        );
+        for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+        for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+        env.set(fr.countKey, 3);
+        const base = applyChainInstances(
+          applyTlvInstances(src, mirror, {}),
+          mirror,
+        );
+        expect(
+          () => resolveLayout(base, { env }),
+          `${key} stepper ${fr.countKey}=3 must not over-consume`,
+        ).not.toThrow();
+      }
+    }
+  });
+
   it("does not crash a bounded-nested preset on load (over-consume stays guarded)", () => {
     // Must not throw — bgpUpdateFull renders its base header + the safe NLRI
     // record without tripping the bounded budget.
