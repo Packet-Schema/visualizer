@@ -115,5 +115,23 @@ describe("collectRefSwitches", () => {
     // suppression is specific to the inert case (dnsResponse's dnsRrType stays).
     const dns = psdlToRenderer(PRESETS.dnsResponse!);
     expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
+
+    // The same suppression applies to tlsClientHello's `extType`, whose
+    // `extensions` repeat is the identical eos-in-bounded-with-nested-scope
+    // shape — its records are likewise never instantiable.
+    const tls = psdlToRenderer(PRESETS.tlsClientHello!);
+    expect((tls.refSwitches ?? []).map((r) => r.refKey)).not.toContain(
+      "extType",
+    );
+  });
+
+  it("keeps a record-type code whose repeat has a budget-derived count control", () => {
+    // The positive case of the count-control gate: isisLsp's tlvType sits in a
+    // bounded-eos `tlvs` repeat that DOES derive a count from its pduLength
+    // budget (a boundedRepeat), so the diagram can show a record and the picker
+    // drives its variant — it must stay surfaced.
+    const isis = psdlToRenderer(PRESETS.isisLsp!);
+    const keys = (isis.refSwitches ?? []).map((r) => r.refKey);
+    expect(keys).toContain("tlvType");
   });
 });
