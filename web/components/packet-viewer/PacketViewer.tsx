@@ -100,6 +100,16 @@ const BUILT_IN_PRESET_KEYS = Object.keys(PRESET_INDEX);
 const CUSTOM_PRESET_NAME_MAX = 80;
 const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 
+// Upper ceiling on the record count DERIVED from a bounded eos/until repeat's
+// length budget. The length slider's max is the length field's full bit range
+// (OverrideSlider uses `2**field.bits - 1`), so a 16-bit length field maxed to
+// 65535 would otherwise derive tens of thousands of records — resolveLayout
+// emits one DOM/SVG cell per record and the un-virtualized main diagram freezes
+// (bgpLs → 39321 cells, bgpUpdateFull → 32776, babel → 21845). Clamp the
+// derived count to a sane ceiling (mirrors RepeatCountStepper's SOFT_MAX) so a
+// maxed length slider can never explode the cell count into a frozen diagram.
+const MAX_DERIVED_RECORDS = 1024;
+
 // Mapping from a length-controller slider to its TLV Options *slot*: the
 // number of bytes the user has carved out by setting the controller.
 // `applyTlvInstances` reads this to size the Stage 1 placeholder and the
@@ -1306,7 +1316,17 @@ export default function PacketViewer({
       // against the live env — not the raw slider value.
       const budget = evalExprOr(br.bytesExpr, env, 0);
       const forRecords = Math.max(0, budget - br.prefixBytes);
-      env.set(br.countKey, Math.floor(forRecords / br.perRecordBytes));
+      // Clamp to MAX_DERIVED_RECORDS: a maxed length slider (16-bit → 65535)
+      // would otherwise derive tens of thousands of records and freeze the
+      // un-virtualized diagram. The length CELL stays user-editable; only the
+      // record count the budget DERIVES is capped.
+      env.set(
+        br.countKey,
+        Math.min(
+          MAX_DERIVED_RECORDS,
+          Math.floor(forRecords / br.perRecordBytes),
+        ),
+      );
     }
     // 0-fill above only absorbs MissingRefError. Other normalize throws —
     // notably a `bounded` scope being over-consumed when an override stepper
