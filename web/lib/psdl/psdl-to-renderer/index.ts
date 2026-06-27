@@ -422,10 +422,22 @@ function collectSiblingLengthControllers(
     };
     for (const c of containers) {
       gatherSizers([c]);
-      // A plain `length`-category int/bits cell is a controller candidate.
+      // A plain `length`-category int/bits cell is a controller candidate. So is
+      // a dynamic-width `length` field (a `varint` / `berLength`): when one sizes
+      // a sibling `bytes(ref X)` value but is neither a top-level renderer cell
+      // nor a Group subfield (it lives inside a Switch case — quicLong
+      // `tokenLength` sizing `token`, snmpV2c `pduLengthUnknown` sizing
+      // `pduDataUnknown`), no WidthPicker / sibling path reaches it, so the
+      // visible variable region it measures is see-but-cannot-edit. `env[X]`
+      // holds the decoded VALUE (the byte count of the sized region), so a
+      // packet-level length controller keyed on `env[X]` is the right surface —
+      // the same slider int/bits length fields get.
       if (
         isField(c) &&
-        (c.type.kind === "int" || c.type.kind === "bits") &&
+        (c.type.kind === "int" ||
+          c.type.kind === "bits" ||
+          c.type.kind === "varint" ||
+          c.type.kind === "berLength") &&
         c.category === "length"
       ) {
         lengthFields.set(c.id, c);
