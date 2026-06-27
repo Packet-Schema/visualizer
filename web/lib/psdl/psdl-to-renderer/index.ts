@@ -1016,6 +1016,18 @@ function collectFreeRepeats(
               // bgpPathAttributes (cond budget → tlvExtensionInnerSeeds null) and
               // ocspRequest (plain group inner scope → null), preserving their
               // existing suppression.
+              // Seed the OUTER budget so ONE representative record renders at
+              // load — otherwise extensionsLen 0-fills, `floor(0/perRecord)=0`
+              // records appear, and the surfaced extType variant picker is INERT
+              // (driving it leaves the diagram byte-identical) while still
+              // showing cases[0] against an empty diagram (#11/#12). Only when
+              // the budget is a plain `ref(lengthKey)` does seeding the field
+              // equal seeding the budget; then `perRecordBytes + prefixBytes`
+              // yields `floor((budget-prefix)/perRecord)=1`. A `field*k-c` budget
+              // can't be seeded this way, so it is left unseeded (no regression).
+              const budgetIsPlainRef =
+                bounded.bytes.kind === "ref" &&
+                bounded.bytes.field === bounded.key;
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: bounded.key,
@@ -1024,6 +1036,9 @@ function collectFreeRepeats(
                 prefixBytes: bounded.prefix,
                 ...(tlvExt.innerSeeds.length > 0
                   ? { innerScopeSeeds: tlvExt.innerSeeds }
+                  : {}),
+                ...(budgetIsPlainRef
+                  ? { defaultLength: tlvExt.perRecordBytes + bounded.prefix }
                   : {}),
               });
               instantiableRepeatIds.add(c.id);

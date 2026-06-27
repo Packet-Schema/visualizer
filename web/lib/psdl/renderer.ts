@@ -271,6 +271,19 @@ export type Packet = {
      *  already accounts for the seeded inner bytes, so the derived count never
      *  over-consumes the ENCLOSING scope either. */
     innerScopeSeeds?: { key: string; value: number }[];
+    /** A representative OUTER-budget byte count to seed `env[lengthKey]` with on
+     *  load, so one representative record renders immediately and any
+     *  refSwitch/peek picker gated on this repeat is LIVE from the start.
+     *  Without it the outer length 0-fills → `floor(0/perRecord)=0` records →
+     *  the picker is inert at load and contradicts an empty diagram (the
+     *  documented #11/#12 discoverability defect, tlsClientHello's
+     *  `extensions_byKind`/extType picker). Emitted only when `bytesExpr` is a
+     *  plain `ref(lengthKey)` (so seeding the field equals seeding the budget),
+     *  with value `perRecordBytes + prefixBytes` → exactly one record. Seeded via
+     *  `initialState` (share-url-default-safe, same as freeRepeat `defaultCount`
+     *  / refSwitch discriminator seeds): a user width still wins and it stays out
+     *  of the share URL. */
+    defaultLength?: number;
   }[];
 };
 

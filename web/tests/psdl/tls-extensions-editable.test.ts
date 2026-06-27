@@ -100,6 +100,40 @@ describe("tlsClientHello extensions are editable", () => {
     expect(ids).toContain("vListLen#0");
   });
 
+  it("seeds the outer budget so the extType picker is LIVE at load (#11/#12)", () => {
+    // Regression: previously the surfaced extType variant picker was INERT at
+    // load — `extensionsLen` 0-filled, `floor(0/perRecord)=0` records appeared,
+    // and driving extType over its cases left the diagram byte-identical while
+    // the picker still showed cases[0] against an empty diagram. The fix seeds
+    // a representative OUTER budget (`defaultLength`) via initialState so ONE
+    // record renders at load and the picker immediately changes the diagram.
+    const br = (mirror.boundedRepeats ?? []).find(
+      (b) => b.countKey === "extensions",
+    );
+    expect(br!.defaultLength, "extensions must seed a default budget").toBe(
+      br!.perRecordBytes + br!.prefixBytes,
+    );
+    const seeded = initialState(mirror);
+    expect(seeded.extensionsLen).toBe(br!.defaultLength);
+
+    // No explicit extensionsLen override: the load state already renders a
+    // representative record (so the picker is not gated on a hidden control).
+    const load = cellIds(src, mirror, {});
+    expect(load).toContain("extType#0");
+    expect(load).toContain("extLen#0");
+
+    // The picker is LIVE at the default load state: driving extType over its
+    // cases yields DISTINCT layouts (SNI's name fields vs supported_versions'
+    // version-list field), with NO separate extensionsLen tweak required.
+    const sni = cellIds(src, mirror, { extType: 0 });
+    const supportedVersions = cellIds(src, mirror, { extType: 43 });
+    expect(sni).toContain("nameType#0");
+    expect(sni).not.toContain("vListLen#0");
+    expect(supportedVersions).toContain("vListLen#0");
+    expect(supportedVersions).not.toContain("nameType#0");
+    expect(supportedVersions).not.toEqual(sni);
+  });
+
   it("never over-consumes the extensions scope across a length sweep", () => {
     for (let len = 0; len <= 1000; len++) {
       expect(

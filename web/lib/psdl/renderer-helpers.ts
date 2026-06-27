@@ -219,6 +219,16 @@ export function initialState(packet: Packet): ControllerState {
     for (const seed of br.innerScopeSeeds ?? []) {
       if (!state[seed.key]) state[seed.key] = seed.value;
     }
+    // Seed the OUTER boundedRepeat budget so ONE representative record renders
+    // at load. Without this the outer length (tlsClientHello's `extensionsLen`)
+    // 0-fills → `floor(0/perRecord)=0` records → the surfaced refSwitch variant
+    // picker (extType) is INERT and contradicts an empty diagram (#11/#12).
+    // Only set when unset/0 — a user width still wins — and surfaced via
+    // initialState, so it stays out of the share URL (same default-set reasoning
+    // as the innerScopeSeeds / freeRepeat defaultCount / discriminator seeds).
+    if (br.defaultLength !== undefined && !state[br.lengthKey]) {
+      state[br.lengthKey] = br.defaultLength;
+    }
   }
   syncTlvControllers(packet, state);
   // `syncChainControllers` now returns a fresh object so callers that
