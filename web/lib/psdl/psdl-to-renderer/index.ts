@@ -1267,8 +1267,18 @@ function structuralShape(c: Container): unknown {
  * which `attachOverrideMetadata` would otherwise stamp as a multi-option
  * `switchCases` dropdown that can never change the diagram. Requires ≥ 2
  * selectable arms: a single-arm switch is a degenerate (non-multi-option)
- * picker left untouched, and the default (`_`) arm is excluded since it is not
- * a user-selectable value.
+ * picker left untouched.
+ *
+ * The default (`_`) arm IS folded into the comparison: while it is not itself a
+ * user-selectable value, an unlisted discriminator value (or, on a `ref`
+ * discriminator, a listed-but-absent value such as eap's `eapCode` 3 / 4) falls
+ * into it, so a structurally-DIFFERENT `_` arm means the diagram visibly
+ * gains/loses fields as the discriminator changes — the picker is NOT inert and
+ * must be surfaced. We therefore suppress only when the `_` arm's shape ALSO
+ * equals the selectable arms' shape. tlsHandshake / snmpV2c stay suppressed
+ * (their `_` arm is the same opaque `bytes(ref …)` body); eap is restored (its
+ * `_` arm `eapNoBody` is EMPTY, differing from the `enum + bytes` request /
+ * response arms, so the whole EAP body appears / disappears with `eapCode`).
  */
 function switchArmsAllIdentical(
   cases: Record<string, { fields: Container[] }>,
@@ -1280,7 +1290,16 @@ function switchArmsAllIdentical(
   const shapes = selectable.map(([, struct]) =>
     JSON.stringify(struct.fields.map(structuralShape)),
   );
-  return shapes.every((s) => s === shapes[0]);
+  if (!shapes.every((s) => s === shapes[0])) return false;
+  // A present `_` default arm must match the selectable shape too: otherwise an
+  // out-of-list discriminator value renders a structurally different layout and
+  // the picker meaningfully drives the diagram.
+  const defaultArm = cases["_"];
+  if (defaultArm) {
+    const defaultShape = JSON.stringify(defaultArm.fields.map(structuralShape));
+    if (defaultShape !== shapes[0]) return false;
+  }
+  return true;
 }
 
 /** Collect (in declaration order) the ids of every Field declared anywhere

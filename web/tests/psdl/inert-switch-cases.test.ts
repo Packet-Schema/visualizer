@@ -3,11 +3,17 @@
 // `collectRefSwitches`'s inert-arm gate never reaches. tlsHandshake's
 // `handshakeType` has 11 arms, each a single `bytes(ref tlsHandshakeBodyLen)`
 // opaque body; tlsHandshakeBodyLen has no length control, so every selectable
-// arm is structurally identical and choosing any value yields a byte-identical
-// layout. eap's `eapCode` is the same shape (2 arms, each `enum(8)` +
-// `bytes(eapLength - 5)`). Both are inert see-but-cannot-edit dropdowns and
-// must NOT be surfaced. `attachOverrideMetadata` now suppresses a multi-option
-// case picker whose every selectable arm is structurally identical.
+// arm AND the `_` default arm are structurally identical and choosing any value
+// yields a byte-identical layout. That picker is an inert see-but-cannot-edit
+// dropdown and must NOT be surfaced. `attachOverrideMetadata` suppresses a
+// multi-option case picker whose every selectable arm is structurally identical
+// AND whose `_` default arm (if present) matches that shape.
+//
+// eap's `eapCode` is the COUNTER-example: its selectable arms 1 / 2 are
+// identical (`enum(8)` + `bytes(eapLength - 5)`), but its `_` default arm
+// (`eapNoBody`) is EMPTY, so codes 3 / 4 (Success / Failure, which fall into
+// `_`) drop the entire EAP body. The diagram visibly gains / loses the body as
+// `eapCode` changes, so the picker is NOT inert and MUST be surfaced.
 
 import { describe, it, expect } from "vitest";
 
@@ -79,11 +85,16 @@ describe("inert multi-option switchCases pickers are suppressed", () => {
     );
   });
 
-  it("does not stamp switchCases on eap's eapCode", () => {
+  it("DOES stamp switchCases on eap's eapCode (its `_` arm differs)", () => {
+    // The selectable arms 1 / 2 are identical, but the `_` default arm
+    // (eapNoBody) is empty — codes 3 / 4 drop the whole EAP body. The picker is
+    // meaningful and must be surfaced, not suppressed.
     const eap = psdlToRenderer(PRESETS.eap!);
     const code = findField(eap.fields, "eapCode");
     expect(code, "eapCode field must exist").toBeTruthy();
-    expect(code!.switchCases).toBeUndefined();
+    const values = (code!.switchCases ?? []).map((c) => c.value);
+    expect(values).toContain(1);
+    expect(values).toContain(2);
   });
 
   it("the suppressed handshakeType picker is genuinely inert across all arms", () => {
@@ -113,14 +124,19 @@ describe("inert multi-option switchCases pickers are suppressed", () => {
     }
   });
 
-  it("the suppressed eapCode picker is genuinely inert across its arms", () => {
+  it("the surfaced eapCode picker meaningfully drives the diagram", () => {
+    // Justify surfacing it: the two selectable arms 1 / 2 share a layout, but a
+    // value that falls into the empty `_` default arm (3 = Success / 4 =
+    // Failure) drops the entire EAP body, so the diagram shrinks. The picker is
+    // NOT inert — driving eapCode changes the cell geometry.
     const src = PRESETS.eap!;
-    const baseline = JSON.stringify(
-      appGeometry(src, { eapCode: 1, eapLength: 16 }),
-    );
-    expect(
-      JSON.stringify(appGeometry(src, { eapCode: 2, eapLength: 16 })),
-    ).toBe(baseline);
+    const withBody = appGeometry(src, { eapCode: 1, eapLength: 16 });
+    const responseBody = appGeometry(src, { eapCode: 2, eapLength: 16 });
+    const noBody = appGeometry(src, { eapCode: 3, eapLength: 16 });
+    // Request and Response arms are identical shape.
+    expect(JSON.stringify(responseBody)).toBe(JSON.stringify(withBody));
+    // The `_` (Success / Failure) arm yields a strictly smaller layout.
+    expect(noBody.length).toBeLessThan(withBody.length);
   });
 
   it("keeps a multi-option picker whose arms differ (tftp opcode)", () => {
