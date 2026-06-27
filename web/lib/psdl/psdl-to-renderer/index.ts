@@ -1928,6 +1928,24 @@ function collectFreeRepeats(
     // inner count is implicitly driven by the budget; surfacing no naked stepper
     // is correct.
     insideBounded: boolean,
+    // The nearest enclosing PER-RECORD `bounded` whose `bytes` budget is NOT a
+    // single ref (so it didn't become `bounded` above and can't drive the normal
+    // single-ref boundedRepeat path), but whose budget IS evaluable at layout
+    // time. The motivating case is bgpUpdateFull's per-attribute
+    // `bounded(cond attrExtLen ? bgpAttrLength16 : bgpAttrLength8)` scope: it
+    // wraps a switch on `attrTypeCode` whose AS_PATH / COMMUNITIES arms are eos
+    // repeats (`bgpAsPathSegments` / `bgpCommunities`). Those repeats live inside
+    // a switch case inside this bounded inside the outer `bgpPathAttributes`
+    // repeat — so `bounded` is null (cond budget), `insideBounded` is true, and
+    // the eos branches all skip them: they get ZERO count control and selecting
+    // AS_PATH / Communities renders an empty record (see-but-cannot-edit). When
+    // such an arm-nested eos repeat is reached we register it as a budget-derived
+    // boundedRepeat keyed on THIS bounded's budget, so its count follows the
+    // attribute-length budget exactly as the outer record count follows the
+    // total-path-attribute-length budget. `lengthKeys` are the budget's
+    // value-branch length refs (seeded via the outer boundedRepeat's
+    // innerScopeSeeds) so the count evaluates to a representative >=1 at load.
+    caseNestedBudget: { bytes: Expr; lengthKeys: string[] } | null,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -1941,6 +1959,16 @@ function collectFreeRepeats(
         refsIn(c.bytes, refs);
         const key = refs.size === 1 ? [...refs][0] : null;
         const prefix = key ? estimateElementBytes({ fields: c.fields }) : 0;
+        // A MULTI-ref bounded budget that is still evaluable (its length refs are
+        // seeded elsewhere) drives an arm-nested eos repeat's count even though it
+        // can't become the single-ref `bounded`. Carry it as `caseNestedBudget`
+        // for that derivation (bgpUpdateFull's per-attribute Extended-Length cond
+        // scope); a single-ref bounded takes the normal path, so clear it there.
+        const lengthRefs = key === null ? budgetLengthRefs(c.bytes) : [];
+        const nextCaseNestedBudget =
+          key === null && lengthRefs.length > 0
+            ? { bytes: c.bytes, lengthKeys: lengthRefs }
+            : null;
         visit(
           c.fields,
           key ? { key, prefix, bytes: c.bytes } : null,
@@ -1953,6 +1981,7 @@ function collectFreeRepeats(
           // boundedRepeat; mark every descendant so a repeat nested below it
           // can't surface a destructive naked stepper (bgpFlowSpec flowSpecOps).
           insideBounded || key !== null,
+          nextCaseNestedBudget,
         );
         continue;
       }
@@ -1980,6 +2009,7 @@ function collectFreeRepeats(
             insideOptional,
             caseLabel,
             insideBounded,
+            caseNestedBudget,
           );
         continue;
       }
@@ -2164,6 +2194,49 @@ function collectFreeRepeats(
               instantiableRepeatIds.add(c.id);
             } else if (
               !bounded &&
+              caseNestedBudget &&
+              insideRepeat &&
+              insideSwitch
+            ) {
+              // ARM-NESTED eos repeat under a MULTI-ref bounded budget
+              // (bgpUpdateFull's AS_PATH / COMMUNITIES path-attribute arms:
+              // `bgpAsPathSegments` / `bgpCommunities`, each a `count: eos` repeat
+              // living in a `switch on attrTypeCode` case inside
+              // `bounded(cond attrExtLen ? bgpAttrLength16 : bgpAttrLength8)`).
+              // `bounded` is null (the cond budget isn't single-ref) and
+              // `insideBounded` is true, so every other branch skips it: selecting
+              // AS_PATH / Communities in the attrTypeCode picker would render only
+              // the flags + length cells over an EMPTY body — a region the picker
+              // promises but can never populate (see-but-cannot-edit).
+              //
+              // Derive the count from THIS bounded's budget exactly as the outer
+              // record count follows the total-path-attribute-length budget:
+              // register a boundedRepeat keyed on the per-attribute budget so
+              // PacketViewer's layout memo sets
+              // `env[countKey] = floor((budget - prefix) / perRecord)`. The arm is
+              // the whole content of its switch case, so prefix is 0. The budget's
+              // value-branch length refs (bgpAttrLength8 / bgpAttrLength16) are
+              // already seeded to a representative width by the ENCLOSING
+              // `bgpPathAttributes` boundedRepeat's innerScopeSeeds — pushed BEFORE
+              // this one (its repeat is encountered before we descend into the
+              // element), so by the time PacketViewer evaluates this budget the
+              // length fields hold that seed and the count is a representative >=1
+              // segment / community at load. We deliberately do NOT re-seed those
+              // lengths here: PacketViewer / initialState seed first-write-wins, so
+              // a smaller seed pushed here could shrink the budget to 0 records. No
+              // naked stepper is surfaced (it would over-consume the saturated
+              // scope), matching every other bounded list: the budget is the
+              // single control.
+              boundedOut.push({
+                countKey: c.id,
+                lengthKey: caseNestedBudget.lengthKeys[0],
+                bytesExpr: caseNestedBudget.bytes,
+                perRecordBytes: estimateElementBytes(c.element),
+                prefixBytes: 0,
+              });
+              instantiableRepeatIds.add(c.id);
+            } else if (
+              !bounded &&
               !insideBounded &&
               (!insideRepeat || enclosingInstantiable)
             ) {
@@ -2328,6 +2401,11 @@ function collectFreeRepeats(
           // bounded scope (bgpFlowSpec flowSpecOps under flowSpecComponents) must
           // not surface a destructive naked stepper.
           insideBounded,
+          // A repeat element is its own iteration scope: the enclosing
+          // per-attribute budget sizes the ARM that holds this repeat, not this
+          // repeat's own nested records — clear it so a deeper eos repeat doesn't
+          // mis-derive from an ancestor attribute budget.
+          null,
         );
         continue;
       }
@@ -2341,6 +2419,7 @@ function collectFreeRepeats(
           insideOptional,
           caseLabel,
           insideBounded,
+          caseNestedBudget,
         );
         continue;
       }
@@ -2359,6 +2438,10 @@ function collectFreeRepeats(
             // to the existing (outer) caseLabel for the `_` default arm.
             switchCaseLabel(c.on, key, enumVariants, fieldNames) ?? caseLabel,
             insideBounded,
+            // A switch case is the ARM the per-attribute budget sizes — keep the
+            // budget so an eos repeat directly inside this case (AS_PATH /
+            // COMMUNITIES) can derive its count from it.
+            caseNestedBudget,
           );
         continue;
       }
@@ -2374,6 +2457,7 @@ function collectFreeRepeats(
           true,
           caseLabel,
           insideBounded,
+          caseNestedBudget,
         );
         continue;
       }
@@ -2387,12 +2471,13 @@ function collectFreeRepeats(
           insideOptional,
           caseLabel,
           insideBounded,
+          caseNestedBudget,
         );
         continue;
       }
     }
   };
-  visit(body, null, false, false, true, false, null, false);
+  visit(body, null, false, false, true, false, null, false, null);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
@@ -2512,6 +2597,27 @@ function budgetAffineConst(bytes: Expr): number | null {
     }
   }
   return null;
+}
+
+/**
+ * The LENGTH-bearing field refs of a budget expression — the fields whose value
+ * is the byte count, as opposed to a discriminator that merely SELECTS which
+ * length applies. For a `cond test ? t : f` budget (bgpUpdateFull's
+ * `attrExtLen ? bgpAttrLength16 : bgpAttrLength8`) the `test` is the
+ * Extended-Length flag (a selector, not a length) and `t` / `f` are the two
+ * actual length fields — so only `t` / `f`'s refs are returned. For any other
+ * shape every ref is length-bearing. Used to seed the per-record inner-bounded
+ * length(s) of a case-nested boundedRepeat so its budget evaluates to a
+ * representative >=1 record at load.
+ */
+function budgetLengthRefs(bytes: Expr): string[] {
+  if (bytes.kind === "cond") {
+    const refs = new Set<string>();
+    for (const r of exprRefs(bytes.t)) refs.add(r);
+    for (const r of exprRefs(bytes.f)) refs.add(r);
+    return [...refs];
+  }
+  return [...new Set(exprRefs(bytes))];
 }
 
 /**
