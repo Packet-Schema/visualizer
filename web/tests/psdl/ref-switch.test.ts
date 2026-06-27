@@ -108,6 +108,44 @@ describe("collectRefSwitches", () => {
     expect(keys).toContain("flowSpecCompType");
   });
 
+  it("surfaces the `_` operator-list arm of bgpFlowSpec's component picker", () => {
+    // override-design-audit (high): flowSpecCompValue switches on
+    // flowSpecCompType with key "1,2" -> prefix form, key "_" -> the
+    // numeric-operator list (RFC 8955 component types 3–13: port, dscp,
+    // fragment, …). The `_` arm is the DOMINANT component shape, but its key has
+    // no numeric value, so the picker offered ONLY value 1 ('Prefix Value') and
+    // the operator-list body was unreachable — every imported non-prefix
+    // component was misrepresented as a prefix.
+    const bgp = psdlToRenderer(PRESETS.bgpFlowSpec!);
+    const rs = (bgp.refSwitches ?? []).find(
+      (r) => r.refKey === "flowSpecCompType",
+    );
+    expect(rs, "flowSpecCompType picker must be surfaced").toBeTruthy();
+    const values = rs!.cases.map((c) => c.value);
+    // The prefix arm (1) AND a synthetic value that selects the `_` arm.
+    expect(values).toContain(1);
+    // The synthetic `_` value must be a real component-type code outside the
+    // "1,2" prefix arm (3 = IP Protocol is the smallest such enum variant).
+    const otherValue = values.find((v) => v !== 1 && v !== 2);
+    expect(otherValue, "operator-list `_` arm must be selectable").toBe(3);
+
+    // Selecting each arm must render a STRUCTURALLY DIFFERENT diagram — the
+    // prefix arm shows prefixLength, the operator-list arm does not (proving the
+    // picker is not inert and the `_` arm is genuinely reachable).
+    const src = PRESETS.bgpFlowSpec!;
+    const prefix = appCellIdsSeeded(src, {
+      flowSpecLength: 6,
+      flowSpecCompType: 1,
+    });
+    const opList = appCellIdsSeeded(src, {
+      flowSpecLength: 6,
+      flowSpecCompType: otherValue!,
+    });
+    expect(prefix).toContain("prefixLength#0");
+    expect(opList).not.toContain("prefixLength#0");
+    expect(opList).not.toEqual(prefix);
+  });
+
   it("excludes length/format-encoder switches, keeping only record-type codes", () => {
     // review HIGH: driving a length encoder (BGP Extended-Length flag,
     // CoAP option nibbles) over-consumes a scope / explodes the render instead

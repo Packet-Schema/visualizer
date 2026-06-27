@@ -1576,6 +1576,60 @@ function lookupDiscriminatorOf(
   return { refKey: n.key.field, table: n.table };
 }
 
+/**
+ * Expand a single Switch case key to the FULL set of integer discriminator
+ * values it matches: a single int ("3" → {3}), a comma-list ("1,2" → {1,2}),
+ * or a range ("8-15" → {8..15}). `firstCaseKeyValue` only returns the first
+ * member (enough to SELECT an arm), but to choose a representative value for
+ * the `_` default arm we must know which values are already CLAIMED by the
+ * explicit arms. Returns an empty set for the "_" default arm / non-numeric
+ * keys.
+ */
+function caseKeyValues(key: string): Set<number> {
+  const out = new Set<number>();
+  for (const part of key.split(",")) {
+    const t = part.trim();
+    const range = t.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const lo = Number(range[1]);
+      const hi = Number(range[2]);
+      if (Number.isInteger(lo) && Number.isInteger(hi) && lo <= hi)
+        for (let v = lo; v <= hi; v++) out.add(v);
+      continue;
+    }
+    const n = Number(t);
+    if (Number.isInteger(n) && n >= 0) out.add(n);
+  }
+  return out;
+}
+
+/**
+ * Pick a representative discriminator value that selects the `_` default arm of
+ * a Switch — i.e. an integer NOT claimed by any explicit (numeric) case key.
+ * Preferred candidates are the discriminator's own enum variant values (so the
+ * picker selection lands on a real, named protocol code — bgpFlowSpec's
+ * `flowSpecCompType` 3..12 all fall into the `_` operator-list arm); failing
+ * that, the smallest unclaimed non-negative integer. Returns `null` only if the
+ * explicit arms somehow exhaust every candidate (no value reaches `_`).
+ */
+function representativeDefaultArmValue(
+  cases: Record<string, { fields: Container[] }>,
+  enumVariants: Record<string, string> | undefined,
+): number | null {
+  const claimed = new Set<number>();
+  for (const key of Object.keys(cases))
+    for (const v of caseKeyValues(key)) claimed.add(v);
+  if (enumVariants) {
+    const variantValues = Object.keys(enumVariants)
+      .map((k) => Number(k))
+      .filter((n) => Number.isInteger(n) && n >= 0)
+      .sort((a, b) => a - b);
+    for (const v of variantValues) if (!claimed.has(v)) return v;
+  }
+  for (let v = 0; v < 1 << 16; v++) if (!claimed.has(v)) return v;
+  return null;
+}
+
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
@@ -1587,6 +1641,7 @@ function collectRefSwitches(
   const lengthDriving = collectLengthDrivingRefs(body);
   const fieldBits = collectFieldBits(body);
   const fieldNames = collectFieldNames(body);
+  const enumVariants = collectEnumVariants(body);
   // Field ids declared inside a switch case — a switch discriminated on one of
   // these has no top-level cell to host a `switchCases` widget, so it needs a
   // packet-level refSwitch picker even when it is NOT inside a repeat.
@@ -1800,9 +1855,43 @@ function collectRefSwitches(
             // `0`=empty Pad1 vs `_`=TLV-with-body; bgpFlowSpec: `1,2`=prefix vs
             // `_`=numeric-operator list), append a synthetic "default" option so
             // the picker can select the `_`-arm layout instead of only ever the
-            // listed value.
-            const defaultCase = defaultArmSyntheticCase(c.cases);
-            if (defaultCase) cases.push(defaultCase);
+            // listed value. The synthetic value PREFERS a real enum variant code
+            // of the discriminator that falls into `_` (bgpFlowSpec
+            // `flowSpecCompType` 3 = IP Protocol), so the selection lands on a
+            // named protocol code rather than an anonymous sentinel; it falls
+            // back to the smallest unclaimed integer otherwise.
+            const defaultArm = c.cases["_"];
+            if (defaultArm) {
+              const explicitShapes = Object.entries(c.cases)
+                .filter(([key]) => firstCaseKeyValue(key) !== null)
+                .map(([, struct]) =>
+                  JSON.stringify(struct.fields.map(structuralShape)),
+                );
+              const defaultShape = JSON.stringify(
+                defaultArm.fields.map(structuralShape),
+              );
+              const differs =
+                explicitShapes.length > 0 &&
+                !explicitShapes.includes(defaultShape);
+              const defaultValue = differs
+                ? representativeDefaultArmValue(
+                    c.cases,
+                    enumVariants.get(refKey),
+                  )
+                : null;
+              if (
+                defaultValue !== null &&
+                !cases.some((cc) => cc.value === defaultValue)
+              ) {
+                cases.push({
+                  value: defaultValue,
+                  label:
+                    defaultArm.name ??
+                    prettifyId(defaultArm.id) ??
+                    "Other / default",
+                });
+              }
+            }
             if (cases.length > 0) {
               seen.add(refKey);
               // Seed each per-record length to exactly the per-record charge
