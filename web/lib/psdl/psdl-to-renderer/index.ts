@@ -3408,9 +3408,14 @@ function collectPeekSwitches(
           // `rohcHeader`: listed `126`=IR Packet vs `_`=normal datagram), so
           // the peek picker can select the default-arm layout instead of only
           // the listed value(s). The sentinel value is unlisted, so core's
-          // `selectArm` falls through to `_`.
+          // `selectArm` falls through to `_`. `unshift` (not `push`) places the
+          // default FIRST so `initialState` seeds the basic default shape (the
+          // RFC 5795 normal datagram) rather than the special listed value
+          // (ROHC IR 126). For a switch-nested option-list switch (icmpv6Ndp's
+          // NDP option types) the same generic "unknown option" `_` arm is also
+          // a real, RFC-defined reachable state, so it is surfaced too.
           const defaultCase = defaultArmSyntheticCase(c.cases);
-          if (defaultCase) cases.push(defaultCase);
+          if (defaultCase) cases.unshift(defaultCase);
           if (cases.length > 0) {
             const peek = c.on;
             // Only surface peek switches whose offset is a compile-time

@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { PRESETS } from "../../lib/psdl/presets.server";
 import { psdlToRenderer } from "../../lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "../../lib/psdl/layout";
+import { initialState } from "../../lib/psdl/renderer-helpers";
 import { peekEnvKey } from "../../lib/psdl/expr";
 import type { Packet } from "../../lib/psdl/types";
 
@@ -25,6 +26,11 @@ const paddingCellIds = (env: Record<string, number>): string[] =>
   resolveLayout(rohc(), { env: new Map(Object.entries(env)) })
     .cells.map((c) => c.field.id)
     .filter((id) => /padding|feedback/i.test(id));
+
+const allCellIds = (env: Record<string, number>): string[] =>
+  resolveLayout(rohc(), { env: new Map(Object.entries(env)) }).cells.map(
+    (c) => c.field.id,
+  );
 
 describe("psdlToRenderer — peek-gated Optional surfaces its gate", () => {
   it("publishes a peek-switch for ROHC padding / feedback gates", () => {
@@ -57,6 +63,42 @@ describe("psdlToRenderer — peek-gated Optional surfaces its gate", () => {
     );
     expect(headerPickers).toHaveLength(1);
     expect(headerPickers[0].id).toBe("rohcHeader");
+  });
+
+  it("the header dispatch picker can drive BOTH IR and normal-datagram layouts", () => {
+    const mirror = psdlToRenderer(rohc());
+    const headerKey = peekEnvKey(0, 7);
+    const picker = (mirror.peekSwitches ?? []).find(
+      (p) => p.id === "rohcHeader",
+    );
+    expect(picker).toBeDefined();
+
+    // The picker MUST offer the IR-packet value (126) AND a synthetic default
+    // case (value != 126) that reaches the RFC 5795 normal-datagram form.
+    const values = picker!.cases.map((c) => c.value);
+    expect(values).toContain(126);
+    const defaultCase = picker!.cases.find((c) => c.value !== 126);
+    expect(defaultCase).toBeDefined();
+    expect(defaultCase!.value).not.toBe(126);
+
+    // On load the diagram must show the most basic (normal-datagram) shape,
+    // NOT the IR-packet body: `initialState` must not seed 126.
+    const seeded = initialState(mirror)[headerKey];
+    expect(seeded).not.toBe(126);
+    expect(allCellIds(initialState(mirror))).toContain("rohcNormalDatagram");
+
+    // Picking the IR value reveals the IR-packet body and hides the datagram.
+    const ir = allCellIds({ [headerKey]: 126 });
+    expect(ir).toContain("rohcPacketType");
+    expect(ir).toContain("rohcProfile");
+    expect(ir).toContain("rohcCrc");
+    expect(ir).not.toContain("rohcNormalDatagram");
+
+    // Picking the default-case value drives the diagram back to the
+    // normal-datagram form — both layouts are reachable from the one control.
+    const datagram = allCellIds({ [headerKey]: defaultCase!.value });
+    expect(datagram).toContain("rohcNormalDatagram");
+    expect(datagram).not.toContain("rohcPacketType");
   });
 
   it("the surfaced gate keys actually change the diagram", () => {
