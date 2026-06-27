@@ -68,6 +68,9 @@ export type JsonPsdlPacket = {
   byteOrder?: string;
   description?: string;
   body: Container[];
+  /** Named structs referenced by `ref` containers (PSDL 0.5 §). Must round-trip
+   *  or any packet using ref/defs silently loses its referenced fields. */
+  defs?: Packet["defs"];
   constraints?: Constraint[];
   env?: Record<string, number>;
 };
@@ -102,6 +105,9 @@ export function toJson(packet: Packet, env?: PacketEnv): string {
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
     ...(packet.description ? { description: packet.description } : {}),
     body: packet.body,
+    ...(packet.defs && Object.keys(packet.defs).length > 0
+      ? { defs: packet.defs }
+      : {}),
     ...(packet.constraints && packet.constraints.length > 0
       ? { constraints: packet.constraints }
       : {}),
@@ -153,6 +159,9 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
       : {}),
     ...(typeof r.description === "string"
       ? { description: r.description }
+      : {}),
+    ...(r.defs && typeof r.defs === "object" && !Array.isArray(r.defs)
+      ? { defs: r.defs as Packet["defs"] }
       : {}),
     ...(Array.isArray(r.constraints)
       ? { constraints: r.constraints as Packet["constraints"] }
