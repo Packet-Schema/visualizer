@@ -186,6 +186,135 @@ function collectBoundedControllers(
 }
 
 /**
+ * Collect every field id that is consumed as the byte count of a `bytes(ref X)`
+ * type anywhere in the body — i.e. X sizes a variable-length value. Walks
+ * through every transparent / nesting container (group, repeat, optional,
+ * switch cases, bounded, encrypted, resolved `ref`) so a length field buried
+ * inside an Optional still registers.
+ */
+function collectBytesSizers(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  acc: Set<string>,
+): void {
+  for (const c of containers) {
+    if (isField(c)) {
+      const t = c.type;
+      if (t.kind === "bytes" && !isBytesDelimited(t.n) && t.n.kind === "ref") {
+        acc.add(t.n.field);
+      }
+      continue;
+    }
+    switch (c.kind) {
+      case "group":
+        collectBytesSizers(c.children, defs, acc);
+        break;
+      case "repeat":
+        collectBytesSizers(c.element.fields, defs, acc);
+        break;
+      case "optional":
+        collectBytesSizers([c.container], defs, acc);
+        break;
+      case "bounded":
+        collectBytesSizers(c.fields, defs, acc);
+        break;
+      case "encrypted":
+        collectBytesSizers(c.plaintext.fields, defs, acc);
+        break;
+      case "switch":
+        for (const struct of Object.values(c.cases)) {
+          collectBytesSizers(struct.fields, defs, acc);
+        }
+        break;
+      case "ref": {
+        const def = defs?.[c.ref];
+        if (def) collectBytesSizers(def.fields, defs, acc);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+/**
+ * Surface an Optional-wrapped length field as a packet-level length controller.
+ *
+ * Some presets gate AND size a trailing variable field with a single octet that
+ * itself lives inside an `optional` (rtcpBye: `rtcpByeHasReason`, an 8-bit count
+ * that both gates `rtcpByeReason` via `when: ref(rtcpByeHasReason)` and sizes it
+ * via `bytes(ref rtcpByeHasReason)`). Because `flattenForMirror` does not descend
+ * into Optional containers, that octet never becomes a top-level mirror cell, so
+ * its diagram cell is see-but-cannot-edit. It is also not a `bounded.bytes`
+ * controller, so `collectBoundedControllers` misses it.
+ *
+ * Detect it directly: an `optional` whose container is a single int field X that
+ * (a) is not already a top-level mirror cell and (b) is referenced as a
+ * `bytes(ref X)` width elsewhere. Surface X as a length controller keyed on
+ * `env[X]` — raising the slider both reveals the gated value and sizes it, the
+ * one intuitive control. Returns the new controllers (caller dedupes/appends).
+ */
+function collectOptionalLengthGates(
+  body: PsdlPacket["body"],
+  fields: RendererField[],
+  defs: Record<string, NamedStruct> | undefined,
+): RendererField[] {
+  const sizers = new Set<string>();
+  collectBytesSizers(body, defs, sizers);
+  const out: RendererField[] = [];
+  const seen = new Set<string>();
+  const walk = (containers: Container[]): void => {
+    for (const c of flattenForMirror(containers, defs)) {
+      if (isField(c)) continue;
+      if (c.kind === "optional") {
+        const inner = c.container;
+        if (
+          isField(inner) &&
+          inner.type.kind === "int" &&
+          sizers.has(inner.id) &&
+          !fields.some((f) => f.id === inner.id) &&
+          !seen.has(inner.id)
+        ) {
+          seen.add(inner.id);
+          const bits = inner.type.bits;
+          out.push({
+            id: inner.id,
+            name: inner.name,
+            bits,
+            controlsLength: inner.id,
+            max: bits > 0 ? 2 ** bits - 1 : undefined,
+            ...(inner.defaultValue != null
+              ? { defaultValue: inner.defaultValue }
+              : {}),
+            ...(inner.doc ? { description: inner.doc } : {}),
+          });
+        }
+        walk([c.container]);
+        continue;
+      }
+      if (c.kind === "group") {
+        walk(c.children);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        walk(c.element.fields);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases)) walk(struct.fields);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        walk(c.plaintext.fields);
+        continue;
+      }
+    }
+  };
+  walk(body);
+  return out;
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -313,6 +442,19 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
         defaultValue: sub.defaultValue,
       });
       break;
+    }
+  }
+  // Optional-wrapped length octets that both gate AND size a trailing variable
+  // field (rtcpBye's `rtcpByeHasReason`) never become top-level cells, so their
+  // diagram cell is otherwise see-but-cannot-edit. Surface them as packet-level
+  // length controllers (deduped against the bounded ones above).
+  for (const lc of collectOptionalLengthGates(
+    packet.body,
+    fields,
+    packet.defs,
+  )) {
+    if (!lengthControllers.some((existing) => existing.id === lc.id)) {
+      lengthControllers.push(lc);
     }
   }
   attachOverrideMetadata(packet.body, fields, packet.defs);
@@ -2000,8 +2142,19 @@ function attachOverrideMetadata(
           ("id" in inner ? inner.id : undefined) ??
           inner.kind ??
           "container";
-        const ref = c.when.kind === "ref" ? c.when.field : primaryRef(c.when);
-        if (ref) {
+        // Only a *simple* `when: ref(X)` gate maps cleanly to a Present/Absent
+        // toggle on X — the toggle writes `env[X] = 1|0`, which only makes
+        // sense when X's truthiness IS the gate. A complex `when` (op/cond)
+        // must NOT fall back to its primary ref: that ref is some operand of
+        // the predicate (e.g. rtcpBye's `((length+1)*4-4-4) > srcCount*4`
+        // nominates `length`, the 32-bit RTCP word count), and stamping
+        // `optionalGateFor` on it renders a checkbox whose onChange corrupts
+        // that field to 0/1 without intuitively mapping to the gated field's
+        // presence (override-audit: rtcpBye). For such gates the controlling
+        // value is surfaced through its own editor instead (e.g. the
+        // length-driven reason string via `collectOptionalLengthGates`).
+        if (c.when.kind === "ref") {
+          const ref = c.when.field;
           const t = findTarget(ref);
           if (t) {
             if (t.kind === "field") {
