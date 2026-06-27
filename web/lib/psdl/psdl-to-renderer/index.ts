@@ -502,6 +502,72 @@ function switchArmsAllZeroWidth(
   return arms.every((s) => armCollapses(s.fields));
 }
 
+/**
+ * Structural fingerprint of a container that ignores identity-only fields
+ * (`id`, `name`, `doc`, …) and keeps everything that affects the rendered
+ * geometry: the node `kind`, a field's `type`, a Switch's discriminator and
+ * arm shapes, a Repeat's count, a Bounded's budget, etc. Two containers with
+ * the same fingerprint resolve to a byte-identical layout for every env — they
+ * differ only in labels.
+ */
+function structuralShape(c: Container): unknown {
+  if (isField(c)) return ["field", c.type];
+  switch (c.kind) {
+    case "switch":
+      return [
+        "switch",
+        c.on,
+        Object.entries(c.cases).map(([k, v]) => [
+          k,
+          v.fields.map(structuralShape),
+        ]),
+      ];
+    case "repeat":
+      return ["repeat", c.count, c.element.fields.map(structuralShape)];
+    case "group":
+      return ["group", c.children.map(structuralShape)];
+    case "optional":
+      return ["optional", c.when, structuralShape(c.container)];
+    case "bounded":
+      return ["bounded", c.bytes, c.fields.map(structuralShape)];
+    case "encrypted":
+      return ["encrypted", c.plaintext.fields.map(structuralShape)];
+    case "ref":
+      return ["ref", c.ref];
+    case "align":
+      return ["align", c.to];
+    case "virtual":
+      return ["virtual", c.expr];
+  }
+}
+
+/**
+ * True when EVERY selectable case arm of a `ref`-discriminated Switch is
+ * STRUCTURALLY IDENTICAL (same ordered field shapes, ignoring ids/names) — so
+ * choosing any value of the discriminator yields a byte-identical layout and
+ * the case picker is inert. Catches both:
+ *   - tlsHandshake `handshakeType` (10 arms, each a single
+ *     `bytes(ref tlsHandshakeBodyLen)` opaque body), and
+ *   - eap `eapCode` (2 arms, each `enum(8)` + `bytes(eapLength - 5)`),
+ * which `attachOverrideMetadata` would otherwise stamp as a multi-option
+ * `switchCases` dropdown that can never change the diagram. Requires ≥ 2
+ * selectable arms: a single-arm switch is a degenerate (non-multi-option)
+ * picker left untouched, and the default (`_`) arm is excluded since it is not
+ * a user-selectable value.
+ */
+function switchArmsAllIdentical(
+  cases: Record<string, { fields: Container[] }>,
+): boolean {
+  const selectable = Object.entries(cases).filter(
+    ([key]) => firstCaseKeyValue(key) !== null,
+  );
+  if (selectable.length < 2) return false;
+  const shapes = selectable.map(([, struct]) =>
+    JSON.stringify(struct.fields.map(structuralShape)),
+  );
+  return shapes.every((s) => s === shapes[0]);
+}
+
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
@@ -1284,6 +1350,16 @@ function attachOverrideMetadata(
           visit(struct.fields);
         }
         if (cases.length === 0) continue;
+        // Suppress a multi-option case picker whose every selectable arm is
+        // structurally identical: choosing any value yields a byte-identical
+        // layout, so the dropdown can never change the diagram (an inert
+        // see-but-cannot-edit control). collectRefSwitches has its own
+        // zero-width gate for repeat-nested discriminators; this covers the
+        // top-level / plain-field discriminators it never reaches — e.g.
+        // tlsHandshake's 10-arm `handshakeType` (each arm a single
+        // `bytes(ref tlsHandshakeBodyLen)`) and eap's 2-arm `eapCode` (each
+        // arm `enum(8)` + `bytes(eapLength - 5)`).
+        if (switchArmsAllIdentical(c.cases)) continue;
         if (c.on.kind === "ref") {
           const t = findTarget(c.on.field);
           if (t) {
