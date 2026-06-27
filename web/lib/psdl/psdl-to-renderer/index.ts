@@ -314,7 +314,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       break;
     }
   }
-  attachOverrideMetadata(packet.body, fields);
+  attachOverrideMetadata(packet.body, fields, packet.defs);
   // A chain's base field carries a chainCatalog (the chain editor's surface);
   // attachOverrideMetadata ALSO stamps switchCases on it from the same Switch.
   // OverridePanel dispatches chainCatalog first, so the switchCases are dead
@@ -324,8 +324,8 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     if (f.chainCatalog && f.switchCases) delete f.switchCases;
   }
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
-    collectFreeRepeats(packet.body, fields);
-  const peekSwitches = collectPeekSwitches(packet.body);
+    collectFreeRepeats(packet.body, fields, packet.defs);
+  const peekSwitches = collectPeekSwitches(packet.body, packet.defs);
   // Field ids that carry a SURFACED override control the user can move: a
   // top-level cell, a length controller, a freeRepeat stepper, or a
   // boundedRepeat's count/length key. A refSwitch arm whose only content is a
@@ -346,6 +346,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     fields,
     instantiableRepeatIds,
     controlledIds,
+    packet.defs,
   );
   return {
     name: packet.name,
@@ -506,6 +507,7 @@ function collectRefSwitches(
   fields: RendererField[],
   instantiableRepeatIds: Set<string>,
   controlledIds: Set<string>,
+  defs: Record<string, NamedStruct> | undefined,
 ): NonNullable<RendererPacket["refSwitches"]> {
   const out: NonNullable<RendererPacket["refSwitches"]> = [];
   const lengthDriving = collectLengthDrivingRefs(body);
@@ -521,7 +523,7 @@ function collectRefSwitches(
     // surface — so it must be suppressed (bgpPathAttributes' attrTypeCode picker).
     enclosingPlainRepeat: Repeat | null,
   ): void => {
-    for (const c of flattenForMirror(containers)) {
+    for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "repeat") {
         const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
         visit(c.element.fields, plain ? c : enclosingPlainRepeat);
@@ -729,6 +731,7 @@ function repeatIsRecordBearing(repeat: Repeat): boolean {
 function collectFreeRepeats(
   body: PsdlPacket["body"],
   fields: RendererField[],
+  defs: Record<string, NamedStruct> | undefined,
 ): {
   freeRepeats: NonNullable<RendererPacket["freeRepeats"]>;
   boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>;
@@ -787,9 +790,28 @@ function collectFreeRepeats(
         );
         continue;
       }
-      if (c.kind === "align" || c.kind === "virtual" || c.kind === "ref") {
-        // align/virtual carry no override surface; ref is left unresolved here
-        // (matches the previous flattenForMirror(no-defs) behaviour).
+      if (c.kind === "align" || c.kind === "virtual") {
+        // align/virtual carry no override surface.
+        continue;
+      }
+      if (c.kind === "ref") {
+        // Resolve the referenced def inline (like flattenForMirror) so a
+        // repeat/switch living inside a ref-resolved NamedStruct still gets its
+        // count stepper / variant pickers surfaced. The ref is a transparent wire
+        // scope — not a bounded budget and not a repeat iteration — so the
+        // enclosing bounded / insideRepeat / insideSwitch context is threaded
+        // through unchanged. Without this an arbitrary user PSDL whose def
+        // contains a repeat-of-switch renders records but exposes ZERO override
+        // surface (see-but-cannot-edit).
+        const def = defs?.[c.ref];
+        if (def)
+          visit(
+            def.fields,
+            bounded,
+            insideRepeat,
+            insideSwitch,
+            enclosingInstantiable,
+          );
         continue;
       }
       if (c.kind === "repeat") {
@@ -1128,6 +1150,7 @@ function estimateElementBytes(struct: { fields: Container[] }): number {
  */
 function collectPeekSwitches(
   body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
 ): NonNullable<RendererPacket["peekSwitches"]> {
   const out: NonNullable<RendererPacket["peekSwitches"]> = [];
   const visit = (
@@ -1135,7 +1158,7 @@ function collectPeekSwitches(
     insideSwitch: boolean,
     insideRepeat: boolean,
   ): void => {
-    for (const c of flattenForMirror(containers)) {
+    for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "switch") {
         if (c.on.kind === "peek") {
           const cases: { value: number; label: string }[] = [];
@@ -1224,6 +1247,7 @@ function collectPeekSwitches(
 function attachOverrideMetadata(
   body: PsdlPacket["body"],
   fields: RendererField[],
+  defs: Record<string, NamedStruct> | undefined,
 ): void {
   const findTarget = (
     id: string,
@@ -1248,7 +1272,7 @@ function attachOverrideMetadata(
     exprRefs(expr)[0] ?? null;
 
   const visit = (containers: PsdlPacket["body"]): void => {
-    for (const c of flattenForMirror(containers)) {
+    for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "switch") {
         const cases: { value: number; label: string }[] = [];
         for (const [key, struct] of Object.entries(c.cases)) {
