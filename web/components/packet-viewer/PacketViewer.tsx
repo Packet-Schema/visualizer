@@ -110,6 +110,19 @@ const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
 // maxed length slider can never explode the cell count into a frozen diagram.
 const MAX_DERIVED_RECORDS = 1024;
 
+// SLIDER-FREEZE (direct length category): a `lengthController` / `controlsLength`
+// cell that sizes a DIRECT `bytes(ref X)` payload is surfaced as an OverrideSlider
+// whose max is the length field's full int range (16/24/32-bit → up to 2**32-1).
+// resolveLayout emits roughly one diagram cell per payload byte, so dragging that
+// slider toward its max produces millions-to-billions of cells in the
+// un-virtualized SVG diagram → the page freezes / V8 OOM-crashes. Unlike
+// boundedRepeats (whose DERIVED count is already capped above), these payloads are
+// driven straight by `env[X]`, so we cap the EFFECTIVE byte count used for layout
+// to this ceiling. The cap is LAYOUT-ONLY: the underlying length CELL value stays
+// user-editable in `controllers`; only the `env` value fed to resolveLayout (and
+// the slider/number max in OverridePanel) is clamped to a renderable ceiling.
+const MAX_LENGTH_CONTROLLER_BYTES = MAX_DERIVED_RECORDS;
+
 // Mapping from a length-controller slider to its TLV Options *slot*: the
 // number of bytes the user has carved out by setting the controller.
 // `applyTlvInstances` reads this to size the Stage 1 placeholder and the
@@ -1262,6 +1275,33 @@ export default function PacketViewer({
   // leaves the body untouched) does not re-walk the AST 60×/sec.
   const psdlRefs = useMemo(() => collectPsdlRefs(targetPsdl), [targetPsdl]);
 
+  // Env keys that DIRECTLY size a `bytes(ref X)` payload (a `lengthController`
+  // surface or a `controlsLength`-stamped cell). resolveLayout emits ~1 cell per
+  // payload byte for these, so the layout memo caps `env[id]` to
+  // MAX_LENGTH_CONTROLLER_BYTES to keep a maxed slider from freezing/OOM-ing the
+  // diagram (see MAX_LENGTH_CONTROLLER_BYTES). boundedRepeat `lengthKey`s are
+  // EXCLUDED — those drive a budget-DERIVED record count that is already capped in
+  // the boundedRepeats loop below, and shrinking their budget here would wrongly
+  // truncate that scope. Cached against the mirror so slider drag (which mutates
+  // `controllers` 60×/sec but leaves the mirror untouched) does not re-walk it.
+  const directLengthControllerIds = useMemo(() => {
+    const boundedKeys = new Set(
+      (packet.boundedRepeats ?? []).map((br) => br.lengthKey),
+    );
+    const ids = new Set<string>();
+    for (const lc of packet.lengthControllers ?? []) {
+      if (lc.controlsLength && !boundedKeys.has(lc.controlsLength)) {
+        ids.add(lc.controlsLength);
+      }
+    }
+    for (const f of packet.fields) {
+      if (f.controlsLength && !boundedKeys.has(f.controlsLength)) {
+        ids.add(f.controlsLength);
+      }
+    }
+    return ids;
+  }, [packet.lengthControllers, packet.fields, packet.boundedRepeats]);
+
   // Last successfully-resolved layout, kept so a normalize throw can degrade to
   // the previous frame instead of white-screening (see the try/catch below).
   const lastGoodLayoutRef = useRef<ReturnType<typeof resolveLayout> | null>(
@@ -1328,6 +1368,20 @@ export default function PacketViewer({
         ),
       );
     }
+    // Cap each DIRECT length-controller byte count (a `bytes(ref X)` payload sized
+    // straight by env[X], not via a budget-derived repeat). resolveLayout emits
+    // ~1 cell per payload byte, so an uncapped slider maxed to the field's full
+    // int range (16/24/32-bit) would generate millions-to-billions of cells in
+    // the un-virtualized diagram → freeze / OOM. Mirror the boundedRepeat guard:
+    // the length CELL value stays user-editable in `controllers`; only the layout
+    // env is clamped to a renderable ceiling (OverridePanel lowers the slider max
+    // to the same ceiling so the input can't request an explosive value).
+    for (const id of directLengthControllerIds) {
+      const v = env.get(id);
+      if (typeof v === "number" && v > MAX_LENGTH_CONTROLLER_BYTES) {
+        env.set(id, MAX_LENGTH_CONTROLLER_BYTES);
+      }
+    }
     // 0-fill above only absorbs MissingRefError. Other normalize throws —
     // notably a `bounded` scope being over-consumed when an override stepper
     // bumps a repeat count past its byte budget — must not crash React render
@@ -1340,7 +1394,14 @@ export default function PacketViewer({
     } catch {
       return lastGoodLayoutRef.current ?? { cells: [], totalBits: 0 };
     }
-  }, [targetPsdl, psdlRefs, controllers, viewMode, packet.boundedRepeats]);
+  }, [
+    targetPsdl,
+    psdlRefs,
+    controllers,
+    viewMode,
+    packet.boundedRepeats,
+    directLengthControllerIds,
+  ]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 

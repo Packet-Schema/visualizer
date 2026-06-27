@@ -66,6 +66,9 @@ function EmptyState({
   const peeks = packet.peekSwitches ?? [];
   const refs = packet.refSwitches ?? [];
   const lengthCtrls = packet.lengthControllers ?? [];
+  const boundedLengthKeys = new Set(
+    (packet.boundedRepeats ?? []).map((br) => br.lengthKey),
+  );
   // TLVs without an explicit slot (= preset not in TLV_LENGTH_SYNC) won't
   // emit a placeholder cell in the diagram. Surface them here so TLS /
   // CoAP / etc. have a persistent first-edit entry point — and KEEP them
@@ -156,6 +159,11 @@ function EmptyState({
                 field={lc}
                 controllers={controllers}
                 drivenByTlv={false}
+                maxBytes={
+                  lc.controlsLength && !boundedLengthKeys.has(lc.controlsLength)
+                    ? MAX_LENGTH_CONTROLLER_BYTES
+                    : undefined
+                }
                 onChange={onControllerChange}
               />
             ))}
@@ -430,12 +438,20 @@ export default function OverridePanel({
     const drivenByTlv = packet.fields.some(
       (f) => f.tlv && f.tlv.drivesController === field.controlsLength,
     );
+    // A direct `bytes(ref X)` length controller gets a renderable byte cap so
+    // dragging the slider can't explode the un-virtualized diagram. A
+    // boundedRepeat-driven length cell keeps the full int range (its derived
+    // record count is capped in PacketViewer instead).
+    const isBoundedLength = (packet.boundedRepeats ?? []).some(
+      (br) => br.lengthKey === field.controlsLength,
+    );
     widgets.push(
       <OverrideSlider
         key="slider"
         field={field}
         controllers={controllers}
         drivenByTlv={drivenByTlv}
+        maxBytes={isBoundedLength ? undefined : MAX_LENGTH_CONTROLLER_BYTES}
         onChange={onControllerChange}
       />,
     );
@@ -559,10 +575,24 @@ function WidgetLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Cap (in bytes) for a DIRECT length-controller slider — a `controlsLength` cell
+// that sizes a `bytes(ref X)` payload. resolveLayout emits ~1 diagram cell per
+// payload byte, so without this the slider's max (the length field's full int
+// range, up to 2**32-1) lets a drag generate millions-to-billions of cells in the
+// un-virtualized SVG diagram → freeze / OOM. PacketViewer applies the matching
+// layout-only clamp (MAX_LENGTH_CONTROLLER_BYTES = MAX_DERIVED_RECORDS); keep the
+// two values in sync. boundedRepeat-driven length sliders are EXEMPT (their
+// derived record count is capped separately), so they keep the full int range.
+const MAX_LENGTH_CONTROLLER_BYTES = 1024;
+
 type SliderProps = {
   field: Field;
   controllers: ControllerState;
   drivenByTlv: boolean;
+  /** When set, the renderable byte ceiling for a direct length controller — the
+   *  slider/number max is clamped here so the input can't request an explosive
+   *  (freeze/OOM) payload. Omitted for boundedRepeat-driven length sliders. */
+  maxBytes?: number;
   onChange: (key: string, value: number) => void;
 };
 
@@ -570,13 +600,16 @@ function OverrideSlider({
   field,
   controllers,
   drivenByTlv,
+  maxBytes,
   onChange,
 }: SliderProps) {
   const key = field.controlsLength!;
   const value = controllers[key] ?? field.defaultValue ?? 0;
   const min = field.min ?? 0;
-  const max =
+  const fullMax =
     field.max ?? (typeof field.bits === "number" ? 2 ** field.bits - 1 : 255);
+  const max =
+    typeof maxBytes === "number" ? Math.min(fullMax, maxBytes) : fullMax;
   const sliderId = `detail-ctrl-${field.id}-slider`;
   const numberId = `detail-ctrl-${field.id}-number`;
   const labelId = `detail-ctrl-${field.id}-label`;
