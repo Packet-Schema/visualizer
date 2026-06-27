@@ -613,4 +613,57 @@ describe("OverridePanel widgets", () => {
     expect(select, "repeat-nested enum must surface a <select>").not.toBeNull();
     expect(select?.options.length).toBeGreaterThan(0);
   });
+
+  it("a per-record enum dropdown writes the BARE authored env key, not a #N-suffixed phantom (rtcpSdes)", async () => {
+    // see-but-cannot-edit: a field authored inside a plain repeat surfaces on
+    // the diagram as a cell whose id carries a per-instance repeat suffix
+    // (`#i_j`). resolveLayout reads that field from its BARE authored env key
+    // (layout.ts stripRepeatTag), so a widget MUST drive the bare key — writing
+    // env[rtcpSdesItemType#0_0] is a phantom the layout never reads, leaving the
+    // dropdown inert. fieldAsTarget must strip the suffix so the EnumDropdown
+    // fires onControllerChange("rtcpSdesItemType", v).
+    const src = PRESETS.rtcpSdes!;
+    const packet = psdlToRenderer(src);
+    // No mirror field exists for the repeat-nested enum leaf...
+    expect(packet.fields.some((f) => f.id === "rtcpSdesItemType")).toBe(false);
+    // ...but materialising a SDES chunk + items makes it a visible diagram cell.
+    const env = packetViewerEnv(src);
+    env.set("sc", 1);
+    env.set("rtcpSdesItems", 2);
+    env.set("rtcpSdesItemLen", 4);
+    const { cells } = resolveLayout(src, { env });
+    const cell = cells.find((c) => c.field.id.startsWith("rtcpSdesItemType#"));
+    expect(cell, "rtcpSdesItemType repeat cell must be present").toBeTruthy();
+    // The cell id carries a `#i_j` repeat suffix (the phantom-key trap).
+    expect(cell!.field.id).toMatch(/#\d+(?:_\d+)*$/);
+    expect(
+      cell!.field.enumVariants,
+      "enum variants must be stamped",
+    ).toBeTruthy();
+
+    const writes: Array<[string, number]> = [];
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={cell!.field.id}
+        controllers={{}}
+        onControllerChange={(k, v) => writes.push([k, v])}
+        cells={cells}
+      />,
+    );
+    const select = container.querySelector("select");
+    expect(
+      select,
+      "per-record enum leaf must surface a <select>",
+    ).not.toBeNull();
+
+    // Picking a variant must write the BARE key the layout reads, never a
+    // #-suffixed phantom.
+    select!.value = "2";
+    await act(async () => {
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(writes).toContainEqual(["rtcpSdesItemType", 2]);
+    expect(writes.every(([k]) => !k.includes("#"))).toBe(true);
+  });
 });

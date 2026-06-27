@@ -553,9 +553,19 @@ type WidgetTarget = {
   enumVariants?: Field["enumVariants"];
 };
 
+// A field authored INSIDE a plain repeat surfaces on the diagram as a cell whose
+// id carries a per-instance repeat suffix (`#N` or `#i_j`). resolveLayout reads
+// every per-record field from its BARE authored env key (layout.ts stripRepeatTag),
+// so a widget must drive the bare key — writing env[id#0_0] is a no-op the layout
+// never reads. Top-level and TLV-synthetic ids carry no such suffix, so this is a
+// no-op there.
+function stripRepeatTag(id: string): string {
+  return id.replace(/#\d+(?:_\d+)*$/, "");
+}
+
 function fieldAsTarget(f: Field): WidgetTarget {
   return {
-    id: f.id,
+    id: stripRepeatTag(f.id),
     name: f.name,
     defaultValue: f.defaultValue,
     switchCases: f.switchCases,
