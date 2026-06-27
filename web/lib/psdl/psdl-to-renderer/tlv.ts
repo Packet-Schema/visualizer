@@ -14,20 +14,9 @@ import type {
 import {
   firstCaseKeyValue,
   getSwitchFromRepeat,
+  prettifyId,
   structFieldsToTlvFields,
 } from "./shared";
-
-/** Pretty-print a camelCase identifier as "Camel Case". Returns null for
- *  empty / non-string input so callers can chain a final fallback. */
-function prettifyId(id: string | undefined): string | null {
-  if (!id) return null;
-  const trimmed = id.trim();
-  if (!trimmed) return null;
-  return trimmed
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/^./, (ch) => ch.toUpperCase());
-}
 
 type TlvCatalogEntry = RendererTlvCatalogEntry;
 

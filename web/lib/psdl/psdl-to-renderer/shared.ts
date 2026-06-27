@@ -28,6 +28,24 @@ export function firstCaseKeyValue(key: string): number | null {
 }
 
 /**
+ * Pretty-print a camelCase / snake_case identifier as "Camel Case". Returns
+ * null for empty / non-string input so callers can chain a final fallback
+ * (e.g. `struct.name ?? prettifyId(struct.id) ?? \`case ${key}\``). Shared by
+ * the TLV catalog and the refSwitch / peekSwitch variant pickers so an
+ * id-only switch case (the common 0.5 idiom, no `name`) gets a readable
+ * label instead of a bare "case N".
+ */
+export function prettifyId(id: string | undefined): string | null {
+  if (!id) return null;
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  return trimmed
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/^./, (ch) => ch.toUpperCase());
+}
+
+/**
  * Best-effort static bit width for a PSDL `Type`. Used only for renderer
  * shape construction — runtime width (varint, berLength, bytes with
  * env-dependent `n`) comes through `lib/psdl/normalize.typeBits`.

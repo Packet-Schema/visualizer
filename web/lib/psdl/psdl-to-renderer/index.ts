@@ -71,7 +71,7 @@ import {
   plainFieldToRenderer,
 } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
-import { firstCaseKeyValue, typeBits } from "./shared";
+import { firstCaseKeyValue, prettifyId, typeBits } from "./shared";
 
 export { rendererToPsdl } from "./to-psdl";
 export { applyTlvInstances } from "./apply-tlv";
@@ -1244,7 +1244,10 @@ function collectRefSwitches(
             for (const [key, struct] of Object.entries(c.cases)) {
               const v = firstCaseKeyValue(key);
               if (v === null) continue;
-              cases.push({ value: v, label: struct.name ?? `case ${key}` });
+              cases.push({
+                value: v,
+                label: struct.name ?? prettifyId(struct.id) ?? `case ${key}`,
+              });
             }
             if (cases.length > 0) {
               seen.add(refKey);
@@ -2171,7 +2174,10 @@ function collectPeekSwitches(
           for (const [key, struct] of Object.entries(c.cases)) {
             const v = firstCaseKeyValue(key);
             if (v === null) continue;
-            cases.push({ value: v, label: struct.name ?? `case ${key}` });
+            cases.push({
+              value: v,
+              label: struct.name ?? prettifyId(struct.id) ?? `case ${key}`,
+            });
           }
           if (cases.length > 0) {
             const peek = c.on;
