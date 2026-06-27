@@ -557,7 +557,21 @@ function collectPlainRepeatLengthControllers(
   // For a single Repeat element: gather its declared `length` fields and every
   // id consumed as a `bytes(ref X)` sizer ANYWHERE inside the element (the sized
   // value commonly lives one level deep, inside a record-variant Switch arm).
-  const surfaceElement = (element: { fields: Container[] }): void => {
+  //
+  // `descendSwitch` is set ONLY for a switch-nested TLV repeat surfaced as a
+  // freeRepeat (icmpv6Ndp `rsOptions`/…): its element IS a single peek-Switch
+  // whose per-option arms each declare the `ndpOptLength` length cell that sizes
+  // that arm's `ndpOptValue = bytes(ref ndpOptLength …)`. The default (no-descend)
+  // behaviour deliberately stops at a record-variant Switch — a length declared
+  // in such an arm normally belongs to that inner scope's own editor — but a
+  // switch-nested TLV repeat has NO inner editor (it is surfaced as a plain count
+  // stepper + peek picker), so its per-record length is owned by NOBODY and the
+  // visible `ndpOptValue` cell it sizes is see-but-cannot-edit. Descending the
+  // single inner Switch's cases finds `ndpOptLength` so it gets a length slider.
+  const surfaceElement = (
+    element: { fields: Container[] },
+    descendSwitch: boolean,
+  ): void => {
     const lengthFields = new Map<string, PsdlField>();
     const collectLengthFields = (containers: Container[]): void => {
       for (const c of containers) {
@@ -566,7 +580,20 @@ function collectPlainRepeatLengthControllers(
             (c.type.kind === "int" || c.type.kind === "bits") &&
             c.category === "length"
           ) {
-            lengthFields.set(c.id, c);
+            // The SAME length id can appear in several Switch arms (icmpv6Ndp's
+            // `ndpOptLength` is redeclared in every option-type case, only some
+            // carrying a representative `defaultValue`). Keep an instance whose
+            // `defaultValue` is set in preference to one without, so the surfaced
+            // controller seeds a non-empty Value on load (the `_` unknown-option
+            // arm declares `ndpOptLength` with no default — taking it would seed 0
+            // and collapse the visible `ndpOptValue` to width 0).
+            const prev = lengthFields.get(c.id);
+            if (
+              !prev ||
+              (prev.defaultValue == null && c.defaultValue != null)
+            ) {
+              lengthFields.set(c.id, c);
+            }
           }
           continue;
         }
@@ -578,15 +605,53 @@ function collectPlainRepeatLengthControllers(
         else if (c.kind === "ref") {
           const def = defs?.[c.ref];
           if (def) collectLengthFields(def.fields);
+        } else if (c.kind === "switch" && descendSwitch) {
+          // Switch-nested TLV repeat only: descend the inner peek-Switch arms to
+          // reach the per-option `ndpOptLength`. Stays one Switch deep — does NOT
+          // recurse into a nested Repeat (a length there is a deeper scope).
+          for (const struct of Object.values(c.cases))
+            collectLengthFields(struct.fields);
         }
-        // Do NOT descend into a nested Switch case or a nested Repeat: a length
-        // declared there belongs to that inner scope, not this record.
+        // Do NOT descend into a nested Switch case (unless `descendSwitch`) or a
+        // nested Repeat: a length declared there belongs to that inner scope, not
+        // this record.
       }
     };
     collectLengthFields(element.fields);
     if (lengthFields.size === 0) return;
     const sizers = new Set<string>();
-    collectBytesSizers(element.fields, defs, sizers);
+    if (descendSwitch) {
+      // icmpv6Ndp's `ndpOptValue` is sized by an OP-wrapped expr
+      // (`bytes(ndpOptLength*8 - 2)`), not a bare `bytes(ref X)` — and it lives
+      // inside the element's inner peek-Switch. `collectBytesSizers` matches only
+      // bare-ref sizers and would not descend a Switch case the same way, so use
+      // `exprRefs` over every non-delimited `bytes` type reachable through the
+      // single inner Switch to nominate `ndpOptLength`.
+      const gather = (containers: Container[]): void => {
+        for (const c of containers) {
+          if (isField(c)) {
+            const t = c.type;
+            if (t.kind === "bytes" && !isBytesDelimited(t.n)) {
+              for (const r of exprRefs(t.n)) sizers.add(r);
+            }
+            continue;
+          }
+          if (c.kind === "switch") {
+            for (const struct of Object.values(c.cases)) gather(struct.fields);
+          } else if (c.kind === "group") gather(c.children);
+          else if (c.kind === "bounded") gather(c.fields);
+          else if (c.kind === "optional") gather([c.container]);
+          else if (c.kind === "encrypted") gather(c.plaintext.fields);
+          else if (c.kind === "ref") {
+            const def = defs?.[c.ref];
+            if (def) gather(def.fields);
+          }
+        }
+      };
+      gather(element.fields);
+    } else {
+      collectBytesSizers(element.fields, defs, sizers);
+    }
     for (const [id, field] of lengthFields) {
       if (!sizers.has(id) || seen.has(id)) continue;
       // Don't shadow an existing top-level cell / surfaced control.
@@ -616,46 +681,96 @@ function collectPlainRepeatLengthControllers(
   // any bounded budget qualify (dnsResponse `dnsAnswers`, pimHelloOptions).
   // Recurse manually (NOT via flattenForMirror, which erases bounded
   // boundaries) so the `insideBounded` flag is preserved.
-  const visit = (containers: Container[], insideBounded: boolean): void => {
+  const visit = (
+    containers: Container[],
+    insideBounded: boolean,
+    insideSwitch: boolean,
+    insideOptional: boolean,
+    insideRepeat: boolean,
+  ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
       if (c.kind === "repeat") {
         const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
-        if (plain && !insideBounded && instantiableRepeatIds.has(c.id)) {
-          surfaceElement(c.element);
+        // A switch-nested (or optional-nested) TLV repeat is surfaced as a
+        // freeRepeat (count stepper) + peek picker by collectFreeRepeats — NOT
+        // promoted to a tlv field — exactly when it is TLV-shaped, lives in a
+        // Switch case / Optional, and is not itself inside another Repeat. It has
+        // NO per-record list editor, so its per-record length cell (icmpv6Ndp
+        // `ndpOptLength`, sizing the VISIBLE `ndpOptValue` in the option's `_`
+        // arm) is owned by nobody — surface it too, descending the element's
+        // single inner peek-Switch to find it. Mirrors the `surfacedNestedTlv`
+        // guard in collectFreeRepeats so only that same set of repeats qualifies,
+        // and only when instantiable (a count control exists).
+        const surfacedNestedTlv =
+          isTlvRepeat(c) &&
+          (insideSwitch || insideOptional) &&
+          !insideRepeat &&
+          !insideBounded;
+        if (
+          (plain || surfacedNestedTlv) &&
+          !insideBounded &&
+          instantiableRepeatIds.has(c.id)
+        ) {
+          surfaceElement(c.element, surfacedNestedTlv);
         }
-        visit(c.element.fields, insideBounded);
+        visit(c.element.fields, insideBounded, false, false, true);
         continue;
       }
       if (c.kind === "bounded") {
-        visit(c.fields, true);
+        visit(c.fields, true, insideSwitch, insideOptional, insideRepeat);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, insideBounded);
+        visit(
+          c.children,
+          insideBounded,
+          insideSwitch,
+          insideOptional,
+          insideRepeat,
+        );
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], insideBounded);
+        visit([c.container], insideBounded, insideSwitch, true, insideRepeat);
         continue;
       }
       if (c.kind === "switch") {
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, insideBounded);
+          visit(
+            struct.fields,
+            insideBounded,
+            true,
+            insideOptional,
+            insideRepeat,
+          );
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, insideBounded);
+        visit(
+          c.plaintext.fields,
+          insideBounded,
+          insideSwitch,
+          insideOptional,
+          insideRepeat,
+        );
         continue;
       }
       if (c.kind === "ref") {
         const def = defs?.[c.ref];
-        if (def) visit(def.fields, insideBounded);
+        if (def)
+          visit(
+            def.fields,
+            insideBounded,
+            insideSwitch,
+            insideOptional,
+            insideRepeat,
+          );
         continue;
       }
     }
   };
-  visit(body, false);
+  visit(body, false, false, false, false);
   return out;
 }
 

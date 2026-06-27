@@ -150,6 +150,43 @@ describe("nested-tlv: icmpv6Ndp switch-nested option repeats", () => {
     expect(ids).toContain("ndpOptValue#0");
   });
 
+  it("surfaces ndpOptLength as a length controller so the visible Value cell is editable", () => {
+    // Residual of the nested-tlv fix: at the seeded load state the option-type
+    // peek defaults to 0, selecting the inner switch's `_` (unknown-option) arm.
+    // That arm renders `ndpOptType`, `ndpOptLength` (category=length) and
+    // `ndpOptValue` (`bytes(ndpOptLength*8 - 2)`). The Value cell is VISIBLE and
+    // its width is driven ENTIRELY by `ndpOptLength`, but `ndpOptLength` lives
+    // inside the option repeat's inner peek-Switch — it is not a top-level mirror
+    // cell and was in NO control, so the user could SEE the Value (and Length)
+    // cell but had no surface to grow/shrink it (see-but-cannot-edit). The fix
+    // surfaces `ndpOptLength` as a packet-level length controller.
+    const mirror = psdlToRenderer(PRESETS.icmpv6Ndp!);
+    const ndpOptLenLc = (mirror.lengthControllers ?? []).find(
+      (lc) => lc.id === "ndpOptLength",
+    );
+    expect(ndpOptLenLc).toBeDefined();
+    expect(ndpOptLenLc!.controlsLength).toBe("ndpOptLength");
+    // 8-bit Length octet → a slider that can reach 255.
+    expect(ndpOptLenLc!.bits).toBe(8);
+    expect(ndpOptLenLc!.max).toBe(255);
+
+    // Driving env[ndpOptLength] genuinely grows the visible ndpOptValue cell in
+    // the diagram (the `_` unknown-option arm, peek 0), proving the controller is
+    // wired to the value's width — not an inert label.
+    const src = PRESETS.icmpv6Ndp!;
+    const small = cellIds(src, { type: 133, rsOptions: 1, __peek__0__8: 0 });
+    const grown = cellIds(src, {
+      type: 133,
+      rsOptions: 1,
+      __peek__0__8: 0,
+      ndpOptLength: 4,
+    });
+    const valSegs = (ids: string[]): number =>
+      ids.filter((id) => id.startsWith("ndpOptValue")).length;
+    expect(valSegs(small)).toBeGreaterThan(0);
+    expect(valSegs(grown)).toBeGreaterThan(valSegs(small));
+  });
+
   it("collapses the 5 aliasing NDP option-type pickers into one picker", () => {
     // Regression: collectPeekSwitches used to emit one peekSwitch per option
     // list (rsByOptType / raByOptType / nsByOptType / naByOptType /
