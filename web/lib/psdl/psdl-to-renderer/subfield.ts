@@ -38,20 +38,73 @@ export function groupToSubfieldField(g: Group): RendererField | null {
   let category: RendererField["category"];
   for (const child of g.children) {
     if (!isField(child)) return null;
-    const bits = typeBits(child.type);
-    const sf: SubField = { id: child.id, name: child.name, bits };
-    if (child.doc) sf.description = child.doc;
-    if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
-    if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
-    if (child.type.kind === "berLength") sf.isBerLength = true;
-    if (child.type.kind === "bytes" && isBytesDelimited(child.type.n))
-      sf.isDelimited = true;
-    if (child.type.kind === "enum")
-      sf.enumVariants = enumLabels(child.type.variants);
+    const sf = leafToSubField(child);
     subs.push(sf);
-    total += bits;
+    total += sf.bits;
     if (child.category && !category) category = child.category;
   }
+  if (subs.length === 0) return null;
+  const out: RendererField = {
+    id: g.id,
+    name: g.name ?? g.id,
+    bits: total,
+    subfields: subs,
+  };
+  if (category) out.category = category;
+  return out;
+}
+
+/** Lower a single PSDL leaf Field to a renderer SubField, carrying the same
+ *  dynamic-width / enum hints `groupToSubfieldField` stamps. Shared by the
+ *  flat and deep collapses. */
+function leafToSubField(child: PsdlField): SubField {
+  const bits = typeBits(child.type);
+  const sf: SubField = { id: child.id, name: child.name, bits };
+  if (child.doc) sf.description = child.doc;
+  if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
+  if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
+  if (child.type.kind === "berLength") sf.isBerLength = true;
+  if (child.type.kind === "bytes" && isBytesDelimited(child.type.n))
+    sf.isDelimited = true;
+  if (child.type.kind === "enum")
+    sf.enumVariants = enumLabels(child.type.variants);
+  return sf;
+}
+
+/**
+ * Collapse a Group into one renderer Field even when it nests further Groups,
+ * flattening every leaf field it (transitively) contains into a flat
+ * `subfields[]` list. `groupToSubfieldField` bails on compound children, so a
+ * flags Group with a nested Spare sub-group (gtpv2c's `gtpv2Flags`, with the
+ * `gtpv2SpareGroup` child) never reaches the mirror — and a bit leaf it gates
+ * an Optional on (gtpv2c's `gtpv2T` → the optional 32-bit TEID) has no override
+ * surface at all. This deep collapse keeps those bit leaves reachable so
+ * `attachOverrideMetadata` can stamp `optionalGateFor` on the gating subfield.
+ *
+ * Used ONLY as a lazy fallback for groups whose bits drive overrides — it is
+ * not part of the default mirror shape, so the merge-based lift (which walks
+ * the SOURCE tree and looks up mirror fields by id) is unaffected. Returns
+ * `null` when the group contributes no leaf subfields.
+ */
+export function groupToSubfieldFieldDeep(g: Group): RendererField | null {
+  const subs: SubField[] = [];
+  let total = 0;
+  let category: RendererField["category"];
+  const walk = (children: Group["children"]): void => {
+    for (const child of children) {
+      if (isField(child)) {
+        const sf = leafToSubField(child);
+        subs.push(sf);
+        total += sf.bits;
+        if (child.category && !category) category = child.category;
+      } else if (child.kind === "group") {
+        walk(child.children);
+      }
+      // Any non-field, non-group child (unexpected inside a flags group) is
+      // dropped — it has no flat subfield representation.
+    }
+  };
+  walk(g.children);
   if (subs.length === 0) return null;
   const out: RendererField = {
     id: g.id,

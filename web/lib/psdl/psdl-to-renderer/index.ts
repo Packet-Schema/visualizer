@@ -23,6 +23,7 @@ import type {
   Constraint,
   Container,
   Expr,
+  Group,
   NamedStruct,
   Packet as PsdlPacket,
   Repeat,
@@ -63,7 +64,11 @@ function flattenForMirror(
 }
 
 import { isLikelyChainRepeat, repeatToChainField } from "./chain";
-import { groupToSubfieldField, plainFieldToRenderer } from "./subfield";
+import {
+  groupToSubfieldField,
+  groupToSubfieldFieldDeep,
+  plainFieldToRenderer,
+} from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
 import { firstCaseKeyValue, typeBits } from "./shared";
 
@@ -2083,6 +2088,53 @@ function attachOverrideMetadata(
     return null;
   };
 
+  // Find the top-level Group (after flattening transparent scopes) that
+  // transitively contains a leaf Field with `id`. Used to lazily surface a
+  // bit-leaf gate target that `groupToSubfieldField` dropped because the Group
+  // also nests a sub-group (so it bailed entirely — gtpv2c's `gtpv2Flags`,
+  // which nests `gtpv2SpareGroup`, never reached the mirror, hiding `gtpv2T`).
+  const groupOwning = (id: string): Group | null => {
+    const containsLeaf = (children: Group["children"]): boolean => {
+      for (const child of children) {
+        if (isField(child)) {
+          if (child.id === id) return true;
+        } else if (child.kind === "group" && containsLeaf(child.children)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    for (const c of flattenForMirror(body, defs)) {
+      if (!isField(c) && c.kind === "group" && containsLeaf(c.children)) {
+        return c;
+      }
+    }
+    return null;
+  };
+
+  // Resolve an Optional's gate `ref` to a stampable target, lazily surfacing
+  // its enclosing Group as a deep subfield-bearing mirror field when the gate
+  // is a bit leaf that `groupToSubfieldField` collapsed away. Without this the
+  // user can SEE the gate flag (and the gated region appear/disappear) but has
+  // no control to toggle it — a see-but-cannot-edit dead end.
+  const findOrSurfaceGateTarget = (
+    id: string,
+  ): ReturnType<typeof findTarget> => {
+    const direct = findTarget(id);
+    if (direct) return direct;
+    const owner = groupOwning(id);
+    if (!owner) return null;
+    // If the owning Group already surfaced (flat collapse), the leaf is a
+    // subfield on it and findTarget would have found it; reaching here means it
+    // did not surface. Build a deep collapse so every bit leaf is reachable.
+    if (fields.some((x) => x.id === owner.id)) return null;
+    const deep = groupToSubfieldFieldDeep(owner);
+    if (!deep) return null;
+    fields.push(deep);
+    const sub = deep.subfields?.find((s) => s.id === id);
+    return sub ? { kind: "subfield", sub } : null;
+  };
+
   // Pull the primary ref id out of an Expr — the first field referenced
   // anywhere in it, or null. Backed by core's `exprRefs`, so 0.5 shapes
   // (lookup keys, peek offsets, …) surface a controller too; `op` / `cond`
@@ -2155,7 +2207,7 @@ function attachOverrideMetadata(
         // length-driven reason string via `collectOptionalLengthGates`).
         if (c.when.kind === "ref") {
           const ref = c.when.field;
-          const t = findTarget(ref);
+          const t = findOrSurfaceGateTarget(ref);
           if (t) {
             if (t.kind === "field") {
               t.field.optionalGateFor = [
