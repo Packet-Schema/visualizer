@@ -18,6 +18,7 @@ import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { initialState } from "@/lib/psdl/renderer-helpers";
 import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 function cellIds(
@@ -104,6 +105,49 @@ describe("nested-tlv: icmpv6Ndp switch-nested option repeats", () => {
       return peeks.length >= 1 && eosFrees.length >= 5;
     });
     expect(affected).toEqual(["icmpv6Ndp"]);
+  });
+
+  it("gates each NDP option stepper on its message-type case and seeds `type` so the active arm agrees with the diagram on load", () => {
+    // Each per-message Options repeat lives in a DISTINCT `type` case of the
+    // top-level ndpBody switch, so it can only instantiate records when the
+    // diagram is rendering that arm. The mirror tags each freeRepeat with its
+    // owning discriminator gate `{ key: "type", value: <case> }`.
+    const mirror = psdlToRenderer(PRESETS.icmpv6Ndp!);
+    const gates = Object.fromEntries(
+      (mirror.freeRepeats ?? []).map((r) => [r.countKey, r.gate]),
+    );
+    expect(gates.rsOptions).toEqual({ key: "type", value: 133 });
+    expect(gates.raOptions).toEqual({ key: "type", value: 134 });
+    expect(gates.nsOptions).toEqual({ key: "type", value: 135 });
+    expect(gates.naOptions).toEqual({ key: "type", value: 136 });
+    expect(gates.rdOptions).toEqual({ key: "type", value: 137 });
+
+    // initialState seeds the gated discriminator `type` to the FIRST gated
+    // repeat's case (133), so on load the ndpBody switch renders the Router
+    // Solicitation arm and the rsOptions stepper's seeded count (1) matches the
+    // rendered records — rather than 0-filling `type` to 0, taking the `_`
+    // default arm, and showing five live steppers over ZERO option records.
+    const seed = initialState(mirror);
+    expect(seed.type).toBe(133);
+    expect(seed.rsOptions).toBe(1);
+
+    // The seeded env genuinely renders the option record in the diagram — the
+    // surfaced count agrees with what the user sees.
+    const env = new Map<string, number>(
+      Object.entries(seed as Record<string, number>),
+    );
+    for (const [k, v] of initialEnv(PRESETS.icmpv6Ndp!)) {
+      if (!env.has(k)) env.set(k, v);
+    }
+    for (const r of collectPsdlRefs(PRESETS.icmpv6Ndp!)) {
+      if (!env.has(r)) env.set(r, 0);
+    }
+    const ids = resolveLayout(PRESETS.icmpv6Ndp!, { env }).cells.map(
+      (c) => c.field.id,
+    );
+    expect(ids).toContain("ndpOptType#0");
+    expect(ids).toContain("ndpOptLength#0");
+    expect(ids).toContain("ndpOptValue#0");
   });
 
   it("collapses the 5 aliasing NDP option-type pickers into one picker", () => {

@@ -62,7 +62,16 @@ function EmptyState({
   // Packet-level extras (free Repeats, peek Switches) surface here so the
   // panel never reads as truly empty when the packet has stoppable knobs
   // that aren't anchored to a single cell.
-  const free = packet.freeRepeats ?? [];
+  // A switch-case-nested repeat (icmpv6Ndp's rsOptions/raOptions/…) carries a
+  // discriminator `gate`: it can only instantiate records when the diagram is
+  // rendering its owning message-type arm. Surface its stepper ONLY when the
+  // discriminator currently selects that arm — otherwise the panel would show a
+  // live count over an arm the diagram isn't drawing (a panel-vs-diagram
+  // contradiction; the other four NDP option steppers at any moment). Ungated
+  // freeRepeats are always shown.
+  const free = (packet.freeRepeats ?? []).filter(
+    (r) => !r.gate || controllers[r.gate.key] === r.gate.value,
+  );
   const peeks = packet.peekSwitches ?? [];
   const refs = packet.refSwitches ?? [];
   const lengthCtrls = packet.lengthControllers ?? [];

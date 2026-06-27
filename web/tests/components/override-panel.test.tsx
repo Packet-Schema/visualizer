@@ -666,4 +666,41 @@ describe("OverridePanel widgets", () => {
     expect(writes).toContainEqual(["rtcpSdesItemType", 2]);
     expect(writes.every(([k]) => !k.includes("#"))).toBe(true);
   });
+
+  it("surfaces ONLY the NDP option stepper for the selected `type`=133 arm (gate)", async () => {
+    // icmpv6Ndp's five Options steppers (rsOptions/raOptions/…) each live in a
+    // distinct `type` case. The panel must surface only the one whose gate the
+    // discriminator currently selects, so the surfaced count never contradicts
+    // the rendered arm. With `type`=133 (Router Solicitation) only the
+    // "Type=133 → Options" stepper shows; the other four are hidden.
+    const packet = psdlToRenderer(PRESETS.icmpv6Ndp!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{ type: 133, rsOptions: 1 }}
+        onControllerChange={() => {}}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/Type=133/);
+    expect(text).not.toMatch(/Type=134/);
+    expect(text).not.toMatch(/Type=135/);
+    expect(text).not.toMatch(/Type=137/);
+  });
+
+  it("swaps the live NDP option stepper when `type`=135 is selected (gate)", async () => {
+    const packet = psdlToRenderer(PRESETS.icmpv6Ndp!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{ type: 135, nsOptions: 1 }}
+        onControllerChange={() => {}}
+      />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/Type=135/);
+    expect(text).not.toMatch(/Type=133/);
+  });
 });

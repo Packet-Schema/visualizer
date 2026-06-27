@@ -211,6 +211,16 @@ export type Packet = {
     countKey: string;
     defaultCount?: number;
     transform?: { mul: number; add: number };
+    /** Discriminator gate for a repeat that lives inside ONE case of a top-level
+     *  message-type `switch` (icmpv6Ndp's rsOptions/raOptions/… each live in a
+     *  different `type` case). Only the case whose discriminator the diagram is
+     *  CURRENTLY showing can instantiate this repeat, so the stepper is surfaced
+     *  ONLY when `env[gate.key] === gate.value`; otherwise it would show a live
+     *  count over an arm the diagram isn't rendering (a panel-vs-diagram
+     *  contradiction). `initialState` seeds `gate.key` to the FIRST gated
+     *  repeat's value so the active arm's stepper agrees with the diagram on
+     *  load. */
+    gate?: { key: string; value: number };
   }[];
   /** Switches whose `on` is a `peek` expression — discriminator can't be
    *  surfaced via a real cell, so OverridePanel offers a synthetic

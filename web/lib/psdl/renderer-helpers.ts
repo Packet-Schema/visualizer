@@ -217,6 +217,27 @@ export function initialState(packet: Packet): ControllerState {
       state[ps.peekKey] = ps.cases[0].value;
     }
   }
+  // Seed the message-type discriminator a switch-case-nested freeRepeat is gated
+  // on (icmpv6Ndp's `type`) to its owning case value, so the chosen arm — and
+  // ONLY that arm — is rendered and its surfaced "Type=N → Options" stepper
+  // agrees with the diagram on load. Without this `type` 0-fills to 0, the
+  // ndpBody switch takes its `_` default arm, NONE of the per-case Options
+  // repeats instantiate, and every surfaced stepper (plus the peek picker) reads
+  // as live over a diagram with ZERO option records (a panel-vs-diagram
+  // contradiction). OverridePanel surfaces only the gated steppers whose
+  // discriminator matches, so the surfaced count always agrees with the rendered
+  // records. Runs AFTER the refSwitch / peekSwitch loops so when a discriminator
+  // ALSO has its own picker (dnsResponse's `dnsRrType`) the picker's cases[0]
+  // seed wins and the gated SOA steppers stay hidden until that record type is
+  // picked — only an unset discriminator (icmpv6Ndp's pickerless `type`) takes
+  // the gate seed. The FIRST gated repeat for a given key wins. Only fills an
+  // unset discriminator (a user / saved-env value still wins) and is
+  // share-url-safe (same default-set reasoning as the seeds above).
+  for (const fr of packet.freeRepeats ?? []) {
+    if (fr.gate && state[fr.gate.key] === undefined) {
+      state[fr.gate.key] = fr.gate.value;
+    }
+  }
   // Seed the PER-RECORD inner-scope length of a TLV-extension boundedRepeat
   // (tlsClientHello's `extLen`) so the representative record fits its own nested
   // bounded. Without this the inner length 0-fills to 0 and the budget-derived

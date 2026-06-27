@@ -2305,6 +2305,17 @@ function collectFreeRepeats(
     // labelled steppers instead of N identical, partly-inert ones (the only live
     // one is the currently-selected variant's). override-design-audit.
     caseLabel: string | null,
+    // Structured discriminator gate of the nearest enclosing switch CASE (or
+    // null at top level / outside any case / on a non-`ref` discriminator). Set
+    // ONLY for a top-level message-type `switch` whose `on` is a `ref` to a real
+    // discriminator field (icmpv6Ndp `ref type`): `{ key: <field id>, value:
+    // <case value> }`. A switch-nested freeRepeat carries this so the panel can
+    // surface its stepper ONLY when the diagram is currently rendering that arm
+    // (env[key]===value), and so `initialState` can seed the discriminator to
+    // the first gated arm's value — otherwise the discriminator 0-fills, the `_`
+    // default arm renders, NONE of the per-case option repeats instantiate, and
+    // every surfaced stepper contradicts an empty diagram on load.
+    caseGate: { key: string; value: number } | null,
     // True once ANY ancestor `bounded` byte-budget (with a single-ref length
     // field — i.e. one that drives a budget-derived boundedRepeat) has been
     // entered, and stays true through the elements of repeats nested below it.
@@ -2368,6 +2379,7 @@ function collectFreeRepeats(
           enclosingInstantiable,
           insideOptional,
           caseLabel,
+          caseGate,
           // A bounded scope with a single-ref length drives a budget-derived
           // boundedRepeat; mark every descendant so a repeat nested below it
           // can't surface a destructive naked stepper (bgpFlowSpec flowSpecOps).
@@ -2399,6 +2411,7 @@ function collectFreeRepeats(
             enclosingInstantiable,
             insideOptional,
             caseLabel,
+            caseGate,
             insideBounded,
             caseNestedBudget,
           );
@@ -2761,11 +2774,21 @@ function collectFreeRepeats(
             // stepper drives the diagram; the qualified label tells the user
             // which case each one belongs to (override-design-audit).
             const qualifiedName = caseLabel ? `${caseLabel} → ${label}` : label;
+            // Gate a SWITCH-CASE-nested repeat (icmpv6Ndp's rsOptions/raOptions/…
+            // each live in a distinct `type` case) on its enclosing case's
+            // discriminator, so the panel surfaces this stepper ONLY when the
+            // diagram is rendering that arm — and `initialState` can seed the
+            // discriminator to one such arm. `surfacedNestedTlv` repeats live
+            // directly under a switch case; the plain ref-count / op-count
+            // branches are top-level or repeat-nested (caseGate is null there),
+            // so this only attaches a gate where one genuinely applies.
+            const gate = caseGate ?? undefined;
             out.push({
               name: qualifiedName,
               countKey,
               ...(defaultCount !== undefined ? { defaultCount } : {}),
               ...(transform !== undefined ? { transform } : {}),
+              ...(gate !== undefined ? { gate } : {}),
             });
             instantiableRepeatIds.add(c.id);
           }
@@ -2787,6 +2810,11 @@ function collectFreeRepeats(
           // longer applies once we descend into the iterated records.
           false,
           caseLabel,
+          // A repeat element is the repeat's OWN iteration scope, not the switch
+          // case: clear the discriminator gate so a deeper repeat isn't gated on
+          // an ancestor message-type value (the gate applies to the option repeat
+          // itself, surfaced at the case level above).
+          null,
           // `bounded` is reset to null (the inner repeat gets its own keys), but
           // `insideBounded` PERSISTS: a repeat nested under a budget-derived
           // bounded scope (bgpFlowSpec flowSpecOps under flowSpecComponents) must
@@ -2809,13 +2837,26 @@ function collectFreeRepeats(
           enclosingInstantiable,
           insideOptional,
           caseLabel,
+          caseGate,
           insideBounded,
           caseNestedBudget,
         );
         continue;
       }
       if (c.kind === "switch") {
-        for (const [key, struct] of Object.entries(c.cases))
+        for (const [key, struct] of Object.entries(c.cases)) {
+          // Derive a structured discriminator gate for a repeat surfaced
+          // directly inside THIS case. Only when the discriminator is a `ref` to
+          // a real field (icmpv6Ndp `ref type`) and the case key is a single
+          // integer value — so the gate names a controllable env key the diagram
+          // actually reads. The `_` default arm and non-ref / range / comma keys
+          // yield no gate (fall back to the outer caseGate so an inner switch
+          // doesn't drop an enclosing gate).
+          const caseValue = firstCaseKeyValue(key);
+          const nextCaseGate =
+            c.on.kind === "ref" && caseValue !== null
+              ? { key: c.on.field, value: caseValue }
+              : caseGate;
           visit(
             struct.fields,
             bounded,
@@ -2828,12 +2869,14 @@ function collectFreeRepeats(
             // directly inside it gets a case-qualified stepper name. Falls back
             // to the existing (outer) caseLabel for the `_` default arm.
             switchCaseLabel(c.on, key, enumVariants, fieldNames) ?? caseLabel,
+            nextCaseGate,
             insideBounded,
             // A switch case is the ARM the per-attribute budget sizes — keep the
             // budget so an eos repeat directly inside this case (AS_PATH /
             // COMMUNITIES) can derive its count from it.
             caseNestedBudget,
           );
+        }
         continue;
       }
       if (c.kind === "optional") {
@@ -2847,6 +2890,7 @@ function collectFreeRepeats(
           enclosingInstantiable,
           true,
           caseLabel,
+          caseGate,
           insideBounded,
           caseNestedBudget,
         );
@@ -2861,6 +2905,7 @@ function collectFreeRepeats(
           enclosingInstantiable,
           insideOptional,
           caseLabel,
+          caseGate,
           insideBounded,
           caseNestedBudget,
         );
@@ -2868,7 +2913,7 @@ function collectFreeRepeats(
       }
     }
   };
-  visit(body, null, false, false, true, false, null, false, null);
+  visit(body, null, false, false, true, false, null, null, false, null);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
