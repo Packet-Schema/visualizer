@@ -72,6 +72,14 @@ import {
 } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
 import { firstCaseKeyValue, prettifyId, typeBits } from "./shared";
+// `resolveLayout` is used ONLY by `nestedGroupBoundedSeeds` to probe a
+// crash-free per-record inner length for the rare plain-group nested-bounded
+// idiom (ocspRequest). layout.ts imports `./normalize` + the leaf
+// `./psdl-to-renderer/tlv-cell-id`, neither of which re-imports this module, so
+// there is no import cycle.
+import { resolveLayout } from "../layout";
+import { initialEnv } from "../normalize";
+import { collectPsdlRefs } from "../collect-refs";
 
 export { rendererToPsdl } from "./to-psdl";
 export { applyTlvInstances } from "./apply-tlv";
@@ -843,7 +851,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     if (f.chainCatalog && f.switchCases) delete f.switchCases;
   }
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
-    collectFreeRepeats(packet.body, fields, packet.defs);
+    collectFreeRepeats(packet, fields);
   const peekSwitches = collectPeekSwitches(packet.body, packet.defs);
   // A per-record `length` field stranded inside a PLAIN instantiable repeat
   // (dnsResponse `dnsRdLength`, pimHelloOptions `pimHelloOptLen`) has no editor
@@ -1837,9 +1845,8 @@ function repeatIsRecordBearing(repeat: Repeat): boolean {
  * the Repeat's own id (per normalize.ts).
  */
 function collectFreeRepeats(
-  body: PsdlPacket["body"],
+  packet: PsdlPacket,
   fields: RendererField[],
-  defs: Record<string, NamedStruct> | undefined,
 ): {
   freeRepeats: NonNullable<RendererPacket["freeRepeats"]>;
   boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>;
@@ -1849,6 +1856,8 @@ function collectFreeRepeats(
    *  collectRefSwitches suppresses it (bgpPathAttributes' attrTypeCode picker). */
   instantiableRepeatIds: Set<string>;
 } {
+  const body = packet.body;
+  const defs = packet.defs;
   const out: NonNullable<RendererPacket["freeRepeats"]> = [];
   const boundedOut: NonNullable<RendererPacket["boundedRepeats"]> = [];
   // Repeat ids whose count IS user-drivable via a surfaced control (populated
@@ -2008,6 +2017,20 @@ function collectFreeRepeats(
               bounded && containsBounded(c.element.fields)
                 ? tlvExtensionInnerSeeds(c.element)
                 : null;
+            // PLAIN-GROUP nested-bounded idiom (ocspRequest `requests`): the
+            // record wraps a per-record bounded whose inner scope is a plain
+            // group/leaf set with NO switch, which `tlvExtensionInnerSeeds`
+            // rejects (returns null). Without help the repeat falls into NEITHER
+            // freeRepeats NOR boundedRepeats and gets zero override surface, so
+            // every CertID the diagram shows is see-but-cannot-edit. Probe a
+            // crash-free per-record inner length + budget so the budget-derived
+            // count renders one representative record at load and grows as the
+            // user raises the length slider. Only attempted when the simpler
+            // tlvExt derive did not apply, so no existing preset regresses.
+            const nestedGroup =
+              bounded && containsBounded(c.element.fields) && !tlvExt
+                ? nestedGroupBoundedSeeds(packet, c, bounded)
+                : null;
             if (bounded && !containsBounded(c.element.fields)) {
               // Bounded eos/until: derive the count from the budget so raising
               // the length slider fills the scope. No stepper (would
@@ -2088,9 +2111,10 @@ function collectFreeRepeats(
               // conservative, and `innerScopeSeeds` makes the default record
               // render complete. The matching extType variant picker is surfaced
               // by collectRefSwitches once this repeat is instantiable. Excludes
-              // bgpPathAttributes (cond budget → tlvExtensionInnerSeeds null) and
-              // ocspRequest (plain group inner scope → null), preserving their
-              // existing suppression.
+              // bgpPathAttributes (cond budget → tlvExtensionInnerSeeds null,
+              // preserving its existing suppression) and ocspRequest (plain group
+              // inner scope → null here, but handled by the nestedGroup branch
+              // below instead).
               // Seed the OUTER budget so ONE representative record renders at
               // load — otherwise extensionsLen 0-fills, `floor(0/perRecord)=0`
               // records appear, and the surfaced extType variant picker is INERT
@@ -2115,6 +2139,27 @@ function collectFreeRepeats(
                 ...(budgetIsPlainRef
                   ? { defaultLength: tlvExt.perRecordBytes + bounded.prefix }
                   : {}),
+              });
+              instantiableRepeatIds.add(c.id);
+            } else if (bounded && nestedGroup) {
+              // PLAIN-GROUP nested-bounded record (ocspRequest `requests`):
+              // `nestedGroupBoundedSeeds` probed a crash-free per-record inner
+              // length (`innerScopeSeeds`) and an outer budget (`defaultLength`)
+              // that renders exactly one representative record at load. The
+              // budget-derived count (`floor((budget - prefix)/perRecordBytes)`)
+              // then grows the list as the user raises the length slider — the
+              // same single intuitive control every other bounded list uses.
+              boundedOut.push({
+                countKey: c.id,
+                lengthKey: bounded.key,
+                bytesExpr: bounded.bytes,
+                // perRecordBytes / prefixBytes are DERIVED from layout probes
+                // (b2 - b1 / b1 - recordBytes), not the static estimate, so the
+                // budget-driven count never over-consumes the scope.
+                perRecordBytes: nestedGroup.perRecordBytes,
+                prefixBytes: nestedGroup.prefixBytes,
+                innerScopeSeeds: nestedGroup.innerSeeds,
+                defaultLength: nestedGroup.defaultLength,
               });
               instantiableRepeatIds.add(c.id);
             } else if (
@@ -2527,8 +2572,10 @@ function boundedBudgetSiblingLengths(
  * Returns `null` when no such nested bounded exists, when ANY nested bounded's
  * budget is neither a sibling ref nor a sibling-ref `cond`, or when an inner
  * scope has no Switch (ocspRequest's plain `group` scope, whose exact-fill
- * berLength can't be safely force-seeded) — those stay non-auto-derived,
- * preserving the existing suppression.
+ * berLength can't be STATICALLY seeded — it is instead handled by
+ * `nestedGroupBoundedSeeds`, which probes a crash-free seed with
+ * `resolveLayout`) — those stay non-auto-derived here, preserving the existing
+ * suppression.
  */
 function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
   innerSeeds: { key: string; value: number }[];
@@ -2627,6 +2674,166 @@ function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
   if (!sawNestedBounded) return null;
   perRecordBytes += Math.ceil(prefixBits / 8);
   return { innerSeeds, perRecordBytes: Math.max(1, perRecordBytes) };
+}
+
+/** Upper bound on the per-record inner length probed by
+ *  `nestedGroupBoundedSeeds`, so a pathological record can't run the search
+ *  unbounded. A representative CertID-shaped record fits well under this. */
+const NESTED_GROUP_MAX_INNER_SEED = 64;
+/** Per-record budget slack searched past the inner-length seed when probing the
+ *  smallest budget that renders a given record count (covers the record's
+ *  type/length prefix and any berLength encoding growth). */
+const NESTED_GROUP_BUDGET_PROBE_SPAN = 16;
+
+/**
+ * Seed search for the PLAIN-GROUP nested-bounded idiom (ocspRequest `requests`):
+ * a bounded eos repeat whose record wraps a PER-RECORD nested `bounded` sized by
+ * a sibling length field, whose inner scope is a plain group / leaf set with NO
+ * Switch. `tlvExtensionInnerSeeds` deliberately returns null for this shape
+ * (its exact-fill berLengths and trailing `remaining` field can't be derived
+ * statically — only specific inner-length values render byte-aligned without
+ * tripping normalize's mid-byte `remaining` guard), so without this the repeat
+ * lands in NEITHER freeRepeats NOR boundedRepeats and gets zero override surface:
+ * the `reqListLength` slider is shown but instantiates no records, and every
+ * CertID the diagram is shaped to show is see-but-cannot-edit.
+ *
+ * Because the crash-free inner length is not statically derivable, we PROBE it
+ * with `resolveLayout` (the same path PacketViewer runs): for the smallest inner
+ * length seed `S`, find the smallest outer budget that renders exactly one
+ * record (`b1`) and exactly two (`b2`) without throwing. The on-wire record size
+ * is `b2 - b1` (perRecordBytes) and the fixed outer overhead is `b1 -
+ * recordBytes` (prefixBytes), both DERIVED from layout so the budget-driven
+ * count `floor((budget - prefix)/perRecord)` exactly tracks how many records fit
+ * and never over-consumes the scope. `defaultLength = b1` seeds one
+ * representative record at load.
+ *
+ * Returns null (preserving the existing suppression) when the shape doesn't
+ * match, the budget isn't a plain `ref(lengthKey)` (so seeding the field == the
+ * budget), or no crash-free seed renders a record within the probe bounds.
+ */
+function nestedGroupBoundedSeeds(
+  packet: PsdlPacket,
+  repeat: Extract<Container, { kind: "repeat" }>,
+  bounded: { key: string; prefix: number; bytes: Expr },
+): {
+  innerSeeds: { key: string; value: number }[];
+  perRecordBytes: number;
+  prefixBytes: number;
+  defaultLength: number;
+} | null {
+  // The outer budget must be exactly `ref(lengthKey)`; only then does seeding
+  // the length field equal seeding the budget so `defaultLength` is meaningful.
+  if (bounded.bytes.kind !== "ref" || bounded.bytes.field !== bounded.key) {
+    return null;
+  }
+  const element = repeat.element;
+  // The record must wrap EXACTLY ONE direct-child nested bounded, sized by a
+  // single ref to a sibling field, whose inner scope holds NO Switch (the
+  // tlvExtensionInnerSeeds case) and NO deeper nested bounded (can't be safely
+  // probed as a single inner length). Anything else stays non-auto-derived.
+  const siblingIds = new Set<string>();
+  collectRecordFieldIds(element.fields, siblingIds);
+  let inner: Extract<Container, { kind: "bounded" }> | null = null;
+  for (const c of element.fields) {
+    if (isField(c)) continue;
+    if (c.kind !== "bounded") {
+      // A non-bounded container may still hide a nested bounded deeper; that is
+      // not the flat per-record shape we can probe — bail.
+      if (containsBounded([c])) return null;
+      continue;
+    }
+    if (inner) return null; // more than one nested bounded — not this idiom
+    inner = c;
+  }
+  if (!inner) return null;
+  const innerRefs = exprRefs(inner.bytes);
+  if (innerRefs.length !== 1 || !siblingIds.has(innerRefs[0])) return null;
+  const innerKey = innerRefs[0];
+  if (containsSwitch(inner.fields)) return null;
+  if (inner.fields.some((f) => !isField(f) && containsBounded([f])))
+    return null;
+
+  // Build the same baseline env PacketViewer / the renderer-helpers use: preset
+  // defaults plus 0-fill for every unresolved ref. We then overlay the repeat
+  // count, the outer budget, and the candidate inner length, and check the
+  // record actually renders without throwing.
+  // The eos count is read straight from `env[repeat.id]`; the repeat does NOT
+  // self-limit to the budget, so an over-large count over-consumes the scope and
+  // throws. We therefore probe with the EXACT count and find the smallest budget
+  // that renders that many records cleanly (no over-consume, no mid-byte
+  // `remaining` throw). `recordFieldIds` are the declared record fields; a
+  // rendered cell carries a per-instance suffix (`requestSeqTag#0`).
+  const recordFieldIds = siblingIds;
+  const rendersCount = (
+    innerSeed: number,
+    budget: number,
+    count: number,
+  ): boolean => {
+    const env = new Map<string, number>(initialEnv(packet));
+    for (const r of collectPsdlRefs(packet)) if (!env.has(r)) env.set(r, 0);
+    env.set(repeat.id, count);
+    env.set(bounded.key, budget);
+    env.set(innerKey, innerSeed);
+    try {
+      const { cells } = resolveLayout(packet, { env });
+      return cells.some((c) => {
+        const id = c.field.id;
+        const hash = id.indexOf("#");
+        return hash !== -1 && recordFieldIds.has(id.slice(0, hash));
+      });
+    } catch {
+      return false;
+    }
+  };
+  // Smallest budget that renders exactly `count` records at this inner seed.
+  const minBudgetFor = (innerSeed: number, count: number): number => {
+    const max =
+      bounded.prefix + count * (innerSeed + NESTED_GROUP_BUDGET_PROBE_SPAN);
+    for (let budget = 1; budget <= max; budget++) {
+      if (rendersCount(innerSeed, budget, count)) return budget;
+    }
+    return 0;
+  };
+  for (
+    let innerSeed = 1;
+    innerSeed <= NESTED_GROUP_MAX_INNER_SEED;
+    innerSeed++
+  ) {
+    // The smallest budget for one record (b1) and for two (b2). The on-wire
+    // record size is `b2 - b1`, and the fixed outer overhead is `b1 -
+    // recordBytes` — both DERIVED from layout so the budget-driven count
+    // `floor((budget - prefix)/perRecord)` exactly tracks how many records fit
+    // and never over-consumes the scope.
+    const b1 = minBudgetFor(innerSeed, 1);
+    if (!b1) continue;
+    const b2 = minBudgetFor(innerSeed, 2);
+    if (!b2 || b2 <= b1) continue;
+    const recordBytes = b2 - b1;
+    const prefixBytes = Math.max(0, b1 - recordBytes);
+    return {
+      innerSeeds: [{ key: innerKey, value: innerSeed }],
+      perRecordBytes: recordBytes,
+      prefixBytes,
+      defaultLength: b1,
+    };
+  }
+  return null;
+}
+
+/** True if any container in the tree is (or wraps) a `switch`. */
+function containsSwitch(containers: Container[]): boolean {
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "switch") return true;
+    if (c.kind === "group" && containsSwitch(c.children)) return true;
+    if (c.kind === "bounded" && containsSwitch(c.fields)) return true;
+    if (c.kind === "optional" && containsSwitch([c.container])) return true;
+    if (c.kind === "repeat" && containsSwitch(c.element.fields)) return true;
+    if (c.kind === "encrypted" && containsSwitch(c.plaintext.fields)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Representative byte size we want a flat per-record `bytes(ref X)` value to
