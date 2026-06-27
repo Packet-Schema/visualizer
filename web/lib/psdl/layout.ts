@@ -13,6 +13,7 @@ import type {
   NormalizedField,
   PacketEnv,
   Packet as PsdlPacket,
+  VarintEncoding,
   ViewMode,
 } from "./types";
 import {
@@ -92,6 +93,12 @@ export function resolveLayout(
   // additive — `NormalizedField[]` itself is unchanged, so RFC ASCII /
   // JSON / other consumers keep the flat structure.
   const groups = groupConsecutiveByContainer(norm.fields);
+  // Dynamic-width metadata for leaves that live inside switch cases / optionals
+  // / repeats — `psdlToRenderer` never reaches them, so without stamping these
+  // flags onto the synthetic cell field a click resolves (via resolveFromCells)
+  // to a field with no width hint and OverridePanel shows no WidthPicker even
+  // though `env[fieldId]` genuinely drives the cell width.
+  const dynWidth = collectDynamicWidthFlags(packet);
   for (const g of groups) {
     if (g.kind === "flat") {
       const nf = g.field;
@@ -101,6 +108,7 @@ export function resolveLayout(
         bits: nf.bits,
         ...(nf.category ? { category: nf.category } : {}),
         ...(nf.doc ? { description: nf.doc } : {}),
+        ...(dynWidth.get(stripRepeatTag(nf.id)) ?? {}),
       };
       bitPos = emitField(synthetic, nf, bitPos, packet.rowBits, cells);
       continue;
@@ -252,6 +260,84 @@ function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
     }
   };
   visit(packet.body);
+}
+
+/**
+ * Dynamic-width metadata for a single leaf field, mirroring the
+ * `varintEncoding` / `isBerLength` / `isDelimited` flags that
+ * `plainFieldToRenderer` stamps onto top-level renderer mirror fields.
+ */
+type DynamicWidthFlags = {
+  varintEncoding?: VarintEncoding;
+  isBerLength?: boolean;
+  isDelimited?: boolean;
+};
+
+/**
+ * Precompute a `fieldId -> DynamicWidthFlags` map by walking EVERY container in
+ * the source PSDL packet — including switch cases, optionals and repeats that
+ * `flattenForMirror` (and therefore `psdlToRenderer`) never descends into.
+ *
+ * Why this exists: a varint / berLength / delimited leaf that lives inside a
+ * switch case (quicLong `tokenLength` / `length`), an optional or a repeat
+ * (kerberosAsReq BER lengths) is a visible, genuinely-editable cell — its wire
+ * width is overridable via `env[fieldId]` (bridged to the `__varintBits__<id>`
+ * etc. key by `bridgeDynamicWidthKeys`). But it never becomes a renderer mirror
+ * field, so a click resolves through `resolveFromCells` to the synthetic cell
+ * field, which — unless we stamp these flags — carries no dynamic-width hint and
+ * OverridePanel renders no WidthPicker (see-but-cannot-edit).
+ *
+ * `NormalizedField` does not carry the PSDL type, so the flags have to be
+ * derived from the PSDL packet and looked up by (repeat-tag-stripped) id when
+ * the synthetic layout field is built in `emitField`'s caller.
+ */
+function collectDynamicWidthFlags(
+  packet: PsdlPacket,
+): Map<string, DynamicWidthFlags> {
+  const map = new Map<string, DynamicWidthFlags>();
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        let flags: DynamicWidthFlags | null = null;
+        if (c.type.kind === "varint")
+          flags = { varintEncoding: c.type.encoding };
+        else if (c.type.kind === "berLength") flags = { isBerLength: true };
+        else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
+          flags = { isDelimited: true };
+        if (flags) map.set(c.id, flags);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        // virtual / align / ref expose no dynamic-width leaf to flag.
+      }
+    }
+  };
+  visit(packet.body);
+  return map;
+}
+
+/** Strip the `#a(_b)*` Repeat-iteration decoration so a normalized field id
+ *  maps back to its authored PSDL id (mirrors selection-resolver's tag). */
+function stripRepeatTag(id: string): string {
+  return id.replace(/#\d+(?:_\d+)*$/, "");
 }
 
 type GroupedRun =

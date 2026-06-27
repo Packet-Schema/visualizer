@@ -13,6 +13,7 @@ import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 
 let activeRoot: Root | null = null;
 let activeContainer: HTMLElement | null = null;
@@ -490,5 +491,83 @@ describe("OverridePanel widgets", () => {
       eight.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(onChange).toHaveBeenCalledWith("hostname", 8);
+  });
+
+  // A varint / berLength leaf that lives INSIDE a switch case / optional /
+  // repeat never becomes a renderer mirror field (psdlToRenderer only walks
+  // flattenForMirror(body) top-level). Its width IS editable — env[fieldId]
+  // bridges to __varintBits__/__berLen__ in layout.ts — so a click must
+  // surface a WidthPicker via the diagram cells, not the read-only empty
+  // state (see-but-cannot-edit).
+  function packetViewerEnv(src: (typeof PRESETS)[string]) {
+    const env = new Map<string, number>();
+    for (const [k, v] of initialEnv(src!)) env.set(k, v);
+    for (const r of collectPsdlRefs(src!)) if (!env.has(r)) env.set(r, 0);
+    seedDynamicWidthDefaults(src!, env);
+    return env;
+  }
+
+  it("surfaces a varint width picker for a switch-case-nested leaf (quicLong tokenLength) (#width)", async () => {
+    const src = PRESETS.quicLong!;
+    const packet = psdlToRenderer(src);
+    // No mirror field exists for the switch-nested leaf...
+    expect(packet.fields.some((f) => f.id === "tokenLength")).toBe(false);
+    // ...but the seeded env makes it a visible diagram cell.
+    const { cells } = resolveLayout(src, { env: packetViewerEnv(src) });
+    expect(cells.some((c) => c.field.id === "tokenLength")).toBe(true);
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="tokenLength"
+        controllers={{ tokenLength: 8 }}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(
+      group,
+      "switch-nested varint must surface a width radiogroup",
+    ).not.toBeNull();
+    expect(container.textContent ?? "").toMatch(/Varint width \(quic\)/i);
+    const buttons = Array.from(
+      group!.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    // quic ladder is bits; the seeded 8 bits shows "1B".
+    expect(buttons.map((b) => b.textContent)).toContain("1B");
+    const thirtyTwo = buttons.find((b) => b.textContent === "4B")!;
+    await act(async () => {
+      thirtyTwo.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith("tokenLength", 32);
+  });
+
+  it("surfaces a BER length width picker for a repeat-nested leaf (kerberosAsReq padataCtxLength) (#width)", async () => {
+    const src = PRESETS.kerberosAsReq!;
+    const packet = psdlToRenderer(src);
+    expect(packet.fields.some((f) => f.id === "padataCtxLength")).toBe(false);
+    const { cells } = resolveLayout(src, { env: packetViewerEnv(src) });
+    expect(cells.some((c) => c.field.id === "padataCtxLength")).toBe(true);
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="padataCtxLength"
+        controllers={{}}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(
+      group,
+      "repeat-nested berLength must surface a width radiogroup",
+    ).not.toBeNull();
+    expect(container.textContent ?? "").toMatch(/BER length width/i);
   });
 });
