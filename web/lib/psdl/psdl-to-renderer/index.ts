@@ -2465,6 +2465,36 @@ function elementHasRecordSwitch(containers: Container[]): boolean {
 }
 
 /**
+ * Return the sibling LENGTH field ids that a nested-bounded budget `bytes`
+ * selects between, or `null` if it is not a sibling-length budget we can seed.
+ * Accepts:
+ *   - a plain `ref(K)` where K is a sibling field (tlsClientHello `extData`),
+ *   - a `cond(test, t, f)` whose `t` and `f` are each a plain sibling `ref`
+ *     (BGP `bgpAttrValueScope(cond attrExtLen ? bgpAttrLength16 : bgpAttrLength8)`
+ *     — the Extended-Length idiom). The `test` flag picks which length is live;
+ *     both are seeded so whichever is selected fits the representative arm.
+ * Any richer shape (multi-term arithmetic, a non-ref cond branch, a ref to a
+ * non-sibling) returns `null`, leaving the record non-auto-derived.
+ */
+function boundedBudgetSiblingLengths(
+  bytes: Expr,
+  siblingIds: Set<string>,
+): string[] | null {
+  if (bytes.kind === "ref") {
+    return siblingIds.has(bytes.field) ? [bytes.field] : null;
+  }
+  if (bytes.kind === "cond") {
+    if (bytes.t.kind !== "ref" || bytes.f.kind !== "ref") return null;
+    if (!siblingIds.has(bytes.t.field) || !siblingIds.has(bytes.f.field)) {
+      return null;
+    }
+    // Dedup in case both branches name the same length field.
+    return [...new Set([bytes.t.field, bytes.f.field])];
+  }
+  return null;
+}
+
+/**
  * Detect a TLV-EXTENSION-style record: a repeat element shaped like
  * `[typeField, lengthField, …, bounded innerScope(ref lengthField){ switch … }]`
  * — tlsClientHello's extensions, where each record is
@@ -2480,17 +2510,25 @@ function elementHasRecordSwitch(containers: Container[]): boolean {
  * would inflate the per-record estimate to ~64 B and hide records behind a huge
  * length plateau).
  *
- * Returns, when every direct-child nested bounded has a `ref(K)`-to-sibling
- * budget AND holds a Switch (the variant idiom):
+ * Returns, when every direct-child nested bounded has a sibling-length budget
+ * AND holds a Switch (the variant idiom):
  *   - `innerSeeds`: `{ key: K, value: <representative-arm bytes> }` per inner
  *     scope — the inner length seeded so cases[0] fits,
  *   - `perRecordBytes`: the record's byte size with each inner scope charged its
  *     seeded (representative-arm) budget — keeps the outer count conservative.
- * Returns `null` when no such nested bounded exists, when ANY nested bounded is
- * NOT a single-ref-to-sibling budget (bgpPathAttributes' `cond` budget), or when
- * an inner scope has no Switch (ocspRequest's plain `group` scope, whose
- * exact-fill berLength can't be safely force-seeded) — those stay
- * non-auto-derived, preserving the existing suppression.
+ * The sibling-length budget is either a plain `ref(K)` (tlsClientHello's
+ * `extData(ref extLen)`) OR a `cond(test, t: ref(A), f: ref(B))` selecting
+ * between two sibling length fields by a sibling flag — the BGP Extended-Length
+ * idiom (bgpPathAttributes' `bgpAttrValueScope(cond attrExtLen ? bgpAttrLength16
+ * : bgpAttrLength8)`). For the cond form BOTH branch lengths are seeded so
+ * whichever the flag selects (attrExtLen defaults 0 → the 1-byte length) fits the
+ * representative arm; the inner scope is one physical region so it is charged
+ * `innerBytes` once.
+ * Returns `null` when no such nested bounded exists, when ANY nested bounded's
+ * budget is neither a sibling ref nor a sibling-ref `cond`, or when an inner
+ * scope has no Switch (ocspRequest's plain `group` scope, whose exact-fill
+ * berLength can't be safely force-seeded) — those stay non-auto-derived,
+ * preserving the existing suppression.
  */
 function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
   innerSeeds: { key: string; value: number }[];
@@ -2526,9 +2564,11 @@ function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
       continue;
     }
     sawNestedBounded = true;
-    // Budget must be a single ref to a sibling LENGTH field of this record.
-    const refs = exprRefs(c.bytes);
-    if (refs.length !== 1 || !siblingIds.has(refs[0])) return null;
+    // Budget must select between sibling LENGTH field(s) of this record — a
+    // plain `ref(K)` (tlsClientHello) or a `cond ? ref(A) : ref(B)` flag
+    // (BGP Extended-Length). Anything else stays non-auto-derived.
+    const budgetLengthKeys = boundedBudgetSiblingLengths(c.bytes, siblingIds);
+    if (budgetLengthKeys === null) return null;
     // The inner scope must carry a Switch (the variant idiom). A plain
     // group/leaf inner scope (ocspRequest) is excluded — its exact-fill
     // length can't be force-seeded without tripping a `remaining` mismatch.
@@ -2539,30 +2579,49 @@ function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
     if (!sw) return null;
     // A nested bounded inside the inner scope can't be safely seeded either.
     if (c.fields.some((f) => !isField(f) && containsBounded([f]))) return null;
-    // Size the inner scope by the REPRESENTATIVE arm: the first numeric case
-    // (cases[0]) the refSwitch picker seeds. Other (non-switch) siblings in the
-    // inner scope add their own bytes. This avoids the `_`/opaque `remaining`
-    // arm's 64-byte allowance dominating the estimate.
-    const firstNumericKey = Object.keys(sw.cases).find(
+    // Size the inner scope by the LARGEST NUMERIC-case arm — every numeric case
+    // is a value the surfaced refSwitch picker can select, so the seeded inner
+    // length must fit whichever the user picks, not just cases[0]. Sizing by the
+    // first arm alone (BGP's `bgpAttrValue`: ORIGIN=1 B but NEXT_HOP=4 B) seeds a
+    // scope too small for the others, and picking one OVER-CONSUMES the inner
+    // bounded → normalize throws → the diagram freezes. The `_`/opaque
+    // `remaining` arm is excluded (its 64 B allowance would dominate the
+    // per-record estimate and bury every record behind a huge length plateau);
+    // it stays reachable by raising the length slider. Other (non-switch)
+    // siblings in the inner scope add their own bytes once.
+    const numericKeys = Object.keys(sw.cases).filter(
       (k) => firstCaseKeyValue(k) !== null,
     );
-    const repArm = firstNumericKey ? sw.cases[firstNumericKey] : undefined;
+    let switchBytes = 0;
+    for (const k of numericKeys) {
+      // Size each arm by the bytes it MINIMALLY needs — its fixed-width fields
+      // only. A variable-length value inside the arm flexes to fill the scope (a
+      // `remaining`/delimited/sibling-ref `bytes` like MP_REACH's
+      // `bgpMpReachRest = bytes(remaining)` consumes leftover budget, it does not
+      // demand more), so it imposes no minimum. Using estimateElementBytes here
+      // would charge such a value the 64 B unbounded allowance, blowing the seed
+      // up to ~67 B and burying every record behind a huge length plateau. The
+      // seed must instead be the LARGEST fixed arm so any variant the picker
+      // selects (ORIGIN 1 B … AGGREGATOR 6 B) fits the seeded scope without
+      // over-consuming it.
+      switchBytes = Math.max(switchBytes, armMinFixedBytes(sw.cases[k].fields));
+    }
     let innerBytes = 0;
     for (const f of c.fields) {
       if (f === sw) {
-        // Size the switch by the representative arm. Its value-length refs
-        // (SNI's `host_name = bytes(ref nameLen)`) point at siblings inside the
-        // same arm, so estimateElementBytes charges them the small structural
-        // size rather than the full unbounded allowance.
-        innerBytes += repArm
-          ? estimateElementBytes({ fields: repArm.fields })
-          : 0;
+        innerBytes += switchBytes;
       } else {
         innerBytes += estimateElementBytes({ fields: [f] });
       }
     }
     innerBytes = Math.max(1, innerBytes);
-    innerSeeds.push({ key: refs[0], value: innerBytes });
+    // Seed every length field the budget can select (both branches of a cond),
+    // so whichever the live flag picks fits the representative arm. The inner
+    // scope is one physical region, so it is charged `innerBytes` ONCE regardless
+    // of how many length keys nominally size it.
+    for (const key of budgetLengthKeys) {
+      innerSeeds.push({ key, value: innerBytes });
+    }
     perRecordBytes += innerBytes;
   }
   if (!sawNestedBounded) return null;
@@ -2734,6 +2793,40 @@ function estimateElementBytes(struct: { fields: Container[] }): number {
     return total;
   };
   return Math.max(1, Math.ceil(bitsOf(struct.fields) / 8));
+}
+
+/**
+ * The MINIMUM whole bytes a switch arm's content occupies: the sum of its
+ * FIXED-width leaf fields only. Every variable-length leaf (a `bytes(remaining)`
+ * / delimited / sibling-ref value, a varint, a nested repeat) is charged 0 — it
+ * flexes to fill whatever budget the enclosing bounded scope provides and so
+ * imposes no minimum. Used to seed a per-record inner-bounded length large enough
+ * for the LARGEST selectable arm without over-counting a `remaining`-style value
+ * as the 64 B unbounded allowance (which would bury records behind a huge length
+ * plateau). Descends through transparent/structural containers; a nested Switch
+ * contributes its largest arm.
+ */
+function armMinFixedBytes(containers: Container[]): number {
+  let bits = 0;
+  for (const c of containers) {
+    if (isField(c)) {
+      const w = typeBits(c.type);
+      if (w > 0) bits += w; // fixed width; variable leaves contribute 0
+      continue;
+    }
+    if (c.kind === "group") bits += armMinFixedBytes(c.children) * 8;
+    else if (c.kind === "bounded") bits += armMinFixedBytes(c.fields) * 8;
+    else if (c.kind === "optional") bits += armMinFixedBytes([c.container]) * 8;
+    else if (c.kind === "switch") {
+      let maxCase = 0;
+      for (const s of Object.values(c.cases)) {
+        maxCase = Math.max(maxCase, armMinFixedBytes(s.fields));
+      }
+      bits += maxCase * 8;
+    }
+    // repeat / encrypted / align / virtual impose no minimum.
+  }
+  return Math.ceil(bits / 8);
 }
 
 /**

@@ -128,34 +128,41 @@ describe("collectRefSwitches", () => {
     expect(dnsKeys).toContain("dnsRrType");
   });
 
-  it("suppresses a refSwitch whose enclosing repeat has no count control", () => {
-    // critical: bgpUpdateFull's bgpPathAttributes repeat wraps a PER-RECORD
-    // nested bounded scope, so collectFreeRepeats deliberately leaves it
-    // non-derived — it appears in NEITHER freeRepeats NOR boundedRepeats. With
-    // no control able to instantiate even one path-attribute record, its
-    // attrTypeCode "Record variants" picker could never change the diagram at
-    // any value of bgpTotalPathAttributeLength or attrTypeCode. A visible
-    // control with no possible effect must not be shown, so it is suppressed.
+  it("surfaces the bgpUpdateFull attrTypeCode picker on its budget-derived repeat", () => {
+    // critical: bgpUpdateFull's `bgpPathAttributes` eos repeat lives inside
+    // `bounded(bgpTotalPathAttributeLength)` and each record wraps a PER-RECORD
+    // nested `bounded bgpAttrValueScope` whose budget is a `cond` selecting
+    // between `bgpAttrLength16` / `bgpAttrLength8` (the BGP Extended-Length
+    // idiom). collectFreeRepeats now recognises that cond-of-sibling-refs budget
+    // as a TLV-extension inner scope, so the repeat becomes a budget-derived
+    // boundedRepeat (instantiable) and its attrTypeCode "Record variants" picker
+    // is surfaced. Previously the entire path-attributes payload — the defining
+    // body of a BGP UPDATE — was see-but-cannot-edit (in neither freeRepeats nor
+    // boundedRepeats, with no variant picker and an inert length slider).
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
-    const repeatIds = new Set([
-      ...(bgp.freeRepeats ?? []).map((r) => r.countKey),
-      ...(bgp.boundedRepeats ?? []).map((r) => r.countKey),
-    ]);
-    expect(repeatIds.has("bgpPathAttributes")).toBe(false);
+    const br = (bgp.boundedRepeats ?? []).find(
+      (r) => r.countKey === "bgpPathAttributes",
+    );
+    expect(br).toBeTruthy();
+    expect(br!.lengthKey).toBe("bgpTotalPathAttributeLength");
+    // Both Extended-Length branches are seeded so whichever the attrExtLen flag
+    // selects fits the representative arm.
+    const seedKeys = new Set((br!.innerScopeSeeds ?? []).map((s) => s.key));
+    expect(seedKeys.has("bgpAttrLength8")).toBe(true);
+    expect(seedKeys.has("bgpAttrLength16")).toBe(true);
+    // A representative outer length seed so >=1 record renders at load.
+    expect(br!.defaultLength).toBeGreaterThan(0);
     const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
-    expect(bgpKeys).not.toContain("attrTypeCode");
+    expect(bgpKeys).toContain("attrTypeCode");
 
-    // Sanity: a refSwitch on an instantiable repeat is NOT suppressed, so the
-    // suppression is specific to the inert case (dnsResponse's dnsRrType stays).
+    // Sanity: a refSwitch on an instantiable repeat is NOT suppressed
+    // (dnsResponse's dnsRrType stays).
     const dns = psdlToRenderer(PRESETS.dnsResponse!);
     expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
 
-    // Contrast: tlsClientHello's `extType` IS surfaced. Its `extensions` repeat
-    // has the same eos-in-bounded-with-nested-scope shape, but UNLIKE bgp the
-    // nested scope is a single-ref-to-sibling `bounded extData(ref extLen)` with
-    // a Switch body (the TLV-extension idiom), so collectFreeRepeats derives a
-    // budget-driven boundedRepeat (seeding `extLen` so the default record fits).
-    // The repeat is therefore instantiable and the variant picker is live.
+    // tlsClientHello's `extType` shares the same eos-in-bounded-with-nested-scope
+    // shape — its single-ref-to-sibling `extData(ref extLen)` is the plain
+    // TLV-extension idiom — and stays surfaced too.
     const tls = psdlToRenderer(PRESETS.tlsClientHello!);
     const tlsRepeatIds = new Set([
       ...(tls.freeRepeats ?? []).map((r) => r.countKey),
