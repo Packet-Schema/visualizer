@@ -23,6 +23,7 @@ import type {
   Constraint,
   Container,
   Expr,
+  Field as PsdlField,
   Group,
   NamedStruct,
   Packet as PsdlPacket,
@@ -320,6 +321,108 @@ function collectOptionalLengthGates(
 }
 
 /**
+ * Collect, for each scope, the ids of `length`-category int/bits fields whose
+ * value directly sizes a SIBLING `bytes(ref <thisId>)` payload (or a sibling
+ * `bounded.bytes` scope whose sole ref is `<thisId>`). These are the simplest
+ * possible length relations: a plain length cell immediately followed by a
+ * variable region it measures, with NO top-level `constraint` and NO multi-ref
+ * arithmetic. The constraint-driven path (`constraintToController`) and the
+ * single-ref bounded path (`collectBoundedControllers`) both only stamp
+ * `controlsLength` onto a field that is ALSO a top-level renderer cell (or a
+ * Group subfield). When the length field lives inside a Switch case
+ * (ancp `ancpAdjTotalLength`, oncRpc `credLength`/`verfLength`) it is neither,
+ * so it — and the payload it sizes — would surface as a read-only display the
+ * user can SEE growing/shrinking but cannot drive. Surfacing the length field
+ * as a packet-level `lengthController` (keyed on `env[thisId]`) gives the user
+ * the slider that the bounded-scope path gives IHL / Data Offset.
+ *
+ * Only the *direct siblings* of the length field are inspected: a length that
+ * sizes a payload in a different scope is left to the bounded / constraint
+ * paths (where the scope nesting already expresses the relation). The result
+ * maps the length field id to its declaring PSDL field so the caller can build
+ * a slider with the correct bit width / default.
+ */
+function collectSiblingLengthControllers(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  acc: Map<string, PsdlField>,
+  insideRepeat = false,
+): void {
+  // A length field inside a Repeat record is a PER-RECORD length owned by the
+  // TLV / chain / bounded-repeat editor (e.g. dhcpv4 `optionLength`, tlv option
+  // lengths). Surfacing a packet-level slider keyed on its env id would fight
+  // that editor (it sizes every synthesized record at once / is overwritten by
+  // the per-instance value), so the sibling-length surface is restricted to
+  // length fields NOT inside any repeat — exactly the see-but-cannot-edit cells
+  // sitting in a plain Switch case (ancp / oncRpc).
+  if (!insideRepeat) {
+    // Within this sibling list, gather the ids referenced as a byte sizer by a
+    // sibling `bytes(ref X)` value or a sibling single-ref `bounded.bytes`.
+    const sizedBy = new Set<string>();
+    const lengthFields = new Map<string, PsdlField>();
+    for (const c of containers) {
+      if (isField(c)) {
+        const t = c.type as {
+          kind?: string;
+          n?: { kind?: string; field?: unknown };
+        };
+        if (
+          t.kind === "bytes" &&
+          t.n?.kind === "ref" &&
+          typeof t.n.field === "string"
+        ) {
+          sizedBy.add(t.n.field);
+        }
+        // A plain `length`-category int/bits cell is a controller candidate.
+        if (
+          (c.type.kind === "int" || c.type.kind === "bits") &&
+          c.category === "length"
+        ) {
+          lengthFields.set(c.id, c);
+        }
+        continue;
+      }
+      if (c.kind === "bounded") {
+        const ref = singleRefController(c.bytes);
+        if (ref) sizedBy.add(ref);
+      }
+    }
+    for (const [id, field] of lengthFields) {
+      if (sizedBy.has(id) && !acc.has(id)) acc.set(id, field);
+    }
+  }
+  // Recurse into every child scope; each gets its own sibling analysis. A
+  // Repeat element (and everything below it) is flagged `insideRepeat`.
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "bounded") {
+      collectSiblingLengthControllers(c.fields, defs, acc, insideRepeat);
+    } else if (c.kind === "ref") {
+      const def = defs?.[c.ref];
+      if (def)
+        collectSiblingLengthControllers(def.fields, defs, acc, insideRepeat);
+    } else if (c.kind === "group") {
+      collectSiblingLengthControllers(c.children, defs, acc, insideRepeat);
+    } else if (c.kind === "optional") {
+      collectSiblingLengthControllers([c.container], defs, acc, insideRepeat);
+    } else if (c.kind === "repeat") {
+      collectSiblingLengthControllers(c.element.fields, defs, acc, true);
+    } else if (c.kind === "switch") {
+      for (const struct of Object.values(c.cases)) {
+        collectSiblingLengthControllers(struct.fields, defs, acc, insideRepeat);
+      }
+    } else if (c.kind === "encrypted") {
+      collectSiblingLengthControllers(
+        c.plaintext.fields,
+        defs,
+        acc,
+        insideRepeat,
+      );
+    }
+  }
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -461,6 +564,36 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     if (!lengthControllers.some((existing) => existing.id === lc.id)) {
       lengthControllers.push(lc);
     }
+  }
+  // A plain `length` cell that directly sizes a sibling `bytes(ref <thisId>)`
+  // payload (or a sibling single-ref `bounded.bytes` scope) but lives inside a
+  // Switch case is neither a top-level renderer cell nor a Group subfield, so
+  // neither the constraint path nor the bounded-controller path above can stamp
+  // it. Both the length cell AND the payload it measures would render read-only
+  // (ancp `ancpAdjTotalLength` → `ancpCapabilities`; oncRpc `credLength`/
+  // `verfLength` → `credBody`/`verfBody`). Surface each as a packet-level length
+  // controller keyed on `env[thisId]` so the user gets the same slider as IHL.
+  const siblingLengthFields = new Map<string, PsdlField>();
+  collectSiblingLengthControllers(
+    packet.body,
+    packet.defs,
+    siblingLengthFields,
+  );
+  const alreadyControlled = new Set<string>([
+    ...fields.map((f) => f.id),
+    ...lengthControllers.map((lc) => lc.id),
+  ]);
+  for (const [id, field] of siblingLengthFields) {
+    if (alreadyControlled.has(id)) continue;
+    const bits = typeBits(field.type);
+    lengthControllers.push({
+      id,
+      name: field.name ?? id,
+      bits,
+      controlsLength: id,
+      max: bits > 0 ? 2 ** bits - 1 : undefined,
+      defaultValue: field.defaultValue,
+    });
   }
   attachOverrideMetadata(packet.body, fields, packet.defs);
   // A chain's base field carries a chainCatalog (the chain editor's surface);
