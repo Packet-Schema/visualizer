@@ -17,7 +17,7 @@
 //   - `./shared.ts`    — `typeBits` + helpers used across the modules
 
 import { isField } from "../utils";
-import { exprRefs, peekEnvKey } from "../expr";
+import { evalExprOr, exprRefs, peekEnvKey } from "../expr";
 import { isBytesDelimited } from "../normalize";
 import type {
   Constraint,
@@ -1903,12 +1903,45 @@ function collectFreeRepeats(
               // over-consume). The simple case — the record carries no nested
               // bounded — is handled here; the TLV-extension case (record wraps
               // its own per-record bounded) is handled just below.
+              //
+              // FLAT TLV-shaped record (stun stunAttrLen→stunAttrValue, pppoe
+              // tagLength→tag value, bgpOpen parmLen→param value, cops, gist,
+              // hip, ipfix, bgpLs, tlsCertificate): the record is a flat triplet
+              // `[type, length X, value = bytes(ref X), …]` with NO nested
+              // bounded — so it is not isTlvRepeat (not a single switch) and not
+              // the TLV-extension idiom (no per-record bounded). Without help the
+              // per-record length X defaults to 0, so every record's value =
+              // bytes(ref X) stays width-0 and INVISIBLE — the user sees each
+              // record's Type and Length=0 cells but can never make the VALUE
+              // appear (see-but-cannot-edit). Detect a flat sibling-sized value
+              // and seed its length field to a representative size so ONE record's
+              // value renders; `perRecordBytes` charges the seeded value bytes so
+              // the budget-derived count stays conservative.
+              const flat = flatTlvInnerSeeds(c.element);
+              const budgetIsPlainRefFlat =
+                bounded.bytes.kind === "ref" &&
+                bounded.bytes.field === bounded.key;
+              const perRecordBytesFlat = flat
+                ? flat.perRecordBytes
+                : estimateElementBytes(c.element);
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: bounded.key,
                 bytesExpr: bounded.bytes,
-                perRecordBytes: estimateElementBytes(c.element),
+                perRecordBytes: perRecordBytesFlat,
                 prefixBytes: bounded.prefix,
+                ...(flat && flat.innerSeeds.length > 0
+                  ? { innerScopeSeeds: flat.innerSeeds }
+                  : {}),
+                // Seed the OUTER budget so ONE representative record renders at
+                // load (mirrors the TLV-extension defaultLength): otherwise the
+                // budget 0-fills, `floor(0/perRecord)=0` records appear, and the
+                // seeded inner length never takes effect. Only safe when the
+                // budget is a plain `ref(lengthKey)` (so seeding the field equals
+                // seeding the budget).
+                ...(flat && flat.innerSeeds.length > 0 && budgetIsPlainRefFlat
+                  ? { defaultLength: perRecordBytesFlat + bounded.prefix }
+                  : {}),
               });
               instantiableRepeatIds.add(c.id);
             } else if (bounded && tlvExt) {
@@ -2352,6 +2385,127 @@ function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
   }
   if (!sawNestedBounded) return null;
   perRecordBytes += Math.ceil(prefixBits / 8);
+  return { innerSeeds, perRecordBytes: Math.max(1, perRecordBytes) };
+}
+
+/** Representative byte size we want a flat per-record `bytes(ref X)` value to
+ *  RESOLVE to so one record's value renders (stun's stunAttrValue → 4 B).
+ *  We solve for the seed of its length field X that yields ~this width, then
+ *  charge the resolved width into perRecordBytes so the budget-derived outer
+ *  count stays conservative. */
+const FLAT_TLV_TARGET_VALUE_BYTES = 4;
+/** Upper bound on the length-field seed we will search for, so a pathological
+ *  budget expr (e.g. `X / 1000`) can't run the seed away unbounded. */
+const FLAT_TLV_MAX_LEN_SEED = 64;
+
+/**
+ * Detect a FLAT TLV-shaped record: a repeat element whose top-level fields are a
+ * plain triplet `[…, lengthField X (int), …, valueField = bytes(expr over X)]`
+ * with NO nested `bounded` (so it is not the TLV-extension idiom) and which is
+ * not a single Switch (so it is not isTlvRepeat / TLV-promoted). This is the
+ * stun / pppoe / bgpOpen / cops / gist / hip / ipfix / bgpLs / tlsCertificate
+ * shape.
+ *
+ * The per-record length field X defaults to 0, so the value `bytes(expr over X)`
+ * collapses to width 0 and is invisible — see-but-cannot-edit. We seed X so the
+ * value resolves to a representative ~`FLAT_TLV_TARGET_VALUE_BYTES` so one
+ * record's value renders, mirroring tlvExtensionInnerSeeds / isisLsp lengthSeeds.
+ * The seed is SOLVED against the value's length Expr (not assumed to equal the
+ * target), so an offset/scaled length (`copsObjLength - 4`, `gistObjLen * 4`)
+ * still yields a visible value.
+ *
+ * Returns, when at least one flat value sized by a sibling length field is found:
+ *   - `innerSeeds`: `{ key: X, value: <solved seed> }` per such length field,
+ *   - `perRecordBytes`: the record's byte estimate with each seeded value charged
+ *     its RESOLVED size (instead of the ~0-byte REF_SIZED allowance) so the
+ *     budget-derived outer count stays conservative.
+ * Returns `null` when the record carries a nested bounded (left to
+ * tlvExtensionInnerSeeds), no flat sibling-sized value exists (no seed needed),
+ * or no seed in range makes a value visible (don't fabricate a control).
+ */
+function flatTlvInnerSeeds(element: { fields: Container[] }): {
+  innerSeeds: { key: string; value: number }[];
+  perRecordBytes: number;
+} | null {
+  // A record wrapping its OWN nested bounded is the TLV-extension idiom handled
+  // elsewhere; this flat path only covers bounded-free records.
+  if (containsBounded(element.fields)) return null;
+  const siblingIds = new Set<string>();
+  collectRecordFieldIds(element.fields, siblingIds);
+  const innerSeeds: { key: string; value: number }[] = [];
+  const seededKeys = new Set<string>();
+  // Bytes a value resolves to once its length field(s) are seeded — summed so
+  // perRecordBytes charges the seeded (not ~0-byte) size of each value.
+  let resolvedValueBytes = 0;
+  // Count of VALUE fields whose width we resolved (each was charged the ~0-byte
+  // REF_SIZED allowance by estimateElementBytes, which we now replace).
+  let resolvedValueFields = 0;
+  // Walk the record's flat top level (descending through plain groups, which
+  // some presets use to wrap the type/length prefix) to find a value field whose
+  // length references ONLY a sibling field in the same record.
+  const scan = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (!isRefToSiblingBytes(c, siblingIds)) continue;
+        const rawN = (c.type as Extract<typeof c.type, { kind: "bytes" }>).n;
+        // isRefToSiblingBytes already excluded the delimited form; narrow here.
+        if (isBytesDelimited(rawN)) continue;
+        const n = rawN;
+        // Dedup — a `cond(test: ref X, t: X - 4, …)` length names X several times.
+        const lenRefs = [...new Set(exprRefs(n))];
+        // Solve the SINGLE length ref for a seed that makes the value resolve to
+        // ~FLAT_TLV_TARGET_VALUE_BYTES. The smallest seed yielding a positive
+        // width wins (covers `ref X` → 4, `X - 4` → 8, `X * 4` → 1). A value
+        // referencing several length fields (none in the affected presets) is
+        // seeded best-effort with the target on each ref.
+        if (lenRefs.length === 1) {
+          const key = lenRefs[0];
+          let chosen: { seed: number; width: number } | null = null;
+          for (let seed = 1; seed <= FLAT_TLV_MAX_LEN_SEED; seed++) {
+            const width = evalExprOr(n, new Map([[key, seed]]), 0);
+            if (width >= 1) {
+              chosen = { seed, width };
+              if (width >= FLAT_TLV_TARGET_VALUE_BYTES) break;
+            }
+          }
+          if (!chosen) continue; // no positive-width seed in range — skip
+          resolvedValueBytes += chosen.width;
+          resolvedValueFields += 1;
+          if (!seededKeys.has(key)) {
+            seededKeys.add(key);
+            innerSeeds.push({ key, value: chosen.seed });
+          }
+        } else {
+          const env = new Map(
+            lenRefs.map((r) => [r, FLAT_TLV_TARGET_VALUE_BYTES]),
+          );
+          const width = evalExprOr(n, env, 0);
+          if (width < 1) continue;
+          resolvedValueBytes += width;
+          resolvedValueFields += 1;
+          for (const r of lenRefs) {
+            if (seededKeys.has(r)) continue;
+            seededKeys.add(r);
+            innerSeeds.push({ key: r, value: FLAT_TLV_TARGET_VALUE_BYTES });
+          }
+        }
+      } else if (c.kind === "group") {
+        scan(c.children);
+      }
+      // bounded is excluded above; switch/repeat/optional/encrypted are not the
+      // flat shape and contribute no flat sibling-sized seed.
+    }
+  };
+  scan(element.fields);
+  if (innerSeeds.length === 0) return null;
+  // Per-record estimate charging each seeded value its RESOLVED size: start from
+  // the conservative estimate (which charges each ref-sized VALUE field only the
+  // ~0-byte REF_SIZED allowance) and replace that allowance with the resolved
+  // width for every value we seeded.
+  const perRecordBytes =
+    estimateElementBytes(element) +
+    resolvedValueBytes -
+    resolvedValueFields * REF_SIZED_FIELD_BYTE_ALLOWANCE;
   return { innerSeeds, perRecordBytes: Math.max(1, perRecordBytes) };
 }
 
