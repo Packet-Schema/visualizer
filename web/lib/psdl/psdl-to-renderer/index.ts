@@ -1924,6 +1924,34 @@ function collectFreeRepeats(
               const perRecordBytesFlat = flat
                 ? flat.perRecordBytes
                 : estimateElementBytes(c.element);
+              const flatDefaultLength =
+                flat && flat.innerSeeds.length > 0 && budgetIsPlainRefFlat
+                  ? perRecordBytesFlat + bounded.prefix
+                  : undefined;
+              // Seed `defaultLength` so the budget yields >=1 record at load,
+              // BUT ONLY for a RECORD-BEARING repeat (its element holds a
+              // ref/peek-discriminated switch → a surfaced 'Record variants'
+              // picker, e.g. isisLsp byType / bgpFlowSpec flowSpecCompType /
+              // babel babelTlvType). Otherwise the length field 0-fills,
+              // `floor((budget-prefix)/perRecord)=0` records render, and the
+              // populated variant picker sits over an EMPTY TLV region doing
+              // nothing until the user discovers the length slider (#11/#12
+              // contradiction class, same as the free-repeat defaultCount /
+              // tlvExt defaultLength seeds). Solve `bytes @ L` for the smallest
+              // L giving one record: `L = c + prefix + perRecordBytes` where c
+              // is the budget's affine offset (`ref - c` / `ref*k - c`; 0 for a
+              // bare ref). A scalar-list bounded repeat (no variant switch) gets
+              // NO seed so it stays empty. Unresolvable budgets (cond, etc.)
+              // leave defaultLength absent — no regression. The flat-TLV
+              // defaultLength (above) takes precedence when present.
+              const affineConst = budgetAffineConst(bounded.bytes);
+              const recordSwitchDefaultLength =
+                elementHasRecordSwitch(c.element.fields) &&
+                affineConst !== null &&
+                perRecordBytesFlat > 0
+                  ? affineConst + bounded.prefix + perRecordBytesFlat
+                  : undefined;
+              const seedLength = flatDefaultLength ?? recordSwitchDefaultLength;
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: bounded.key,
@@ -1933,14 +1961,8 @@ function collectFreeRepeats(
                 ...(flat && flat.innerSeeds.length > 0
                   ? { innerScopeSeeds: flat.innerSeeds }
                   : {}),
-                // Seed the OUTER budget so ONE representative record renders at
-                // load (mirrors the TLV-extension defaultLength): otherwise the
-                // budget 0-fills, `floor(0/perRecord)=0` records appear, and the
-                // seeded inner length never takes effect. Only safe when the
-                // budget is a plain `ref(lengthKey)` (so seeding the field equals
-                // seeding the budget).
-                ...(flat && flat.innerSeeds.length > 0 && budgetIsPlainRefFlat
-                  ? { defaultLength: perRecordBytesFlat + bounded.prefix }
+                ...(seedLength !== undefined
+                  ? { defaultLength: seedLength }
                   : {}),
               });
               instantiableRepeatIds.add(c.id);
@@ -2278,6 +2300,55 @@ function containsBounded(containers: Container[]): boolean {
         if (containsBounded(s.fields)) return true;
       }
     }
+  }
+  return false;
+}
+
+/**
+ * The constant subtracted from a budget expression of shape `ref - c`,
+ * `ref*k - c` (or a bare `ref`, → 0). Used to seed a plain-bounded
+ * record-bearing repeat's length so the budget `eval(bytes @ L) - prefix`
+ * yields >=1 record at load: `defaultLength = c + prefix + perRecordBytes`
+ * (mirroring the tlvExt branch's `perRecordBytes + prefix` for a plain ref).
+ * Returns null for any other shape (cond budgets, multi-term offsets) — those
+ * stay unseeded, no regression.
+ */
+function budgetAffineConst(bytes: Expr): number | null {
+  if (bytes.kind === "ref") return 0;
+  if (bytes.kind === "op" && bytes.op === "-" && bytes.b.kind === "lit") {
+    // `<left> - lit(c)` where <left> is `ref` or `ref * lit(k)`.
+    const left = bytes.a;
+    if (left.kind === "ref") return bytes.b.value;
+    if (
+      left.kind === "op" &&
+      left.op === "*" &&
+      ((left.a.kind === "ref" && left.b.kind === "lit") ||
+        (left.b.kind === "ref" && left.a.kind === "lit"))
+    ) {
+      return bytes.b.value;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether a repeat element is RECORD-BEARING: it contains a `switch`
+ * discriminated by a `ref` or `peek` (a surfaced refSwitch / peekSwitch
+ * variant picker is offered over it). Scalar-list bounded repeats (no variant
+ * switch) are NOT record-bearing and must stay empty at load.
+ */
+function elementHasRecordSwitch(containers: Container[]): boolean {
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "switch" && (c.on.kind === "ref" || c.on.kind === "peek")) {
+      return true;
+    }
+    if (c.kind === "group" && elementHasRecordSwitch(c.children)) return true;
+    if (c.kind === "optional" && elementHasRecordSwitch([c.container]))
+      return true;
+    if (c.kind === "bounded" && elementHasRecordSwitch(c.fields)) return true;
+    if (c.kind === "encrypted" && elementHasRecordSwitch(c.plaintext.fields))
+      return true;
   }
   return false;
 }
