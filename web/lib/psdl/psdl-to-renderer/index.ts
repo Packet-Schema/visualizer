@@ -579,13 +579,40 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     packet.defs,
     siblingLengthFields,
   );
-  const alreadyControlled = new Set<string>([
-    ...fields.map((f) => f.id),
-    ...lengthControllers.map((lc) => lc.id),
-  ]);
+  const controllerIds = new Set<string>(lengthControllers.map((lc) => lc.id));
   for (const [id, field] of siblingLengthFields) {
-    if (alreadyControlled.has(id)) continue;
+    // When the length field IS an existing top-level mirror cell (quicLong
+    // dcidLength/scidLength, mqttConnect protocolNameLength/clientIdLength, arp
+    // hlen/plen, ...) it surfaces as a plain length cell with NO widget — the
+    // sized `bytes(ref <id>)` value is VISIBLE on the diagram but read-only.
+    // Stamp `controlsLength` onto that existing cell so OverridePanel renders
+    // the same length slider IHL / Data Offset get, mirroring how the
+    // constraint-driven and bounded-controller paths stamp an existing target.
+    const target = fields.find((f) => f.id === id);
+    if (target) {
+      // Don't steal a cell that already drives the diagram another way: a
+      // discriminator (switchCases / enumVariants) or an already-stamped
+      // length controller keeps its existing widget.
+      if (
+        !target.controlsLength &&
+        !target.switchCases &&
+        !target.enumVariants
+      ) {
+        target.controlsLength = id;
+        if (target.bits != null) {
+          target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
+        }
+      }
+      continue;
+    }
+    // The length field is a Group subfield: it can't host its own slider, so a
+    // representative packet-level controller is surfaced (same as a subfield in
+    // the bounded path). Otherwise it lives inside a Switch case (ancp / oncRpc)
+    // and is neither a cell nor a subfield, so it likewise needs a packet-level
+    // controller. In both cases skip if one was already pushed for this id.
+    if (controllerIds.has(id)) continue;
     const bits = typeBits(field.type);
+    controllerIds.add(id);
     lengthControllers.push({
       id,
       name: field.name ?? id,
