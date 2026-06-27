@@ -423,6 +423,142 @@ function collectSiblingLengthControllers(
 }
 
 /**
+ * Collect per-record `length` fields stranded inside a PLAIN (non-TLV/non-chain)
+ * repeat whose records ARE instantiable by a surfaced count control. A length
+ * field inside a Repeat is normally skipped by `collectSiblingLengthControllers`
+ * (`insideRepeat` guard) on the assumption that a TLV / chain / bounded-repeat
+ * editor owns the per-record length. But a PLAIN freeRepeat has no such editor,
+ * so a length field X declared in its element that sizes a sibling
+ * `bytes(ref X)` value (often nested one level deep inside a record-variant
+ * Switch arm) gets ZERO override surface: X is not a top-level cell, not a
+ * subfield, and not in `lengthControllers`. At the default env X=0 the sized
+ * value renders at width 0, so a refSwitch arm whose only content is that
+ * `bytes(ref X)` shows nothing — the variant picker offers byte-identical,
+ * empty arms it can never make visible (dnsResponse `dnsRdLength` → NS/CNAME/
+ * PTR/TXT RDATA; pimHelloOptions `pimHelloOptLen` → Address List option value).
+ *
+ * Surface X as a packet-level `lengthController` keyed on `env[X]` (an RDLENGTH
+ * / Option-Length slider), exactly as the switch-case length path does for ancp
+ * / oncRpc. That both gives the user a control to reveal the value AND puts X in
+ * `controlledIds`, so the previously-dead arms become drivable and the picker
+ * stops contradicting the diagram. Only repeats whose id is in
+ * `instantiableRepeatIds` qualify — a repeat with no surfaced count control
+ * can't show a record at all, so its per-record length is moot.
+ */
+function collectPlainRepeatLengthControllers(
+  body: PsdlPacket["body"],
+  fields: RendererField[],
+  instantiableRepeatIds: Set<string>,
+  defs: Record<string, NamedStruct> | undefined,
+): RendererField[] {
+  const out: RendererField[] = [];
+  const seen = new Set<string>();
+  // For a single Repeat element: gather its declared `length` fields and every
+  // id consumed as a `bytes(ref X)` sizer ANYWHERE inside the element (the sized
+  // value commonly lives one level deep, inside a record-variant Switch arm).
+  const surfaceElement = (element: { fields: Container[] }): void => {
+    const lengthFields = new Map<string, PsdlField>();
+    const collectLengthFields = (containers: Container[]): void => {
+      for (const c of containers) {
+        if (isField(c)) {
+          if (
+            (c.type.kind === "int" || c.type.kind === "bits") &&
+            c.category === "length"
+          ) {
+            lengthFields.set(c.id, c);
+          }
+          continue;
+        }
+        if (c.kind === "bounded") collectLengthFields(c.fields);
+        else if (c.kind === "group") collectLengthFields(c.children);
+        else if (c.kind === "optional") collectLengthFields([c.container]);
+        else if (c.kind === "encrypted")
+          collectLengthFields(c.plaintext.fields);
+        else if (c.kind === "ref") {
+          const def = defs?.[c.ref];
+          if (def) collectLengthFields(def.fields);
+        }
+        // Do NOT descend into a nested Switch case or a nested Repeat: a length
+        // declared there belongs to that inner scope, not this record.
+      }
+    };
+    collectLengthFields(element.fields);
+    if (lengthFields.size === 0) return;
+    const sizers = new Set<string>();
+    collectBytesSizers(element.fields, defs, sizers);
+    for (const [id, field] of lengthFields) {
+      if (!sizers.has(id) || seen.has(id)) continue;
+      // Don't shadow an existing top-level cell / surfaced control.
+      if (fields.some((f) => f.id === id)) continue;
+      seen.add(id);
+      const bits = typeBits(field.type);
+      out.push({
+        id,
+        name: field.name ?? id,
+        bits,
+        controlsLength: id,
+        max: bits > 0 ? 2 ** bits - 1 : undefined,
+        ...(field.defaultValue != null
+          ? { defaultValue: field.defaultValue }
+          : {}),
+        ...(field.doc ? { description: field.doc } : {}),
+      });
+    }
+  };
+  // `insideBounded` is true once any ancestor `bounded` byte-budget has been
+  // entered. A repeat inside a bounded scope (isisLsp `tlvs` under `tlvsRegion`)
+  // is auto-filled to consume the WHOLE budget and its per-record length is
+  // implicitly driven by that budget — surfacing a separate length slider would
+  // fight the budget (the A4 destructive-bounded class) and, worse, would
+  // un-suppress an inert all-zero-width refSwitch picker (isisLsp `tlvType`,
+  // whose arms are all `bytes(ref tlvLength)`). So only PLAIN repeats NOT under
+  // any bounded budget qualify (dnsResponse `dnsAnswers`, pimHelloOptions).
+  // Recurse manually (NOT via flattenForMirror, which erases bounded
+  // boundaries) so the `insideBounded` flag is preserved.
+  const visit = (containers: Container[], insideBounded: boolean): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "repeat") {
+        const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
+        if (plain && !insideBounded && instantiableRepeatIds.has(c.id)) {
+          surfaceElement(c.element);
+        }
+        visit(c.element.fields, insideBounded);
+        continue;
+      }
+      if (c.kind === "bounded") {
+        visit(c.fields, true);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children, insideBounded);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.container], insideBounded);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases))
+          visit(struct.fields, insideBounded);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields, insideBounded);
+        continue;
+      }
+      if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def) visit(def.fields, insideBounded);
+        continue;
+      }
+    }
+  };
+  visit(body, false);
+  return out;
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -634,6 +770,26 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
     collectFreeRepeats(packet.body, fields, packet.defs);
   const peekSwitches = collectPeekSwitches(packet.body, packet.defs);
+  // A per-record `length` field stranded inside a PLAIN instantiable repeat
+  // (dnsResponse `dnsRdLength`, pimHelloOptions `pimHelloOptLen`) has no editor
+  // to own it — the constraint / bounded / switch-case / sibling paths all miss
+  // it because the `insideRepeat` guard assumes a TLV/chain editor does. Surface
+  // each as a packet-level length controller so the refSwitch arms it sizes
+  // (NS/CNAME/PTR/TXT RDATA, the Address-List option value) become drivable
+  // instead of rendering an empty, identical diagram. Must run AFTER
+  // collectFreeRepeats so `instantiableRepeatIds` is known, and BEFORE the
+  // `controlledIds` set below so collectRefSwitches stops treating those arms as
+  // permanently zero-width.
+  for (const lc of collectPlainRepeatLengthControllers(
+    packet.body,
+    fields,
+    instantiableRepeatIds,
+    packet.defs,
+  )) {
+    if (!lengthControllers.some((existing) => existing.id === lc.id)) {
+      lengthControllers.push(lc);
+    }
+  }
   // Field ids that carry a SURFACED override control the user can move: a
   // top-level cell, a length controller, a freeRepeat stepper, or a
   // boundedRepeat's count/length key. A refSwitch arm whose only content is a
