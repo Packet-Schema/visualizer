@@ -295,6 +295,65 @@ describe("record-bearing ref-count repeats seed one record (#11/#12)", () => {
     }
   });
 
+  it("every dnsRrType RDATA case is either visible or sized by a user-editable length", () => {
+    // The bug: the dnsRrType picker offers 9 cases, but NS(2)/CNAME(5)/PTR(12)/
+    // TXT(16) are each a single `bytes(ref dnsRdLength)` arm; dnsRdLength defaults
+    // to 0 so they collapse to width 0. dnsRdLength lives INSIDE the dnsAnswers
+    // repeat, so collectSiblingLengthControllers skipped it (insideRepeat) and it
+    // was NOT a user-exposed override key — selecting those 4 cases was a silent
+    // no-op AND the visible RDLENGTH cell could not be edited to reveal the RDATA.
+    const src = PRESETS.dnsResponse!;
+    const dns = psdlToRenderer(src);
+
+    // dnsRdLength must now be a user-exposed override key (a length controller).
+    const exposed = new Set<string>();
+    for (const f of dns.fields ?? []) {
+      exposed.add(f.id);
+      if (f.controlsLength) exposed.add(f.controlsLength);
+    }
+    for (const lc of dns.lengthControllers ?? []) exposed.add(lc.id);
+    for (const fr of dns.freeRepeats ?? []) exposed.add(fr.countKey);
+    for (const rs of dns.refSwitches ?? []) exposed.add(rs.refKey);
+    expect(exposed.has("dnsRdLength")).toBe(true);
+
+    const has = (ids: string[], base: string): boolean =>
+      ids.some((id) => id === base || id.startsWith(`${base}#`));
+    // The body field each numeric case should render. The 4 width-0-collapsing
+    // arms are revealed only once dnsRdLength is raised (the new length control).
+    const cases: { type: number; body: string }[] = [
+      { type: 1, body: "dnsRdataAAddr" }, // A — fixed 32-bit
+      { type: 2, body: "dnsRdataNsName" }, // NS — bytes(ref dnsRdLength)
+      { type: 5, body: "dnsRdataCnameName" }, // CNAME
+      { type: 6, body: "dnsRdataSoaSerial" }, // SOA — fixed fields
+      { type: 12, body: "dnsRdataPtrName" }, // PTR
+      { type: 15, body: "dnsRdataMxPref" }, // MX — 16-bit + bytes
+      { type: 16, body: "dnsRdataTxtData" }, // TXT
+      { type: 28, body: "dnsRdataAaaaAddr" }, // AAAA — fixed 128-bit
+      { type: 33, body: "dnsRdataSrvPriority" }, // SRV — fixed + bytes
+    ];
+    for (const { type, body } of cases) {
+      // dnsRdLength=4 is a representative RDATA length the user can now set.
+      const ids = appCellIds(src, { dnsRrType: type, dnsRdLength: 4 });
+      expect(
+        has(ids, body),
+        `dnsRrType=${type} RDATA body ${body} must render once dnsRdLength is set`,
+      ).toBe(true);
+    }
+  });
+
+  it("setting dnsRdLength reveals a previously-collapsed RDATA arm (NS)", () => {
+    // Concretely proves the new control is effective: with dnsRdLength at its
+    // default the NS arm is width 0 (no body cell); raising dnsRdLength makes the
+    // RDATA appear — the once-dead picker option now changes the diagram.
+    const src = PRESETS.dnsResponse!;
+    const has = (ids: string[], base: string): boolean =>
+      ids.some((id) => id === base || id.startsWith(`${base}#`));
+    const collapsed = appCellIds(src, { dnsRrType: 2, dnsRdLength: 0 });
+    const revealed = appCellIds(src, { dnsRrType: 2, dnsRdLength: 8 });
+    expect(has(collapsed, "dnsRdataNsName")).toBe(false);
+    expect(has(revealed, "dnsRdataNsName")).toBe(true);
+  });
+
   it("lispMapReply records (lispRecEIDAFI picker) also seed one record", () => {
     // Same shape as dnsAnswers: a ref-count repeat enclosing a surfaced
     // refSwitch (lispRecEIDAFI). It must seed one record so the picker is live.

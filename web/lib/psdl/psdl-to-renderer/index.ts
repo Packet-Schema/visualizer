@@ -346,45 +346,75 @@ function collectSiblingLengthControllers(
   containers: Container[],
   defs: Record<string, NamedStruct> | undefined,
   acc: Map<string, PsdlField>,
-  insideRepeat = false,
+  // True once we are inside a Repeat whose per-record length is OWNED by a
+  // dedicated list editor — a TLV repeat (TlvEditor) or a chain repeat
+  // (ChainEditor). Inside such a record, surfacing a packet-level slider keyed
+  // on a length field's env id would fight that editor (it sizes every
+  // synthesized record at once / is overwritten by the per-instance value), so
+  // those length fields stay off the sibling-length surface.
+  //
+  // A PLAIN repeat (dnsResponse's `dnsAnswers`, a ref-count freeRepeat) has NO
+  // such per-record editor: its records are sized purely from `env`. A
+  // `length`-category cell inside it that sizes a sibling `bytes(ref X)` (DNS's
+  // `dnsRdLength` sizing the NS/CNAME/PTR/TXT RDATA arms) is therefore owned by
+  // NOBODY — the cell renders but is otherwise see-but-cannot-edit, and the
+  // refSwitch arms it sizes collapse to width 0. So we keep collecting inside a
+  // plain repeat; only TLV/chain ownership suppresses it (#11/#12).
+  ownedByRecordEditor = false,
+  // True once ANY ancestor `bounded` byte-budget has been entered. A repeat
+  // nested under a bounded scope is a budget-derived boundedRepeat whose
+  // per-record length is implicitly OWNED by that budget: its count is
+  // `floor((budget - prefix) / perRecordBytes)`, so a global slider that grows
+  // every record's `bytes(ref len)` value would over-consume the saturated
+  // scope (isisLsp `tlvLength` inside the `pduLength`-budgeted `tlvs`). Suppress
+  // the sibling-length surface there — the length slider IS the bounded budget.
+  insideBounded = false,
 ): void {
-  // A length field inside a Repeat record is a PER-RECORD length owned by the
-  // TLV / chain / bounded-repeat editor (e.g. dhcpv4 `optionLength`, tlv option
-  // lengths). Surfacing a packet-level slider keyed on its env id would fight
-  // that editor (it sizes every synthesized record at once / is overwritten by
-  // the per-instance value), so the sibling-length surface is restricted to
-  // length fields NOT inside any repeat — exactly the see-but-cannot-edit cells
-  // sitting in a plain Switch case (ancp / oncRpc).
-  if (!insideRepeat) {
+  if (!ownedByRecordEditor && !insideBounded) {
     // Within this sibling list, gather the ids referenced as a byte sizer by a
-    // sibling `bytes(ref X)` value or a sibling single-ref `bounded.bytes`.
+    // sibling `bytes(ref X)` value (directly, or one wrapped in a sibling
+    // `switch` / `group` / `optional` — DNS's `dnsRdLength` sizes the NS/CNAME/
+    // PTR/TXT RDATA which live INSIDE the sibling `dnsRdata` switch, and MX/SRV
+    // via `dnsRdLength - k`) or a sibling single-ref `bounded.bytes`. We do NOT
+    // descend into a nested `repeat`: its records are a separate length scope.
     const sizedBy = new Set<string>();
     const lengthFields = new Map<string, PsdlField>();
-    for (const c of containers) {
-      if (isField(c)) {
-        const t = c.type as {
-          kind?: string;
-          n?: { kind?: string; field?: unknown };
-        };
-        if (
-          t.kind === "bytes" &&
-          t.n?.kind === "ref" &&
-          typeof t.n.field === "string"
-        ) {
-          sizedBy.add(t.n.field);
+    const gatherSizers = (cs: Container[]): void => {
+      for (const c of cs) {
+        if (isField(c)) {
+          const t = c.type;
+          if (t.kind === "bytes" && !isBytesDelimited(t.n)) {
+            for (const r of exprRefs(t.n)) sizedBy.add(r);
+          }
+          continue;
         }
-        // A plain `length`-category int/bits cell is a controller candidate.
-        if (
-          (c.type.kind === "int" || c.type.kind === "bits") &&
-          c.category === "length"
-        ) {
-          lengthFields.set(c.id, c);
+        if (c.kind === "bounded") {
+          // A sibling bounded budget nominates its single length ref, but its
+          // INNER fields are a deeper scope owned by the bounded-controller path
+          // — do not descend (avoids surfacing budget-internal lengths twice).
+          const ref = singleRefController(c.bytes);
+          if (ref) sizedBy.add(ref);
+        } else if (c.kind === "group") {
+          gatherSizers(c.children);
+        } else if (c.kind === "optional") {
+          gatherSizers([c.container]);
+        } else if (c.kind === "switch") {
+          for (const struct of Object.values(c.cases))
+            gatherSizers(struct.fields);
+        } else if (c.kind === "encrypted") {
+          gatherSizers(c.plaintext.fields);
         }
-        continue;
       }
-      if (c.kind === "bounded") {
-        const ref = singleRefController(c.bytes);
-        if (ref) sizedBy.add(ref);
+    };
+    for (const c of containers) {
+      gatherSizers([c]);
+      // A plain `length`-category int/bits cell is a controller candidate.
+      if (
+        isField(c) &&
+        (c.type.kind === "int" || c.type.kind === "bits") &&
+        c.category === "length"
+      ) {
+        lengthFields.set(c.id, c);
       }
     }
     for (const [id, field] of lengthFields) {
@@ -392,31 +422,76 @@ function collectSiblingLengthControllers(
     }
   }
   // Recurse into every child scope; each gets its own sibling analysis. A
-  // Repeat element (and everything below it) is flagged `insideRepeat`.
+  // Repeat element (and everything below it) is flagged owned ONLY when the
+  // repeat is a TLV / chain catalog (its per-record length belongs to the
+  // dedicated list editor). A plain repeat keeps the flag unchanged so its
+  // per-record `dnsRdLength`-style length cells stay collectable.
   for (const c of containers) {
     if (isField(c)) continue;
     if (c.kind === "bounded") {
-      collectSiblingLengthControllers(c.fields, defs, acc, insideRepeat);
+      // Entering a bounded byte-budget marks every descendant `insideBounded`:
+      // a repeat nested below is a budget-derived boundedRepeat whose per-record
+      // length is owned by the budget, not a free slider.
+      collectSiblingLengthControllers(
+        c.fields,
+        defs,
+        acc,
+        ownedByRecordEditor,
+        true,
+      );
     } else if (c.kind === "ref") {
       const def = defs?.[c.ref];
       if (def)
-        collectSiblingLengthControllers(def.fields, defs, acc, insideRepeat);
+        collectSiblingLengthControllers(
+          def.fields,
+          defs,
+          acc,
+          ownedByRecordEditor,
+          insideBounded,
+        );
     } else if (c.kind === "group") {
-      collectSiblingLengthControllers(c.children, defs, acc, insideRepeat);
+      collectSiblingLengthControllers(
+        c.children,
+        defs,
+        acc,
+        ownedByRecordEditor,
+        insideBounded,
+      );
     } else if (c.kind === "optional") {
-      collectSiblingLengthControllers([c.container], defs, acc, insideRepeat);
+      collectSiblingLengthControllers(
+        [c.container],
+        defs,
+        acc,
+        ownedByRecordEditor,
+        insideBounded,
+      );
     } else if (c.kind === "repeat") {
-      collectSiblingLengthControllers(c.element.fields, defs, acc, true);
+      const ownedHere =
+        ownedByRecordEditor || isLikelyChainRepeat(c) || isTlvRepeat(c);
+      collectSiblingLengthControllers(
+        c.element.fields,
+        defs,
+        acc,
+        ownedHere,
+        insideBounded,
+      );
     } else if (c.kind === "switch") {
       for (const struct of Object.values(c.cases)) {
-        collectSiblingLengthControllers(struct.fields, defs, acc, insideRepeat);
+        collectSiblingLengthControllers(
+          struct.fields,
+          defs,
+          acc,
+          ownedByRecordEditor,
+          insideBounded,
+        );
       }
     } else if (c.kind === "encrypted") {
       collectSiblingLengthControllers(
         c.plaintext.fields,
         defs,
         acc,
-        insideRepeat,
+        ownedByRecordEditor,
+        insideBounded,
       );
     }
   }
