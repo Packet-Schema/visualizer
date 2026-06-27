@@ -17,7 +17,7 @@
 //   - `./shared.ts`    — `typeBits` + helpers used across the modules
 
 import { isField } from "../utils";
-import { exprRefs } from "../expr";
+import { exprRefs, peekEnvKey } from "../expr";
 import { isBytesDelimited } from "../normalize";
 import type {
   Constraint,
@@ -1641,17 +1641,80 @@ function estimateElementBytes(struct: { fields: Container[] }): number {
 }
 
 /**
+ * Recognise an `Optional.when` of the form `peek(bits, offset) == lit(value)`
+ * (or the symmetric `lit == peek`) where the peek offset is a compile-time
+ * literal (or implicitly 0). Such an Optional is a *peek-gated region*: the
+ * enclosing container only renders when the next `bits` bits on the wire
+ * equal `value`. The gate reads env key `__peek__<offset>__<bits>`, so the
+ * region is reachable only if the user can set that key. Returns the env key
+ * and the matching value, or `null` for any other `when` shape (`ref`-based
+ * gates already surface via `optionalGateFor`; non-literal offsets can't be
+ * keyed deterministically — see the Switch path's Codex P2 note).
+ */
+function matchPeekGate(when: Expr): { peekKey: string; value: number } | null {
+  if (when.kind !== "op" || when.op !== "==") return null;
+  const sides: [Expr, Expr][] = [
+    [when.a, when.b],
+    [when.b, when.a],
+  ];
+  for (const [peek, lit] of sides) {
+    if (peek.kind !== "peek" || lit.kind !== "lit") continue;
+    const offset = peek.offset;
+    // Non-literal offsets evaluate at layout time to a value we don't know
+    // here, so the key we'd publish wouldn't match what normalize reads.
+    if (offset && offset.kind !== "lit") return null;
+    const offsetValue = offset?.kind === "lit" ? offset.value : 0;
+    return { peekKey: peekEnvKey(offsetValue, peek.bits), value: lit.value };
+  }
+  return null;
+}
+
+/**
+ * Display name for an Optional's inner container — its `name`, else `id`,
+ * else the structural kind. Used to label a peek-gate case so the picker
+ * reads "224 — Padding" rather than a bare value.
+ */
+function optionalInnerName(inner: Container): string {
+  return (
+    ("name" in inner ? inner.name : undefined) ??
+    ("id" in inner ? inner.id : undefined) ??
+    inner.kind ??
+    "region"
+  );
+}
+
+/**
  * Find Switches whose `on` is a `peek` expression (TLS extension type
  * dispatch etc). The peek synthesizes an env key
  * `__peek__<offset>__<bits>` per the PSDL spec. We expose this so
  * OverridePanel can render a synthetic case picker — there's no real cell
  * to attach to since `peek` doesn't consume bytes.
+ *
+ * The same surface also covers `Optional`s gated by a peek (`when:
+ * peek(bits) == lit`): the region is hidden at the default env (peek
+ * defaults to 0), and because the gate's `when` is a peek — not a `ref` —
+ * `attachOverrideMetadata` produces no `optionalGateFor`. Without surfacing
+ * the gating peek key the region (and any repeat-count stepper inside it,
+ * e.g. ROHC's `rohcPadding` / `rohcFeedback` until-repeats) is permanently
+ * unreachable: a see-but-cannot-edit dead end. We publish one synthetic
+ * picker per distinct peek key, with a case per gate value plus an "(absent)"
+ * case so the region can be toggled back off.
  */
 function collectPeekSwitches(
   body: PsdlPacket["body"],
   defs: Record<string, NamedStruct> | undefined,
 ): NonNullable<RendererPacket["peekSwitches"]> {
   const out: NonNullable<RendererPacket["peekSwitches"]> = [];
+  // Peek keys already surfaced by a real Switch dispatch — don't shadow them
+  // with a gate picker for the same key.
+  const switchPeekKeys = new Set<string>();
+  // Optional peek-gates grouped by their env key. Several gates can share one
+  // key (e.g. Teredo's two indicators both peek 16 bits at offset 0); they
+  // collapse into a single picker whose cases are mutually exclusive.
+  const gates = new Map<
+    string,
+    { id: string; name: string; cases: { value: number; label: string }[] }
+  >();
   const visit = (
     containers: PsdlPacket["body"],
     insideSwitch: boolean,
@@ -1683,11 +1746,13 @@ function collectPeekSwitches(
               // Skip: surfacing this peek would be misleading.
             } else {
               const offsetValue = offset?.kind === "lit" ? offset.value : 0;
+              const peekKey = peekEnvKey(offsetValue, peek.bits);
+              switchPeekKeys.add(peekKey);
               out.push({
                 id: c.id,
                 name: c.name ?? c.id,
                 cases,
-                peekKey: `__peek__${offsetValue}__${peek.bits}`,
+                peekKey,
               });
             }
           }
@@ -1720,6 +1785,24 @@ function collectPeekSwitches(
         continue;
       }
       if (c.kind === "optional") {
+        const gate = matchPeekGate(c.when);
+        if (gate) {
+          const label = optionalInnerName(c.container);
+          const entry = gates.get(gate.peekKey);
+          if (entry) {
+            if (!entry.cases.some((k) => k.value === gate.value)) {
+              entry.cases.push({ value: gate.value, label });
+            }
+          } else {
+            gates.set(gate.peekKey, {
+              // No real cell backs a peek gate; key the synthetic picker by
+              // its env key so its React key / select id stay stable.
+              id: gate.peekKey,
+              name: label,
+              cases: [{ value: gate.value, label }],
+            });
+          }
+        }
         visit([c.container], insideSwitch, insideRepeat, true);
         continue;
       }
@@ -1730,6 +1813,22 @@ function collectPeekSwitches(
     }
   };
   visit(body, false, false, false);
+  // Surface each peek-gated Optional key as a synthetic picker, unless a real
+  // Switch already dispatches on that exact key. Each picker gets an
+  // "(absent)" case — a value distinct from every gate value at the key — so
+  // the gated region can be hidden again after being revealed.
+  for (const [peekKey, g] of gates) {
+    if (switchPeekKeys.has(peekKey)) continue;
+    const used = new Set(g.cases.map((k) => k.value));
+    let absent = 0;
+    while (used.has(absent)) absent += 1;
+    out.push({
+      id: g.id,
+      name: g.cases.length > 1 ? `${g.name} (region)` : g.name,
+      cases: [...g.cases, { value: absent, label: "(absent)" }],
+      peekKey,
+    });
+  }
   return dedupePeekSwitches(out);
 }
 
