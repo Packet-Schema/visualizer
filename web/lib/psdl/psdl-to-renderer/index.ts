@@ -917,6 +917,16 @@ function collectFreeRepeats(
     // diagram never reads). Children of an instantiable parent (dnsResponse
     // dnsQNameLabels / dnsRdataSoa*) keep their working steppers.
     enclosingInstantiable: boolean,
+    // True when descending through a transparent wrapper that flattenForMirror
+    // does NOT erase and that psdlToRenderer's top-level loop never lifts to a
+    // `tlv` field — currently an `optional` container. A TLV-shaped repeat
+    // (single-switch element) sitting directly under such a wrapper falls
+    // through every path: isTlvRepeat() disqualifies it from the freeRepeat /
+    // peekSwitch collectors, and repeatToTlvField is never reached because it is
+    // not a top-level body child. Threading this flag lets the !isTlvRepeat
+    // guard relax for it exactly as `insideSwitch` does for a switch-case-nested
+    // TLV repeat (icmpv6Ndp), surfacing the eos count stepper + peek/ref picker.
+    insideOptional: boolean,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -936,6 +946,7 @@ function collectFreeRepeats(
           insideRepeat,
           insideSwitch,
           enclosingInstantiable,
+          insideOptional,
         );
         continue;
       }
@@ -960,6 +971,7 @@ function collectFreeRepeats(
             insideRepeat,
             insideSwitch,
             enclosingInstantiable,
+            insideOptional,
           );
         continue;
       }
@@ -974,8 +986,17 @@ function collectFreeRepeats(
         // matching peek type-picker comes from collectPeekSwitches). It is NOT
         // promoted to a tlv field — the count stepper keyed on env[repeat.id] plus
         // the peek picker are the controls.
-        const switchNestedTlv = isTlvRepeat(c) && insideSwitch && !insideRepeat;
-        if (!isLikelyChainRepeat(c) && (!isTlvRepeat(c) || switchNestedTlv)) {
+        //
+        // The SAME see-but-cannot-edit gap exists for a TLV-shaped repeat
+        // wrapped directly in an `optional` container (`optional(flag){ repeat
+        // eos { switch on peek } }`): flattenForMirror does not erase the
+        // optional and it is not a switch case, so repeatToTlvField never sees
+        // it and it lands here with isTlvRepeat()===true. Relax the guard for it
+        // too (insideOptional) so its eos count stepper + peek/ref picker are
+        // surfaced, exactly as for the switch-nested case.
+        const surfacedNestedTlv =
+          isTlvRepeat(c) && (insideSwitch || insideOptional) && !insideRepeat;
+        if (!isLikelyChainRepeat(c) && (!isTlvRepeat(c) || surfacedNestedTlv)) {
           let countKey: string | null = null;
           let label = c.name ?? c.id;
           let defaultCount: number | undefined;
@@ -1145,6 +1166,9 @@ function collectFreeRepeats(
           true,
           false,
           instantiableRepeatIds.has(c.id),
+          // A repeat element is its own scope: the enclosing optional wrapper no
+          // longer applies once we descend into the iterated records.
+          false,
         );
         continue;
       }
@@ -1155,6 +1179,7 @@ function collectFreeRepeats(
           insideRepeat,
           insideSwitch,
           enclosingInstantiable,
+          insideOptional,
         );
         continue;
       }
@@ -1166,16 +1191,21 @@ function collectFreeRepeats(
             insideRepeat,
             true,
             enclosingInstantiable,
+            // A switch case is a flattened scope, not the optional wrapper.
+            false,
           );
         continue;
       }
       if (c.kind === "optional") {
+        // Mark the descent so a TLV-shaped repeat directly inside this optional
+        // gets its count/variant controls surfaced (see the guard above).
         visit(
           [c.container],
           bounded,
           insideRepeat,
           insideSwitch,
           enclosingInstantiable,
+          true,
         );
         continue;
       }
@@ -1186,12 +1216,13 @@ function collectFreeRepeats(
           insideRepeat,
           insideSwitch,
           enclosingInstantiable,
+          insideOptional,
         );
         continue;
       }
     }
   };
-  visit(body, null, false, false, true);
+  visit(body, null, false, false, true, false);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
@@ -1453,6 +1484,10 @@ function collectPeekSwitches(
     containers: PsdlPacket["body"],
     insideSwitch: boolean,
     insideRepeat: boolean,
+    // Mirrors collectFreeRepeats: true when descending an `optional` wrapper, so
+    // a TLV-shaped repeat directly inside it surfaces its peek picker (the eos
+    // count stepper comes from collectFreeRepeats).
+    insideOptional: boolean,
   ): void => {
     for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "switch") {
@@ -1486,11 +1521,11 @@ function collectPeekSwitches(
           }
         }
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, true, insideRepeat);
+          visit(struct.fields, true, insideRepeat, false);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, insideSwitch, insideRepeat);
+        visit(c.children, insideSwitch, insideRepeat, insideOptional);
         continue;
       }
       if (c.kind === "repeat") {
@@ -1504,22 +1539,25 @@ function collectPeekSwitches(
         // rsOptions/raOptions/…) is NOT lifted to a tlv field, so its peek
         // type-picker is the ONLY surface for choosing the option type — descend
         // into it (paired with the eos count stepper from collectFreeRepeats).
-        const switchNestedTlv = isTlvRepeat(c) && insideSwitch && !insideRepeat;
-        if ((!isTlvRepeat(c) && !isLikelyChainRepeat(c)) || switchNestedTlv)
-          visit(c.element.fields, false, true);
+        // The optional-wrapped TLV repeat (`optional(flag){ repeat eos { switch
+        // on peek } }`) is the same gap reached via `insideOptional`.
+        const surfacedNestedTlv =
+          isTlvRepeat(c) && (insideSwitch || insideOptional) && !insideRepeat;
+        if ((!isTlvRepeat(c) && !isLikelyChainRepeat(c)) || surfacedNestedTlv)
+          visit(c.element.fields, false, true, false);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], insideSwitch, insideRepeat);
+        visit([c.container], insideSwitch, insideRepeat, true);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, insideSwitch, insideRepeat);
+        visit(c.plaintext.fields, insideSwitch, insideRepeat, insideOptional);
         continue;
       }
     }
   };
-  visit(body, false, false);
+  visit(body, false, false, false);
   return out;
 }
 
