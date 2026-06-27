@@ -568,6 +568,52 @@ function switchArmsAllIdentical(
   return shapes.every((s) => s === shapes[0]);
 }
 
+/** Collect the ids of every field declared (transitively) INSIDE a `switch`
+ *  case anywhere in the body. Such a field is never a top-level renderer-mirror
+ *  cell, so `attachOverrideMetadata.findTarget` can't stamp `switchCases` on it
+ *  and it gets no field-anchored widget. A nested `switch` discriminated on such
+ *  a field (oncRpc's replyData/acceptData/rejectData, switched on
+ *  replyStat/acceptStat/rejectStat — themselves declared inside the outer
+ *  rpcBody Reply case) therefore needs a packet-level refSwitch picker. */
+function collectSwitchCaseFieldIds(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): Set<string> {
+  const acc = new Set<string>();
+  // Walk normally; once we step through a switch case, everything below is
+  // "inside a case" — collect every field id seen there.
+  const visit = (containers: Container[], insideCase: boolean): void => {
+    for (const c of flattenForMirror(containers, defs)) {
+      if (isField(c)) {
+        if (insideCase) acc.add(c.id);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases)) visit(struct.fields, true);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        visit(c.element.fields, insideCase);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children, insideCase);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.container], insideCase);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields, insideCase);
+        continue;
+      }
+    }
+  };
+  visit(body, false);
+  return acc;
+}
+
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
@@ -578,6 +624,10 @@ function collectRefSwitches(
   const out: NonNullable<RendererPacket["refSwitches"]> = [];
   const lengthDriving = collectLengthDrivingRefs(body);
   const fieldBits = collectFieldBits(body);
+  // Field ids declared inside a switch case — a switch discriminated on one of
+  // these has no top-level cell to host a `switchCases` widget, so it needs a
+  // packet-level refSwitch picker even when it is NOT inside a repeat.
+  const switchCaseFieldIds = collectSwitchCaseFieldIds(body, defs);
   const seen = new Set<string>();
   const visit = (
     containers: PsdlPacket["body"],
@@ -588,15 +638,37 @@ function collectRefSwitches(
     // visible control with no possible effect on the diagram — an inert/misleading
     // surface — so it must be suppressed (bgpPathAttributes' attrTypeCode picker).
     enclosingPlainRepeat: Repeat | null,
+    // True once we are inside ANY repeat (plain, TLV, OR chain). The case-nested
+    // path below must stay top-level: a switch inside a chain/TLV repeat (ipv6's
+    // `nextHeader_byProto` re-declares `nextHeader` per proto case) is already
+    // owned by the chain / TLV editor, so surfacing it as a refSwitch would be a
+    // redundant, inert duplicate. `enclosingPlainRepeat` alone misses this — it
+    // is null inside chain/TLV repeats by design — so we track repeat nesting
+    // separately.
+    insideRepeat: boolean,
   ): void => {
     for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "repeat") {
         const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
-        visit(c.element.fields, plain ? c : enclosingPlainRepeat);
+        visit(c.element.fields, plain ? c : enclosingPlainRepeat, true);
         continue;
       }
       if (c.kind === "switch") {
-        if (enclosingPlainRepeat && c.on.kind === "ref") {
+        // A ref-discriminated switch needs a packet-level picker in two cases:
+        //   (1) it sits inside a plain repeat whose discriminator has no
+        //       field-anchored widget (the original A2 path), or
+        //   (2) it is discriminated on a field DECLARED INSIDE A SWITCH CASE
+        //       (oncRpc replyData/acceptData/rejectData on
+        //       replyStat/acceptStat/rejectStat): that discriminator is never a
+        //       top-level cell, so attachOverrideMetadata can't stamp
+        //       switchCases on it and collectRefSwitches' repeat path never
+        //       reaches it — a see-but-cannot-edit gap.
+        const caseNested =
+          !enclosingPlainRepeat &&
+          !insideRepeat &&
+          c.on.kind === "ref" &&
+          switchCaseFieldIds.has(c.on.field);
+        if ((enclosingPlainRepeat || caseNested) && c.on.kind === "ref") {
           const refKey = c.on.field;
           const covered = fields.find(
             (f) =>
@@ -619,9 +691,12 @@ function collectRefSwitches(
           // per-record nested bounded scope, so collectFreeRepeats deliberately
           // leaves it non-derived (it's in neither freeRepeats nor
           // boundedRepeats) — its attrTypeCode picker would be permanently inert.
-          const instantiable = instantiableRepeatIds.has(
-            enclosingPlainRepeat.id,
-          );
+          // A case-nested switch has no enclosing repeat: it is "instantiated"
+          // by selecting the OUTER switch arm (itself a surfaced switchCases /
+          // refSwitch picker), so there is nothing to gate on here.
+          const instantiable = caseNested
+            ? true
+            : instantiableRepeatIds.has(enclosingPlainRepeat!.id);
           // Even an instantiable repeat yields an inert picker if every case
           // arm collapses to width 0 at default (its only content is a
           // `bytes(ref X)` value whose length X has no surfaced control). The
@@ -629,11 +704,19 @@ function collectRefSwitches(
           // control can't change anything — suppress it (isisLsp tlvType: arms
           // are `bytes(ref tlvLength)`, tlvLength uncontrolled).
           const allArmsInert = switchArmsAllZeroWidth(c.cases, controlledIds);
+          // For a case-nested picker there is no zero-width safety net from a
+          // repeat budget, so also drop it when every selectable arm is
+          // structurally identical (the diagram is byte-identical for every
+          // value — an inert dropdown). The repeat path keeps its existing
+          // gating untouched.
+          const allArmsIdentical =
+            caseNested && switchArmsAllIdentical(c.cases);
           if (
             !covered &&
             !isEncoder &&
             instantiable &&
             !allArmsInert &&
+            !allArmsIdentical &&
             !seen.has(refKey)
           ) {
             const cases: { value: number; label: string }[] = [];
@@ -649,24 +732,24 @@ function collectRefSwitches(
           }
         }
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, enclosingPlainRepeat);
+          visit(struct.fields, enclosingPlainRepeat, insideRepeat);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, enclosingPlainRepeat);
+        visit(c.children, enclosingPlainRepeat, insideRepeat);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], enclosingPlainRepeat);
+        visit([c.container], enclosingPlainRepeat, insideRepeat);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, enclosingPlainRepeat);
+        visit(c.plaintext.fields, enclosingPlainRepeat, insideRepeat);
         continue;
       }
     }
   };
-  visit(body, null);
+  visit(body, null, false);
   return out;
 }
 
