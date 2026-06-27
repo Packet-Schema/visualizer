@@ -11,7 +11,14 @@ import {
   mergeInstancesIntoPsdl,
   psdlToRenderer,
 } from "@/lib/psdl/psdl-to-renderer";
-import type { Bounded, Container, Packet, Repeat } from "@/lib/psdl/types";
+import { fromJson, toJson } from "@/lib/formats/json";
+import type {
+  Bounded,
+  Container,
+  NamedStruct,
+  Packet,
+  Repeat,
+} from "@/lib/psdl/types";
 import type { Packet as RendererPacket } from "@/lib/psdl/renderer";
 
 // In PSDL 0.5 the ipv4 `options` Repeat is no longer a top-level body
@@ -225,5 +232,172 @@ describe("mergeInstancesIntoPsdl", () => {
         c.kind === "repeat" && /(^|_)chain($|[A-Z_])/.test(c.id),
     );
     expect(chainRepeat?.chainFinalProto).toBe(58);
+  });
+});
+
+// ------------------------------------------------------------------ //
+// RefContainer / defs edits (arbitrary user PSDL).
+//
+// `psdlToRenderer` expands a `ref` (RefContainer) inline (flattenForMirror
+// + the explicit `kind==="ref"` branches in collectFreeRepeats /
+// collectPeekSwitches / attachOverrideMetadata) so a TLV Repeat or a plain
+// field living inside a ref-resolved NamedStruct gets a FULL override
+// surface (TLV list editor, byteOrder flip). Before the fix
+// `mergeInstancesIntoPsdl` never descended into RefContainers — it only
+// flatMapped `psdl.body` and spread `...psdl`, so `defs` passed through
+// verbatim and every ref-resolved edit vanished on JSON export / share URL
+// / save-as. No built-in preset uses a RefContainer in its body (0
+// presets), so this is only reachable for hand-authored / imported PSDL.
+// ------------------------------------------------------------------ //
+describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
+  /** A packet whose body holds a leaf field, a ref to an `OptList` def
+   *  (an eos `Repeat<Switch on peek>` — TLV idiom), and a ref to a `Hdr`
+   *  def carrying a plain field. */
+  function makeRefPacket(): Packet {
+    const optList: NamedStruct = {
+      id: "OptList",
+      fields: [
+        {
+          kind: "repeat",
+          id: "optsRepeat",
+          count: "eos",
+          element: {
+            id: "opt",
+            fields: [
+              {
+                kind: "switch",
+                id: "optSw",
+                on: { kind: "peek", bits: 8 },
+                cases: {
+                  "1": {
+                    id: "optA",
+                    fields: [
+                      { id: "a", name: "A", type: { kind: "int", bits: 8 } },
+                    ],
+                  },
+                  "2": {
+                    id: "optB",
+                    fields: [
+                      { id: "b", name: "B", type: { kind: "int", bits: 8 } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    } as unknown as NamedStruct;
+    const hdr: NamedStruct = {
+      id: "Hdr",
+      fields: [
+        { id: "innerVal", name: "Inner Val", type: { kind: "int", bits: 16 } },
+      ],
+    } as unknown as NamedStruct;
+    return {
+      name: "RefPkt",
+      rowBits: 32,
+      body: [
+        { id: "lead", name: "Lead", type: { kind: "int", bits: 8 } },
+        { kind: "ref", ref: "Hdr", id: "hdrRef" },
+        { kind: "ref", ref: "OptList", id: "optsRef" },
+      ],
+      defs: { OptList: optList, Hdr: hdr },
+    } as unknown as Packet;
+  }
+
+  function findRepeatInDef(
+    def: NamedStruct | undefined,
+    id: string,
+  ): Repeat | undefined {
+    return def?.fields.find(
+      (c): c is Repeat => c.kind === "repeat" && c.id === id,
+    ) as Repeat | undefined;
+  }
+
+  it("merges TLV instances edited on ref-resolved content back into defs", () => {
+    const packet = makeRefPacket();
+    const mirror = psdlToRenderer(packet);
+    // The ref-resolved eos `Repeat<Switch>` is surfaced as a TLV field.
+    const tlv = mirror.fields.find((f) => f.tlv);
+    if (!tlv?.tlv) throw new Error("ref-resolved TLV field not surfaced");
+    tlv.tlv.instances = [{ kind: 1 }, { kind: 2 }];
+
+    const merged = mergeInstancesIntoPsdl(packet, mirror);
+    const rep = findRepeatInDef(merged.defs?.OptList, "optsRepeat");
+    expect(rep?.instances).toEqual([{ kind: 1 }, { kind: 2 }]);
+
+    // The source def must NOT be mutated in place.
+    const srcRep = findRepeatInDef(packet.defs?.OptList, "optsRepeat");
+    expect(srcRep?.instances).toBeUndefined();
+  });
+
+  it("merges a byteOrder flip on a ref-resolved field back into defs", () => {
+    const packet = makeRefPacket();
+    const mirror = psdlToRenderer(packet);
+    const innerVal = mirror.fields.find((f) => f.id === "innerVal");
+    if (!innerVal) throw new Error("ref-resolved innerVal not surfaced");
+    innerVal.byteOrder = "LE";
+
+    const merged = mergeInstancesIntoPsdl(packet, mirror);
+    const hdrField = merged.defs?.Hdr.fields.find(
+      (c) => (c as { id?: string }).id === "innerVal",
+    ) as { byteOrder?: "BE" | "LE" } | undefined;
+    expect(hdrField?.byteOrder).toBe("LE");
+  });
+
+  it("survives a JSON export → re-import round-trip", () => {
+    const packet = makeRefPacket();
+    const mirror = psdlToRenderer(packet);
+    const tlv = mirror.fields.find((f) => f.tlv);
+    const innerVal = mirror.fields.find((f) => f.id === "innerVal");
+    if (!tlv?.tlv || !innerVal) throw new Error("ref surface missing");
+    tlv.tlv.instances = [{ kind: 2 }];
+    innerVal.byteOrder = "LE";
+
+    const merged = mergeInstancesIntoPsdl(packet, mirror);
+    const { packet: reimported } = fromJson(toJson(merged));
+
+    const rep = findRepeatInDef(reimported.defs?.OptList, "optsRepeat");
+    expect(rep?.instances).toEqual([{ kind: 2 }]);
+    const hdrField = reimported.defs?.Hdr.fields.find(
+      (c) => (c as { id?: string }).id === "innerVal",
+    ) as { byteOrder?: "BE" | "LE" } | undefined;
+    expect(hdrField?.byteOrder).toBe("LE");
+  });
+
+  it("leaves defs value-equal when no ref edits exist", () => {
+    const packet = makeRefPacket();
+    const mirror = psdlToRenderer(packet);
+    // No mirror edits applied — re-walking the referenced defs must be a
+    // value-preserving no-op (no spurious `instances` / `byteOrder` keys).
+    const merged = mergeInstancesIntoPsdl(packet, mirror);
+    expect(merged.defs).toEqual(packet.defs);
+  });
+
+  it("merges each shared def once when two refs point at the same def", () => {
+    // Two RefContainers in the body resolve the SAME `OptList` def. The
+    // merge must not loop / double-apply; a single merged entry results.
+    const packet = makeRefPacket();
+    (packet.body as Container[]).push({
+      kind: "ref",
+      ref: "OptList",
+      id: "optsRef2",
+    } as Container);
+    const mirror = psdlToRenderer(packet);
+    const tlv = mirror.fields.find((f) => f.tlv);
+    if (!tlv?.tlv) throw new Error("ref-resolved TLV field not surfaced");
+    tlv.tlv.instances = [{ kind: 1 }];
+
+    const merged = mergeInstancesIntoPsdl(packet, mirror);
+    const rep = findRepeatInDef(merged.defs?.OptList, "optsRepeat");
+    // A single merged `optsRepeat` carrying exactly the one edit — no
+    // double-applied / duplicated instance list from the two refs.
+    expect(rep?.instances).toEqual([{ kind: 1 }]);
+    // `Hdr` is referenced but unedited; its field carries no byteOrder.
+    const hdrField = merged.defs?.Hdr.fields.find(
+      (c) => (c as { id?: string }).id === "innerVal",
+    ) as { byteOrder?: "BE" | "LE" } | undefined;
+    expect(hdrField?.byteOrder).toBeUndefined();
   });
 });
