@@ -326,10 +326,26 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
     collectFreeRepeats(packet.body, fields);
   const peekSwitches = collectPeekSwitches(packet.body);
+  // Field ids that carry a SURFACED override control the user can move: a
+  // top-level cell, a length controller, a freeRepeat stepper, or a
+  // boundedRepeat's count/length key. A refSwitch arm whose only content is a
+  // `bytes(ref X)` value sized by an X NOT in this set can never render at a
+  // non-zero width, so the picker can't change the diagram (isisLsp tlvType,
+  // whose tlvLength has no control) — collectRefSwitches uses this to suppress
+  // such inert pickers.
+  const controlledIds = new Set<string>();
+  for (const f of fields) controlledIds.add(f.id);
+  for (const lc of lengthControllers) controlledIds.add(lc.id);
+  for (const fr of freeRepeats) controlledIds.add(fr.countKey);
+  for (const br of boundedRepeats) {
+    controlledIds.add(br.countKey);
+    controlledIds.add(br.lengthKey);
+  }
   const refSwitches = collectRefSwitches(
     packet.body,
     fields,
     instantiableRepeatIds,
+    controlledIds,
   );
   return {
     name: packet.name,
@@ -443,10 +459,53 @@ function collectFieldBits(body: PsdlPacket["body"]): Map<string, number> {
   return bits;
 }
 
+/**
+ * True when EVERY case arm of a Switch collapses to zero visible width at the
+ * default env — i.e. every field in every case is a variable-length `bytes`
+ * value whose length `n` is a `ref` (or expr) mentioning ONLY field ids with no
+ * surfaced override control (`controlledIds`). Such a value renders at width 0
+ * for all reachable env states, so selecting any discriminator value produces a
+ * byte-identical diagram — the picker is inert (isisLsp's `byType` on tlvType:
+ * each arm is `bytes(ref tlvLength)`, and tlvLength has no control anywhere).
+ *
+ * Returns false the moment any case carries something the picker COULD make
+ * visible: a fixed-width field, a delimited/varint value (seeded to a visible
+ * default), a `bytes` whose length ref IS controllable, or a nested non-field
+ * container — so a genuinely variant-driving picker (dnsResponse dnsRrType, with
+ * fixed-width A/AAAA records) is never suppressed.
+ */
+function switchArmsAllZeroWidth(
+  cases: Record<string, { fields: Container[] }>,
+  controlledIds: Set<string>,
+): boolean {
+  const armCollapses = (containers: Container[]): boolean => {
+    // An empty arm has nothing to distinguish it; treat as collapsing so it
+    // doesn't single-handedly keep an otherwise-inert picker alive.
+    for (const c of containers) {
+      if (!isField(c)) return false; // nested container: assume it can show
+      if (c.type.kind !== "bytes") return false; // fixed-width: visible
+      const n = c.type.n;
+      if (isBytesDelimited(n)) return false; // seeded to a visible default
+      const refs = exprRefs(n);
+      // No refs at all → not a sibling-ref-sized value (lit/varint-ish): the
+      // length isn't gated by an uncontrolled sibling, so don't suppress.
+      if (refs.length === 0) return false;
+      // Any length ref the user CAN drive means the picked arm can be made
+      // visible — keep the picker.
+      if (refs.some((r) => controlledIds.has(r))) return false;
+    }
+    return true;
+  };
+  const arms = Object.values(cases);
+  if (arms.length === 0) return false;
+  return arms.every((s) => armCollapses(s.fields));
+}
+
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
   instantiableRepeatIds: Set<string>,
+  controlledIds: Set<string>,
 ): NonNullable<RendererPacket["refSwitches"]> {
   const out: NonNullable<RendererPacket["refSwitches"]> = [];
   const lengthDriving = collectLengthDrivingRefs(body);
@@ -495,7 +554,20 @@ function collectRefSwitches(
           const instantiable = instantiableRepeatIds.has(
             enclosingPlainRepeat.id,
           );
-          if (!covered && !isEncoder && instantiable && !seen.has(refKey)) {
+          // Even an instantiable repeat yields an inert picker if every case
+          // arm collapses to width 0 at default (its only content is a
+          // `bytes(ref X)` value whose length X has no surfaced control). The
+          // diagram is then byte-identical for every selectable value, so the
+          // control can't change anything — suppress it (isisLsp tlvType: arms
+          // are `bytes(ref tlvLength)`, tlvLength uncontrolled).
+          const allArmsInert = switchArmsAllZeroWidth(c.cases, controlledIds);
+          if (
+            !covered &&
+            !isEncoder &&
+            instantiable &&
+            !allArmsInert &&
+            !seen.has(refKey)
+          ) {
             const cases: { value: number; label: string }[] = [];
             for (const [key, struct] of Object.entries(c.cases)) {
               const v = firstCaseKeyValue(key);

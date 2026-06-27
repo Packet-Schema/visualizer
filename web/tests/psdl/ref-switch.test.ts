@@ -13,6 +13,8 @@ import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { initialState } from "@/lib/psdl/renderer-helpers";
+import { evalExprOr } from "@/lib/psdl/expr";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 function cellIds(
@@ -26,6 +28,33 @@ function cellIds(
     c.field.id,
     ...(c.subCells ?? []).map((s) => s.subfield.id),
   ]);
+}
+
+/**
+ * Cell ids derived the way the live app does it: `initialEnv` + `psdlRefs`
+ * 0-fill + `seedDynamicWidthDefaults` + the PacketViewer `boundedRepeats`
+ * count-derivation (count = floor((budget - prefix) / perRecord)), then
+ * `resolveLayout({ viewMode: "semantic" })`. Used to assert whether a
+ * refSwitch's discriminator can actually change the diagram at app-realistic
+ * env.
+ */
+function appCellIds(
+  psdl: PsdlPacket,
+  overrides: Record<string, number>,
+): string[] {
+  const mirror = psdlToRenderer(psdl);
+  const env = new Map<string, number>(Object.entries(overrides));
+  for (const [k, v] of initialEnv(psdl)) if (!env.has(k)) env.set(k, v);
+  for (const r of collectPsdlRefs(psdl)) if (!env.has(r)) env.set(r, 0);
+  seedDynamicWidthDefaults(psdl, env);
+  for (const br of mirror.boundedRepeats ?? []) {
+    const budget = evalExprOr(br.bytesExpr, env, 0);
+    const forRecords = Math.max(0, budget - br.prefixBytes);
+    env.set(br.countKey, Math.floor(forRecords / br.perRecordBytes));
+  }
+  return resolveLayout(psdl, { env, viewMode: "semantic" }).cells.flatMap(
+    (c) => [c.field.id, ...(c.subCells ?? []).map((s) => s.subfield.id)],
+  );
 }
 
 describe("collectRefSwitches", () => {
@@ -125,13 +154,47 @@ describe("collectRefSwitches", () => {
     );
   });
 
-  it("keeps a record-type code whose repeat has a budget-derived count control", () => {
-    // The positive case of the count-control gate: isisLsp's tlvType sits in a
-    // bounded-eos `tlvs` repeat that DOES derive a count from its pduLength
-    // budget (a boundedRepeat), so the diagram can show a record and the picker
-    // drives its variant — it must stay surfaced.
+  it("suppresses a refSwitch whose every case arm collapses to width 0", () => {
+    // high: isisLsp's `byType` picker is on tlvType, and the `tlvs` repeat DOES
+    // derive a count from its pduLength budget (so the instantiable-count gate
+    // passes). But every case arm is a single `bytes(ref tlvLength)` value, and
+    // tlvLength has NO surfaced control anywhere (not a lengthController, not a
+    // freeRepeat, not a top-level field — it lives inside the repeat element).
+    // With tlvLength defaulting to 0 the variant value renders at width 0, so
+    // selecting any tlvType (1/10/22/129/132/137) yields a byte-identical
+    // diagram. A visible control with no possible effect must be suppressed.
     const isis = psdlToRenderer(PRESETS.isisLsp!);
     const keys = (isis.refSwitches ?? []).map((r) => r.refKey);
-    expect(keys).toContain("tlvType");
+    expect(keys).not.toContain("tlvType");
+  });
+
+  it("the suppressed isisLsp tlvType picker is genuinely inert at app env", () => {
+    // Justifies the suppression above: drive tlvType across every case through
+    // the PacketViewer-style env derivation (boundedRepeats count-derive +
+    // dynamic-width seed). The discriminator can't change the diagram because
+    // each arm is `bytes(ref tlvLength)` and tlvLength has no control — so all
+    // renders are byte-identical. (Had the picker been able to change anything,
+    // suppressing it would be wrong; this asserts it cannot.)
+    const src = PRESETS.isisLsp!;
+    const baseline = appCellIds(src, { pduLength: 60, tlvType: 1 });
+    for (const t of [10, 22, 129, 132, 137]) {
+      expect(
+        appCellIds(src, { pduLength: 60, tlvType: t }),
+        `tlvType=${t} must not change the diagram (inert picker)`,
+      ).toEqual(baseline);
+    }
+    // Sanity: the baseline never contains any per-variant value cell — proof
+    // the arms collapse to width 0 (no areaAddressesValue/extIsReachValue/…).
+    expect(baseline).not.toContain("extIsReachValue");
+    expect(baseline).not.toContain("areaAddressesValue");
+  });
+
+  it("keeps a record-variant picker whose arms have visible (fixed-width) content", () => {
+    // The positive counterpart of the zero-width gate: dnsResponse's dnsRrType
+    // arms carry fixed-width records (A = 4-byte address, AAAA = 16-byte), so
+    // the picker DOES change the diagram and must stay surfaced — the gate only
+    // suppresses pickers whose arms are all uncontrolled ref-sized bytes.
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
   });
 });
