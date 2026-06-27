@@ -293,6 +293,14 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     }
   }
   attachOverrideMetadata(packet.body, fields);
+  // A chain's base field carries a chainCatalog (the chain editor's surface);
+  // attachOverrideMetadata ALSO stamps switchCases on it from the same Switch.
+  // OverridePanel dispatches chainCatalog first, so the switchCases are dead
+  // redundant metadata — drop them so the mirror carries one control per
+  // discriminator (override-design-audit).
+  for (const f of fields) {
+    if (f.chainCatalog && f.switchCases) delete f.switchCases;
+  }
   const freeRepeats = collectFreeRepeats(packet.body, fields);
   const peekSwitches = collectPeekSwitches(packet.body);
   const refSwitches = collectRefSwitches(packet.body, fields);

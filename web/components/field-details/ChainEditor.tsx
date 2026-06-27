@@ -19,6 +19,10 @@ import type {
 // as a bare "proto N". There is no structured per-preset source for these names
 // (the Next Header field is a plain 8-bit int), so they live here as a curated
 // convenience rather than being derived.
+/** IPv6 "No Next Header" sentinel (RFC 8200). Stable value used as the default
+ *  terminal when a chain has no explicit final protocol. */
+export const NO_NEXT_HEADER_PROTO = 59;
+
 export const FINAL_PROTOS: Array<{ v: number; name: string }> = [
   { v: 6, name: "TCP" },
   { v: 17, name: "UDP" },
@@ -249,6 +253,13 @@ export default function ChainEditor({ field, onChange }: Props) {
               picked yet (avoids the "controlled value doesn't match any
               option" React warning). */}
           <option value="">(none)</option>
+          {/* A finalProto set outside the curated list (e.g. via the
+              per-instance editor or a share URL) must still display, not
+              silently collapse to "(none)". */}
+          {finalProto !== undefined &&
+          !FINAL_PROTOS.some((f) => f.v === finalProto) ? (
+            <option value={finalProto}>proto {finalProto}</option>
+          ) : null}
           {FINAL_PROTOS.map((f) => (
             <option key={f.v} value={f.v}>
               {f.name} ({f.v})

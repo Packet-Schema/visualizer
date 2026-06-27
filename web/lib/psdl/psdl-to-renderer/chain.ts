@@ -175,8 +175,14 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
     kind: "repeat",
     id: `${baseId}_chain`,
     name: repeatName,
-    category: "type",
-    doc: "IPv6 extension-header chain.",
+    // Carry the source category/doc that repeatToChainField preserved on the
+    // Field, rather than hardcoding an IPv6-specific literal — keeps the lift
+    // consistent with the shape-preserving merge path and stops clobbering the
+    // source's (richer) doc (override-design-audit).
+    category: field.category ?? "type",
+    ...(field.description
+      ? { doc: field.description }
+      : { doc: "Extension-header chain." }),
     element: {
       id: `${baseId}_chainRecord`,
       fields: [

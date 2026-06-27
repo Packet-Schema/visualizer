@@ -11,7 +11,7 @@ import type {
 } from "@/lib/psdl/renderer";
 
 import SliderTooltip from "../controls/SliderTooltip";
-import ChainEditor, { FINAL_PROTOS } from "./ChainEditor";
+import ChainEditor, { FINAL_PROTOS, NO_NEXT_HEADER_PROTO } from "./ChainEditor";
 import TlvEditor, { SlotOvershootWarning } from "./TlvEditor";
 import { tlvTotalBits } from "@/lib/psdl/renderer-helpers";
 import { resolveSelection } from "./selection-resolver";
@@ -927,7 +927,7 @@ function ChainInnerVariantDropdown({
   // extension headers (so the catalog protos aren't duplicated).
   const enders = FINAL_PROTOS.filter((f) => !isExt(f.v));
   const currentNext =
-    nextInstance?.proto ?? field.chainFinalProto ?? FINAL_PROTOS[5].v; // 59 No Next Header
+    nextInstance?.proto ?? field.chainFinalProto ?? NO_NEXT_HEADER_PROTO;
   // If the chain currently terminates on a proto not in the curated label list
   // (any 8-bit value is valid), surface it as a bare "proto N" so the <select>
   // stays controlled and the hardcoded list never constrains what's editable.
