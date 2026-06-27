@@ -11,7 +11,11 @@ import type {
 } from "../renderer";
 
 import { isField } from "../utils";
-import { getSwitchFromRepeat, structFieldsToTlvFields } from "./shared";
+import {
+  firstCaseKeyValue,
+  getSwitchFromRepeat,
+  structFieldsToTlvFields,
+} from "./shared";
 
 type ChainCatalogEntry = RendererChainCatalogEntry;
 
@@ -54,8 +58,8 @@ export function chainCaseLabel(
 export function switchToChainCatalog(sw: Switch): ChainCatalogEntry[] {
   const out: ChainCatalogEntry[] = [];
   for (const [key, struct] of Object.entries(sw.cases)) {
-    const protoNum = Number(key);
-    if (!Number.isFinite(protoNum)) continue;
+    const protoNum = firstCaseKeyValue(key);
+    if (protoNum === null) continue;
     out.push({
       proto: protoNum,
       name: chainCaseLabel(struct, protoNum),

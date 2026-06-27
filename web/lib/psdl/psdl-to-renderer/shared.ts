@@ -11,6 +11,23 @@ import type { Field as PsdlField, Repeat, Struct, Switch } from "../types";
 import type { TlvCatalogField } from "../renderer";
 
 /**
+ * Parse a Switch case key to its representative numeric value for a picker /
+ * catalog entry. PSDL 0.5 case keys may be a single int ("3"), a comma-list
+ * ("1,2"), or a range ("8-15") — core's `selectArm` matches any member. The
+ * override surfaces only need ONE selectable value per case (setting the
+ * discriminator to it selects the whole case), so we take the first member.
+ * Returns null for the "_" default arm or any non-numeric key — the previous
+ * `Number(key)` returned NaN for comma/range keys and silently dropped them,
+ * losing the override surface entirely (override-design-audit).
+ */
+export function firstCaseKeyValue(key: string): number | null {
+  const first = key.split(",")[0]?.trim() ?? "";
+  const range = first.match(/^(\d+)-(\d+)$/);
+  const n = Number(range ? range[1] : first);
+  return Number.isInteger(n) ? n : null;
+}
+
+/**
  * Best-effort static bit width for a PSDL `Type`. Used only for renderer
  * shape construction — runtime width (varint, berLength, bytes with
  * env-dependent `n`) comes through `lib/psdl/normalize.typeBits`.

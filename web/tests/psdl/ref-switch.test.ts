@@ -53,6 +53,15 @@ describe("collectRefSwitches", () => {
     expect(ipv4.refSwitches ?? []).toHaveLength(0);
   });
 
+  it("surfaces a switch whose case key is a comma-list (bgpFlowSpec)", () => {
+    // override-design-audit: a case key like "1,2" was Number()-dropped to NaN,
+    // so the whole switch lost its picker. bgpFlowSpec's flowSpecCompType has a
+    // single numeric case keyed "1,2" — it must still surface a variant picker.
+    const bgp = psdlToRenderer(PRESETS.bgpFlowSpec!);
+    const keys = (bgp.refSwitches ?? []).map((r) => r.refKey);
+    expect(keys).toContain("flowSpecCompType");
+  });
+
   it("excludes length/format-encoder switches, keeping only record-type codes", () => {
     // review HIGH: driving a length encoder (BGP Extended-Length flag,
     // CoAP option nibbles) over-consumes a scope / explodes the render instead

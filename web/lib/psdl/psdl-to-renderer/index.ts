@@ -62,6 +62,7 @@ function flattenForMirror(
 import { isLikelyChainRepeat, repeatToChainField } from "./chain";
 import { groupToSubfieldField, plainFieldToRenderer } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
+import { firstCaseKeyValue } from "./shared";
 
 export { rendererToPsdl } from "./to-psdl";
 export { applyTlvInstances } from "./apply-tlv";
@@ -444,8 +445,8 @@ function collectRefSwitches(
           if (!covered && !isEncoder && !seen.has(refKey)) {
             const cases: { value: number; label: string }[] = [];
             for (const [key, struct] of Object.entries(c.cases)) {
-              const v = Number(key);
-              if (!Number.isFinite(v)) continue;
+              const v = firstCaseKeyValue(key);
+              if (v === null) continue;
               cases.push({ value: v, label: struct.name ?? `case ${key}` });
             }
             if (cases.length > 0) {
@@ -608,8 +609,8 @@ function collectPeekSwitches(
         if (c.on.kind === "peek") {
           const cases: { value: number; label: string }[] = [];
           for (const [key, struct] of Object.entries(c.cases)) {
-            const v = Number(key);
-            if (!Number.isFinite(v)) continue;
+            const v = firstCaseKeyValue(key);
+            if (v === null) continue;
             cases.push({ value: v, label: struct.name ?? `case ${key}` });
           }
           if (cases.length > 0) {
@@ -707,8 +708,8 @@ function attachOverrideMetadata(
       if (c.kind === "switch") {
         const cases: { value: number; label: string }[] = [];
         for (const [key, struct] of Object.entries(c.cases)) {
-          const v = Number(key);
-          if (Number.isFinite(v)) {
+          const v = firstCaseKeyValue(key);
+          if (v !== null) {
             cases.push({ value: v, label: struct.name ?? `case ${key}` });
           }
           // Recurse into each variant's fields.

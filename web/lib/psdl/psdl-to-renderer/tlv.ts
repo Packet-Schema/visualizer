@@ -11,7 +11,11 @@ import type {
   TlvCatalogField,
 } from "../renderer";
 
-import { getSwitchFromRepeat, structFieldsToTlvFields } from "./shared";
+import {
+  firstCaseKeyValue,
+  getSwitchFromRepeat,
+  structFieldsToTlvFields,
+} from "./shared";
 
 /** Pretty-print a camelCase identifier as "Camel Case". Returns null for
  *  empty / non-string input so callers can chain a final fallback. */
@@ -38,8 +42,8 @@ export function isTlvRepeat(r: Repeat): boolean {
 export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
   const out: TlvCatalogEntry[] = [];
   for (const [key, struct] of Object.entries(sw.cases)) {
-    const kindNum = Number(key);
-    if (!Number.isFinite(kindNum)) continue;
+    const kindNum = firstCaseKeyValue(key);
+    if (kindNum === null) continue;
     const fields = structFieldsToTlvFields(struct);
     const entry: TlvCatalogEntry = {
       kind: kindNum,
