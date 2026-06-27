@@ -63,12 +63,14 @@ describe("free-repeat default count", () => {
     expect(pathAttrs?.defaultCount).toBeUndefined();
   });
 
-  it("does not surface a per-iteration ref-count repeat as a global stepper (A7)", () => {
+  it("does not surface a bounded-nested inner ref-count repeat as a stepper", () => {
     // bgpUpdateFull's bgpAsSegValue repeat has count: ref(bgpAsSegLength), and
-    // bgpAsSegLength is a per-segment field nested inside the bgpAsPathSegments
-    // repeat. A single global stepper can't give distinct per-segment counts
-    // and would corrupt the rendered Segment Length cell — so it must NOT be
-    // surfaced as a freeRepeat.
+    // bgpAsSegLength lives inside bgpAsPathSegments, which itself lives inside
+    // the bgpPathAttributes bounded byte-budget. Unlike the other inner ref-count
+    // repeats (igmpv3Report etc., now surfaced), this one is `insideBounded`: a
+    // naked stepper would add bytes inside a budget-derived scope ("bounded scope
+    // over-consumed") AND is inert at the 0-fill load env (no path-attribute
+    // record is instantiated). So it must NOT be surfaced as a freeRepeat.
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
     const keys = (bgp.freeRepeats ?? []).map((r) => r.countKey);
     expect(keys).not.toContain("bgpAsSegLength");

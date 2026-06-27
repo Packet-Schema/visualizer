@@ -2189,13 +2189,29 @@ function collectFreeRepeats(
           } else if (
             typeof c.count === "object" &&
             c.count.kind === "ref" &&
-            !insideRepeat
+            // A ref-count repeat nested INSIDE an enclosing repeat record
+            // (igmpv3Report igmpv3Sources count={ref:igmpv3SrcCount}, mldv2Report
+            // sourceList, pimJoinPrune grpJoinedSources/grpPrunedSources,
+            // lispMapReply lispRecLocators, pimBootstrap gsRpEntries) is surfaced
+            // too, but ONLY when (a) its enclosing repeat is itself instantiable
+            // (`enclosingInstantiable` — so at least one parent record actually
+            // renders and the driver field exists in the diagram) and (b) it is
+            // NOT inside a budget-derived bounded scope (`!insideBounded` —
+            // bgpUpdateFull bgpAsSegValue lives under the bgpPathAttributes
+            // budget; a naked stepper there adds bytes inside a saturated scope,
+            // `bounded scope … over-consumed`, AND is inert at the 0-fill load env
+            // because no path-attribute record is instantiated). The driver ref
+            // names a per-record field, but in the env model a SINGLE env key
+            // drives EVERY record's count identically, so a packet-level stepper
+            // writing env[ref]=N is consistent with the rendered value — it just
+            // applies uniformly to all records. Surfacing it closes the
+            // see-but-cannot-edit gap (the user sees N source cells + the count
+            // field but otherwise has no control); the documented A7 tradeoff
+            // (a global stepper can't give DISTINCT per-instance counts) is
+            // accepted, qualified by a label noting it applies to every record.
+            (!insideRepeat || (enclosingInstantiable && !insideBounded))
           ) {
             // Only surface when no existing field-bearing widget covers it.
-            // Skipped inside an enclosing repeat: the count ref then names a
-            // PER-ITERATION field, but a single global stepper can't give
-            // distinct per-instance counts and would also corrupt the rendered
-            // value of that field (override-audit A7).
             const ref = c.count.field;
             const covered = fields.find(
               (f) =>
@@ -2210,17 +2226,28 @@ function collectFreeRepeats(
             // would be replacing the virtual with a real field in the PSDL).
             if (!covered && !virtualIds.has(ref)) {
               countKey = ref;
-              // Seed ONE record when the repeat is record-bearing — its element
-              // encloses a variant Switch (the surfaced refSwitch/peekSwitch
-              // picker) or a nested Repeat. Without this the count falls back to
-              // the 0-seed, so at load (and after every preset switch) there are
-              // ZERO records and a "Record variants" picker is INERT: choosing
-              // any variant changes nothing because no record exists to take it
-              // (#11/#12 — dnsResponse dnsAnswers/dnsRrType, dnsQuestions,
-              // lispMapReply lispReplyRecords). One representative record is a
-              // ref-count (NOT a budget) repeat, so seeding 1 never over-consumes
-              // a byte budget. Plain scalar-list ref-count repeats stay at 0.
-              if (repeatIsRecordBearing(c)) defaultCount = 1;
+              if (insideRepeat) {
+                // Inner per-record ref-count: the driver lives inside the
+                // enclosing record, which already renders (enclosingInstantiable),
+                // so do NOT seed a defaultCount — env[ref] starts at its natural
+                // value and the user raises it. Annotate the label so it is clear
+                // the stepper applies UNIFORMLY to every record of the enclosing
+                // repeat (the accepted A7 tradeoff vs distinct per-instance
+                // counts), not just one.
+                label = `${label} (per record)`;
+              } else if (repeatIsRecordBearing(c)) {
+                // Top-level record-bearing ref-count repeat: seed ONE record so
+                // its element's variant Switch (the surfaced refSwitch/peekSwitch
+                // picker) or nested Repeat isn't sitting over an EMPTY region.
+                // Without this the count falls back to the 0-seed, so at load (and
+                // after every preset switch) there are ZERO records and a "Record
+                // variants" picker is INERT (#11/#12 — dnsResponse
+                // dnsAnswers/dnsRrType, dnsQuestions, lispMapReply
+                // lispReplyRecords). One representative record is a ref-count (NOT
+                // a budget) repeat, so seeding 1 never over-consumes a byte
+                // budget. Plain scalar-list ref-count repeats stay at 0.
+                defaultCount = 1;
+              }
             }
           } else if (
             typeof c.count === "object" &&
