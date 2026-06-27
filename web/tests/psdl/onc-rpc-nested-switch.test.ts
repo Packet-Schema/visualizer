@@ -120,11 +120,17 @@ describe("oncRpc nested switch discriminators", () => {
     // switch case (rather than inside a repeat) is the switch-in-switch-case
     // surface this fix adds. If another preset starts matching, re-audit the
     // relaxed guard (chain/TLV-repeat-nested switches must stay excluded).
+    //
+    // The lookup-discriminator AFI pickers (id `<field>_byAfi`, e.g. pgm's NLA
+    // AFIs) are a SEPARATE surface — a `bytes(lookup(ref X, table))` width
+    // selector, not a nested Switch — that also happens to live inside switch
+    // cases. They are excluded here so this canary keeps guarding ONLY the
+    // switch-in-switch-case path.
     const affected = Object.keys(PRESETS).filter((key) => {
       const psdl = PRESETS[key]!;
       const caseIds = switchCaseFieldIds(psdl.body);
-      return (psdlToRenderer(psdl).refSwitches ?? []).some((r) =>
-        caseIds.has(r.refKey),
+      return (psdlToRenderer(psdl).refSwitches ?? []).some(
+        (r) => !r.id.endsWith("_byAfi") && caseIds.has(r.refKey),
       );
     });
     expect(affected).toEqual(["oncRpc"]);

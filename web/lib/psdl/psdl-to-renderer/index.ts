@@ -1416,6 +1416,32 @@ function collectSwitchCaseFieldIds(
   return acc;
 }
 
+/**
+ * Detect a `bytes` field whose length is a `lookup(ref X, table)` — the value's
+ * width is selected from `table` by the run-time value of a sibling INT/BITS
+ * discriminator `X` (LISP's `lispItrRlocAddr = bytes(lookup(ref lispItrRlocAfi,
+ * {0:0, 1:4, 2:16}))`; pgm's NLA addresses). `X` is a plain int (NOT an enum and
+ * NOT a Switch `on`), so it renders as a visible cell with NO enum widget and no
+ * Switch picker — and at the default env X=0 the looked-up width is 0, so the
+ * address region is invisible AND the user cannot raise X to reveal it: a
+ * see-but-cannot-edit discriminator (and an empty, width-0 value region).
+ *
+ * Returns `X`'s id and the lookup `table` (value → byte width) so the caller can
+ * surface a value-picker keyed on `env[X]`. Returns `null` for any other `n`
+ * shape (delimited, plain ref / lit / op width, a `lookup` keyed on something
+ * other than a bare field ref).
+ */
+function lookupDiscriminatorOf(
+  field: Container,
+): { refKey: string; table: Record<number, number> } | null {
+  if (!isField(field) || field.type.kind !== "bytes") return null;
+  const n = field.type.n;
+  if (isBytesDelimited(n)) return null;
+  if (n.kind !== "lookup") return null;
+  if (n.key.kind !== "ref") return null;
+  return { refKey: n.key.field, table: n.table };
+}
+
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
@@ -1426,6 +1452,7 @@ function collectRefSwitches(
   const out: NonNullable<RendererPacket["refSwitches"]> = [];
   const lengthDriving = collectLengthDrivingRefs(body);
   const fieldBits = collectFieldBits(body);
+  const fieldNames = collectFieldNames(body);
   // Field ids declared inside a switch case — a switch discriminated on one of
   // these has no top-level cell to host a `switchCases` widget, so it needs a
   // packet-level refSwitch picker even when it is NOT inside a repeat.
@@ -1450,6 +1477,71 @@ function collectRefSwitches(
     insideRepeat: boolean,
   ): void => {
     for (const c of flattenForMirror(containers, defs)) {
+      // A `bytes(lookup(ref X, table))` value whose discriminator X is a plain
+      // INT (not an enum / not a Switch `on`) gets no cell-level enum widget and
+      // no Switch picker, so the user can SEE X and the address region but cannot
+      // change X to select the address family — and at X=0 the value renders at
+      // width 0 (LISP `lispItrRlocAfi` / `lispEidPrefixAfi`; pgm NLA AFIs).
+      // Surface a value-picker keyed on `env[X]` whose cases are the lookup
+      // table keys, so picking a family sets the looked-up width (mirrors the
+      // refSwitch picker — `OverridePanel` writes `env[refKey] = case.value`).
+      if (isField(c)) {
+        const disc = lookupDiscriminatorOf(c);
+        if (disc && !seen.has(disc.refKey)) {
+          // Don't shadow a discriminator that already drives the diagram another
+          // way (a length slider / Switch picker / enum dropdown on a top-level
+          // cell, or a Switch `on` surfaced elsewhere as a refSwitch).
+          const covered = fields.find(
+            (f) =>
+              f.id === disc.refKey &&
+              (f.controlsLength || f.switchCases || f.enumVariants),
+          );
+          // Inside a plain repeat, the records must be instantiable by a surfaced
+          // count control — otherwise the value cell never appears and the picker
+          // is inert (same gate as the Switch path below). A lookup discriminator
+          // at the top level / inside a group / inside a switch case is reachable
+          // by selecting the enclosing arm, so it needs no repeat gate there.
+          const instantiable = enclosingPlainRepeat
+            ? instantiableRepeatIds.has(enclosingPlainRepeat.id)
+            : true;
+          // Build one case per table entry. The label reports the looked-up byte
+          // width (`4 bytes`); a 0-width entry reads `0 bytes (absent)`. The
+          // table keys are stringified non-negative integers (core's schema), so
+          // a non-numeric / negative key is skipped defensively.
+          const cases: { value: number; width: number; label: string }[] = [];
+          for (const [key, width] of Object.entries(disc.table)) {
+            const value = Number(key);
+            if (!Number.isInteger(value) || value < 0) continue;
+            cases.push({
+              value,
+              width,
+              label: width > 0 ? `${width} bytes` : "0 bytes (absent)",
+            });
+          }
+          if (!covered && instantiable && cases.length > 0) {
+            // Order so `cases[0]` is the first NON-zero-width family
+            // (lowest-value present address). `initialState` seeds
+            // `env[refKey] = cases[0].value`, so a 0-width "absent" default would
+            // re-create the width-0 value the picker exists to fix and contradict
+            // a picker whose first label promises bytes (#11/#12). Zero-width
+            // "absent" entries are kept but sorted last.
+            cases.sort((a, b) => {
+              const aAbsent = a.width === 0 ? 1 : 0;
+              const bAbsent = b.width === 0 ? 1 : 0;
+              if (aAbsent !== bAbsent) return aAbsent - bAbsent;
+              return a.value - b.value;
+            });
+            seen.add(disc.refKey);
+            out.push({
+              id: `${disc.refKey}_byAfi`,
+              name: fieldNames.get(disc.refKey) ?? disc.refKey,
+              cases: cases.map(({ value, label }) => ({ value, label })),
+              refKey: disc.refKey,
+            });
+          }
+        }
+        continue;
+      }
       if (c.kind === "repeat") {
         const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
         visit(c.element.fields, plain ? c : enclosingPlainRepeat, true);
