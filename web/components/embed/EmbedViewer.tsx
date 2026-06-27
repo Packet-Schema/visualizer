@@ -22,6 +22,7 @@ import { THEME_STORAGE_KEY } from "@/lib/constants";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import { PRESET_INDEX, getLoadedPreset, loadPreset } from "@/lib/psdl/presets";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { initialState } from "@/lib/psdl/renderer-helpers";
@@ -121,6 +122,7 @@ export default function EmbedViewer() {
     for (const ref of refs) {
       if (!env.has(ref)) env.set(ref, 0);
     }
+    seedDynamicWidthDefaults(embedState.psdl, env);
 
     // A malformed shared link (controllers that over-consume a `bounded`
     // scope, etc.) makes core normalize throw. The embed is read-only with no

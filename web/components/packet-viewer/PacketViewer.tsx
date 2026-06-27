@@ -19,6 +19,7 @@ import {
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import { evalExprOr } from "@/lib/psdl/expr";
 import {
   initialState,
@@ -1262,6 +1263,9 @@ export default function PacketViewer({
     for (const r of psdlRefs) {
       if (!env.has(r)) env.set(r, 0);
     }
+    // Give varint / delimited-bytes fields a visible default width (a user width
+    // still wins — seed only fills unset/0).
+    seedDynamicWidthDefaults(targetPsdl, env);
     // Derive the iteration count of each bounded eos/until repeat from its
     // scope's length budget, so raising the length slider fills the scope with
     // records (core reads the eos count from env[countKey], not the budget).
