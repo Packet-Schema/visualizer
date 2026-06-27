@@ -231,6 +231,17 @@ export type Packet = {
     name: string;
     cases: { value: number; label: string }[];
     refKey: string;
+    /** Per-record length fields to seed to a representative width when this
+     *  picker is surfaced. A `ref`-discriminated record-variant switch whose
+     *  every arm is `bytes(ref tlvLength)` and whose `tlvLength` lives INSIDE the
+     *  repeat element (no top-level cell, not a lengthController) would otherwise
+     *  render every arm at width 0 → an inert picker that manufactures empty
+     *  record skeletons (isisLsp's tlvType + tlvLength). Rather than suppress the
+     *  picker (a see-but-cannot-edit gap), surface it and seed these lengths via
+     *  `initialState` so the chosen arm's Value cell is non-zero-width and the
+     *  length CELL stays user-editable. Share-url-safe (same default-set
+     *  reasoning as the discriminator / freeRepeat / boundedRepeat seeds). */
+    lengthSeeds?: { key: string; value: number }[];
   }[];
   /** Length-controller sliders for `bounded.bytes` scopes whose driving field
    *  is NOT a top-level cell (e.g. nested in a Group, like babel's

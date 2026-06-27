@@ -937,6 +937,56 @@ function switchArmsAllZeroWidth(
 }
 
 /**
+ * When `switchArmsAllZeroWidth` would suppress a picker, decide whether the
+ * collapse is caused EXCLUSIVELY by uncontrolled PER-RECORD sibling length
+ * fields (declared inside the switch cases / repeat element, like isisLsp's
+ * `tlvLength`). If so, return those length-field ids: instead of suppressing the
+ * picker we surface it AND seed those lengths to a representative width, so the
+ * chosen arm's `bytes(ref length)` value becomes visible and editable (the
+ * KNOWN-REMAINING #7/#8 fix). Returns null when seeding cannot rescue the
+ * picker — an empty arm, a fixed-width/visible arm (the picker is already live,
+ * not collapsed), or a `bytes` length ref that is NOT a per-record sibling (a
+ * top-level field that has its own surfacing path, or an expr we shouldn't
+ * blindly seed) — so the existing suppression still applies in those cases.
+ */
+function switchArmsZeroWidthSiblingLengths(
+  cases: Record<string, { fields: Container[] }>,
+  controlledIds: Set<string>,
+  perRecordFieldIds: Set<string>,
+): Set<string> | null {
+  const lengths = new Set<string>();
+  const armLengths = (containers: Container[]): Set<string> | null => {
+    // An empty arm distinguishes nothing and can't be rescued by a length seed.
+    if (containers.length === 0) return null;
+    const out = new Set<string>();
+    for (const c of containers) {
+      if (!isField(c)) return null; // nested container: not a simple value arm
+      if (c.type.kind !== "bytes") return null; // fixed-width: already visible
+      const n = c.type.n;
+      if (isBytesDelimited(n)) return null; // seeded elsewhere (visible default)
+      const refs = exprRefs(n);
+      if (refs.length === 0) return null; // not sibling-ref sized
+      for (const r of refs) {
+        if (controlledIds.has(r)) return null; // already controllable → not inert
+        // Only a single per-record sibling length is safe to seed; anything else
+        // (a top-level uncontrolled field, an unknown id) we leave suppressed.
+        if (!perRecordFieldIds.has(r)) return null;
+        out.add(r);
+      }
+    }
+    return out;
+  };
+  const arms = Object.values(cases);
+  if (arms.length === 0) return null;
+  for (const s of arms) {
+    const armOut = armLengths(s.fields);
+    if (armOut === null) return null;
+    for (const id of armOut) lengths.add(id);
+  }
+  return lengths.size > 0 ? lengths : null;
+}
+
+/**
  * Structural fingerprint of a container that ignores identity-only fields
  * (`id`, `name`, `doc`, …) and keeps everything that affects the rendered
  * geometry: the node `kind`, a field's `type`, a Switch's discriminator and
@@ -1222,9 +1272,32 @@ function collectRefSwitches(
           // arm collapses to width 0 at default (its only content is a
           // `bytes(ref X)` value whose length X has no surfaced control). The
           // diagram is then byte-identical for every selectable value, so the
-          // control can't change anything — suppress it (isisLsp tlvType: arms
-          // are `bytes(ref tlvLength)`, tlvLength uncontrolled).
+          // control can't change anything.
           const allArmsInert = switchArmsAllZeroWidth(c.cases, controlledIds);
+          // …UNLESS the collapse is caused EXCLUSIVELY by an uncontrolled
+          // PER-RECORD sibling length declared inside the repeat element
+          // (isisLsp's `tlvLength`: each arm is `bytes(ref tlvLength)`). Then we
+          // do NOT suppress — instead surface the picker AND seed a
+          // representative length so the chosen arm's Value cell becomes
+          // visible/editable (KNOWN-REMAINING #7/#8). Suppressing here would
+          // leave a region the user can SEE (the slider manufactures empty TLV
+          // skeletons) but never fill in — the see-but-cannot-edit bar.
+          // Per-record sibling field ids: those declared inside the enclosing
+          // plain repeat's element (isisLsp's `tlvType` / `tlvLength`). Only such
+          // a sibling length is safe to seed — a representative width on a real
+          // PER-RECORD length field, not a shared top-level one. (A case-nested
+          // picker has no repeat element, so it never qualifies for the rescue.)
+          const perRecordFieldIds = enclosingPlainRepeat
+            ? new Set(collectArmFieldIds(enclosingPlainRepeat.element.fields))
+            : new Set<string>();
+          const rescueLengths = allArmsInert
+            ? switchArmsZeroWidthSiblingLengths(
+                c.cases,
+                controlledIds,
+                perRecordFieldIds,
+              )
+            : null;
+          const armsInert = allArmsInert && rescueLengths === null;
           // For a case-nested picker there is no zero-width safety net from a
           // repeat budget, so also drop it when every selectable arm is
           // structurally identical (the diagram is byte-identical for every
@@ -1236,7 +1309,7 @@ function collectRefSwitches(
             !covered &&
             !isEncoder &&
             instantiable &&
-            !allArmsInert &&
+            !armsInert &&
             !allArmsIdentical &&
             !seen.has(refKey)
           ) {
@@ -1251,7 +1324,27 @@ function collectRefSwitches(
             }
             if (cases.length > 0) {
               seen.add(refKey);
-              out.push({ id: c.id, name: c.name ?? refKey, cases, refKey });
+              // Seed each per-record length to exactly the per-record charge
+              // `estimateElementBytes` already books for a `bytes(ref length)`
+              // value (REF_SIZED_FIELD_BYTE_ALLOWANCE). Keeping the seed equal to
+              // that charge means an enclosing boundedRepeat's budget-derived
+              // count stays exact — each record consumes precisely
+              // `perRecordBytes`, so seeding never over-consumes the bounded
+              // scope (which would freeze the diagram). The value cell is still
+              // non-zero-width — visible and editable — which is the whole point.
+              const lengthSeeds = rescueLengths
+                ? [...rescueLengths].map((key) => ({
+                    key,
+                    value: REF_SIZED_FIELD_BYTE_ALLOWANCE,
+                  }))
+                : undefined;
+              out.push({
+                id: c.id,
+                name: c.name ?? refKey,
+                cases,
+                refKey,
+                ...(lengthSeeds ? { lengthSeeds } : {}),
+              });
             }
           }
         }

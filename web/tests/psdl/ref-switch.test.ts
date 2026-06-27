@@ -31,19 +31,24 @@ function cellIds(
 }
 
 /**
- * Cell ids derived the way the live app does it: `initialEnv` + `psdlRefs`
- * 0-fill + `seedDynamicWidthDefaults` + the PacketViewer `boundedRepeats`
- * count-derivation (count = floor((budget - prefix) / perRecord)), then
- * `resolveLayout({ viewMode: "semantic" })`. Used to assert whether a
- * refSwitch's discriminator can actually change the diagram at app-realistic
- * env.
+ * Cell ids derived the way the live app does it: PacketViewer layers the
+ * renderer's `initialState` seeds (refSwitch discriminator + per-record
+ * `lengthSeeds`) under the explicit overrides, then `initialEnv` + `psdlRefs`
+ * 0-fill + `seedDynamicWidthDefaults` + the `boundedRepeats` count-derivation
+ * (count = floor((budget - prefix) / perRecord)), then
+ * `resolveLayout({ viewMode: "semantic" })`. The `initialState` layer is what
+ * makes a ref-sized TLV Value non-zero-width (it seeds `tlvLength`), so this is
+ * what the diagram actually renders at load.
  */
-function appCellIds(
+function appCellIdsSeeded(
   psdl: PsdlPacket,
   overrides: Record<string, number>,
 ): string[] {
   const mirror = psdlToRenderer(psdl);
   const env = new Map<string, number>(Object.entries(overrides));
+  const state = initialState(mirror);
+  for (const [k, v] of Object.entries(state))
+    if (!env.has(k)) env.set(k, Number(v));
   for (const [k, v] of initialEnv(psdl)) if (!env.has(k)) env.set(k, v);
   for (const r of collectPsdlRefs(psdl)) if (!env.has(r)) env.set(r, 0);
   seedDynamicWidthDefaults(psdl, env);
@@ -160,39 +165,49 @@ describe("collectRefSwitches", () => {
     expect((tls.refSwitches ?? []).map((r) => r.refKey)).toContain("extType");
   });
 
-  it("suppresses a refSwitch whose every case arm collapses to width 0", () => {
+  it("surfaces the isisLsp tlvType picker with a per-record length seed (#7/#8)", () => {
     // high: isisLsp's `byType` picker is on tlvType, and the `tlvs` repeat DOES
     // derive a count from its pduLength budget (so the instantiable-count gate
-    // passes). But every case arm is a single `bytes(ref tlvLength)` value, and
-    // tlvLength has NO surfaced control anywhere (not a lengthController, not a
-    // freeRepeat, not a top-level field — it lives inside the repeat element).
-    // With tlvLength defaulting to 0 the variant value renders at width 0, so
-    // selecting any tlvType (1/10/22/129/132/137) yields a byte-identical
-    // diagram. A visible control with no possible effect must be suppressed.
+    // passes). Every case arm is a single `bytes(ref tlvLength)` value, and
+    // tlvLength has no top-level/lengthController/freeRepeat control — it lives
+    // INSIDE the repeat element. Previously the picker was suppressed: the slider
+    // manufactured empty TLV skeletons (tlvType#/tlvLength# with NO Value cell)
+    // the user could SEE but never type into — a see-but-cannot-edit gap. The fix
+    // surfaces the picker AND attaches a per-record `lengthSeeds` entry on
+    // `tlvLength`, so the chosen arm's Value becomes visible/editable.
     const isis = psdlToRenderer(PRESETS.isisLsp!);
-    const keys = (isis.refSwitches ?? []).map((r) => r.refKey);
-    expect(keys).not.toContain("tlvType");
+    const rs = (isis.refSwitches ?? []).find((r) => r.refKey === "tlvType");
+    expect(rs, "tlvType variant picker must be surfaced").toBeTruthy();
+    expect(rs!.cases.map((c) => c.value)).toEqual(
+      expect.arrayContaining([1, 10, 22, 129, 132, 137]),
+    );
+    // The rescue seeds the per-record length so the arm's `bytes(ref tlvLength)`
+    // is non-zero-width. The seed equals the per-record byte charge the
+    // boundedRepeat already books (REF_SIZED_FIELD_BYTE_ALLOWANCE = 1), so the
+    // budget-derived count stays exact and the bounded scope is never
+    // over-consumed.
+    expect(rs!.lengthSeeds).toEqual([{ key: "tlvLength", value: 1 }]);
   });
 
-  it("the suppressed isisLsp tlvType picker is genuinely inert at app env", () => {
-    // Justifies the suppression above: drive tlvType across every case through
-    // the PacketViewer-style env derivation (boundedRepeats count-derive +
-    // dynamic-width seed). The discriminator can't change the diagram because
-    // each arm is `bytes(ref tlvLength)` and tlvLength has no control — so all
-    // renders are byte-identical. (Had the picker been able to change anything,
-    // suppressing it would be wrong; this asserts it cannot.)
+  it("renders an editable, non-zero-width TLV Value at the seeded app env", () => {
+    // The picker is now LIVE: at the app-realistic env (initialState seeds the
+    // tlvType discriminator AND the tlvLength rescue length), a TLV Value cell
+    // appears, and choosing tlvType=129 renders the `nlpidList` payload — exactly
+    // the region the suppressed picker left permanently empty.
     const src = PRESETS.isisLsp!;
-    const baseline = appCellIds(src, { pduLength: 60, tlvType: 1 });
-    for (const t of [10, 22, 129, 132, 137]) {
-      expect(
-        appCellIds(src, { pduLength: 60, tlvType: t }),
-        `tlvType=${t} must not change the diagram (inert picker)`,
-      ).toEqual(baseline);
-    }
-    // Sanity: the baseline never contains any per-variant value cell — proof
-    // the arms collapse to width 0 (no areaAddressesValue/extIsReachValue/…).
-    expect(baseline).not.toContain("extIsReachValue");
-    expect(baseline).not.toContain("areaAddressesValue");
+    const t129 = appCellIdsSeeded(src, { pduLength: 60, tlvType: 129 });
+    expect(t129).toContain("tlvType#0");
+    expect(t129).toContain("tlvLength#0");
+    // The Value cell (the previously-missing payload) is present and non-empty.
+    expect(t129).toContain("nlpidList#0");
+    // And the discriminator genuinely drives the variant: a different tlvType
+    // renders a DIFFERENT value field id (areaAddresses for type 1).
+    const t1 = appCellIdsSeeded(src, { pduLength: 60, tlvType: 1 });
+    expect(t1).toContain("areaAddressesValue#0");
+    expect(t1).not.toContain("nlpidList#0");
+    // Seeding never over-consumes the bounded scope (no frozen/empty fallback):
+    // records actually render.
+    expect(t129.filter((id) => id === "tlvType#0").length).toBe(1);
   });
 
   it("keeps a record-variant picker whose arms have visible (fixed-width) content", () => {

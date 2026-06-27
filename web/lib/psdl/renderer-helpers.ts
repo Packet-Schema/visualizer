@@ -203,6 +203,14 @@ export function initialState(packet: Packet): ControllerState {
     if (state[rs.refKey] === undefined && rs.cases[0]) {
       state[rs.refKey] = rs.cases[0].value;
     }
+    // Seed a representative PER-RECORD length (isisLsp's `tlvLength`) so the
+    // picked record-variant arm's `bytes(ref length)` Value renders non-empty
+    // instead of width 0. Without this the picker would be inert — selecting any
+    // tlvType yields a byte-identical (empty) record. Only fills unset/0 so a
+    // user width still wins; share-url-safe (same default-set reasoning).
+    for (const seed of rs.lengthSeeds ?? []) {
+      if (!state[seed.key]) state[seed.key] = seed.value;
+    }
   }
   for (const ps of packet.peekSwitches ?? []) {
     if (state[ps.peekKey] === undefined && ps.cases[0]) {
