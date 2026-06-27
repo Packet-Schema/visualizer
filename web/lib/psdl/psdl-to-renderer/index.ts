@@ -2705,13 +2705,25 @@ function collectFreeRepeats(
               countKey = ref;
               if (insideRepeat) {
                 // Inner per-record ref-count: the driver lives inside the
-                // enclosing record, which already renders (enclosingInstantiable),
-                // so do NOT seed a defaultCount — env[ref] starts at its natural
-                // value and the user raises it. Annotate the label so it is clear
-                // the stepper applies UNIFORMLY to every record of the enclosing
-                // repeat (the accepted A7 tradeoff vs distinct per-instance
-                // counts), not just one.
+                // enclosing record, which already renders (enclosingInstantiable).
+                // Annotate the label so it is clear the stepper applies UNIFORMLY
+                // to every record of the enclosing repeat (the accepted A7 tradeoff
+                // vs distinct per-instance counts), not just one.
                 label = `${label} (per record)`;
+                // A RECORD-BEARING inner repeat (its element wraps a variant
+                // Switch / nested Repeat that surfaces its own refSwitch/peek
+                // picker — lispMapReply's `lispRecLocators`, whose element holds
+                // the `lispLocAddrByAFI` AFI switch) is seeded to ONE record so
+                // that picker is LIVE on load: at the 0-fill natural ref value the
+                // enclosing record renders but holds ZERO inner records, so the
+                // inner discriminator cell never appears and the "Record variants"
+                // picker is inert and contradicts an empty region (#11/#12 —
+                // lispLocAddrByAFI). Plain scalar-list inner repeats
+                // (igmpv3/mldv2 source lists, pim joined/pruned) are NOT
+                // record-bearing, so they stay at the 0-seed — a representative
+                // record there carries no extra editable surface. A ref-count (NOT
+                // budget) repeat, so seeding 1 never over-consumes a byte budget.
+                if (repeatIsRecordBearing(c)) defaultCount = 1;
               } else if (repeatIsRecordBearing(c)) {
                 // Top-level record-bearing ref-count repeat: seed ONE record so
                 // its element's variant Switch (the surfaced refSwitch/peekSwitch

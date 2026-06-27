@@ -44,6 +44,29 @@ type Props = {
   cells?: readonly Cell[];
 };
 
+/** True when a field id is materialised as a cell (or sub-cell) in the current
+ *  diagram. Repeat-instanced cells carry a `#<rec>_<seg>` suffix, so we match on
+ *  the id itself OR a `<id>#…` instance, using the `#` boundary to avoid a
+ *  prefix collision (`pgmSpmNla` vs `pgmSpmNlaAfi`). Used to gate a refSwitch
+ *  picker: its discriminator only renders once the ancestor switch arm is
+ *  selected (oncRpc's rpcMsgType→replyStat→acceptStat chain) AND its enclosing
+ *  repeat has a record (lispMapReply's per-record locator AFI), so a rendered
+ *  discriminator cell is an exact, layout-faithful "this picker is live" signal. */
+function fieldRendered(
+  cells: readonly Cell[] | undefined,
+  id: string,
+): boolean {
+  if (!cells) return false;
+  const prefix = `${id}#`;
+  for (const c of cells) {
+    if (c.field.id === id || c.field.id.startsWith(prefix)) return true;
+    for (const s of c.subCells ?? []) {
+      if (s.subfield.id === id || s.subfield.id.startsWith(prefix)) return true;
+    }
+  }
+  return false;
+}
+
 function EmptyState({
   message,
   packet,
@@ -51,6 +74,7 @@ function EmptyState({
   onControllerChange,
   onTlvChange,
   tlvSlotBytes,
+  cells,
 }: {
   message: string;
   packet: Packet;
@@ -58,6 +82,7 @@ function EmptyState({
   onControllerChange?: (key: string, value: number) => void;
   onTlvChange?: (field: Field, next: TlvInstance[]) => void;
   tlvSlotBytes?: Record<string, number>;
+  cells?: readonly Cell[];
 }) {
   // Packet-level extras (free Repeats, peek Switches) surface here so the
   // panel never reads as truly empty when the packet has stoppable knobs
@@ -153,6 +178,19 @@ function EmptyState({
                 cases={r.cases}
                 controllers={controllers}
                 onChange={onControllerChange}
+                // A refSwitch's discriminator field only renders once its ancestor
+                // switch arm is selected (oncRpc rpcMsgType→replyStat→acceptStat)
+                // and its enclosing repeat has a record (lispMapReply locator AFI).
+                // Until then the picker can't change the diagram — it would
+                // contradict an empty/wrong-arm packet — so disable it with a hint
+                // pointing at the discriminator to set, instead of showing a live
+                // control with no effect (#11/#12, same class as the seeded length
+                // controllers). Layout-faithful: `cells` IS the live diagram.
+                disabledHint={
+                  fieldRendered(cells, r.refKey)
+                    ? undefined
+                    : `Set ${r.refKey} (select its parent variant / add a record) to edit`
+                }
               />
             ))}
           </div>
@@ -322,6 +360,7 @@ export default function OverridePanel({
     onControllerChange,
     onTlvChange,
     tlvSlotBytes,
+    cells,
   };
 
   if (r.kind === "empty") {
@@ -1282,6 +1321,10 @@ type PeekSwitchPickerProps = {
   cases: { value: number; label: string }[];
   controllers: ControllerState;
   onChange: (key: string, value: number) => void;
+  /** When set, the picker is inert (its discriminator is not in the current
+   *  diagram, so selecting a case can't change anything): render it disabled
+   *  with this hint telling the user what to set first. Absent = live. */
+  disabledHint?: string;
 };
 
 function PeekSwitchPicker({
@@ -1290,9 +1333,11 @@ function PeekSwitchPicker({
   cases,
   controllers,
   onChange,
+  disabledHint,
 }: PeekSwitchPickerProps) {
   const current = controllers[peekKey] ?? cases[0]?.value ?? 0;
   const selectId = `detail-peek-${peekKey}`;
+  const disabled = disabledHint !== undefined;
   return (
     <div>
       <label htmlFor={selectId}>
@@ -1303,6 +1348,7 @@ function PeekSwitchPicker({
       <select
         id={selectId}
         value={current}
+        disabled={disabled}
         onChange={(e) => {
           const v = Number(e.target.value);
           if (Number.isFinite(v)) onChange(peekKey, v);
@@ -1312,6 +1358,8 @@ function PeekSwitchPicker({
           borderColor: "var(--border-strong)",
           background: "var(--bg-elevated)",
           color: "var(--fg)",
+          opacity: disabled ? 0.55 : 1,
+          cursor: disabled ? "not-allowed" : undefined,
         }}
       >
         {cases.map((c) => (
@@ -1320,6 +1368,9 @@ function PeekSwitchPicker({
           </option>
         ))}
       </select>
+      {disabledHint ? (
+        <p className="mt-1 text-3xs text-fg-muted m-0">{disabledHint}</p>
+      ) : null}
     </div>
   );
 }

@@ -71,8 +71,15 @@ describe("inner per-record ref-count repeat", () => {
       ).toBeDefined();
       // Labelled so the user knows it applies uniformly to every record.
       expect(fr!.name).toContain("per record");
-      // Inner ref-count repeats are scalar lists; no representative-record seed.
-      expect(fr!.defaultCount).toBeUndefined();
+      // Scalar-list inner ref-count repeats carry no representative-record seed.
+      // A RECORD-BEARING inner repeat (lispMapReply's locators wrap the
+      // `lispLocAddrByAFI` AFI switch) IS seeded to one record so that nested
+      // picker is live on load instead of inert over an empty region (#11/#12).
+      if (preset === "lispMapReply") {
+        expect(fr!.defaultCount).toBe(1);
+      } else {
+        expect(fr!.defaultCount).toBeUndefined();
+      }
     }
   });
 
