@@ -607,6 +607,7 @@ function collectFreeRepeats(
     containers: PsdlPacket["body"],
     bounded: { key: string; prefix: number; bytes: Expr } | null,
     insideRepeat: boolean,
+    insideSwitch: boolean,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -624,6 +625,7 @@ function collectFreeRepeats(
           c.fields,
           key ? { key, prefix, bytes: c.bytes } : null,
           insideRepeat,
+          insideSwitch,
         );
         continue;
       }
@@ -633,7 +635,18 @@ function collectFreeRepeats(
         continue;
       }
       if (c.kind === "repeat") {
-        if (!isLikelyChainRepeat(c) && !isTlvRepeat(c)) {
+        // A TLV-shaped repeat (element = single Switch) is normally lifted to a
+        // top-level `tlv` field with its own list editor — but only when it sits
+        // in a top-level container. When it lives INSIDE a switch case (icmpv6Ndp
+        // rsOptions/raOptions/… = repeat{count:eos, element:[switch on peek]}),
+        // `repeatToTlvField` is never reached, so it gets ZERO override surface
+        // (see-but-cannot-edit). Relax the !isTlvRepeat guard for a switch-nested,
+        // non-insideRepeat TLV repeat so its eos count stepper IS surfaced (the
+        // matching peek type-picker comes from collectPeekSwitches). It is NOT
+        // promoted to a tlv field — the count stepper keyed on env[repeat.id] plus
+        // the peek picker are the controls.
+        const switchNestedTlv = isTlvRepeat(c) && insideSwitch && !insideRepeat;
+        if (!isLikelyChainRepeat(c) && (!isTlvRepeat(c) || switchNestedTlv)) {
           let countKey: string | null = null;
           let label = c.name ?? c.id;
           let defaultCount: number | undefined;
@@ -728,30 +741,31 @@ function collectFreeRepeats(
           }
         }
         // A repeat element is its own scope: the bounded budget does not pass
-        // into nested repeats' own counts (they get their own keys).
-        visit(c.element.fields, null, true);
+        // into nested repeats' own counts (they get their own keys). A repeat
+        // element is not a switch case, so insideSwitch resets to false.
+        visit(c.element.fields, null, true, false);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, bounded, insideRepeat);
+        visit(c.children, bounded, insideRepeat, insideSwitch);
         continue;
       }
       if (c.kind === "switch") {
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, bounded, insideRepeat);
+          visit(struct.fields, bounded, insideRepeat, true);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], bounded, insideRepeat);
+        visit([c.container], bounded, insideRepeat, insideSwitch);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, bounded, insideRepeat);
+        visit(c.plaintext.fields, bounded, insideRepeat, insideSwitch);
         continue;
       }
     }
   };
-  visit(body, null, false);
+  visit(body, null, false, false);
   return { freeRepeats: out, boundedRepeats: boundedOut };
 }
 
@@ -898,7 +912,11 @@ function collectPeekSwitches(
   body: PsdlPacket["body"],
 ): NonNullable<RendererPacket["peekSwitches"]> {
   const out: NonNullable<RendererPacket["peekSwitches"]> = [];
-  const visit = (containers: PsdlPacket["body"]): void => {
+  const visit = (
+    containers: PsdlPacket["body"],
+    insideSwitch: boolean,
+    insideRepeat: boolean,
+  ): void => {
     for (const c of flattenForMirror(containers)) {
       if (c.kind === "switch") {
         if (c.on.kind === "peek") {
@@ -930,33 +948,41 @@ function collectPeekSwitches(
             }
           }
         }
-        for (const struct of Object.values(c.cases)) visit(struct.fields);
+        for (const struct of Object.values(c.cases))
+          visit(struct.fields, true, insideRepeat);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children);
+        visit(c.children, insideSwitch, insideRepeat);
         continue;
       }
       if (c.kind === "repeat") {
-        // A peek Switch that IS a TLV/chain repeat's own dispatch is already
-        // handled by the (more capable) TLV/chain editor; surfacing a duplicate
-        // peek picker is redundant AND goes inert once applyTlvInstances
-        // materialises the records (the peek key is no longer read). So don't
-        // collect peek switches from inside a TLV/chain repeat element.
-        if (!isTlvRepeat(c) && !isLikelyChainRepeat(c)) visit(c.element.fields);
+        // A peek Switch that IS a top-level TLV/chain repeat's own dispatch is
+        // already handled by the (more capable) TLV/chain editor; surfacing a
+        // duplicate peek picker is redundant AND goes inert once
+        // applyTlvInstances materialises the records (the peek key is no longer
+        // read). So don't collect peek switches from inside such a repeat.
+        //
+        // EXCEPTION: a switch-nested, non-insideRepeat TLV repeat (icmpv6Ndp
+        // rsOptions/raOptions/…) is NOT lifted to a tlv field, so its peek
+        // type-picker is the ONLY surface for choosing the option type — descend
+        // into it (paired with the eos count stepper from collectFreeRepeats).
+        const switchNestedTlv = isTlvRepeat(c) && insideSwitch && !insideRepeat;
+        if ((!isTlvRepeat(c) && !isLikelyChainRepeat(c)) || switchNestedTlv)
+          visit(c.element.fields, false, true);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container]);
+        visit([c.container], insideSwitch, insideRepeat);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields);
+        visit(c.plaintext.fields, insideSwitch, insideRepeat);
         continue;
       }
     }
   };
-  visit(body);
+  visit(body, false, false);
   return out;
 }
 
