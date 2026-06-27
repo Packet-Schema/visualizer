@@ -62,7 +62,7 @@ function flattenForMirror(
 import { isLikelyChainRepeat, repeatToChainField } from "./chain";
 import { groupToSubfieldField, plainFieldToRenderer } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
-import { firstCaseKeyValue } from "./shared";
+import { firstCaseKeyValue, typeBits } from "./shared";
 
 export { rendererToPsdl } from "./to-psdl";
 export { applyTlvInstances } from "./apply-tlv";
@@ -283,6 +283,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // the constraint-driven path above, so IHL / Data Offset stay overridable.
   const boundedControllers = new Set<string>();
   collectBoundedControllers(packet.body, packet.defs, boundedControllers);
+  const lengthControllers: RendererField[] = [];
   for (const fromId of boundedControllers) {
     const target = fields.find((f) => f.id === fromId);
     if (target && !target.controlsLength) {
@@ -290,6 +291,25 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       if (target.bits != null) {
         target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
       }
+      continue;
+    }
+    if (target) continue;
+    // The length field isn't a top-level cell — it lives inside a Group (it's a
+    // subfield). It can't host its own slider, so surface a packet-level length
+    // controller; raising it grows the bounded budget so the enclosed repeat
+    // becomes editable instead of stuck empty (override-design-audit A3).
+    for (const f of fields) {
+      const sub = f.subfields?.find((s) => s.id === fromId);
+      if (!sub) continue;
+      lengthControllers.push({
+        id: fromId,
+        name: sub.name,
+        bits: sub.bits,
+        controlsLength: fromId,
+        max: sub.bits > 0 ? 2 ** sub.bits - 1 : undefined,
+        defaultValue: sub.defaultValue,
+      });
+      break;
     }
   }
   attachOverrideMetadata(packet.body, fields);
@@ -301,7 +321,10 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   for (const f of fields) {
     if (f.chainCatalog && f.switchCases) delete f.switchCases;
   }
-  const freeRepeats = collectFreeRepeats(packet.body, fields);
+  const { freeRepeats, boundedRepeats } = collectFreeRepeats(
+    packet.body,
+    fields,
+  );
   const peekSwitches = collectPeekSwitches(packet.body);
   const refSwitches = collectRefSwitches(packet.body, fields);
   return {
@@ -313,6 +336,8 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     ...(freeRepeats.length > 0 ? { freeRepeats } : {}),
     ...(peekSwitches.length > 0 ? { peekSwitches } : {}),
     ...(refSwitches.length > 0 ? { refSwitches } : {}),
+    ...(lengthControllers.length > 0 ? { lengthControllers } : {}),
+    ...(boundedRepeats.length > 0 ? { boundedRepeats } : {}),
   };
 }
 
@@ -497,23 +522,40 @@ function collectRefSwitches(
 function collectFreeRepeats(
   body: PsdlPacket["body"],
   fields: RendererField[],
-): NonNullable<RendererPacket["freeRepeats"]> {
+): {
+  freeRepeats: NonNullable<RendererPacket["freeRepeats"]>;
+  boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>;
+} {
   const out: NonNullable<RendererPacket["freeRepeats"]> = [];
-  // `insideBounded` tracks whether the current scope is inside a `bounded`
-  // byte-budget. A repeat nested in a bounded must NOT be auto-seeded with a
-  // default count — increasing its iterations consumes the bounded budget and
-  // would over-consume (the count is meant to follow the scope's length field).
-  // We can't use `flattenForMirror` here because it erases bounded boundaries;
-  // recurse manually so the flag survives.
+  const boundedOut: NonNullable<RendererPacket["boundedRepeats"]> = [];
+  // `boundedKey` is the single-ref length field of the nearest enclosing
+  // `bounded` byte-budget (or null). An eos/until repeat inside one must NOT get
+  // a naked count stepper (bumping it over-consumes the budget — a destructive
+  // control); instead its count is DERIVED from the budget at layout time, so
+  // the length slider is the single control. We can't use `flattenForMirror`
+  // here because it erases bounded boundaries; recurse manually.
   const visit = (
     containers: PsdlPacket["body"],
-    insideBounded: boolean,
+    bounded: { key: string; prefix: number; bytes: Expr } | null,
     insideRepeat: boolean,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
       if (c.kind === "bounded") {
-        visit(c.fields, true, insideRepeat);
+        // Track the bounded's length field when its `bytes` is a single ref
+        // (the case we can derive a count from). A complex/multi-ref budget
+        // expr yields null — those repeats stay non-auto-derived. Also record
+        // the scope's fixed sibling bytes (everything except the repeat, which
+        // estimateElementBytes counts as 0) so the derived count subtracts them.
+        const refs = new Set<string>();
+        refsIn(c.bytes, refs);
+        const key = refs.size === 1 ? [...refs][0] : null;
+        const prefix = key ? estimateElementBytes({ fields: c.fields }) : 0;
+        visit(
+          c.fields,
+          key ? { key, prefix, bytes: c.bytes } : null,
+          insideRepeat,
+        );
         continue;
       }
       if (c.kind === "align" || c.kind === "virtual" || c.kind === "ref") {
@@ -530,16 +572,24 @@ function collectFreeRepeats(
             c.count === "eos" ||
             (typeof c.count === "object" && "until" in c.count)
           ) {
-            // A bounded-scoped eos/until repeat's iteration count is governed by
-            // its enclosing `bounded` byte-budget (driven by a length
-            // controller / slider), NOT a free count env key. Surfacing a naked
-            // stepper there lets the user push the count past the (default 0)
-            // budget, which makes normalize throw "bounded scope over-consumed"
-            // and the layout guard freezes the diagram — a destructive control.
-            // So only surface (and seed a representative record) when the repeat
-            // is NOT bounded; bounded ones are grown via the length slider, which
-            // expands the budget and the eos repeat fills it (override-audit).
-            if (!insideBounded) {
+            if (bounded && !containsBounded(c.element.fields)) {
+              // Bounded eos/until: derive the count from the budget so raising
+              // the length slider fills the scope. No stepper (would
+              // over-consume). Skipped when a record itself wraps a nested
+              // bounded scope (bgpPathAttributes / tls extensions): that inner
+              // scope is driven by a PER-RECORD length we can't satisfy with a
+              // single global env value, so even one record would over-consume
+              // it — leave those non-auto-derived (load stays empty; the A8
+              // guard covers any manual over-consume) rather than freeze.
+              boundedOut.push({
+                countKey: c.id,
+                lengthKey: bounded.key,
+                bytesExpr: bounded.bytes,
+                perRecordBytes: estimateElementBytes(c.element),
+                prefixBytes: bounded.prefix,
+              });
+            } else if (!bounded) {
+              // Free eos/until: a real count env key the user steps directly.
               countKey = c.id;
               label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
               defaultCount = 1;
@@ -574,30 +624,92 @@ function collectFreeRepeats(
             });
           }
         }
-        visit(c.element.fields, insideBounded, true);
+        // A repeat element is its own scope: the bounded budget does not pass
+        // into nested repeats' own counts (they get their own keys).
+        visit(c.element.fields, null, true);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, insideBounded, insideRepeat);
+        visit(c.children, bounded, insideRepeat);
         continue;
       }
       if (c.kind === "switch") {
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, insideBounded, insideRepeat);
+          visit(struct.fields, bounded, insideRepeat);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], insideBounded, insideRepeat);
+        visit([c.container], bounded, insideRepeat);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, insideBounded, insideRepeat);
+        visit(c.plaintext.fields, bounded, insideRepeat);
         continue;
       }
     }
   };
-  visit(body, false, false);
-  return out;
+  visit(body, null, false);
+  return { freeRepeats: out, boundedRepeats: boundedOut };
+}
+
+// A variable-length leaf (bytes with a dynamic `n`, varint, berLength) has no
+// static width. estimateElementBytes counts it as this many bytes so the
+// per-record estimate OVER-counts rather than under-counts: the derived count
+// `floor((budget - prefix) / perRecordBytes)` then stays conservative and never
+// over-consumes the scope (records under-fill at worst, which is harmless).
+const VARIABLE_FIELD_BYTE_ALLOWANCE = 64;
+
+/** True if any container in the tree is (or wraps) a `bounded` scope. Used to
+ *  detect records with a PER-RECORD nested bounded budget, which a single global
+ *  count derive can't satisfy. */
+function containsBounded(containers: Container[]): boolean {
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "bounded") return true;
+    if (c.kind === "group" && containsBounded(c.children)) return true;
+    if (c.kind === "optional" && containsBounded([c.container])) return true;
+    if (c.kind === "repeat" && containsBounded(c.element.fields)) return true;
+    if (c.kind === "encrypted" && containsBounded(c.plaintext.fields))
+      return true;
+    if (c.kind === "switch") {
+      for (const s of Object.values(c.cases)) {
+        if (containsBounded(s.fields)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Conservative (over-)estimate of a repeat element's byte size. Sums
+ *  fixed-width leaf fields, a generous allowance for variable-length ones, and
+ *  for a Switch takes the LARGEST case. Floors at 1 byte. */
+function estimateElementBytes(struct: { fields: Container[] }): number {
+  const bitsOf = (cs: Container[]): number => {
+    let total = 0;
+    for (const c of cs) {
+      if (isField(c)) {
+        const w = typeBits(c.type);
+        // typeBits returns 0 for variable-length types (dynamic bytes / varint /
+        // berLength); charge the generous allowance for those.
+        total += w > 0 ? w : VARIABLE_FIELD_BYTE_ALLOWANCE * 8;
+      } else if (c.kind === "group") {
+        total += bitsOf(c.children);
+      } else if (c.kind === "bounded") {
+        total += bitsOf(c.fields);
+      } else if (c.kind === "optional") {
+        total += bitsOf([c.container]);
+      } else if (c.kind === "switch") {
+        let maxCase = 0;
+        for (const s of Object.values(c.cases)) {
+          maxCase = Math.max(maxCase, bitsOf(s.fields));
+        }
+        total += maxCase;
+      }
+      // repeat / encrypted / align / virtual contribute 0 to the estimate.
+    }
+    return total;
+  };
+  return Math.max(1, Math.ceil(bitsOf(struct.fields) / 8));
 }
 
 /**

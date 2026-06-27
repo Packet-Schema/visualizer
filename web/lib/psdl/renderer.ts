@@ -12,7 +12,7 @@
 // still consults when a category is missing.
 
 import type { ColorToken } from "../render-tokens";
-import type { CategoryToken, VarintEncoding } from "./types";
+import type { CategoryToken, Expr, VarintEncoding } from "./types";
 
 export type { ColorToken } from "../render-tokens";
 export type { CategoryToken } from "./types";
@@ -210,6 +210,34 @@ export type Packet = {
     name: string;
     cases: { value: number; label: string }[];
     refKey: string;
+  }[];
+  /** Length-controller sliders for `bounded.bytes` scopes whose driving field
+   *  is NOT a top-level cell (e.g. nested in a Group, like babel's
+   *  `babelBodyLength`). Such a field can't host its own slider, so surface a
+   *  packet-level one; raising it grows the bounded budget and the enclosed
+   *  eos/until repeat fills it (override-design-audit). Each carries
+   *  `controlsLength` so it renders through the normal slider widget. */
+  lengthControllers?: Field[];
+  /** eos/until repeats nested in a single-ref `bounded.bytes` scope. core reads
+   *  an eos count from `env[countKey]`, NOT from the budget, so the layout must
+   *  DERIVE the count from the budget: `floor(env[lengthKey] / perRecordBytes)`.
+   *  This makes the length slider the single intuitive control — raising it
+   *  fills the scope with records — instead of a separate (over-consuming) count
+   *  stepper (override-design-audit). `perRecordBytes` is a conservative
+   *  (over-)estimate so the derived count never exceeds the budget. */
+  boundedRepeats?: {
+    countKey: string;
+    /** The single ref the budget depends on — the slider field the user drives.
+     *  (The budget itself is `bytesExpr`, which may be `field*k - c`.) */
+    lengthKey: string;
+    /** The scope's `bounded.bytes` Expr, evaluated against the live env to get
+     *  the actual byte budget (handles `ref` and `field*k - c` forms). */
+    bytesExpr: Expr;
+    perRecordBytes: number;
+    /** Fixed bytes the enclosing bounded scope consumes BESIDES the records
+     *  (sibling fields), subtracted from the budget before deriving the count
+     *  so the records don't over-consume the scope. */
+    prefixBytes: number;
   }[];
 };
 

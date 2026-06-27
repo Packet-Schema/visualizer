@@ -177,6 +177,13 @@ export function initialState(packet: Packet): ControllerState {
       state[field.controlsLength] = field.defaultValue ?? 0;
     }
   }
+  // Packet-level length controllers (bounded scopes whose length field is
+  // group-nested) seed the same way as top-level controlsLength fields.
+  for (const lc of packet.lengthControllers ?? []) {
+    if (lc.controlsLength) {
+      state[lc.controlsLength] = lc.defaultValue ?? 0;
+    }
+  }
   // Seed a default iteration count for plain (non-TLV/non-chain) repeats that
   // declare one, so the diagram shows a representative record on load instead
   // of an empty section (e.g. lldp's body is a single until-repeat → otherwise

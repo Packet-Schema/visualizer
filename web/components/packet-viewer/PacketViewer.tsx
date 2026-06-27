@@ -19,6 +19,7 @@ import {
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { evalExprOr } from "@/lib/psdl/expr";
 import {
   initialState,
   packetCategories,
@@ -1261,6 +1262,17 @@ export default function PacketViewer({
     for (const r of psdlRefs) {
       if (!env.has(r)) env.set(r, 0);
     }
+    // Derive the iteration count of each bounded eos/until repeat from its
+    // scope's length budget, so raising the length slider fills the scope with
+    // records (core reads the eos count from env[countKey], not the budget).
+    // The user controls the length; the count follows — one intuitive control.
+    for (const br of packet.boundedRepeats ?? []) {
+      // The budget is the bounded.bytes expr (ref, or `field*k - c`) evaluated
+      // against the live env — not the raw slider value.
+      const budget = evalExprOr(br.bytesExpr, env, 0);
+      const forRecords = Math.max(0, budget - br.prefixBytes);
+      env.set(br.countKey, Math.floor(forRecords / br.perRecordBytes));
+    }
     // 0-fill above only absorbs MissingRefError. Other normalize throws —
     // notably a `bounded` scope being over-consumed when an override stepper
     // bumps a repeat count past its byte budget — must not crash React render
@@ -1273,7 +1285,7 @@ export default function PacketViewer({
     } catch {
       return lastGoodLayoutRef.current ?? { cells: [], totalBits: 0 };
     }
-  }, [targetPsdl, psdlRefs, controllers, viewMode]);
+  }, [targetPsdl, psdlRefs, controllers, viewMode, packet.boundedRepeats]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
