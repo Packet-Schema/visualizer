@@ -108,4 +108,68 @@ describe("free-repeat default count", () => {
     // record without tripping the bounded budget.
     expect(() => loadCellCount("bgpUpdateFull")).not.toThrow();
   });
+
+  it("does not surface inert freeRepeat steppers nested in a non-instantiable parent", () => {
+    // bgpUpdateFull's bgpAsPathSegments (AS_PATH) and bgpCommunities are eos
+    // repeats that live inside bgpPathAttributes — a bounded-nested repeat
+    // deliberately left NON-instantiated (it is in NEITHER freeRepeats NOR
+    // boundedRepeats and over-consumes its bounded scope when forced). With no
+    // surfaced parent count control, driving the child steppers can never make
+    // a record appear, so they used to render as two steppers that do nothing
+    // (inert/misleading — exactly what the bar forbids). They must NOT be
+    // surfaced as packet-level freeRepeats.
+    const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
+    const keys = (bgp.freeRepeats ?? []).map((r) => r.countKey);
+    expect(keys).not.toContain("bgpAsPathSegments");
+    expect(keys).not.toContain("bgpCommunities");
+    // The genuinely-drivable top-level NLRI repeat is kept.
+    expect(keys).toContain("bgpNlri");
+  });
+
+  it("bgpUpdateFull surfaces only freeRepeat steppers that move the diagram", () => {
+    // The inert-stepper bug: bgpAsPathSegments/bgpCommunities used to be
+    // surfaced but left the diagram byte-identical (a fixed 14 cells) for every
+    // value 0/1/2/3 because no control could instantiate their parent record.
+    // Every freeRepeat bgpUpdateFull NOW surfaces must move the cell count
+    // somewhere across {0,1,2,3} — proving none is inert.
+    const src = PRESETS.bgpUpdateFull!;
+    const mirror = psdlToRenderer(src);
+    const controllers = initialState(mirror);
+    const base = applyChainInstances(
+      applyTlvInstances(src, mirror, {}),
+      mirror,
+    );
+    for (const fr of mirror.freeRepeats ?? []) {
+      const counts = new Set<number>();
+      for (const value of [0, 1, 2, 3]) {
+        const env = new Map<string, number>(
+          Object.entries(controllers).map(([k, v]) => [k, Number(v)]),
+        );
+        for (const [k, v] of initialEnv(base)) if (!env.has(k)) env.set(k, v);
+        for (const r of collectPsdlRefs(base)) if (!env.has(r)) env.set(r, 0);
+        // Account for a count↔ref affine transform (op-count repeats): the
+        // stepper DISPLAYS `value` but WRITES the inverted ref value.
+        const t = fr.transform;
+        env.set(fr.countKey, t ? value * t.mul + t.add : value);
+        counts.add(resolveLayout(base, { env }).cells.length);
+      }
+      expect(
+        counts.size,
+        `bgpUpdateFull freeRepeat ${fr.countKey} is inert: same diagram for 0/1/2/3`,
+      ).toBeGreaterThan(1);
+    }
+  });
+
+  it("keeps free eos/until steppers for children of an INSTANTIABLE parent repeat", () => {
+    // The suppression must be scoped: dnsResponse's dnsQNameLabels (inside the
+    // instantiable ref-count dnsQuestions) and dnsRdataSoaMname/Rname (inside
+    // the instantiable ref-count dnsAnswers) are free eos/until repeats nested
+    // in a parent that DOES have a surfaced count control, so their steppers are
+    // real and must stay.
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    const keys = (dns.freeRepeats ?? []).map((r) => r.countKey);
+    expect(keys).toContain("dnsQNameLabels");
+    expect(keys).toContain("dnsRdataSoaMname");
+    expect(keys).toContain("dnsRdataSoaRname");
+  });
 });

@@ -754,6 +754,17 @@ function collectFreeRepeats(
     bounded: { key: string; prefix: number; bytes: Expr } | null,
     insideRepeat: boolean,
     insideSwitch: boolean,
+    // True when the NEAREST enclosing repeat (if any) itself has a surfaced
+    // count control — i.e. its records can actually be instantiated. At the top
+    // level (no enclosing repeat) it is true. When descending into a repeat
+    // element it becomes `instantiableRepeatIds.has(parent.id)`. A free eos/until
+    // child of a NON-instantiable parent (bgpUpdateFull bgpPathAttributes, which
+    // is in NEITHER freeRepeats NOR boundedRepeats and over-consumes when forced)
+    // must NOT get a stepper: no control can make the parent record exist, so the
+    // child stepper would be permanently inert/misleading (it drives a value the
+    // diagram never reads). Children of an instantiable parent (dnsResponse
+    // dnsQNameLabels / dnsRdataSoa*) keep their working steppers.
+    enclosingInstantiable: boolean,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -772,6 +783,7 @@ function collectFreeRepeats(
           key ? { key, prefix, bytes: c.bytes } : null,
           insideRepeat,
           insideSwitch,
+          enclosingInstantiable,
         );
         continue;
       }
@@ -818,8 +830,15 @@ function collectFreeRepeats(
                 prefixBytes: bounded.prefix,
               });
               instantiableRepeatIds.add(c.id);
-            } else if (!bounded) {
+            } else if (!bounded && (!insideRepeat || enclosingInstantiable)) {
               // Free eos/until: a real count env key the user steps directly.
+              // Suppressed when nested inside a NON-instantiable parent repeat
+              // (bgpUpdateFull's bgpAsPathSegments / bgpCommunities live in
+              // bgpPathAttributes, which is in NEITHER freeRepeats NOR
+              // boundedRepeats): no surfaced control can make the parent record
+              // exist, so a child stepper would be permanently inert — driving it
+              // over {0,1,2,3} leaves the diagram byte-identical. A free child of
+              // an instantiable parent (dnsResponse dnsQNameLabels) is kept.
               countKey = c.id;
               label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
               defaultCount = 1;
@@ -903,30 +922,64 @@ function collectFreeRepeats(
         }
         // A repeat element is its own scope: the bounded budget does not pass
         // into nested repeats' own counts (they get their own keys). A repeat
-        // element is not a switch case, so insideSwitch resets to false.
-        visit(c.element.fields, null, true, false);
+        // element is not a switch case, so insideSwitch resets to false. The new
+        // `enclosingInstantiable` is whether THIS repeat got a surfaced count
+        // control above (added to instantiableRepeatIds by the freeRepeat /
+        // boundedRepeat branches) — children gate their free eos/until steppers
+        // on it.
+        visit(
+          c.element.fields,
+          null,
+          true,
+          false,
+          instantiableRepeatIds.has(c.id),
+        );
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, bounded, insideRepeat, insideSwitch);
+        visit(
+          c.children,
+          bounded,
+          insideRepeat,
+          insideSwitch,
+          enclosingInstantiable,
+        );
         continue;
       }
       if (c.kind === "switch") {
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, bounded, insideRepeat, true);
+          visit(
+            struct.fields,
+            bounded,
+            insideRepeat,
+            true,
+            enclosingInstantiable,
+          );
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], bounded, insideRepeat, insideSwitch);
+        visit(
+          [c.container],
+          bounded,
+          insideRepeat,
+          insideSwitch,
+          enclosingInstantiable,
+        );
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, bounded, insideRepeat, insideSwitch);
+        visit(
+          c.plaintext.fields,
+          bounded,
+          insideRepeat,
+          insideSwitch,
+          enclosingInstantiable,
+        );
         continue;
       }
     }
   };
-  visit(body, null, false, false);
+  visit(body, null, false, false, true);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
