@@ -26,6 +26,7 @@ import {
   varintBitsEnvKey,
 } from "./normalize";
 import { isField } from "./utils";
+import { collectSwitchOnRefIds } from "./dynamic-width-defaults";
 import type {
   Cell,
   Field as RendererField,
@@ -254,11 +255,18 @@ function normalizeWithBudget(
  * (synthetic) keys win, so an explicit width key is never clobbered.
  */
 function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
+  // A dynamic-width field that is ALSO a `switch ... on: ref(field)`
+  // discriminator overloads `env[id]`: core reads it as the discriminator VALUE
+  // (which case to select), so we must NOT also copy it into the wire-width key
+  // — that would force the varint's bit-width to equal the chosen frame type and
+  // misalign the cursor (http3Frame's `http3FrameType`). Its width lives on the
+  // dedicated `__varintBits__<id>` key, seeded by `seedDynamicWidthDefaults`.
+  const discriminators = collectSwitchOnRefIds(packet);
   const visit = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) {
         const v = env.get(c.id);
-        if (v !== undefined) {
+        if (v !== undefined && !discriminators.has(c.id)) {
           let key: string | null = null;
           if (c.type.kind === "varint") key = varintBitsEnvKey(c.id);
           else if (c.type.kind === "berLength") key = berLenEnvKey(c.id);

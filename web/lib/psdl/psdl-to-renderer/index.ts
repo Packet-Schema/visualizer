@@ -2422,8 +2422,20 @@ function attachOverrideMetadata(
         if (c.on.kind === "ref") {
           const t = findTarget(c.on.field);
           if (t) {
-            if (t.kind === "field") t.field.switchCases = cases;
-            else t.sub.switchCases = cases;
+            if (t.kind === "field") {
+              t.field.switchCases = cases;
+              // A field that is ALSO the discriminator owns a single env key,
+              // and the switchCases picker writes the discriminator VALUE into
+              // it. If the same field is dynamic-width (a varint / berLength /
+              // delimited bytes — http3Frame's `http3FrameType`), do NOT also
+              // surface a WidthPicker on it: that picker would write the same
+              // key as a wire width, colliding with the case value. The width
+              // is decoupled onto `__varintBits__<id>` (bridge / seed), so the
+              // cell still renders at a sane varint width.
+              delete t.field.varintEncoding;
+              delete t.field.isBerLength;
+              delete t.field.isDelimited;
+            } else t.sub.switchCases = cases;
           }
         } else if (c.on.kind === "op" || c.on.kind === "cond") {
           // Complex expr — fall back to the primary ref so the user still

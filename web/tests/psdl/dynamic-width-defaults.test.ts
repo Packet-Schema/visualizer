@@ -38,14 +38,18 @@ describe("seedDynamicWidthDefaults", () => {
   });
 
   it("a user-set width still wins over the seed", () => {
-    // Setting http3FrameType to 2 bytes (16 bits) must render 16, not the 8 seed.
-    const env = new Map<string, number>([["http3FrameType", 16]]);
+    // `http3PayloadLength` is a plain (non-discriminator) varint whose env key
+    // legitimately doubles as its wire width. Setting it to 2 bytes (16 bits)
+    // must render 16, not the 8 seed. (`http3FrameType` can't carry a width here
+    // because it is also the frame-payload switch discriminator — its width is
+    // decoupled onto `__varintBits__http3FrameType`.)
+    const env = new Map<string, number>([["http3PayloadLength", 16]]);
     const src = PRESETS.http3Frame!;
     for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
     for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
     seedDynamicWidthDefaults(src, env);
     const cell = resolveLayout(src, { env }).cells.find(
-      (c) => c.field.id === "http3FrameType",
+      (c) => c.field.id === "http3PayloadLength",
     );
     expect(cell?.field.bits).toBe(16);
   });
