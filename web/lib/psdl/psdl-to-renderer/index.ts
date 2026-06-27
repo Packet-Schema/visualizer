@@ -1002,6 +1002,93 @@ function switchArmsAllIdentical(
   return shapes.every((s) => s === shapes[0]);
 }
 
+/** Collect (in declaration order) the ids of every Field declared anywhere
+ *  inside an arm's container list. Used to canonicalize intra-arm references so
+ *  arms that differ ONLY in their field ids fingerprint identically. */
+function collectArmFieldIds(containers: Container[]): string[] {
+  const ids: string[] = [];
+  const walk = (cs: Container[]): void => {
+    for (const c of cs) {
+      if (isField(c)) {
+        ids.push(c.id);
+        continue;
+      }
+      switch (c.kind) {
+        case "switch":
+          for (const struct of Object.values(c.cases)) walk(struct.fields);
+          break;
+        case "repeat":
+          walk(c.element.fields);
+          break;
+        case "group":
+          walk(c.children);
+          break;
+        case "optional":
+          walk([c.container]);
+          break;
+        case "bounded":
+          walk(c.fields);
+          break;
+        case "encrypted":
+          walk(c.plaintext.fields);
+          break;
+      }
+    }
+  };
+  walk(containers);
+  return ids;
+}
+
+/**
+ * Like `switchArmsAllIdentical`, but tolerant of arms that differ ONLY in the
+ * field ids they declare AND in the intra-arm references that target those ids.
+ * snmpV2c's `pduSwitch` has 8 selectable PDU-type arms, each the same
+ * `int(8) + berLength + (int(8) + berLength + bytes(ref <siblingLen>)) × 4`
+ * shape; the arms diverge only because every field id and every `bytes(ref …)`
+ * length-ref is per-arm renamed (`requestIdLengthGR` vs `requestIdLengthGB` …).
+ * `structuralShape` keeps the raw ref strings, so `switchArmsAllIdentical`
+ * reports them as different — yet each ref points to a sibling `berLength`
+ * INSIDE the same arm with no override control, so every arm resolves to the
+ * SAME geometry for every reachable env: the picker is inert.
+ *
+ * We canonicalize each intra-arm reference to its referent's declaration index
+ * (`#0`, `#1`, …) before fingerprinting. A ref to a field OUTSIDE the arm (a
+ * real, potentially user-controlled discriminator) is left intact, so a picker
+ * whose arms genuinely diverge stays surfaced. Requires ≥ 2 selectable arms;
+ * the `_` default is excluded (not user-selectable).
+ */
+function switchArmsRenderIdentical(
+  cases: Record<string, { fields: Container[] }>,
+): boolean {
+  const selectable = Object.entries(cases).filter(
+    ([key]) => firstCaseKeyValue(key) !== null,
+  );
+  if (selectable.length < 2) return false;
+  const fingerprintArm = (containers: Container[]): string => {
+    const canon = new Map<string, string>();
+    collectArmFieldIds(containers).forEach((id, i) => canon.set(id, `#${i}`));
+    // Replace any intra-arm ref id inside an Expr-bearing structure with its
+    // canonical positional token, leaving non-arm refs untouched.
+    const rewrite = (node: unknown): unknown => {
+      if (Array.isArray(node)) return node.map(rewrite);
+      if (node && typeof node === "object") {
+        const obj = node as Record<string, unknown>;
+        if (obj.kind === "ref" && typeof obj.field === "string") {
+          const mapped = canon.get(obj.field);
+          if (mapped) return { kind: "ref", field: mapped };
+        }
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(obj)) out[k] = rewrite(v);
+        return out;
+      }
+      return node;
+    };
+    return JSON.stringify(rewrite(containers.map(structuralShape)));
+  };
+  const shapes = selectable.map(([, struct]) => fingerprintArm(struct.fields));
+  return shapes.every((s) => s === shapes[0]);
+}
+
 /** Collect the ids of every field declared (transitively) INSIDE a `switch`
  *  case anywhere in the body. Such a field is never a top-level renderer-mirror
  *  cell, so `attachOverrideMetadata.findTarget` can't stamp `switchCases` on it
@@ -2033,7 +2120,14 @@ function collectPeekSwitches(
   ): void => {
     for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "switch") {
-        if (c.on.kind === "peek") {
+        // Suppress an inert peek picker whose every selectable arm renders to
+        // the same geometry: choosing any case can't change the diagram, so the
+        // dropdown is a misleading see-but-cannot-edit control. snmpV2c's
+        // `pduSwitch` (8 PDU-type arms, each the same ASN.1 tag/berLength/body
+        // shape differing only in per-arm field ids) is exactly this. Mirrors
+        // the structural-identity gate `attachOverrideMetadata` /
+        // `collectRefSwitches` apply to ref-discriminated pickers.
+        if (c.on.kind === "peek" && !switchArmsRenderIdentical(c.cases)) {
           const cases: { value: number; label: string }[] = [];
           for (const [key, struct] of Object.entries(c.cases)) {
             const v = firstCaseKeyValue(key);
