@@ -1226,6 +1226,67 @@ function switchArmsZeroWidthSiblingLengths(
 }
 
 /**
+ * The MIXED-width counterpart of `switchArmsZeroWidthSiblingLengths`. A picker
+ * is NOT suppressed (it has at least one fixed-width / visible arm, so
+ * `switchArmsAllZeroWidth` already returns false), yet SOME of its arms still
+ * collapse to width 0 because they are a single `bytes(ref <siblingLen>)` value
+ * whose per-record length defaults to 0 (dnsResponse's `dnsRdata`: A/AAAA/MX/
+ * SRV/SOA are fixed-width and visible, but NS/CNAME/PTR/TXT and the `_` raw arm
+ * are each `bytes(ref dnsRdLength)`). Selecting one of those collapsed arms at
+ * the default env renders an EMPTY record — the picker contradicts the diagram
+ * even though the discriminator genuinely drives the visible arms (#11/#12).
+ *
+ * Collect the per-record sibling length ids consumed ONLY by the width-0 arms,
+ * skipping (not bailing on) the fixed-width / visible / nested-container arms.
+ * The caller seeds those lengths to a representative width so EVERY selectable
+ * arm — not just the fixed-width ones — renders at load. Returns null when no
+ * collapsed arm is rescuable this way (no collapsed `bytes(ref <perRecordLen>)`
+ * arm exists, or a collapsed arm's length ref is not a per-record sibling we can
+ * safely seed — leaving the picker-as-is, since the fixed-width arms still drive
+ * the diagram). Seeds fill only unset/0 env, so a user-set width still wins.
+ */
+function switchArmsMixedCollapsedSiblingLengths(
+  cases: Record<string, { fields: Container[] }>,
+  perRecordFieldIds: Set<string>,
+): Set<string> | null {
+  const lengths = new Set<string>();
+  // Per-arm: returns the set of seedable per-record sibling lengths if this arm
+  // collapses to width-0 `bytes(ref siblingLen)` values, `null` if it is a
+  // VISIBLE / fixed-width / nested / not-rescuable arm we should simply skip.
+  const armCollapsedLengths = (containers: Container[]): Set<string> | null => {
+    if (containers.length === 0) return null; // empty arm: nothing to seed
+    const out = new Set<string>();
+    for (const c of containers) {
+      if (!isField(c)) return null; // nested container: assume visible — skip
+      if (c.type.kind !== "bytes") return null; // fixed-width: already visible
+      const n = c.type.n;
+      if (isBytesDelimited(n)) return null; // seeded elsewhere (visible default)
+      const refs = exprRefs(n);
+      if (refs.length === 0) return null; // not sibling-ref sized
+      for (const r of refs) {
+        // Only a real PER-RECORD sibling length is safe to seed (a representative
+        // width on the record's own length field, not a shared top-level one).
+        // Unlike the all-zero-width rescue, a CONTROLLED length ref does NOT bail
+        // here: dnsRdLength is surfaced as a lengthController (so the picker isn't
+        // strictly inert — the user CAN reveal the arm), yet at the default env it
+        // is 0 and the collapsed arm still shows nothing. Seeding it (only when
+        // unset/0, so a user width still wins) is exactly what makes the picker
+        // agree with the diagram on load.
+        if (!perRecordFieldIds.has(r)) return null;
+      }
+      for (const r of refs) out.add(r);
+    }
+    return out;
+  };
+  for (const s of Object.values(cases)) {
+    const armOut = armCollapsedLengths(s.fields);
+    if (armOut === null) continue; // visible / non-rescuable arm: skip, don't bail
+    for (const id of armOut) lengths.add(id);
+  }
+  return lengths.size > 0 ? lengths : null;
+}
+
+/**
  * Structural fingerprint of a container that ignores identity-only fields
  * (`id`, `name`, `doc`, …) and keeps everything that affects the rendered
  * geometry: the node `kind`, a field's `type`, a Switch's discriminator and
@@ -1648,6 +1709,22 @@ function collectRefSwitches(
               )
             : null;
           const armsInert = allArmsInert && rescueLengths === null;
+          // MIXED-width pickers (dnsResponse's `dnsRdata`: A/AAAA/MX/SRV/SOA are
+          // fixed-width and visible, but NS/CNAME/PTR/TXT and the `_` raw arm are
+          // each `bytes(ref dnsRdLength)` and collapse to width 0) are NOT inert —
+          // they survive `switchArmsAllZeroWidth` and reach here un-suppressed —
+          // yet selecting one of the collapsed arms shows an empty record at the
+          // default env (#11/#12). Seed those collapsed arms' per-record sibling
+          // lengths too, so EVERY selectable arm renders at load, not just the
+          // fixed-width ones. Only when the all-zero-width rescue did not already
+          // produce seeds (otherwise `rescueLengths` already covers them).
+          const mixedSeedLengths =
+            rescueLengths === null
+              ? switchArmsMixedCollapsedSiblingLengths(
+                  c.cases,
+                  perRecordFieldIds,
+                )
+              : null;
           // For a case-nested picker there is no zero-width safety net from a
           // repeat budget, so also drop it when every selectable arm is
           // structurally identical (the diagram is byte-identical for every
@@ -1682,8 +1759,9 @@ function collectRefSwitches(
               // `perRecordBytes`, so seeding never over-consumes the bounded
               // scope (which would freeze the diagram). The value cell is still
               // non-zero-width — visible and editable — which is the whole point.
-              const lengthSeeds = rescueLengths
-                ? [...rescueLengths].map((key) => ({
+              const seedLengths = rescueLengths ?? mixedSeedLengths;
+              const lengthSeeds = seedLengths
+                ? [...seedLengths].map((key) => ({
                     key,
                     value: REF_SIZED_FIELD_BYTE_ALLOWANCE,
                   }))

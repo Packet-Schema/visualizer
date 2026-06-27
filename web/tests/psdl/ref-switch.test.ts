@@ -373,6 +373,48 @@ describe("record-bearing ref-count repeats seed one record (#11/#12)", () => {
       "lispRecEIDAFI",
     );
   });
+
+  it("seeds dnsRdLength so the MIXED-width dnsRdata picker's collapsed arms render at default load (#11/#12)", () => {
+    // The bug: dnsRdata's arms are MIXED width — A(32b)/AAAA(128b)/MX/SRV/SOA are
+    // fixed-width and visible, but NS(2)/CNAME(5)/PTR(12)/TXT(16) and the `_` raw
+    // arm are each `bytes(ref dnsRdLength)` and collapse to width 0 at the default
+    // dnsRdLength=0. Because at least one arm is fixed-width, switchArmsAllZeroWidth
+    // returns false, so the all-zero-width lengthSeeds rescue never fired — picking
+    // NS/CNAME/PTR/TXT showed an EMPTY record, the picker contradicting the diagram.
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    const rs = (dns.refSwitches ?? []).find((r) => r.refKey === "dnsRrType");
+    expect(rs, "dnsRrType variant picker must be surfaced").toBeTruthy();
+    // The mixed-width rescue attaches a per-record length seed on dnsRdLength.
+    expect(rs!.lengthSeeds).toEqual([{ key: "dnsRdLength", value: 1 }]);
+
+    // At the app-realistic env (initialState seeds the discriminator AND
+    // dnsRdLength) with NO manual dnsRdLength raise, EVERY selectable arm renders
+    // its body — including the four previously-empty collapsing arms.
+    const src = PRESETS.dnsResponse!;
+    const has = (ids: string[], base: string): boolean =>
+      ids.some((id) => id === base || id.startsWith(`${base}#`));
+    const collapsing: { type: number; body: string }[] = [
+      { type: 2, body: "dnsRdataNsName" }, // NS
+      { type: 5, body: "dnsRdataCnameName" }, // CNAME
+      { type: 12, body: "dnsRdataPtrName" }, // PTR
+      { type: 16, body: "dnsRdataTxtData" }, // TXT
+    ];
+    for (const { type, body } of collapsing) {
+      const ids = appCellIds(src, { dnsRrType: type });
+      expect(
+        has(ids, body),
+        `dnsRrType=${type} RDATA body ${body} must render at default load (seeded dnsRdLength)`,
+      ).toBe(true);
+    }
+    // The `_` raw arm (an out-of-list rrType) likewise renders its RDATA cell.
+    expect(has(appCellIds(src, { dnsRrType: 99 }), "dnsRdataBytes")).toBe(true);
+
+    // The seed is NON-DESTRUCTIVE: a user width still wins (initialState only
+    // fills unset/0), so dnsRdLength remains a live, editable length control.
+    const exposed = new Set<string>();
+    for (const lc of dns.lengthControllers ?? []) exposed.add(lc.id);
+    expect(exposed.has("dnsRdLength")).toBe(true);
+  });
 });
 
 describe("eos/until repeat nested under a budget-derived bounded scope", () => {
