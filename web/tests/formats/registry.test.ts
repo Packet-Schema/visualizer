@@ -89,6 +89,31 @@ describe("adapter wrappers — round-trip", () => {
     expect(Array.isArray(parsed.warnings)).toBe(true);
   });
 
+  it("KSY render forwards env so repeat counts survive (audit MEDIUM #2)", () => {
+    const packet = {
+      name: "T",
+      rowBits: 8,
+      body: [
+        {
+          kind: "repeat" as const,
+          id: "items",
+          element: {
+            id: "item",
+            fields: [
+              { id: "x", name: "X", type: { kind: "int" as const, bits: 8 } },
+            ],
+          },
+          count: "eos" as const,
+        },
+      ],
+    };
+    // Empty env → eos; env keyed by repeat id → concrete repeat-expr.
+    expect(getFormat("ksy").render!(packet, new Map())).toMatch(/repeat: eos/);
+    const withEnv = getFormat("ksy").render!(packet, new Map([["items", 3]]));
+    expect(withEnv).toMatch(/repeat: expr/);
+    expect(withEnv).toMatch(/repeat-expr: ['"]?3['"]?/);
+  });
+
   it("rfc-ascii is export-only (no parse)", () => {
     expect(getFormat("rfc-ascii").parse).toBeUndefined();
     // Ethernet has no Repeat / Switch refs so the env can be empty.

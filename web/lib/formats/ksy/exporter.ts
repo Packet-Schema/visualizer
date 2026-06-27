@@ -10,18 +10,31 @@ import { stringify as yamlStringify } from "yaml";
 import { sanitizeId } from "../common";
 import { isField } from "../../psdl/utils";
 import { isBytesDelimited } from "../../psdl/normalize";
+import { evalExprOr } from "../../psdl/expr";
 import type {
   Container,
-  Encrypted,
   Expr,
+  Encrypted,
   Field,
   Packet,
+  PacketEnv,
+  Repeat,
 } from "../../psdl/types";
 
 import type { KsyRoot, KsySeqEntry, KsyType } from "./types";
 
-/** Serialise a PSDL packet to Kaitai .ksy YAML (best-effort, lossy). */
-export function toKsy(packet: Packet): string {
+/**
+ * Serialise a PSDL packet to Kaitai .ksy YAML (best-effort, lossy).
+ *
+ * `env` carries the live controller / discriminator picks (the same Map the
+ * JSON and RFC-ASCII adapters receive). Without it the exporter emitted
+ * `repeat: eos` for every dynamic-count repeat, silently dropping the user's
+ * chosen iteration count (audit MEDIUM #2). When env pins a concrete count
+ * for a repeat — either keyed by the repeat id (eos / until) or via a `ref`
+ * count expression — we emit `repeat: expr` with the resolved literal so the
+ * count survives, matching `toJson` / `toAscii`.
+ */
+export function toKsy(packet: Packet, env?: PacketEnv): string {
   const ksy: KsyRoot = {
     meta: {
       id: toKsyId(packet.name),
@@ -39,7 +52,7 @@ export function toKsy(packet: Packet): string {
 
   const seq: KsySeqEntry[] = [];
   for (const c of packet.body) {
-    seq.push(...containerToKsy(c, { types, psdlOnly }));
+    seq.push(...containerToKsy(c, { types, psdlOnly, env: env ?? new Map() }));
   }
   ksy.seq = seq;
   if (Object.keys(types).length > 0) ksy.types = types;
@@ -65,6 +78,10 @@ export function toKsy(packet: Packet): string {
 type ToCtx = {
   types: Record<string, KsyType>;
   psdlOnly: string[];
+  /** Live controller / discriminator env, used to resolve dynamic repeat
+   *  counts to concrete `repeat-expr` literals. Empty when no env is
+   *  supplied (the legacy call shape). */
+  env: PacketEnv;
 };
 
 function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
@@ -116,7 +133,17 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
         };
         entry.type = typeName;
       }
-      if (
+      // Prefer a concrete count resolved from the live env — the user's
+      // chosen iteration count round-trips as `repeat: expr` with a literal
+      // instead of collapsing to `repeat: eos` (audit MEDIUM #2).
+      const resolvedCount = resolveRepeatCount(c, ctx.env);
+      if (resolvedCount !== null) {
+        entry.repeat = "expr";
+        entry["repeat-expr"] = resolvedCount;
+        // Drop a `repeat-until` left over from the `Object.assign(entry, proxy)`
+        // hoist — it can't have been set yet, but keep the shape explicit.
+        delete entry["repeat-until"];
+      } else if (
         typeof c.count === "object" &&
         c.count !== null &&
         "kind" in c.count
@@ -420,6 +447,40 @@ function exprToKaitaiIf(e: Expr): string | null {
       // have no Kaitai `if:` equivalent — fall back to a psdl-only comment.
       return null;
   }
+}
+
+/**
+ * Resolve a Repeat's iteration count to a concrete Kaitai `repeat-expr`
+ * literal using the live env, or null when env supplies nothing for it (so
+ * the caller keeps the existing symbolic / eos lowering).
+ *
+ * Two env shapes are honoured, matching how `collectFreeRepeats`
+ * (psdl-to-renderer) keys them:
+ *   - eos / until repeats → the count lives under the repeat id (`c.id`).
+ *   - `ref` count expressions → resolved against the named discriminator /
+ *     length controller in env (e.g. `dnsAnCount`).
+ * Returns the count as a string (Kaitai `repeat-expr` is an expression slot),
+ * clamped to a non-negative integer. A resolved count of 0 is still emitted so
+ * the empty-list semantics survive rather than reverting to `eos`.
+ */
+function resolveRepeatCount(c: Repeat, env: PacketEnv): string | null {
+  if (env.size === 0) return null;
+  // eos / until: free repeats expose the user count under the repeat id.
+  if (
+    c.count === "eos" ||
+    (typeof c.count === "object" && "until" in c.count)
+  ) {
+    const raw = env.get(c.id);
+    if (raw === undefined || !Number.isFinite(raw)) return null;
+    return String(Math.max(0, Math.floor(raw)));
+  }
+  // A `ref` count is resolvable only when env actually carries the ref; a
+  // missing ref leaves the symbolic field name (still valid Kaitai).
+  if (typeof c.count === "object" && c.count.kind === "ref") {
+    if (!env.has(c.count.field)) return null;
+    return String(Math.max(0, Math.floor(evalExprOr(c.count, env, 0))));
+  }
+  return null;
 }
 
 function exprToKsySize(e: Expr): number | string {

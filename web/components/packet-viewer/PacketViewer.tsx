@@ -22,7 +22,9 @@ import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import { evalExprOr } from "@/lib/psdl/expr";
 import {
+  controllersFromEnv,
   initialState,
+  nonDefaultControllerEnv,
   packetCategories,
   syncChainControllers,
   syncTlvControllers,
@@ -466,7 +468,15 @@ export default function PacketViewer({
         importedPackets[nextKey] ??
         (customPreset ? psdlToRenderer(customPreset) : null);
       if (next) {
-        setControllers(initialState(next));
+        // A custom preset may carry a baked `env` block (the non-default
+        // controllers persisted by "Save as preset"); seed from it so the
+        // user's freeRepeat counts / variant picks / slider values come
+        // back instead of resetting to defaults (audit MEDIUM #1).
+        setControllers(
+          customPreset
+            ? controllersFromEnv(next, customPreset.env)
+            : initialState(next),
+        );
       } else if (nextKey in PRESET_INDEX) {
         // Built-in not lazily loaded yet: its body arrives via the load effect,
         // but controllers must also reset to the new preset's defaults (else
@@ -707,9 +717,21 @@ export default function PacketViewer({
       // the studio packet before persistence — without this, diagram-
       // driven edits (which only land on the mirror) silently drop on
       // save (sub-agent CRITICAL).
+      // Bake the non-default subset of the live controllers into the saved
+      // packet's `env` block, mirroring what Share preserves
+      // (controllersToEnv). Without this, freeRepeat counts, refSwitch/peek
+      // variant picks and length-slider values silently reset on reload
+      // (e.g. dnsResponse with dnsAnCount=3 came back at the default). The
+      // delta is computed against the merged packet's seeded defaults so only
+      // genuine edits persist. (audit MEDIUM #1)
+      const savedEnv = nonDefaultControllerEnv(
+        psdlToRenderer(mergedStudioPacket),
+        controllers,
+      );
       const packetToSave: PsdlPacket = {
         ...mergedStudioPacket,
         name: normalizedName,
+        ...(savedEnv ? { env: savedEnv } : {}),
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
@@ -727,14 +749,16 @@ export default function PacketViewer({
         return next;
       });
       setPacketKey(key);
-      setControllers(initialState(psdlToRenderer(packetToSave)));
+      setControllers(
+        controllersFromEnv(psdlToRenderer(packetToSave), packetToSave.env),
+      );
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-save-dialog" });
       // set-edit-mode false で studioView が "form" にリセットされる
       // (ui-state-reducer 側で同時にハンドリング)。
       uiDispatch({ type: "set-edit-mode", editing: false });
     },
-    [mergedStudioPacket],
+    [mergedStudioPacket, controllers],
   );
 
   // Drop in-progress edits and revert the reducer to the active preset.

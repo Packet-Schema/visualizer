@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { PRESETS } from "../../lib/psdl/presets.server";
 import {
+  controllersFromEnv,
   initialState,
+  nonDefaultControllerEnv,
   syncChainControllers,
 } from "../../lib/psdl/renderer-helpers";
 import { psdlToRenderer } from "../../lib/psdl/psdl-to-renderer";
 import { lookup, op, ref } from "../../lib/psdl/expr";
-import type { Packet } from "../../lib/psdl/types";
+import type { Packet, PsdlPacket } from "../../lib/psdl/types";
 
 describe("renderer helper controller state", () => {
   it("seeds IPv6 chain repeat count refs", () => {
@@ -28,6 +30,76 @@ describe("renderer helper controller state", () => {
 
     expect(state.nextHeader_chainCount).toBe(1);
     expect(state.nextHeader_proto).toBe(0);
+  });
+});
+
+describe("save-as-preset env round-trip (audit MEDIUM #1)", () => {
+  // A free eos repeat — surfaced by collectFreeRepeats with defaultCount 1,
+  // the same shape as "dnsResponse with dnsAnCount=3".
+  const mkRepeatPacket = (): PsdlPacket => ({
+    name: "DnsLike",
+    rowBits: 8,
+    body: [
+      {
+        kind: "repeat",
+        id: "answers",
+        element: {
+          id: "answer",
+          fields: [
+            { id: "rtype", name: "RType", type: { kind: "int", bits: 16 } },
+          ],
+        },
+        count: "eos",
+      },
+    ],
+  });
+
+  it("nonDefaultControllerEnv keeps only the user's edits, dropping defaults", () => {
+    const rendered = psdlToRenderer(mkRepeatPacket());
+    const defaults = initialState(rendered);
+
+    // No edits → no env block.
+    expect(nonDefaultControllerEnv(rendered, defaults)).toBeUndefined();
+
+    // User picks a count of 3 → only that key is baked.
+    const env = nonDefaultControllerEnv(rendered, { ...defaults, answers: 3 });
+    expect(env).toEqual({ answers: 3 });
+  });
+
+  it("nonDefaultControllerEnv drops a controller left at its seeded default", () => {
+    // IPv4's `ihl` length controller seeds a concrete default (5); an unchanged
+    // value must not be baked (Share skips it the same way).
+    const rendered = psdlToRenderer(PRESETS.ipv4);
+    const defaults = initialState(rendered);
+    expect(defaults.ihl).toBe(5);
+    // Unchanged → omitted.
+    expect(nonDefaultControllerEnv(rendered, defaults)).toBeUndefined();
+    // Edited → only the changed key is baked.
+    expect(nonDefaultControllerEnv(rendered, { ...defaults, ihl: 7 })).toEqual({
+      ihl: 7,
+    });
+  });
+
+  it("controllersFromEnv restores the saved count", () => {
+    const rendered = psdlToRenderer(mkRepeatPacket());
+    // Reload path: seed controllers from the persisted env block.
+    const restored = controllersFromEnv(rendered, { answers: 3 });
+    expect(restored.answers).toBe(3);
+
+    // A missing env falls back to the seeded defaults. A top-level eos repeat
+    // seeds a representative count of 1 (defaultCount), so `answers` is 1.
+    expect(controllersFromEnv(rendered, undefined).answers).toBe(1);
+  });
+
+  it("round-trips an env baked onto the packet through both helpers", () => {
+    const rendered = psdlToRenderer(mkRepeatPacket());
+    const baked = nonDefaultControllerEnv(rendered, {
+      ...initialState(rendered),
+      answers: 5,
+    });
+    expect(baked).toEqual({ answers: 5 });
+    const restored = controllersFromEnv(rendered, baked);
+    expect(restored.answers).toBe(5);
   });
 });
 

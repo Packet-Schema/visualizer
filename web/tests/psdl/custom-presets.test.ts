@@ -123,3 +123,16 @@ describe("listCustomPresets", () => {
     expect(listCustomPresets()).toEqual([]);
   });
 });
+
+describe("env block persistence (audit MEDIUM #1)", () => {
+  it("round-trips a baked `env` block through save/load", () => {
+    // "Save as preset" bakes the non-default controllers onto the packet's
+    // `env` so freeRepeat counts / variant picks survive a reload (matching
+    // what Share preserves). The store must persist it verbatim.
+    const packet: PsdlPacket = { ...mkPacket("WithEnv"), env: { answers: 3 } };
+    saveCustomPreset("custom:withenv", packet);
+    const loaded = loadCustomPresets()["custom:withenv"];
+    expect(loaded).toBeDefined();
+    expect(loaded.env).toEqual({ answers: 3 });
+  });
+});

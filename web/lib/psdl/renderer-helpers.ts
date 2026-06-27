@@ -216,6 +216,49 @@ export function initialState(packet: Packet): ControllerState {
   return syncChainControllers(packet, state);
 }
 
+/**
+ * The non-default subset of `controllers` relative to a renderer Packet's
+ * seeded defaults — the same delta Share embeds in its URL (see
+ * `buildShareUrl`'s `defaultControllers` skip). Used by "Save as preset" to
+ * bake only the user's actual edits into the persisted packet's `env`, so a
+ * reload restores e.g. `dnsAnCount=3` without freezing every default value.
+ * Returns `undefined` when nothing differs from defaults (so callers can omit
+ * an empty `env` block entirely).
+ */
+export function nonDefaultControllerEnv(
+  packet: Packet,
+  controllers: ControllerState,
+): Record<string, number> | undefined {
+  const defaults = initialState(packet);
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(controllers)) {
+    if (!Number.isFinite(value)) continue;
+    if (defaults[key] === value) continue;
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Merge a persisted packet `env` block back onto a renderer Packet's seeded
+ * defaults, producing the controller state to hydrate on load. Mirrors the
+ * Share path's `{ ...initialState(...), ...parsed.controllers }` precedence:
+ * saved env values win over defaults, and keys that `initialState` does not
+ * seed (freeRepeat counts, refSwitch / peek discriminator picks) are still
+ * carried so the user's choices come back.
+ */
+export function controllersFromEnv(
+  packet: Packet,
+  env: Record<string, number> | undefined,
+): ControllerState {
+  const state = initialState(packet);
+  if (!env) return state;
+  for (const [key, value] of Object.entries(env)) {
+    if (Number.isFinite(value)) state[key] = value;
+  }
+  return state;
+}
+
 /** Recompute every TLV-driven controller against the current instances. */
 export function syncTlvControllers(
   packet: Packet,
