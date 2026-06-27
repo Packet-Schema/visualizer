@@ -47,7 +47,7 @@ describe("HybridDiagram override marker", () => {
     const layout = resolveLayout(ipv4, {
       env: new Map<string, number>([
         ["ihl", 5],
-        ["ipv4OptionsCount", 0],
+        ["options", 0],
         ["optType", 0],
         ["headerBytes", 20],
       ]),

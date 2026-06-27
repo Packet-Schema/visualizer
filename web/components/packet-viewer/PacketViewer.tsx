@@ -19,7 +19,6 @@ import {
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
-import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
 import {
   initialState,
   packetCategories,
@@ -1197,7 +1196,6 @@ export default function PacketViewer({
     const env = new Map(
       Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
     );
-    setupDerivedCounts(env);
     // Default value seed: packet が宣言する Field.defaultValue を env に
     // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
     // 入力を上書きしない)。 これを fallback seed より先にやらないと、

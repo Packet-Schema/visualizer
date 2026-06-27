@@ -112,23 +112,23 @@ describe("toJson / fromJson — IHL=7 controller value", () => {
 describe("toJson / fromJson — TLV options populated", () => {
   it("IPv4 record route count=3 round-trips via env", () => {
     const env: PacketEnv = new Map([
-      ["ipv4OptionsCount", 1],
+      ["options", 1],
       ["optType", 7],
     ]);
     const text = toJson(ALL_PRESETS.ipv4, env);
     const round = fromJson(text);
-    expect(round.env.get("ipv4OptionsCount")).toBe(1);
+    expect(round.env.get("options")).toBe(1);
     expect(round.env.get("optType")).toBe(7);
   });
 
   it("TCP MSS+SACK Permitted instances round-trip via env count", () => {
     const env: PacketEnv = new Map([
-      ["tcpOptionsCount", 2],
+      ["options", 2],
       ["optKind", 2],
     ]);
     const text = toJson(ALL_PRESETS.tcp, env);
     const round = fromJson(text);
-    expect(round.env.get("tcpOptionsCount")).toBe(2);
+    expect(round.env.get("options")).toBe(2);
   });
 });
 

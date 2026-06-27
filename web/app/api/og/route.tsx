@@ -8,7 +8,6 @@ import { resolveLayout } from "@/lib/psdl/layout";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
-import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import {
   parseShareParams,
@@ -186,7 +185,6 @@ export async function GET(request: NextRequest) {
       env.set(key, value);
     }
 
-    setupDerivedCounts(env);
 
     const refs = collectPsdlRefs(psdl);
     for (const ref of refs) {

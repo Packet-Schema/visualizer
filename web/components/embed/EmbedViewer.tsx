@@ -25,7 +25,6 @@ import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { PRESET_INDEX, getLoadedPreset, loadPreset } from "@/lib/psdl/presets";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { initialState } from "@/lib/psdl/renderer-helpers";
-import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
 import { parseShareParams } from "@/lib/share-url";
 import type {
   ControllerState,
@@ -113,7 +112,6 @@ export default function EmbedViewer() {
         ([k, v]) => [k, Number(v)] as const,
       ),
     );
-    setupDerivedCounts(env);
 
     const packetDefaults = initialEnv(embedState.psdl);
     for (const [k, v] of packetDefaults) {
