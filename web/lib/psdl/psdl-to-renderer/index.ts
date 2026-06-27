@@ -901,21 +901,47 @@ function collectFreeRepeats(
             c.count === "eos" ||
             (typeof c.count === "object" && "until" in c.count)
           ) {
+            const tlvExt =
+              bounded && containsBounded(c.element.fields)
+                ? tlvExtensionInnerSeeds(c.element)
+                : null;
             if (bounded && !containsBounded(c.element.fields)) {
               // Bounded eos/until: derive the count from the budget so raising
               // the length slider fills the scope. No stepper (would
-              // over-consume). Skipped when a record itself wraps a nested
-              // bounded scope (bgpPathAttributes / tls extensions): that inner
-              // scope is driven by a PER-RECORD length we can't satisfy with a
-              // single global env value, so even one record would over-consume
-              // it — leave those non-auto-derived (load stays empty; the A8
-              // guard covers any manual over-consume) rather than freeze.
+              // over-consume). The simple case — the record carries no nested
+              // bounded — is handled here; the TLV-extension case (record wraps
+              // its own per-record bounded) is handled just below.
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: bounded.key,
                 bytesExpr: bounded.bytes,
                 perRecordBytes: estimateElementBytes(c.element),
                 prefixBytes: bounded.prefix,
+              });
+              instantiableRepeatIds.add(c.id);
+            } else if (bounded && tlvExt) {
+              // TLV-EXTENSION record (tlsClientHello extensions): each record
+              // wraps a PER-RECORD nested `bounded` sized by a sibling length
+              // field defaulting to 0. The plain derive above would over-consume
+              // that empty inner scope the instant a record appears. So derive
+              // the outer count from the budget AND seed each inner length so the
+              // representative arm fits — `perRecordBytes` (which charges the
+              // record INCLUDING its largest inner arm) keeps the outer count
+              // conservative, and `innerScopeSeeds` makes the default record
+              // render complete. The matching extType variant picker is surfaced
+              // by collectRefSwitches once this repeat is instantiable. Excludes
+              // bgpPathAttributes (cond budget → tlvExtensionInnerSeeds null) and
+              // ocspRequest (plain group inner scope → null), preserving their
+              // existing suppression.
+              boundedOut.push({
+                countKey: c.id,
+                lengthKey: bounded.key,
+                bytesExpr: bounded.bytes,
+                perRecordBytes: tlvExt.perRecordBytes,
+                prefixBytes: bounded.prefix,
+                ...(tlvExt.innerSeeds.length > 0
+                  ? { innerScopeSeeds: tlvExt.innerSeeds }
+                  : {}),
               });
               instantiableRepeatIds.add(c.id);
             } else if (!bounded && (!insideRepeat || enclosingInstantiable)) {
@@ -1160,6 +1186,112 @@ function containsBounded(containers: Container[]): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Detect a TLV-EXTENSION-style record: a repeat element shaped like
+ * `[typeField, lengthField, …, bounded innerScope(ref lengthField){ switch … }]`
+ * — tlsClientHello's extensions, where each record is
+ * `[extType, extLen, bounded extData(ref extLen){ switch on extType }]`.
+ *
+ * Such a record wraps a PER-RECORD nested `bounded` sized by a sibling LENGTH
+ * field that defaults to 0. The plain bounded-count derive (which only sets the
+ * outer count) would then over-consume the empty inner scope the instant a
+ * record appears, because the representative arm (the first numeric case — the
+ * one the refSwitch picker seeds) carries fixed fields. So the derive needs to
+ * ALSO seed each inner length so the default record fits, and size the record by
+ * the REPRESENTATIVE arm (not the worst-case `_`/opaque `remaining` arm, which
+ * would inflate the per-record estimate to ~64 B and hide records behind a huge
+ * length plateau).
+ *
+ * Returns, when every direct-child nested bounded has a `ref(K)`-to-sibling
+ * budget AND holds a Switch (the variant idiom):
+ *   - `innerSeeds`: `{ key: K, value: <representative-arm bytes> }` per inner
+ *     scope — the inner length seeded so cases[0] fits,
+ *   - `perRecordBytes`: the record's byte size with each inner scope charged its
+ *     seeded (representative-arm) budget — keeps the outer count conservative.
+ * Returns `null` when no such nested bounded exists, when ANY nested bounded is
+ * NOT a single-ref-to-sibling budget (bgpPathAttributes' `cond` budget), or when
+ * an inner scope has no Switch (ocspRequest's plain `group` scope, whose
+ * exact-fill berLength can't be safely force-seeded) — those stay
+ * non-auto-derived, preserving the existing suppression.
+ */
+function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
+  innerSeeds: { key: string; value: number }[];
+  perRecordBytes: number;
+} | null {
+  const siblingIds = new Set<string>();
+  collectRecordFieldIds(element.fields, siblingIds);
+  const innerSeeds: { key: string; value: number }[] = [];
+  // Bytes of the record EXCLUDING the inner bounded scopes (the type/length
+  // prefix), accumulated as we walk; each qualifying inner scope adds its
+  // seeded representative-arm bytes.
+  let prefixBits = 0;
+  let perRecordBytes = 0;
+  let sawNestedBounded = false;
+  for (const c of element.fields) {
+    if (isField(c)) {
+      const w = typeBits(c.type);
+      prefixBits +=
+        w > 0
+          ? w
+          : isRefToSiblingBytes(c, siblingIds)
+            ? REF_SIZED_FIELD_BYTE_ALLOWANCE * 8
+            : VARIABLE_FIELD_BYTE_ALLOWANCE * 8;
+      continue;
+    }
+    if (c.kind !== "bounded") {
+      // A non-bounded container at the element's top level may still hide a
+      // nested bounded deeper (e.g. inside a group/switch). That shape is not
+      // the simple TLV-extension idiom we can safely seed — bail. A plain
+      // (bounded-free) container just contributes its estimate to the prefix.
+      if (containsBounded([c])) return null;
+      prefixBits += estimateElementBytes({ fields: [c] }) * 8;
+      continue;
+    }
+    sawNestedBounded = true;
+    // Budget must be a single ref to a sibling LENGTH field of this record.
+    const refs = exprRefs(c.bytes);
+    if (refs.length !== 1 || !siblingIds.has(refs[0])) return null;
+    // The inner scope must carry a Switch (the variant idiom). A plain
+    // group/leaf inner scope (ocspRequest) is excluded — its exact-fill
+    // length can't be force-seeded without tripping a `remaining` mismatch.
+    const sw = c.fields.find(
+      (f): f is Extract<Container, { kind: "switch" }> =>
+        !isField(f) && f.kind === "switch",
+    );
+    if (!sw) return null;
+    // A nested bounded inside the inner scope can't be safely seeded either.
+    if (c.fields.some((f) => !isField(f) && containsBounded([f]))) return null;
+    // Size the inner scope by the REPRESENTATIVE arm: the first numeric case
+    // (cases[0]) the refSwitch picker seeds. Other (non-switch) siblings in the
+    // inner scope add their own bytes. This avoids the `_`/opaque `remaining`
+    // arm's 64-byte allowance dominating the estimate.
+    const firstNumericKey = Object.keys(sw.cases).find(
+      (k) => firstCaseKeyValue(k) !== null,
+    );
+    const repArm = firstNumericKey ? sw.cases[firstNumericKey] : undefined;
+    let innerBytes = 0;
+    for (const f of c.fields) {
+      if (f === sw) {
+        // Size the switch by the representative arm. Its value-length refs
+        // (SNI's `host_name = bytes(ref nameLen)`) point at siblings inside the
+        // same arm, so estimateElementBytes charges them the small structural
+        // size rather than the full unbounded allowance.
+        innerBytes += repArm
+          ? estimateElementBytes({ fields: repArm.fields })
+          : 0;
+      } else {
+        innerBytes += estimateElementBytes({ fields: [f] });
+      }
+    }
+    innerBytes = Math.max(1, innerBytes);
+    innerSeeds.push({ key: refs[0], value: innerBytes });
+    perRecordBytes += innerBytes;
+  }
+  if (!sawNestedBounded) return null;
+  perRecordBytes += Math.ceil(prefixBits / 8);
+  return { innerSeeds, perRecordBytes: Math.max(1, perRecordBytes) };
 }
 
 /** Conservative (over-)estimate of a repeat element's byte size. Sums

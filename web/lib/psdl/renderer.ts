@@ -259,6 +259,18 @@ export type Packet = {
      *  (sibling fields), subtracted from the budget before deriving the count
      *  so the records don't over-consume the scope. */
     prefixBytes: number;
+    /** Per-record inner-scope length fields to seed so the DEFAULT record fits.
+     *  A TLV-style record can itself wrap a nested `bounded` sized by a
+     *  PER-RECORD length field (tlsClientHello's extensions: each record is
+     *  [extType, extLen, bounded extData(ref extLen){switch}]). That inner
+     *  length defaults to 0, so the representative arm (cases[0]) would
+     *  over-consume the empty inner scope the instant a record is derived. Each
+     *  entry seeds the inner length to a value that fits the representative arm
+     *  — surfaced via `initialState` so the diagram shows a complete default
+     *  record (and the length CELL stays user-editable). `perRecordBytes`
+     *  already accounts for the seeded inner bytes, so the derived count never
+     *  over-consumes the ENCLOSING scope either. */
+    innerScopeSeeds?: { key: string; value: number }[];
   }[];
 };
 

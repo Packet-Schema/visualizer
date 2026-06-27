@@ -1295,6 +1295,13 @@ export default function PacketViewer({
     // records (core reads the eos count from env[countKey], not the budget).
     // The user controls the length; the count follows — one intuitive control.
     for (const br of packet.boundedRepeats ?? []) {
+      // Seed each PER-RECORD inner-scope length (tlsClientHello's `extLen`) so
+      // the representative record fits its own nested bounded — without this the
+      // budget-derived record over-consumes the empty inner scope. Only fills
+      // unset/0 so a user-set inner length still wins.
+      for (const seed of br.innerScopeSeeds ?? []) {
+        if (!env.get(seed.key)) env.set(seed.key, seed.value);
+      }
       // The budget is the bounded.bytes expr (ref, or `field*k - c`) evaluated
       // against the live env — not the raw slider value.
       const budget = evalExprOr(br.bytesExpr, env, 0);

@@ -209,6 +209,17 @@ export function initialState(packet: Packet): ControllerState {
       state[ps.peekKey] = ps.cases[0].value;
     }
   }
+  // Seed the PER-RECORD inner-scope length of a TLV-extension boundedRepeat
+  // (tlsClientHello's `extLen`) so the representative record fits its own nested
+  // bounded. Without this the inner length 0-fills to 0 and the budget-derived
+  // record over-consumes the empty inner scope (a frozen diagram). Seeded only
+  // when unset/0 — a user width still wins — and share-url-safe (same
+  // default-set reasoning as the discriminator seeds above).
+  for (const br of packet.boundedRepeats ?? []) {
+    for (const seed of br.innerScopeSeeds ?? []) {
+      if (!state[seed.key]) state[seed.key] = seed.value;
+    }
+  }
   syncTlvControllers(packet, state);
   // `syncChainControllers` now returns a fresh object so callers that
   // depend on reference equality see the update; for the bootstrap

@@ -145,13 +145,19 @@ describe("collectRefSwitches", () => {
     const dns = psdlToRenderer(PRESETS.dnsResponse!);
     expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
 
-    // The same suppression applies to tlsClientHello's `extType`, whose
-    // `extensions` repeat is the identical eos-in-bounded-with-nested-scope
-    // shape — its records are likewise never instantiable.
+    // Contrast: tlsClientHello's `extType` IS surfaced. Its `extensions` repeat
+    // has the same eos-in-bounded-with-nested-scope shape, but UNLIKE bgp the
+    // nested scope is a single-ref-to-sibling `bounded extData(ref extLen)` with
+    // a Switch body (the TLV-extension idiom), so collectFreeRepeats derives a
+    // budget-driven boundedRepeat (seeding `extLen` so the default record fits).
+    // The repeat is therefore instantiable and the variant picker is live.
     const tls = psdlToRenderer(PRESETS.tlsClientHello!);
-    expect((tls.refSwitches ?? []).map((r) => r.refKey)).not.toContain(
-      "extType",
-    );
+    const tlsRepeatIds = new Set([
+      ...(tls.freeRepeats ?? []).map((r) => r.countKey),
+      ...(tls.boundedRepeats ?? []).map((r) => r.countKey),
+    ]);
+    expect(tlsRepeatIds.has("extensions")).toBe(true);
+    expect((tls.refSwitches ?? []).map((r) => r.refKey)).toContain("extType");
   });
 
   it("suppresses a refSwitch whose every case arm collapses to width 0", () => {
