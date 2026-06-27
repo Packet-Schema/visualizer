@@ -293,3 +293,61 @@ describe("record-bearing ref-count repeats seed one record (#11/#12)", () => {
     );
   });
 });
+
+describe("eos/until repeat nested under a budget-derived bounded scope", () => {
+  // bgpFlowSpec:
+  //   bounded flowSpecComponentsScope(bytes=flowSpecLength) {
+  //     repeat flowSpecComponents eos {        ← budget-derived boundedRepeat
+  //       compType, switch {
+  //         '1,2': prefix,
+  //         '_': { repeat flowSpecOps until {...} }   ← INNER until repeat
+  //       }
+  //     }
+  //   }
+  // The OUTER eos repeat is auto-filled to consume the WHOLE flowSpecLength
+  // budget. The INNER until repeat must NOT also be surfaced as a naked free
+  // stepper: stepping it past its derived count adds bytes inside the already
+  // saturated scope, so normalize throws "bounded scope … over-consumed" and
+  // PacketViewer's layout memo freezes on the last good layout. This is the A4
+  // destructive-bounded-stepper class, one level below the bounded boundary —
+  // the inner `bounded` is reset to null at the outer repeat element, so a
+  // persistent `insideBounded` flag (not `bounded`) is what suppresses it.
+
+  it("does NOT surface a flowSpecOps free stepper (would over-consume the scope)", () => {
+    const bgp = psdlToRenderer(PRESETS.bgpFlowSpec!);
+    const keys = (bgp.freeRepeats ?? []).map((f) => f.countKey);
+    expect(keys).not.toContain("flowSpecOps");
+    // The outer repeat is still budget-derived (the length slider IS the
+    // control), so the user can grow the scope — they just can't over-consume it.
+    const bounded = (bgp.boundedRepeats ?? []).map((b) => b.countKey);
+    expect(bounded).toContain("flowSpecComponents");
+  });
+
+  it("never throws/freezes when the length budget is raised (app env pipeline)", () => {
+    // Mirror PacketViewer's layout memo: initialState + initialEnv + 0-fill,
+    // then derive each bounded repeat's count from its live budget, then
+    // resolveLayout. With the inner stepper suppressed this must hold across the
+    // whole budget range — no "over-consumed" throw at any length.
+    const psdl = PRESETS.bgpFlowSpec!;
+    const m = psdlToRenderer(psdl);
+    const base = new Map<string, number>();
+    const state = initialState(m);
+    for (const [k, v] of Object.entries(state)) base.set(k, Number(v));
+    for (const [k, v] of initialEnv(psdl)) if (!base.has(k)) base.set(k, v);
+    for (const r of collectPsdlRefs(psdl)) if (!base.has(r)) base.set(r, 0);
+
+    for (const len of [0, 4, 8, 12, 16, 20, 30, 60]) {
+      const env = new Map(base);
+      env.set("flowSpecLength", len);
+      for (const b of m.boundedRepeats ?? []) {
+        const budget = evalExprOr(b.bytesExpr, env, 0) as number;
+        const cnt = Math.floor((budget - b.prefixBytes) / b.perRecordBytes);
+        env.set(b.countKey, Math.max(0, cnt));
+      }
+      expect(
+        () => resolveLayout(psdl, { env }),
+        `flowSpecLength=${len} must not over-consume`,
+      ).not.toThrow();
+    }
+  });
+});

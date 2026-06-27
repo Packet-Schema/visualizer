@@ -1467,6 +1467,20 @@ function collectFreeRepeats(
     // labelled steppers instead of N identical, partly-inert ones (the only live
     // one is the currently-selected variant's). override-design-audit.
     caseLabel: string | null,
+    // True once ANY ancestor `bounded` byte-budget (with a single-ref length
+    // field — i.e. one that drives a budget-derived boundedRepeat) has been
+    // entered, and stays true through the elements of repeats nested below it.
+    // Unlike `bounded` (which is reset to null at each repeat element so an inner
+    // repeat gets its OWN keys, not the outer budget's), this flag persists. An
+    // eos/until repeat nested one or more levels below such a bounded scope
+    // (bgpFlowSpec flowSpecOps under the budget-derived flowSpecComponents) must
+    // NOT get a naked free stepper: the outer repeat is auto-filled to consume
+    // the WHOLE budget, so stepping the inner one adds bytes INSIDE the saturated
+    // scope and normalize throws `bounded scope … over-consumed`, freezing the
+    // diagram (the A4 destructive-bounded-stepper class, one level deeper). The
+    // inner count is implicitly driven by the budget; surfacing no naked stepper
+    // is correct.
+    insideBounded: boolean,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -1488,6 +1502,10 @@ function collectFreeRepeats(
           enclosingInstantiable,
           insideOptional,
           caseLabel,
+          // A bounded scope with a single-ref length drives a budget-derived
+          // boundedRepeat; mark every descendant so a repeat nested below it
+          // can't surface a destructive naked stepper (bgpFlowSpec flowSpecOps).
+          insideBounded || key !== null,
         );
         continue;
       }
@@ -1514,6 +1532,7 @@ function collectFreeRepeats(
             enclosingInstantiable,
             insideOptional,
             caseLabel,
+            insideBounded,
           );
         continue;
       }
@@ -1605,7 +1624,11 @@ function collectFreeRepeats(
                   : {}),
               });
               instantiableRepeatIds.add(c.id);
-            } else if (!bounded && (!insideRepeat || enclosingInstantiable)) {
+            } else if (
+              !bounded &&
+              !insideBounded &&
+              (!insideRepeat || enclosingInstantiable)
+            ) {
               // Free eos/until: a real count env key the user steps directly.
               // Suppressed when nested inside a NON-instantiable parent repeat
               // (bgpUpdateFull's bgpAsPathSegments / bgpCommunities live in
@@ -1614,6 +1637,13 @@ function collectFreeRepeats(
               // exist, so a child stepper would be permanently inert — driving it
               // over {0,1,2,3} leaves the diagram byte-identical. A free child of
               // an instantiable parent (dnsResponse dnsQNameLabels) is kept.
+              // Also suppressed when ANY bounded ancestor is active
+              // (`insideBounded`): the outer bounded repeat is auto-filled to
+              // consume the whole budget, so a naked stepper on this inner repeat
+              // adds bytes inside the saturated scope and normalize throws
+              // `bounded scope … over-consumed`, freezing the diagram
+              // (bgpFlowSpec flowSpecOps). `bounded` alone is null here because it
+              // is reset at each repeat element; `insideBounded` persists.
               countKey = c.id;
               label = `${label} (${c.count === "eos" ? "eos" : "until"})`;
               defaultCount = 1;
@@ -1728,6 +1758,11 @@ function collectFreeRepeats(
           // longer applies once we descend into the iterated records.
           false,
           caseLabel,
+          // `bounded` is reset to null (the inner repeat gets its own keys), but
+          // `insideBounded` PERSISTS: a repeat nested under a budget-derived
+          // bounded scope (bgpFlowSpec flowSpecOps under flowSpecComponents) must
+          // not surface a destructive naked stepper.
+          insideBounded,
         );
         continue;
       }
@@ -1740,6 +1775,7 @@ function collectFreeRepeats(
           enclosingInstantiable,
           insideOptional,
           caseLabel,
+          insideBounded,
         );
         continue;
       }
@@ -1757,6 +1793,7 @@ function collectFreeRepeats(
             // directly inside it gets a case-qualified stepper name. Falls back
             // to the existing (outer) caseLabel for the `_` default arm.
             switchCaseLabel(c.on, key, enumVariants, fieldNames) ?? caseLabel,
+            insideBounded,
           );
         continue;
       }
@@ -1771,6 +1808,7 @@ function collectFreeRepeats(
           enclosingInstantiable,
           true,
           caseLabel,
+          insideBounded,
         );
         continue;
       }
@@ -1783,12 +1821,13 @@ function collectFreeRepeats(
           enclosingInstantiable,
           insideOptional,
           caseLabel,
+          insideBounded,
         );
         continue;
       }
     }
   };
-  visit(body, null, false, false, true, false, null);
+  visit(body, null, false, false, true, false, null, false);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
