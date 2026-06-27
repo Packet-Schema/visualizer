@@ -648,6 +648,146 @@ function collectPlainRepeatLengthControllers(
 }
 
 /**
+ * Surface a Group-nested `length` field that sizes a VISIBLE `bytes` cell living
+ * in a DIFFERENT scope as a packet-level length controller.
+ *
+ * A `length`-category int/bits field declared inside a Group becomes a renderer
+ * *subfield* (Groups collapse to `subfields[]`), so it can never host its own
+ * slider. The constraint / bounded-controller paths only stamp `controlsLength`
+ * onto such a subfield when the length sizes a `bounded.bytes` budget; the
+ * sibling-length path (`collectSiblingLengthControllers`) only inspects DIRECT
+ * siblings of the length field. Neither matches a group-internal length whose
+ * sized `bytes(ref X)` value is a sibling of the GROUP, not of the field:
+ *   - geneve  `optLen` (in group `word1`)        → top-level `options`   = bytes(optLen*4)
+ *   - nsh     `nshLength` (in `nshBaseHeader`)    → top-level `nshContextHeaders`
+ *   - pgm     `pgmTsduLength` (in `pgmCommonHeader`) → top-level `pgmOdataData`/`pgmRdataData`
+ *   - ipinip  `innerTotalLength`/`innerIhl` (in `innerIpv4Header`) → top-level `innerPayload`
+ * The user SEES the variable region appear/grow but has no control to drive it —
+ * a see-but-cannot-edit cell. Surface X as a packet-level `lengthController`
+ * keyed on `env[X]` (same emission shape as the bounded-subfield path), so the
+ * OverridePanel renders the same length slider IHL / Data Offset get.
+ *
+ * Only Group nesting is descended (not Repeat / Switch / Optional / Bounded /
+ * Encrypted): a length stranded inside those scopes is OWNED by another path
+ * (`collectPlainRepeatLengthControllers`, `collectBoundedControllers`,
+ * `collectOptionalLengthGates`, the switch-case branch of
+ * `collectSiblingLengthControllers`). The caller dedupes against already-emitted
+ * controllers and skips ids that ARE top-level cells.
+ *
+ * A length field that ALSO discriminates a Switch (its id is a `switch.on` ref)
+ * is excluded: such a value is a FORMAT/ESCAPE selector, not a pure byte count
+ * (websocketFrame `payloadLength7` — values 126/127 mean "read the extended
+ * 16/64-bit length", not "126/127 bytes"). Driving it as a length slider would
+ * be misleading AND would flip the discriminator into the extended-length arm,
+ * exploding the diagram. Its variant surface is the switch picker, not a slider.
+ */
+function collectGroupNestedLengthControllers(
+  body: PsdlPacket["body"],
+  fields: RendererField[],
+  defs: Record<string, NamedStruct> | undefined,
+): RendererField[] {
+  // Every id REFERENCED by a non-delimited `bytes` length expr anywhere in the
+  // body — X sizes a (visible) variable-length value. Unlike `collectBytesSizers`
+  // (which only matches a BARE `bytes(ref X)`), this uses `exprRefs` so an
+  // op-wrapped length expr counts too: geneve `bytes(optLen*4)`, nsh
+  // `bytes((nshLength-k)*m)`, ipinip `bytes(innerTotalLength - innerIhl*4)`.
+  // `switchOn` collects every id used as a `switch.on` discriminator so a
+  // length/escape selector is excluded below.
+  const sizers = new Set<string>();
+  const switchOn = new Set<string>();
+  const gatherSizers = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        const t = c.type;
+        if (t.kind === "bytes" && !isBytesDelimited(t.n)) {
+          for (const r of exprRefs(t.n)) sizers.add(r);
+        }
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          gatherSizers(c.children);
+          break;
+        case "repeat":
+          gatherSizers(c.element.fields);
+          break;
+        case "optional":
+          gatherSizers([c.container]);
+          break;
+        case "bounded":
+          gatherSizers(c.fields);
+          break;
+        case "encrypted":
+          gatherSizers(c.plaintext.fields);
+          break;
+        case "switch":
+          for (const r of exprRefs(c.on)) switchOn.add(r);
+          for (const struct of Object.values(c.cases))
+            gatherSizers(struct.fields);
+          break;
+        case "ref": {
+          const def = defs?.[c.ref];
+          if (def) gatherSizers(def.fields);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  };
+  gatherSizers(body);
+  const out: RendererField[] = [];
+  const seen = new Set<string>();
+  // Descend ONLY through Group (and resolved `ref`) so `insideGroup` is true
+  // exactly for fields that collapse to a subfield. Other nesting kinds are
+  // length scopes owned by a different controller path, so we do not descend
+  // into them here.
+  const walk = (containers: Container[], insideGroup: boolean): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (
+          insideGroup &&
+          (c.type.kind === "int" || c.type.kind === "bits") &&
+          c.category === "length" &&
+          sizers.has(c.id) &&
+          !seen.has(c.id) &&
+          // A length that ALSO drives a Switch is a format/escape selector, not a
+          // pure byte count (websocketFrame `payloadLength7`) — leave it to the
+          // switch picker.
+          !switchOn.has(c.id) &&
+          // Skip a length field that IS already a top-level renderer cell — it
+          // hosts its own slider (or is owned by another discriminator widget).
+          !fields.some((f) => f.id === c.id)
+        ) {
+          seen.add(c.id);
+          const bits = typeBits(c.type);
+          out.push({
+            id: c.id,
+            name: c.name ?? c.id,
+            bits,
+            controlsLength: c.id,
+            max: bits > 0 ? 2 ** bits - 1 : undefined,
+            ...(c.defaultValue != null ? { defaultValue: c.defaultValue } : {}),
+            ...(c.doc ? { description: c.doc } : {}),
+          });
+        }
+        continue;
+      }
+      if (c.kind === "group") {
+        walk(c.children, true);
+      } else if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def) walk(def.fields, insideGroup);
+      }
+      // Repeat / Switch / Optional / Bounded / Encrypted are deliberately NOT
+      // descended: their internal length fields belong to other paths.
+    }
+  };
+  walk(body, false);
+  return out;
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -846,6 +986,24 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       max: bits > 0 ? 2 ** bits - 1 : undefined,
       defaultValue: field.defaultValue,
     });
+  }
+  // A Group-nested `length` field that sizes a VISIBLE `bytes(ref X)` cell in a
+  // DIFFERENT scope (geneve `optLen`→`options`, nsh `nshLength`→
+  // `nshContextHeaders`, pgm `pgmTsduLength`→`pgmOdataData`, ipinip
+  // `innerTotalLength`/`innerIhl`→`innerPayload`) becomes a renderer subfield, so
+  // it can't host its own slider; the sized cell is a sibling of the GROUP, not
+  // of the field, so the direct-sibling path above never matches it. Surface
+  // each as a packet-level length controller so the variable region the user
+  // sees becomes drivable (deduped against the controllers emitted above).
+  for (const lc of collectGroupNestedLengthControllers(
+    packet.body,
+    fields,
+    packet.defs,
+  )) {
+    if (!controllerIds.has(lc.id)) {
+      controllerIds.add(lc.id);
+      lengthControllers.push(lc);
+    }
   }
   attachOverrideMetadata(packet.body, fields, packet.defs);
   // A chain's base field carries a chainCatalog (the chain editor's surface);
