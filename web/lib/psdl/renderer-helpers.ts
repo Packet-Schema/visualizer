@@ -187,6 +187,21 @@ export function initialState(packet: Packet): ControllerState {
       state[fr.countKey] = fr.defaultCount;
     }
   }
+  // Seed the discriminator for record-variant / peek pickers to their first
+  // case, so the picker label agrees with the diagram on load. Without this the
+  // discriminator 0-fills to 0 (often the `_` default arm or an absent variant)
+  // while the picker shows cases[0] — a label/diagram contradiction
+  // (override-design-audit). Also share-url-safe (same default-set reasoning).
+  for (const rs of packet.refSwitches ?? []) {
+    if (state[rs.refKey] === undefined && rs.cases[0]) {
+      state[rs.refKey] = rs.cases[0].value;
+    }
+  }
+  for (const ps of packet.peekSwitches ?? []) {
+    if (state[ps.peekKey] === undefined && ps.cases[0]) {
+      state[ps.peekKey] = ps.cases[0].value;
+    }
+  }
   syncTlvControllers(packet, state);
   // `syncChainControllers` now returns a fresh object so callers that
   // depend on reference equality see the update; for the bootstrap

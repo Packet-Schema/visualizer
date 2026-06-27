@@ -12,6 +12,7 @@ import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { initialState } from "@/lib/psdl/renderer-helpers";
 import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 function cellIds(
@@ -51,6 +52,17 @@ describe("collectRefSwitches", () => {
     // so it must not leak into refSwitches.
     const ipv4 = psdlToRenderer(PRESETS.ipv4!);
     expect(ipv4.refSwitches ?? []).toHaveLength(0);
+  });
+
+  it("seeds the refSwitch discriminator to its first case so picker matches diagram", () => {
+    // override-design-audit: the discriminator 0-filled to 0 (the `_`/default
+    // arm) while the picker showed cases[0] — a label/diagram contradiction.
+    // initialState now seeds the discriminator to the first case.
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    const rs = (dns.refSwitches ?? []).find((r) => r.refKey === "dnsRrType");
+    expect(rs).toBeTruthy();
+    const state = initialState(dns);
+    expect(state.dnsRrType).toBe(rs!.cases[0]!.value);
   });
 
   it("surfaces a switch whose case key is a comma-list (bgpFlowSpec)", () => {
