@@ -107,6 +107,12 @@ export function resolveLayout(
   // OverridePanel shows no EnumDropdown even though `env[fieldId]` genuinely
   // drives the cell value (see-but-cannot-edit).
   const enumFlags = collectEnumFlags(packet);
+  // Authored `defaultValue` for leaves that live inside switch cases / optionals
+  // / repeats / non-collapsing Groups — `NormalizedField` does not carry the
+  // value dictionary's default, so the collapsed-group subfield path (which has
+  // no renderer mirror field to copy from) needs it sourced from the PSDL packet
+  // for the WidthPicker / EnumDropdown to seed their selected value correctly.
+  const defaultValues = collectDefaultValues(packet);
   for (const g of groups) {
     if (g.kind === "flat") {
       const nf = g.field;
@@ -134,12 +140,29 @@ export function resolveLayout(
       id: g.parentId,
       name: g.parentName,
       bits: totalBits,
-      subfields: g.children.map((c) => ({
-        id: c.id.replace(/#\d+$/, ""), // strip repeatIndex for stable subfield id
-        name: c.name,
-        bits: c.bits,
-        ...(c.doc ? { description: c.doc } : {}),
-      })),
+      subfields: g.children.map((c) => {
+        // Look up the dynamic-width / enum / default metadata by the authored
+        // PSDL id (repeat-iteration tag stripped). Without these spreads a
+        // varint / berLength / delimited / enum leaf inside a Group that does
+        // NOT collapse via `groupToSubfieldField` (i.e. the Group has a
+        // compound child, so it reaches the layout collapsed-group path
+        // instead of the renderer mirror) would resolve to a SubCell carrying
+        // no dynamic-width / enum hint, and OverridePanel would render the
+        // dead-end "select the parent cell" message even though `env[fieldId]`
+        // genuinely drives the cell's wire width / value (see-but-cannot-edit:
+        // snmpv3 BER lengths, ipinip outerProtocol enum, pppoe code enum).
+        const authoredId = stripRepeatTag(c.id);
+        const def = defaultValues.get(authoredId);
+        return {
+          id: c.id.replace(/#\d+$/, ""), // strip repeatIndex for stable subfield id
+          name: c.name,
+          bits: c.bits,
+          ...(c.doc ? { description: c.doc } : {}),
+          ...(dynWidth.get(authoredId) ?? {}),
+          ...(enumFlags.get(authoredId) ?? {}),
+          ...(def !== undefined ? { defaultValue: def } : {}),
+        };
+      }),
       ...(g.children.find((c) => c.category)?.category
         ? { category: g.children.find((c) => c.category)!.category! }
         : {}),
@@ -410,6 +433,49 @@ function collectEnumFlags(packet: PsdlPacket): Map<string, EnumFlags> {
           visit(c.fields);
           break;
         // virtual / align / ref expose no enum leaf to flag.
+      }
+    }
+  };
+  visit(packet.body);
+  return map;
+}
+
+/**
+ * Precompute a `fieldId -> defaultValue` map by walking EVERY container in the
+ * source PSDL packet. `NormalizedField` does not carry a field's authored
+ * `defaultValue`, but the collapsed-group subfield path (which has no renderer
+ * mirror field to copy from) needs it so the WidthPicker / EnumDropdown seed
+ * their selected value from the same default the flat path gets via
+ * `plainFieldToRenderer`. Same walk shape as `collectEnumFlags`.
+ */
+function collectDefaultValues(packet: PsdlPacket): Map<string, number> {
+  const map = new Map<string, number>();
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.defaultValue !== undefined) map.set(c.id, c.defaultValue);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        // virtual / align / ref expose no leaf with a default to flag.
       }
     }
   };
