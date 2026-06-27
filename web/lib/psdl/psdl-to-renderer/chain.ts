@@ -125,12 +125,16 @@ export function chainEntryToStruct(
   return {
     id: `${parentId}_proto_${entry.proto}`,
     name: entry.name,
-    fields: entry.fields.map((f) => ({
-      id: f.id,
-      name: f.name,
-      type: { kind: "bits", n: f.bits },
-      ...(f.description ? { doc: f.description } : {}),
-    })),
+    // Drop width-0 fields rather than emit invalid {kind:"bits", n:0} (see
+    // tlvCatalogEntryToStruct).
+    fields: entry.fields
+      .filter((f) => f.bits > 0)
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: { kind: "bits", n: f.bits } as const,
+        ...(f.description ? { doc: f.description } : {}),
+      })),
   };
 }
 

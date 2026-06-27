@@ -130,12 +130,20 @@ export function tlvCatalogEntryToStruct(
   return {
     id: `${parentId}_kind_${entry.kind}`,
     name: entry.name,
-    fields: baseFields.map((f) => ({
-      id: f.id,
-      name: f.name,
-      type: { kind: "bits", n: f.bits },
-      ...(f.description ? { doc: f.description } : {}),
-    })),
+    // Drop variable-length catalog fields (bits<=0 — a `bytes:ref` / varint /
+    // berLength payload the catalog collapsed to width 0): emitting
+    // {kind:"bits", n:0} produces PSDL the validator rejects ("bits must have
+    // positive n"). Mirrors the plain-field guard in to-psdl.ts. The catalog
+    // doesn't retain the source variable type, so this lossy path (only reached
+    // for imported packets with no source PSDL) drops rather than mis-emits.
+    fields: baseFields
+      .filter((f) => f.bits > 0)
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: { kind: "bits", n: f.bits } as const,
+        ...(f.description ? { doc: f.description } : {}),
+      })),
   };
 }
 

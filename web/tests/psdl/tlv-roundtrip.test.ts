@@ -97,11 +97,20 @@ describe("lossless export lift", () => {
     });
   }
 
-  it("dhcpv4: the old rendererToPsdl path produced PSDL the app rejects (C2)", () => {
-    // Pins the regression the lift fixes: the lossy path is genuinely broken,
-    // so the merge lift above is load-bearing, not a no-op.
-    const mirror = psdlToRenderer(PRESETS.dhcpv4!);
-    expect(() => validatePsdlPacket(rendererToPsdl(mirror))).toThrow();
+  it("the lossy rendererToPsdl lift produces VALID PSDL for every preset", () => {
+    // override-design-audit: the imported-packet lift (rendererToPsdl, used when
+    // no source PSDL is retained) emitted {kind:"bits", n:0} for variable-length
+    // catalog/subfields (bytes:ref / varint / berLength collapsed to width 0),
+    // which the validator rejects — so importing then sharing/exporting one of
+    // ~8 presets (dhcpv4, kerberos, snmp, tls*) silently produced an
+    // app-rejected link. The child lifters now drop/reconstruct width-0 fields.
+    for (const key of Object.keys(PRESETS)) {
+      const lifted = rendererToPsdl(psdlToRenderer(PRESETS[key]!));
+      expect(
+        () => validatePsdlPacket(lifted),
+        `${key} lift must be valid PSDL`,
+      ).not.toThrow();
+    }
   });
 
   it("preserves a built-in TLV edit through the merge lift + JSON round-trip", () => {

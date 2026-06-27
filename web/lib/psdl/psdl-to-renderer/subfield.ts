@@ -78,6 +78,19 @@ export function plainFieldToRenderer(f: PsdlField): RendererField {
   return out;
 }
 
+/** Reconstruct a subfield's PSDL type from the renderer-carried flags. Returns
+ *  null for a width-0 subfield with no dynamic-type flag (so the caller drops
+ *  it rather than emitting an invalid {kind:"bits", n:0}). */
+function subFieldType(sf: SubField): PsdlField["type"] | null {
+  if (sf.isBerLength) return { kind: "berLength" };
+  if (sf.varintEncoding) return { kind: "varint", encoding: sf.varintEncoding };
+  if (sf.enumVariants && sf.bits > 0) {
+    return { kind: "enum", bits: sf.bits, variants: sf.enumVariants };
+  }
+  if (sf.bits > 0) return { kind: "bits", n: sf.bits };
+  return null;
+}
+
 /** Inverse of `groupToSubfieldField` — round-trips renderer subfields
  *  back into a PSDL Group. Used by `rendererToPsdl`.
  *
@@ -95,12 +108,23 @@ export function rendererSubfieldsToGroup(field: RendererField): Group {
     kind: "group",
     id: field.id,
     name: field.name,
-    children: subs.map((sf) => ({
-      id: sf.id,
-      name: sf.name,
-      type: { kind: "bits", n: sf.bits },
-      ...(field.category ? { category: field.category } : {}),
-      ...(sf.description ? { doc: sf.description } : {}),
-    })),
+    // Reconstruct each child's PSDL type from the carried flags instead of
+    // forcing `bits` — a berLength / varint / dynamic subfield collapses to
+    // bits=0, and emitting {kind:"bits", n:0} produces PSDL the validator
+    // rejects (override-design-audit). Drop any width-0 subfield that has no
+    // dynamic-type flag to recover from (mirrors the plain-field guard).
+    children: subs
+      .map((sf) => {
+        const type = subFieldType(sf);
+        if (!type) return null;
+        return {
+          id: sf.id,
+          name: sf.name,
+          type,
+          ...(field.category ? { category: field.category } : {}),
+          ...(sf.description ? { doc: sf.description } : {}),
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null),
   };
 }
