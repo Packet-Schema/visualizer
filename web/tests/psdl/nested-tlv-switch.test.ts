@@ -49,13 +49,16 @@ describe("nested-tlv: icmpv6Ndp switch-nested option repeats", () => {
       expect(fr.defaultCount).toBe(1);
     }
 
-    // The inner option-type pickers — one per option list (rsByOptType,
-    // raByOptType, …), all keyed on the same 8-bit peek at offset 0.
-    expect(mirror.peekSwitches).toHaveLength(5);
-    for (const ps of mirror.peekSwitches ?? []) {
-      expect(ps.peekKey).toBe("__peek__0__8");
-      expect(ps.cases.length).toBeGreaterThan(0);
-    }
+    // The inner option-type pickers (rsByOptType, raByOptType, …) are each a
+    // peek at offset 0 width 8, so they all key on the SAME `__peek__0__8`
+    // controller — only the switch inside the currently-selected message
+    // variant ever renders. Surface ONE de-duplicated picker (cases unioned)
+    // rather than five aliasing controls that read/write a single value
+    // (override-audit: no inert/misleading controls).
+    expect(mirror.peekSwitches).toHaveLength(1);
+    const optPicker = mirror.peekSwitches![0]!;
+    expect(optPicker.peekKey).toBe("__peek__0__8");
+    expect(optPicker.cases.length).toBeGreaterThan(0);
 
     // These repeats are NOT promoted to a top-level tlv field.
     expect(mirror.fields.some((f) => f.tlv)).toBe(false);
@@ -89,16 +92,49 @@ describe("nested-tlv: icmpv6Ndp switch-nested option repeats", () => {
     // repeats, this count changes and we should re-audit the relaxed guard.
     const affected = Object.keys(PRESETS).filter((key) => {
       const mirror = psdlToRenderer(PRESETS[key]!);
-      // The tell-tale: peekSwitches whose offset is 0/8 AND multiple eos
-      // freeRepeats sharing that picker — but the simplest cross-check is the
-      // exact icmpv6Ndp signature (5 option lists). Use a conservative probe:
-      // a preset with >=2 peekSwitches AND >=2 eos freeRepeats where each
-      // freeRepeat has defaultCount and the peek is at offset 0.
+      // The tell-tale: multiple eos freeRepeats (the per-message option lists)
+      // sharing a single de-duplicated peek option-type picker. (peekSwitches
+      // are collapsed by peekKey, so the icmpv6Ndp signature is now ONE peek
+      // picker plus >=2 eos freeRepeats, not five aliasing pickers.) Use a
+      // conservative probe: a preset with a peek option picker AND the five
+      // per-message eos option lists (each carrying a defaultCount).
       const peeks = mirror.peekSwitches ?? [];
       const frees = mirror.freeRepeats ?? [];
       const eosFrees = frees.filter((f) => f.defaultCount === 1);
-      return peeks.length >= 2 && eosFrees.length >= 2;
+      return peeks.length >= 1 && eosFrees.length >= 5;
     });
     expect(affected).toEqual(["icmpv6Ndp"]);
+  });
+
+  it("collapses the 5 aliasing NDP option-type pickers into one picker", () => {
+    // Regression: collectPeekSwitches used to emit one peekSwitch per option
+    // list (rsByOptType / raByOptType / nsByOptType / naByOptType /
+    // rdByOptType), but every one is a peek at offset 0 width 8 → they all
+    // published `__peek__0__8`. OverridePanel rendered five separate,
+    // differently-named pickers that all read/write that single controller, so
+    // four were inert at any moment and moving one silently retargeted whichever
+    // message variant was live. They must collapse to ONE picker.
+    const src = PRESETS.icmpv6Ndp!;
+    const mirror = psdlToRenderer(src);
+
+    const optPickers = (mirror.peekSwitches ?? []).filter(
+      (p) => p.peekKey === "__peek__0__8",
+    );
+    expect(optPickers).toHaveLength(1);
+
+    // The lone picker unions every aliased switch's cases (deduped by value).
+    const picker = optPickers[0]!;
+    expect(picker.cases.map((c) => c.value).sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 5,
+    ]);
+
+    // And the single controller still drives whichever message variant is the
+    // active discriminator — the same `__peek__0__8` key works for both a
+    // Router Solicitation (type 133, rsOptions) and a Neighbor Solicitation
+    // (type 135, nsOptions), proving it is not scoped to one variant.
+    const rsPrefix = cellIds(src, { type: 133, rsOptions: 1, __peek__0__8: 3 });
+    expect(rsPrefix).toContain("ndpPrefixLength#0");
+    const nsPrefix = cellIds(src, { type: 135, nsOptions: 1, __peek__0__8: 3 });
+    expect(nsPrefix).toContain("ndpPrefixLength#0");
   });
 });

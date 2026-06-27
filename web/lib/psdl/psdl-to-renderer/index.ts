@@ -1678,7 +1678,79 @@ function collectPeekSwitches(
     }
   };
   visit(body, false, false, false);
+  return dedupePeekSwitches(out);
+}
+
+/**
+ * Multiple peek Switches can publish the SAME `peekKey` — e.g. icmpv6Ndp's five
+ * per-message-type option lists (rsByOptType / raByOptType / … ) are each a
+ * `switch on peek(bits:8)` at offset 0, so every one keys on `__peek__0__8`.
+ * Only the switch inside the message variant the discriminator currently
+ * selects ever renders, so surfacing five separate pickers that all read/write
+ * one shared controller is misleading: four are inert at any moment and moving
+ * any one silently retargets whichever variant is live. Collapse aliasing
+ * pickers into a SINGLE picker per `peekKey`, unioning their cases (deduped by
+ * value, first label wins) so the lone control governs whichever variant the
+ * diagram shows.
+ */
+function dedupePeekSwitches(
+  raw: NonNullable<RendererPacket["peekSwitches"]>,
+): NonNullable<RendererPacket["peekSwitches"]> {
+  const byKey = new Map<string, NonNullable<RendererPacket["peekSwitches"]>>();
+  for (const ps of raw) {
+    const group = byKey.get(ps.peekKey);
+    if (group) group.push(ps);
+    else byKey.set(ps.peekKey, [ps]);
+  }
+  const out: NonNullable<RendererPacket["peekSwitches"]> = [];
+  for (const group of byKey.values()) {
+    const first = group[0]!;
+    if (group.length === 1) {
+      out.push(first);
+      continue;
+    }
+    const cases: { value: number; label: string }[] = [];
+    const seen = new Set<number>();
+    for (const ps of group) {
+      for (const c of ps.cases) {
+        if (seen.has(c.value)) continue;
+        seen.add(c.value);
+        cases.push(c);
+      }
+    }
+    // Keep the first switch's id (stable, used as the React key); derive a name
+    // that reads as a shared discriminator. The longest common suffix of the
+    // merged names (e.g. `…ByOptType`) describes what every alias dispatches on
+    // far better than an arbitrary per-message id like `rsByOptType`.
+    const sharedName = longestCommonSuffix(group.map((g) => g.name));
+    out.push({
+      id: first.id,
+      name: sharedName.length >= 3 ? sharedName : first.name,
+      cases,
+      peekKey: first.peekKey,
+    });
+  }
   return out;
+}
+
+/** Longest suffix shared by every string (empty when none / list shorter than 2). */
+function longestCommonSuffix(names: readonly string[]): string {
+  if (names.length < 2) return names[0] ?? "";
+  let suffix = names[0]!;
+  for (let i = 1; i < names.length; i++) {
+    const s = names[i]!;
+    let len = 0;
+    while (
+      len < suffix.length &&
+      len < s.length &&
+      suffix[suffix.length - 1 - len] === s[s.length - 1 - len]
+    ) {
+      len++;
+    }
+    suffix = suffix.slice(suffix.length - len);
+    if (suffix.length === 0) break;
+  }
+  return suffix;
 }
 
 /**
