@@ -585,6 +585,14 @@ function WidgetLabel({ children }: { children: React.ReactNode }) {
 // derived record count is capped separately), so they keep the full int range.
 const MAX_LENGTH_CONTROLLER_BYTES = 1024;
 
+// Ceiling on a freeRepeat's DISPLAYED record count (the value the stepper shows
+// and writes through). resolveLayout emits ~6-20 diagram cells per record, so an
+// uncapped count freezes the un-virtualized diagram. PacketViewer applies the
+// matching layout-only clamp (MAX_DERIVED_RECORDS) to env[countKey] before
+// resolveLayout — including the share-URL / JSON-import path that never touches
+// this input — so keep the two values in sync.
+const MAX_REPEAT_RECORDS = 1024;
+
 type SliderProps = {
   field: Field;
   controllers: ControllerState;
@@ -1127,7 +1135,14 @@ function RepeatCountStepper({
   // env-driven Repeat semantics (any count is legal). We use a soft ceiling
   // on the number input's spinner just to keep the buttons sane; the +/−
   // buttons themselves don't clamp upwards. Codex P2.
-  const SOFT_MAX = 4096;
+  // `SOFT_MAX` is the DISPLAYED record count ceiling, so it must equal
+  // PacketViewer's MAX_DERIVED_RECORDS layout cap (1024): a single record
+  // expands to ~6-20 diagram cells, so the previous 4096 let the stepper drive
+  // tens of thousands of cells into the un-virtualized diagram and freeze it.
+  // PacketViewer clamps the layout env to the same ceiling (covering the
+  // share-URL / JSON-import path that bypasses this input), so the displayed
+  // count and the diagram never diverge.
+  const SOFT_MAX = MAX_REPEAT_RECORDS;
   const numId = `detail-repeat-${countKey}-number`;
   // NaN guard: the native number input briefly emits an empty string /
   // intermediate "-" for which `Number(...)` returns NaN. Without the

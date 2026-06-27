@@ -1382,6 +1382,36 @@ export default function PacketViewer({
         env.set(id, MAX_LENGTH_CONTROLLER_BYTES);
       }
     }
+    // Cap each freeRepeat's DERIVED record count to MAX_DERIVED_RECORDS. Unlike
+    // boundedRepeats (count derived from a byte budget, capped above) and direct
+    // length controllers (capped above), a freeRepeat's record count is driven
+    // STRAIGHT by env[countKey] (via the affine transform), so an uncapped value
+    // — reachable not only through RepeatCountStepper but, crucially, BYPASSING
+    // it via share-URL hydration / JSON import (freeRepeat countKeys ride in
+    // `controllers` → env) — feeds e.g. 65535 directly into resolveLayout, which
+    // emits ~6-20 cells per record and freezes the un-virtualized diagram
+    // (dnsResponse.dnsAnCount → ~917k cells / 67s). Clamp the DERIVED record
+    // count, then invert through the transform back to the env value so the
+    // displayed count and the layout agree. Layout-only: the underlying
+    // controller value stays user-editable (OverridePanel's stepper SOFT_MAX is
+    // lowered to the same ceiling so its input can't request an explosive count).
+    for (const fr of packet.freeRepeats ?? []) {
+      const v = env.get(fr.countKey);
+      if (typeof v !== "number") continue;
+      const mul = fr.transform?.mul ?? 1;
+      const add = fr.transform?.add ?? 0;
+      const recordCount = v * mul + add;
+      if (recordCount > MAX_DERIVED_RECORDS) {
+        // Invert recordCount = env * mul + add → env = (cap - add) / mul.
+        // `mul` is always non-zero for a surfaced transform (the adapter rejects
+        // `*0`); clamp >= 0 so the unsigned wire field never goes negative.
+        const capped = Math.max(
+          0,
+          Math.floor((MAX_DERIVED_RECORDS - add) / mul),
+        );
+        env.set(fr.countKey, capped);
+      }
+    }
     // 0-fill above only absorbs MissingRefError. Other normalize throws —
     // notably a `bounded` scope being over-consumed when an override stepper
     // bumps a repeat count past its byte budget — must not crash React render
@@ -1400,6 +1430,7 @@ export default function PacketViewer({
     controllers,
     viewMode,
     packet.boundedRepeats,
+    packet.freeRepeats,
     directLengthControllerIds,
   ]);
 
