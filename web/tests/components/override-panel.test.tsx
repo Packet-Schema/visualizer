@@ -282,8 +282,10 @@ describe("OverridePanel widgets", () => {
     expect(container.textContent ?? "").not.toMatch(/Repeats in this packet/);
   });
 
-  it("renders a peek-switch picker for tlsExtensionsBlock on empty selection", async () => {
-    const packet = psdlToRenderer(PRESETS.tlsExtensionsBlock!);
+  it("renders a peek-switch picker for a standalone peek switch (sctp)", async () => {
+    // sctp has a genuine standalone `Switch on peek` (not a TLV repeat's
+    // dispatch), so the peek picker is the right surface for it.
+    const packet = psdlToRenderer(PRESETS.sctp!);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
@@ -292,8 +294,26 @@ describe("OverridePanel widgets", () => {
         onControllerChange={() => {}}
       />,
     );
+    expect(container.textContent ?? "").toMatch(/Peek-based switches/);
+  });
+
+  it("does NOT double-surface a peek picker for a TLV repeat's dispatch (tlsExtensionsBlock)", async () => {
+    // tlsExtensionsBlock's `extensions` is a Repeat<Switch on peek> promoted to
+    // a TLV editor; the redundant peek picker (which goes inert after a record
+    // is added) must be suppressed in favour of the TLV editor.
+    const packet = psdlToRenderer(PRESETS.tlsExtensionsBlock!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{}}
+        onControllerChange={() => {}}
+        onTlvChange={() => {}}
+      />,
+    );
     const text = container.textContent ?? "";
-    expect(text).toMatch(/Peek-based switches/);
+    expect(text).not.toMatch(/Peek-based switches/);
+    expect(text).toMatch(/TLV editors in this packet/);
   });
 
   it("opens the TLV editor when the trailing 'Options remaining' cell is clicked", async () => {

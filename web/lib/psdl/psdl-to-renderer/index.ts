@@ -643,7 +643,12 @@ function collectPeekSwitches(
         continue;
       }
       if (c.kind === "repeat") {
-        visit(c.element.fields);
+        // A peek Switch that IS a TLV/chain repeat's own dispatch is already
+        // handled by the (more capable) TLV/chain editor; surfacing a duplicate
+        // peek picker is redundant AND goes inert once applyTlvInstances
+        // materialises the records (the peek key is no longer read). So don't
+        // collect peek switches from inside a TLV/chain repeat element.
+        if (!isTlvRepeat(c) && !isLikelyChainRepeat(c)) visit(c.element.fields);
         continue;
       }
       if (c.kind === "optional") {
