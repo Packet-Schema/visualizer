@@ -37,6 +37,64 @@ import type {
 
 export type TlvSlotBytes = Record<string, number>;
 
+// Does the body collapse, modulo transparent wire-scopes (bounded / group /
+// optional), to a SINGLE cell-producing container that is a TLV Repeat — with
+// no other header fields, switches, or non-TLV repeats alongside it? That is
+// the `tlsExtensionsBlock` shape: a body that is entirely one
+// `repeat{count:eos, element:[switch on peek]}`. Such a body renders blank at
+// load (Stage 3) because there is nothing else to draw, so we seed a
+// representative default slot. Presets like IPv4/TCP, whose options Repeat
+// sits among many header fields, fail this check and keep Stage-3 behaviour.
+function bodyIsSoleTlvRepeat(
+  body: Container[],
+  tlvByRepeatId: Map<string, NonNullable<RendererField["tlv"]>>,
+): boolean {
+  // Count cell-producing leaves: a TLV repeat counts as a TLV leaf, anything
+  // else (plain field, switch, encrypted, non-TLV repeat) counts as "other".
+  let tlvLeaves = 0;
+  let otherLeaves = 0;
+  const walk = (containers: Container[]): void => {
+    for (const c of containers) {
+      switch (c.kind) {
+        case "bounded":
+          walk(c.fields);
+          break;
+        case "group":
+          walk(c.children);
+          break;
+        case "optional":
+          walk([c.container]);
+          break;
+        case "repeat":
+          if (tlvByRepeatId.has(c.id)) tlvLeaves++;
+          else otherLeaves++;
+          break;
+        default:
+          otherLeaves++;
+          break;
+      }
+    }
+  };
+  walk(body);
+  return tlvLeaves === 1 && otherLeaves === 0;
+}
+
+// Byte size of a TLV catalog entry's fixed (byte-aligned, positive-width)
+// fields. Used to seed a representative Stage-1 slot for a body-dominating
+// TLV Repeat that would otherwise render nothing at load. Variable members
+// (`bytes:ref`, varint, …) collapse to width 0 in the catalog, so they
+// contribute nothing here; we only need a positive byte count for the
+// placeholder. Falls back to 1 so the slot is always > 0.
+function catalogEntryFixedBytes(
+  entry: NonNullable<RendererField["tlv"]>["catalog"][number],
+): number {
+  const bits = (entry.fields ?? []).reduce(
+    (a, f) => a + (f.bits > 0 ? f.bits : 0),
+    0,
+  );
+  return Math.max(1, Math.ceil(bits / 8));
+}
+
 export function applyTlvInstances(
   psdl: PsdlPacket,
   mirror: RendererPacket,
@@ -47,6 +105,31 @@ export function applyTlvInstances(
     if (f.tlv) tlvByRepeatId.set(f.id, f.tlv);
   }
   if (tlvByRepeatId.size === 0) return psdl;
+
+  // Seed a representative default slot for a TLV Repeat that constitutes the
+  // ENTIRE body (e.g. the `tlsExtensionsBlock` preset: a single
+  // `repeat{count:eos, element:[switch on peek]}` with no surrounding header
+  // fields and no length controller). Without instances and without a slot,
+  // Stage 3 below would keep the raw Repeat and normalize yields 0 cells — a
+  // blank diagram at load with nothing to click. This mirrors the
+  // `defaultCount` (lldp until-repeat) and `defaultLength` (tlsClientHello
+  // bounded) seeds that exist elsewhere precisely to avoid a blank diagram.
+  //
+  // Only applied when the TLV Repeat is the body's sole cell-producing
+  // container AND no slot was supplied for it — so IPv4/TCP (whose options
+  // Repeat is one of many header fields, sized by an IHL/dataOffset
+  // controller) keep their genuine Stage-3 "empty options" behaviour.
+  const effectiveSlotBytes: TlvSlotBytes = { ...slotBytes };
+  if (bodyIsSoleTlvRepeat(psdl.body, tlvByRepeatId)) {
+    for (const [id, tlv] of tlvByRepeatId) {
+      const hasInstances = tlv.instances.length > 0;
+      const hasSlot = Math.max(0, Math.floor(slotBytes[id] ?? 0)) > 0;
+      if (!hasInstances && !hasSlot && tlv.catalog.length > 0) {
+        effectiveSlotBytes[id] = catalogEntryFixedBytes(tlv.catalog[0]);
+      }
+    }
+  }
+  slotBytes = effectiveSlotBytes;
 
   let mutated = false;
 
