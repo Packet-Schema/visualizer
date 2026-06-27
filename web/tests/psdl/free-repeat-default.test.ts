@@ -160,6 +160,34 @@ describe("free-repeat default count", () => {
     }
   });
 
+  it("does not surface an inert freeRepeat whose count ref points at a virtual field", () => {
+    // kerberosAsReq: padataList.count = ref(padataCount), but padataCount is a
+    // `virtual` field with expr lit(1). core normalize walkVirtual does
+    // `env.set(v.id, eval(expr))` BEFORE the repeat is walked, so it always
+    // CLOBBERS any seeded env value — the diagram is frozen at exactly one
+    // PA-DATA record for every stepper value. A stepper on padataCount can
+    // never move the diagram (see-but-cannot-edit / inert control), so the
+    // freeRepeat must NOT be surfaced.
+    const krb = psdlToRenderer(PRESETS.kerberosAsReq!);
+    const keys = (krb.freeRepeats ?? []).map((r) => r.countKey);
+    expect(keys).not.toContain("padataCount");
+
+    // Prove the inertness the suppression avoids: stepping padataCount over
+    // {0,1,2,3} leaves the diagram byte-identical (a single record set),
+    // confirming a surfaced stepper would have been dead.
+    const src = PRESETS.kerberosAsReq!;
+    const base = applyChainInstances(applyTlvInstances(src, krb, {}), krb);
+    const counts = new Set<number>();
+    for (const value of [0, 1, 2, 3]) {
+      const env = new Map<string, number>();
+      for (const [k, v] of initialEnv(base)) env.set(k, v);
+      for (const r of collectPsdlRefs(base)) if (!env.has(r)) env.set(r, 0);
+      env.set("padataCount", value);
+      counts.add(resolveLayout(base, { env }).cells.length);
+    }
+    expect(counts.size).toBe(1);
+  });
+
   it("keeps free eos/until steppers for children of an INSTANTIABLE parent repeat", () => {
     // The suppression must be scoped: dnsResponse's dnsQNameLabels (inside the
     // instantiable ref-count dnsQuestions) and dnsRdataSoaMname/Rname (inside

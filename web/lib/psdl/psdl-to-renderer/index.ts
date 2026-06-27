@@ -519,6 +519,45 @@ function collectFieldNames(body: PsdlPacket["body"]): Map<string, string> {
   return out;
 }
 
+/** Collect the ids of all `virtual` fields reachable from the body (descending
+ *  through every transparent/structural container AND ref-resolved defs). A
+ *  `virtual` field's env value is RECOMPUTED by core's normalize (`walkVirtual`
+ *  does `state.env.set(id, eval(expr))`) every render, so any OverridePanel
+ *  control wired to `env[virtualId]` is clobbered before the diagram reads it —
+ *  it is an inert/misleading control. A freeRepeat whose count is `ref(virtual)`
+ *  (kerberosAsReq `padataList count={ref:padataCount}`, padataCount=virtual lit
+ *  1) is exactly such a case: stepping it never changes the record count, so the
+ *  stepper must NOT be surfaced. */
+function collectVirtualIds(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  const seenDefs = new Set<string>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "virtual") out.add(c.id);
+      else if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+      else if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def && !seenDefs.has(c.ref)) {
+          seenDefs.add(c.ref);
+          visit(def.fields);
+        }
+      }
+    }
+  };
+  visit(body);
+  return out;
+}
+
 /**
  * Build a human-readable label for a single Switch case, used to qualify the
  * name of a freeRepeat surfaced from INSIDE that case so colliding labels
@@ -989,6 +1028,10 @@ function collectFreeRepeats(
   // distinct.
   const enumVariants = collectEnumVariants(body);
   const fieldNames = collectFieldNames(body);
+  // Ids of `virtual` fields: a count ref resolving to one cannot be driven (core
+  // normalize recomputes env[virtualId] from its expr every render), so a
+  // freeRepeat keyed on it would be inert/misleading — suppressed below.
+  const virtualIds = collectVirtualIds(body, defs);
   // `boundedKey` is the single-ref length field of the nearest enclosing
   // `bounded` byte-budget (or null). An eos/until repeat inside one must NOT get
   // a naked count stepper (bumping it over-consumes the budget — a destructive
@@ -1197,7 +1240,13 @@ function collectFreeRepeats(
                 f.id === ref &&
                 (f.controlsLength || f.switchCases || f.enumVariants),
             );
-            if (!covered) {
+            // A count ref to a `virtual` field is recomputed by normalize every
+            // render (walkVirtual `env.set(id, eval(expr))`), clobbering any
+            // stepper write — kerberosAsReq `padataList count={ref:padataCount}`
+            // with padataCount=virtual lit 1 always renders exactly 1 record.
+            // Surface no stepper (the only fix that keeps the count editable
+            // would be replacing the virtual with a real field in the PSDL).
+            if (!covered && !virtualIds.has(ref)) {
               countKey = ref;
               // Seed ONE record when the repeat is record-bearing — its element
               // encloses a variant Switch (the surfaced refSwitch/peekSwitch
@@ -1241,7 +1290,10 @@ function collectFreeRepeats(
               // can't invert (cond, %, nested op, …) still surfaces the ref
               // directly (identity transform = undefined) so the user keeps a
               // working control — just labelled by the driving field.
-              if (!covered) {
+              // A `virtual` driving field is recomputed by normalize each render
+              // and cannot be driven (see the ref-count branch above), so no
+              // stepper is surfaced for it.
+              if (!covered && !virtualIds.has(ref)) {
                 countKey = ref;
                 const affine = affineCountTransform(c.count, ref);
                 if (affine) transform = affine;
