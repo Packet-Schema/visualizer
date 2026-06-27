@@ -512,10 +512,78 @@ function collectRefSwitches(
 }
 
 /**
+ * For a Repeat count expression that mentions exactly one field `ref`, derive
+ * the affine relation `recordCount = ref * mul + add` for the common
+ * single-binary-op forms so a freeRepeat stepper can display the real record
+ * count and write the inverted controller value. Returns `null` for shapes we
+ * can't invert reliably (cond branches, division/modulo, nested ops, a bare
+ * `ref` with no op): the caller then surfaces the ref with an identity
+ * (undefined) transform so the user still gets a working — if field-labelled —
+ * control.
+ *
+ *   ref + k → mul=1,  add=k       (SRv6 `srhLastEntry + 1`)
+ *   ref - k → mul=1,  add=-k
+ *   k - ref → mul=-1, add=k
+ *   ref * k → mul=k,  add=0   (k>0)
+ *   k * ref → mul=k,  add=0   (k>0)
+ */
+function affineCountTransform(
+  expr: Expr,
+  ref: string,
+): { mul: number; add: number } | null {
+  if (expr.kind !== "op") return null;
+  const { op: o, a, b } = expr;
+  const isRef = (e: Expr): boolean => e.kind === "ref" && e.field === ref;
+  const litVal = (e: Expr): number | null =>
+    e.kind === "lit" ? e.value : null;
+  if (o === "+") {
+    if (isRef(a)) {
+      const k = litVal(b);
+      if (k !== null) return { mul: 1, add: k };
+    }
+    if (isRef(b)) {
+      const k = litVal(a);
+      if (k !== null) return { mul: 1, add: k };
+    }
+    return null;
+  }
+  if (o === "-") {
+    // ref - k → record = ref - k
+    if (isRef(a)) {
+      const k = litVal(b);
+      if (k !== null) return { mul: 1, add: -k };
+    }
+    // k - ref → record = -ref + k
+    if (isRef(b)) {
+      const k = litVal(a);
+      if (k !== null) return { mul: -1, add: k };
+    }
+    return null;
+  }
+  if (o === "*") {
+    // Only a positive literal multiplier is invertible without ambiguity
+    // (mul=0 would make every record count collapse to `add`).
+    if (isRef(a)) {
+      const k = litVal(b);
+      if (k !== null && k > 0) return { mul: k, add: 0 };
+    }
+    if (isRef(b)) {
+      const k = litVal(a);
+      if (k !== null && k > 0) return { mul: k, add: 0 };
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
  * Find Repeats whose count isn't already covered by an existing override:
  *   * Not a TLV / chain Repeat (those get list editors).
  *   * Their `count: ref(X)` doesn't land on a field with `controlsLength`
  *     (= a slider) or any other widget-bearing field.
+ *   * `op` / `cond` counts whose expression tree mentions exactly one field
+ *     ref (e.g. SRv6 `srhLastEntry + 1`): surfaced keyed on that ref, with an
+ *     affine `transform` so the stepper shows the real record count.
  * Surface them as packet-level "Repeats" steppers in OverridePanel.
  * Also covers `eos` / `{ until: Expr }` shapes where the count env key is
  * the Repeat's own id (per normalize.ts).
@@ -569,6 +637,7 @@ function collectFreeRepeats(
           let countKey: string | null = null;
           let label = c.name ?? c.id;
           let defaultCount: number | undefined;
+          let transform: { mul: number; add: number } | undefined;
           if (
             c.count === "eos" ||
             (typeof c.count === "object" && "until" in c.count)
@@ -605,10 +674,6 @@ function collectFreeRepeats(
             // PER-ITERATION field, but a single global stepper can't give
             // distinct per-instance counts and would also corrupt the rendered
             // value of that field (override-audit A7).
-            // NOTE: op/cond counts (e.g. SRv6 `srhLastEntry + 1`) are
-            // deliberately NOT surfaced — those repeats are gated by a separate
-            // length field (hdrExtLen), so a stepper on the count ref alone is
-            // inert and misleading (override-audit A5, left as a known gap).
             const ref = c.count.field;
             const covered = fields.find(
               (f) =>
@@ -616,12 +681,49 @@ function collectFreeRepeats(
                 (f.controlsLength || f.switchCases || f.enumVariants),
             );
             if (!covered) countKey = ref;
+          } else if (
+            typeof c.count === "object" &&
+            (c.count.kind === "op" || c.count.kind === "cond") &&
+            !insideRepeat
+          ) {
+            // op/cond count whose expression tree mentions EXACTLY ONE field
+            // ref (e.g. SRv6 / ipv6Routing `srhSegmentList count={srhLastEntry
+            // + 1}`, LISP `lispItrRlocs count={lispItrCount + 1}`). The diagram
+            // renders `eval(count)` segments but the driving field (srhLastEntry
+            // / lispItrCount) is a plain int with NO override widget — a
+            // see-but-cannot-edit gap (override-audit A5, now fixed). These are
+            // top-level (not bounded, not inside a repeat), so a single global
+            // stepper on that ref is a correct, non-inert control: writing the
+            // ref changes the rendered record count. The earlier NOTE here
+            // wrongly claimed they were gated by a separate length field
+            // (hdrExtLen) — they are not; the repeat's count is the ref alone.
+            const refs = exprRefs(c.count);
+            const ref = refs.length === 1 ? refs[0] : null;
+            if (ref) {
+              const covered = fields.find(
+                (f) =>
+                  f.id === ref &&
+                  (f.controlsLength || f.switchCases || f.enumVariants),
+              );
+              // Derive the affine map `recordCount = ref * mul + add` for the
+              // common single-op +k / -k / *k forms so the stepper DISPLAYS the
+              // real segment count and WRITES the inverted ref value. A form we
+              // can't invert (cond, %, nested op, …) still surfaces the ref
+              // directly (identity transform = undefined) so the user keeps a
+              // working control — just labelled by the driving field.
+              if (!covered) {
+                countKey = ref;
+                const affine = affineCountTransform(c.count, ref);
+                if (affine) transform = affine;
+              }
+            }
           }
           if (countKey) {
             out.push({
               name: label,
               countKey,
               ...(defaultCount !== undefined ? { defaultCount } : {}),
+              ...(transform !== undefined ? { transform } : {}),
             });
           }
         }

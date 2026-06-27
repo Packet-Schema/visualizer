@@ -189,8 +189,22 @@ export type Packet = {
    *  `defaultCount`, when set, seeds an initial iteration count so the diagram
    *  shows a representative record on load instead of an empty section. Only
    *  set for eos/until repeats NOT nested in a `bounded` byte-scope (seeding a
-   *  bounded-nested repeat would over-consume its budget). */
-  freeRepeats?: { name: string; countKey: string; defaultCount?: number }[];
+   *  bounded-nested repeat would over-consume its budget).
+   *
+   *  `transform`, when set, means `countKey` is a real wire field (not a
+   *  synthetic env key) whose value drives the record count through an affine
+   *  relation `recordCount = env[countKey] * mul + add` (e.g. SRv6's
+   *  `repeat … count={ref(srhLastEntry) + 1}` → mul=1, add=1). The stepper then
+   *  DISPLAYS the record count but WRITES the inverted controller value
+   *  `env[countKey] = round((recordCount - add) / mul)` so the diagram's count
+   *  becomes the requested N. Without it the stepper shows/writes the raw env
+   *  value (the existing eos/until and bare-ref cases). */
+  freeRepeats?: {
+    name: string;
+    countKey: string;
+    defaultCount?: number;
+    transform?: { mul: number; add: number };
+  }[];
   /** Switches whose `on` is a `peek` expression — discriminator can't be
    *  surfaced via a real cell, so OverridePanel offers a synthetic
    *  case-picker. */

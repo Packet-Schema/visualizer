@@ -266,6 +266,53 @@ describe("OverridePanel widgets", () => {
     expect(text).toMatch(/AVPs/);
   });
 
+  it("op-count repeat stepper displays the record count and writes the inverted ref (srhv6)", async () => {
+    // SRv6 `repeat srhSegmentList count={srhLastEntry + 1}`: the stepper is
+    // keyed on srhLastEntry but shows the SEGMENT count (= srhLastEntry + 1) and
+    // writes the inverted value so the diagram's count becomes the shown N.
+    const packet = psdlToRenderer(PRESETS.srhv6!);
+    const writes: Array<[string, number]> = [];
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{ srhLastEntry: 2 }}
+        onControllerChange={(k, v) => writes.push([k, v])}
+      />,
+    );
+    expect(container.textContent ?? "").toMatch(/Repeats in this packet/);
+    const input = container.querySelector(
+      'input[type="number"]',
+    ) as HTMLInputElement | null;
+    expect(input, "op-count repeat must render a stepper input").not.toBeNull();
+    // srhLastEntry=2 → 3 displayed segments.
+    expect(input!.value).toBe("3");
+
+    // Increment: display 3 → 4 segments → write srhLastEntry = 4 - 1 = 3.
+    const incBtn = container.querySelector(
+      'button[aria-label^="Increment"]',
+    ) as HTMLButtonElement | null;
+    expect(incBtn).not.toBeNull();
+    await act(async () => {
+      incBtn!.click();
+    });
+    expect(writes.at(-1)).toEqual(["srhLastEntry", 3]);
+
+    // Typing "5" segments writes srhLastEntry = 5 - 1 = 4. React tracks the
+    // controlled input's value internally, so set it through the native
+    // prototype setter before dispatching `change` (otherwise React's tracker
+    // sees no delta and skips onChange).
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      nativeSetter.call(input, "5");
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(writes.at(-1)).toEqual(["srhLastEntry", 4]);
+  });
+
   it("does NOT surface a free Repeat stepper for a bounded-nested repeat (ospfHello)", async () => {
     // ospfHello's neighbour list is governed by the packet-length bounded
     // budget, so a naked count stepper would over-consume it. It must be driven

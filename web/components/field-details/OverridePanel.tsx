@@ -104,6 +104,7 @@ function EmptyState({
                 key={r.countKey}
                 name={r.name}
                 countKey={r.countKey}
+                transform={r.transform}
                 controllers={controllers}
                 onChange={onControllerChange}
               />
@@ -1041,6 +1042,13 @@ function ChainInnerVariantDropdown({
 type RepeatCountStepperProps = {
   name: string;
   countKey: string;
+  /** Affine map between the driving wire field (`countKey`) and the record
+   *  count the user sees: `recordCount = env * mul + add`. When set, the
+   *  stepper DISPLAYS the record count and WRITES the inverted env value so the
+   *  diagram's count becomes the requested N (e.g. SRv6 `srhLastEntry + 1` →
+   *  mul=1, add=1, so showing "3" writes srhLastEntry=2). Absent = identity
+   *  (the env key IS the count). */
+  transform?: { mul: number; add: number };
   controllers: ControllerState;
   onChange: (key: string, value: number) => void;
 };
@@ -1048,10 +1056,23 @@ type RepeatCountStepperProps = {
 function RepeatCountStepper({
   name,
   countKey,
+  transform,
   controllers,
   onChange,
 }: RepeatCountStepperProps) {
-  const value = controllers[countKey] ?? 0;
+  const mul = transform?.mul ?? 1;
+  const add = transform?.add ?? 0;
+  // Displayed record count = env * mul + add. Writing inverts:
+  // env = round((display - add) / mul). `mul` is always non-zero for a
+  // surfaced transform (the adapter rejects `*0`), so the divide is safe. The
+  // wire field is unsigned, so clamp the inverted value to >= 0 — this stops a
+  // record-count below `add` (e.g. SRv6 count 0 would imply srhLastEntry = -1)
+  // from writing a negative field value.
+  const toEnv = (display: number) =>
+    Math.max(0, Math.round((display - add) / mul));
+  const raw = controllers[countKey] ?? 0;
+  // The displayed value is the record count, not the raw field value.
+  const value = raw * mul + add;
   const min = 0;
   // The earlier `max = 64` was an arbitrary cap that contradicted PSDL's
   // env-driven Repeat semantics (any count is legal). We use a soft ceiling
@@ -1081,7 +1102,7 @@ function RepeatCountStepper({
         <button
           type="button"
           aria-label={`Decrement ${name}`}
-          onClick={() => onChange(countKey, safe(value - 1))}
+          onClick={() => onChange(countKey, toEnv(safe(value - 1)))}
           className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
           style={{
             borderColor: "var(--border-strong)",
@@ -1099,8 +1120,9 @@ function RepeatCountStepper({
           value={value}
           onChange={(e) => {
             const n = Number(e.target.value);
-            const next = safe(n);
-            if (next !== value) onChange(countKey, next);
+            const nextDisplay = safe(n);
+            const nextEnv = toEnv(nextDisplay);
+            if (nextEnv !== raw) onChange(countKey, nextEnv);
           }}
           className="w-14 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight text-center"
           style={{
@@ -1112,7 +1134,7 @@ function RepeatCountStepper({
         <button
           type="button"
           aria-label={`Increment ${name}`}
-          onClick={() => onChange(countKey, safe(value + 1))}
+          onClick={() => onChange(countKey, toEnv(safe(value + 1)))}
           className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
           style={{
             borderColor: "var(--border-strong)",
