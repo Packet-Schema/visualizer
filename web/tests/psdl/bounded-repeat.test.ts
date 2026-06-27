@@ -73,3 +73,64 @@ describe("bounded-repeat length-derived count", () => {
     expect(bad).toEqual([]);
   });
 });
+
+// override-audit #5/#7/#8: a "TLV-style" record — [typeField, lengthField,
+// switch on ref(typeField)] whose value is `bytes(ref lengthField)` — was NOT
+// matched by isTlvRepeat (which needs element = a SINGLE switch), so it fell
+// into the bounded-count derive. estimateElementBytes charged the full 64-byte
+// allowance for that ref-to-sibling value, inflating perRecordBytes to ~67B: the
+// length slider had to climb to 66-97B before ONE record appeared and records
+// then grew in ~66-byte plateaus. estimateElementBytes now charges only a small
+// structural size for a value sized by a SIBLING length, so perRecordBytes
+// reflects the smallest legal record.
+describe("bounded-repeat ref-sized record estimate (TLV-style)", () => {
+  it("isisLsp: small perRecordBytes, record by ~31 bytes, monotonic growth", () => {
+    const src = PRESETS.isisLsp!;
+    const mirror = psdlToRenderer(src);
+    const br = mirror.boundedRepeats?.find((b) => b.countKey === "tlvs");
+    if (!br) throw new Error("isisLsp tlvs boundedRepeat missing");
+
+    // The TLV record is type(1) + length(1) + value(ref length). Its value is
+    // empty in the smallest legal record, so the estimate must be a few bytes —
+    // NOT the ~67B that the variable-field allowance used to charge.
+    expect(br.perRecordBytes).toBeLessThanOrEqual(8);
+
+    // tlvsRegion budget is `pduLength - 27`, prefix 1; one record needs only a
+    // few bytes of budget. The fixed header (27B) ends at pduLength 27, so a
+    // record appears within a handful of bytes past it — around pduLength 31.
+    const baseline = cellCount(src, mirror, { pduLength: 27 });
+    const small = cellCount(src, mirror, { pduLength: 31 });
+    expect(small, "a record should appear by pduLength ~31").toBeGreaterThan(
+      baseline,
+    );
+
+    // Growth is monotonically non-decreasing as the length climbs.
+    let prev = -1;
+    for (let pduLength = 27; pduLength <= 300; pduLength += 1) {
+      const cells = cellCount(src, mirror, { pduLength });
+      expect(
+        cells,
+        `pduLength=${pduLength} must not shrink`,
+      ).toBeGreaterThanOrEqual(prev);
+      prev = cells;
+    }
+  });
+
+  it("never over-consumes the scope across a 1..1000 sweep of every boundedRepeat", () => {
+    const bad: string[] = [];
+    for (const [key, src] of Object.entries(PRESETS)) {
+      const mirror = psdlToRenderer(src);
+      for (const br of mirror.boundedRepeats ?? []) {
+        for (let len = 1; len <= 1000; len++) {
+          try {
+            cellCount(src, mirror, { [br.lengthKey]: len });
+          } catch {
+            bad.push(`${key}/${br.countKey}=${len}`);
+            break;
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 120000);
+});

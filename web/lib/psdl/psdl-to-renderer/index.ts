@@ -18,6 +18,7 @@
 
 import { isField } from "../utils";
 import { exprRefs } from "../expr";
+import { isBytesDelimited } from "../normalize";
 import type {
   Constraint,
   Container,
@@ -659,6 +660,65 @@ function collectFreeRepeats(
 // over-consumes the scope (records under-fill at worst, which is harmless).
 const VARIABLE_FIELD_BYTE_ALLOWANCE = 64;
 
+// A "TLV-style" record (isisLsp tlvs, bgpUpdate path-attrs, l2tp/cops/ipfix/
+// ikev2/stun…) carries a variable `bytes` VALUE whose length `n` is a `ref` to a
+// sibling LENGTH field WITHIN the same record (e.g. `bytes(ref tlvLength)`). The
+// smallest legal record sets that length to 0, so the value is effectively
+// empty. Charging the full 64-byte unbounded allowance there inflates
+// perRecordBytes to ~66-97B, so the length slider must climb dozens of bytes
+// before a SINGLE record appears and records then grow in ~66-byte plateaus
+// (real TLVs are 2-30B). Instead charge a small structural size (~1 byte) for a
+// ref-to-sibling value so perRecordBytes reflects the smallest legal record; the
+// derived count `floor((budget - prefix) / perRecordBytes)` then tracks the
+// budget faithfully and still never over-consumes (records under-fill at worst).
+// The full allowance is KEPT for truly-unbounded variable fields (varint /
+// berLength / delimited bytes / ref to a NON-sibling) to preserve the
+// bounded-repeat over-consume safety invariant. (override-audit #5/#7/#8)
+const REF_SIZED_FIELD_BYTE_ALLOWANCE = 1;
+
+/** Collect every field id declared anywhere inside a record (recursing through
+ *  groups / bounded / optional / switch cases / nested repeats). These are the
+ *  ids a value's length may reference as a "sibling" of the same record. */
+function collectRecordFieldIds(
+  containers: Container[],
+  acc: Set<string>,
+): void {
+  for (const c of containers) {
+    if (isField(c)) {
+      acc.add(c.id);
+    } else if (c.kind === "group") {
+      collectRecordFieldIds(c.children, acc);
+    } else if (c.kind === "bounded") {
+      collectRecordFieldIds(c.fields, acc);
+    } else if (c.kind === "optional") {
+      collectRecordFieldIds([c.container], acc);
+    } else if (c.kind === "repeat") {
+      collectRecordFieldIds(c.element.fields, acc);
+    } else if (c.kind === "encrypted") {
+      collectRecordFieldIds(c.plaintext.fields, acc);
+    } else if (c.kind === "switch") {
+      for (const s of Object.values(c.cases))
+        collectRecordFieldIds(s.fields, acc);
+    }
+  }
+}
+
+/** True if `field` is a variable-length `bytes` whose length `n` is an Expr that
+ *  references ONLY ids in `siblingIds` — a length carried by a sibling field of
+ *  the same record. Such a value collapses to ~0 bytes in the smallest legal
+ *  record. Delimited bytes (no Expr `n`) and refs to a NON-sibling stay
+ *  truly-unbounded and keep the full allowance. */
+function isRefToSiblingBytes(
+  field: Container,
+  siblingIds: Set<string>,
+): boolean {
+  if (!isField(field) || field.type.kind !== "bytes") return false;
+  const n = field.type.n;
+  if (isBytesDelimited(n)) return false;
+  const refs = exprRefs(n);
+  return refs.length > 0 && refs.every((r) => siblingIds.has(r));
+}
+
 /** True if any container in the tree is (or wraps) a `bounded` scope. Used to
  *  detect records with a PER-RECORD nested bounded budget, which a single global
  *  count derive can't satisfy. */
@@ -684,14 +744,27 @@ function containsBounded(containers: Container[]): boolean {
  *  fixed-width leaf fields, a generous allowance for variable-length ones, and
  *  for a Switch takes the LARGEST case. Floors at 1 byte. */
 function estimateElementBytes(struct: { fields: Container[] }): number {
+  // Ids of every field in this record, so a value sized by a sibling length
+  // (`bytes(ref tlvLength)`) gets a small structural charge instead of the full
+  // unbounded allowance — see REF_SIZED_FIELD_BYTE_ALLOWANCE.
+  const siblingIds = new Set<string>();
+  collectRecordFieldIds(struct.fields, siblingIds);
   const bitsOf = (cs: Container[]): number => {
     let total = 0;
     for (const c of cs) {
       if (isField(c)) {
         const w = typeBits(c.type);
         // typeBits returns 0 for variable-length types (dynamic bytes / varint /
-        // berLength); charge the generous allowance for those.
-        total += w > 0 ? w : VARIABLE_FIELD_BYTE_ALLOWANCE * 8;
+        // berLength); charge the generous allowance for those — except a
+        // ref-to-sibling-length `bytes` value, which is empty in the smallest
+        // legal record and gets only a small structural size.
+        if (w > 0) {
+          total += w;
+        } else if (isRefToSiblingBytes(c, siblingIds)) {
+          total += REF_SIZED_FIELD_BYTE_ALLOWANCE * 8;
+        } else {
+          total += VARIABLE_FIELD_BYTE_ALLOWANCE * 8;
+        }
       } else if (c.kind === "group") {
         total += bitsOf(c.children);
       } else if (c.kind === "bounded") {
