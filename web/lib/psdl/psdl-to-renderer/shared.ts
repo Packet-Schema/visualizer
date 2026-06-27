@@ -28,6 +28,45 @@ export function firstCaseKeyValue(key: string): number | null {
 }
 
 /**
+ * True when a LISTED (non-`_`) Switch case `key` matches the integer `value`.
+ * Mirrors core's `selectArm` grammar (§5): a single int ("3"), a comma-list
+ * ("1,2,3"), or an inclusive range ("8-15"). The "_" default key never matches
+ * here — it is the fallthrough, not a listed case. Used to compute a sentinel
+ * discriminator value that is guaranteed NOT covered by any listed case (so
+ * core's `selectArm` falls through to the `_` arm), which lets the override
+ * pickers offer a "default" option that actually reaches the default-arm
+ * layout.
+ */
+export function caseKeyCoversValue(key: string, value: number): boolean {
+  if (key === "_") return false;
+  for (const part of key.split(",")) {
+    const member = part.trim();
+    const range = member.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const lo = Number(range[1]);
+      const hi = Number(range[2]);
+      if (lo <= hi && value >= lo && value <= hi) return true;
+      continue;
+    }
+    const n = Number(member);
+    if (Number.isInteger(n) && n === value) return true;
+  }
+  return false;
+}
+
+/**
+ * Smallest non-negative integer not covered by any of the given LISTED
+ * (non-`_`) case keys. Setting a Switch discriminator to this value forces
+ * core's `selectArm` to fall through to the `_` arm, so it is a safe sentinel
+ * for a synthetic "default" picker option that reaches the default-arm layout.
+ */
+export function defaultArmSentinel(caseKeys: readonly string[]): number {
+  let v = 0;
+  while (caseKeys.some((k) => caseKeyCoversValue(k, v))) v += 1;
+  return v;
+}
+
+/**
  * Pretty-print a camelCase / snake_case identifier as "Camel Case". Returns
  * null for empty / non-string input so callers can chain a final fallback
  * (e.g. `struct.name ?? prettifyId(struct.id) ?? \`case ${key}\``). Shared by

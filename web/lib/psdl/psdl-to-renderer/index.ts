@@ -28,6 +28,7 @@ import type {
   NamedStruct,
   Packet as PsdlPacket,
   Repeat,
+  Struct,
   Switch,
 } from "../types";
 import type {
@@ -71,7 +72,12 @@ import {
   plainFieldToRenderer,
 } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
-import { firstCaseKeyValue, prettifyId, typeBits } from "./shared";
+import {
+  defaultArmSentinel,
+  firstCaseKeyValue,
+  prettifyId,
+  typeBits,
+} from "./shared";
 // `resolveLayout` is used ONLY by `nestedGroupBoundedSeeds` to probe a
 // crash-free per-record inner length for the rare plain-group nested-bounded
 // idiom (ocspRequest). layout.ts imports `./normalize` + the leaf
@@ -1371,6 +1377,46 @@ function switchArmsAllIdentical(
   return true;
 }
 
+/**
+ * When a surfaced ref/peek Switch carries a `_` default arm whose structural
+ * shape differs from EVERY listed (selectable) case, return a synthetic picker
+ * option that reaches it: a sentinel discriminator value (not covered by any
+ * listed key, so core's `selectArm` falls through to `_`) plus a "default"
+ * label. Otherwise `null` — the `_` arm is absent, or it renders the same
+ * skeleton as a listed case, so no extra option is warranted.
+ *
+ * Without this, a switch whose lone listed case is structurally distinct from
+ * the `_` arm (babel `babelTlvBody`: listed `0` is the empty Pad1, `_` is the
+ * real TLV-with-body, the common case; bgpFlowSpec `flowSpecCompValue`: listed
+ * `1,2` is a prefix, `_` is the numeric-operator list used by most RFC 8955
+ * component types; rohcUncompressed `rohcHeader` peek: listed `126` is the IR
+ * Packet, `_` is the normal datagram) offers ONLY the listed value(s) and can
+ * never select the `_`-arm layout — an inert/misleading control AND a
+ * representability gap for imported packets whose discriminator falls into `_`.
+ * Mirrors the peek-gated-optional "(absent)" synthetic-case pattern.
+ */
+function defaultArmSyntheticCase(
+  cases: Record<string, Struct>,
+): { value: number; label: string } | null {
+  const defaultArm = cases["_"];
+  if (!defaultArm) return null;
+  const listed = Object.entries(cases).filter(
+    ([key]) => firstCaseKeyValue(key) !== null,
+  );
+  if (listed.length === 0) return null;
+  const defaultShape = JSON.stringify(defaultArm.fields.map(structuralShape));
+  const differsFromAll = listed.every(
+    ([, struct]) =>
+      JSON.stringify(struct.fields.map(structuralShape)) !== defaultShape,
+  );
+  if (!differsFromAll) return null;
+  const value = defaultArmSentinel(listed.map(([key]) => key));
+  return {
+    value,
+    label: defaultArm.name ?? prettifyId(defaultArm.id) ?? "Other (default)",
+  };
+}
+
 /** Collect (in declaration order) the ids of every Field declared anywhere
  *  inside an arm's container list. Used to canonicalize intra-arm references so
  *  arms that differ ONLY in their field ids fingerprint identically. */
@@ -1749,6 +1795,14 @@ function collectRefSwitches(
                 label: struct.name ?? prettifyId(struct.id) ?? `case ${key}`,
               });
             }
+            // Reach the structurally-distinct `_` default arm: when the listed
+            // case(s) render a different skeleton than the default arm (babel:
+            // `0`=empty Pad1 vs `_`=TLV-with-body; bgpFlowSpec: `1,2`=prefix vs
+            // `_`=numeric-operator list), append a synthetic "default" option so
+            // the picker can select the `_`-arm layout instead of only ever the
+            // listed value.
+            const defaultCase = defaultArmSyntheticCase(c.cases);
+            if (defaultCase) cases.push(defaultCase);
             if (cases.length > 0) {
               seen.add(refKey);
               // Seed each per-record length to exactly the per-record charge
@@ -3350,6 +3404,13 @@ function collectPeekSwitches(
               label: struct.name ?? prettifyId(struct.id) ?? `case ${key}`,
             });
           }
+          // Reach the structurally-distinct `_` default arm (rohcUncompressed
+          // `rohcHeader`: listed `126`=IR Packet vs `_`=normal datagram), so
+          // the peek picker can select the default-arm layout instead of only
+          // the listed value(s). The sentinel value is unlisted, so core's
+          // `selectArm` falls through to `_`.
+          const defaultCase = defaultArmSyntheticCase(c.cases);
+          if (defaultCase) cases.push(defaultCase);
           if (cases.length > 0) {
             const peek = c.on;
             // Only surface peek switches whose offset is a compile-time

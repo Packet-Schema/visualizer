@@ -86,10 +86,28 @@ describe("tlsClientHello extensions are editable", () => {
   it("exposes the 5-arm extension type switch as a selectable picker", () => {
     const rs = (mirror.refSwitches ?? []).find((r) => r.refKey === "extType");
     expect(rs, "extType variant picker must be surfaced").toBeDefined();
-    // server_name / supported_groups / ALPN / supported_versions / key_share.
+    // server_name / supported_groups / ALPN / supported_versions / key_share,
+    // PLUS a synthetic `1` default sentinel reaching the structurally distinct
+    // `_` arm (the opaque `extOpaque` body for any unlisted extension type) —
+    // an unknown TLS extension is a real, common protocol state the diagram can
+    // render and the picker must be able to select.
     expect(rs!.cases.map((c) => c.value).sort((a, b) => a - b)).toEqual([
-      0, 10, 16, 43, 51,
+      0, 1, 10, 16, 43, 51,
     ]);
+  });
+
+  it("the synthetic default value selects the opaque `_` extension arm", () => {
+    const rs = (mirror.refSwitches ?? []).find((r) => r.refKey === "extType");
+    const values = rs!.cases.map((c) => c.value);
+    // The default sentinel is the lowest value not covered by any listed key.
+    const sentinel = values.find(
+      (v) => ![0, 10, 16, 43, 51].includes(v),
+    ) as number;
+    expect(sentinel).toBe(1);
+    // Selecting it renders the opaque body, not any listed extension's fields.
+    const ids = cellIds(src, mirror, { extensionsLen: 40, extType: sentinel });
+    expect(ids).toContain("extOpaque#0");
+    expect(ids).not.toContain("vListLen#0");
   });
 
   it("renders the selected extension variant (supported_versions)", () => {

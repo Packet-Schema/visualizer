@@ -122,11 +122,24 @@ describe("nested-tlv: icmpv6Ndp switch-nested option repeats", () => {
     );
     expect(optPickers).toHaveLength(1);
 
-    // The lone picker unions every aliased switch's cases (deduped by value).
+    // The lone picker unions every aliased switch's cases (deduped by value),
+    // PLUS a synthetic `0` default sentinel reaching the structurally distinct
+    // `_` arm (the generic `ndpOptType/Length/Value` body for any unlisted
+    // option type — a real, RFC-defined "unknown option" state the diagram can
+    // render and the picker must be able to select).
     const picker = optPickers[0]!;
     expect(picker.cases.map((c) => c.value).sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 5,
+      0, 1, 2, 3, 5,
     ]);
+
+    // The synthetic default value selects the generic option arm.
+    const rsGeneric = cellIds(src, {
+      type: 133,
+      rsOptions: 1,
+      __peek__0__8: 0,
+    });
+    expect(rsGeneric).toContain("ndpOptValue#0");
+    expect(rsGeneric).not.toContain("ndpPrefixLength#0");
 
     // And the single controller still drives whichever message variant is the
     // active discriminator — the same `__peek__0__8` key works for both a
