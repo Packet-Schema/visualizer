@@ -3,7 +3,7 @@
 // OverridePanel smoke — mounts the panel directly with curated preset
 // fixtures and asserts each widget renders for its target field type.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -436,5 +436,59 @@ describe("OverridePanel widgets", () => {
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/Field not found/);
     expect(text).toMatch(/no runtime override/i);
+  });
+
+  it("surfaces a delimited length width picker for syslog's delimiter-terminated bytes (#3)", async () => {
+    const packet = psdlToRenderer(PRESETS.syslog!);
+    // Every top-level delimiter-terminated `bytes` field must be tagged so the
+    // mirror knows it carries an editable byte-count width.
+    const delimited = packet.fields
+      .filter((f) => f.isDelimited)
+      .map((f) => f.id);
+    expect(delimited).toEqual([
+      "pri",
+      "version",
+      "timestamp",
+      "hostname",
+      "appName",
+      "procId",
+      "msgId",
+      "structData",
+    ]);
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="hostname"
+        controllers={{ hostname: 4 }}
+        onControllerChange={onChange}
+      />,
+    );
+    // It must NOT fall through to the read-only empty state...
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    // ...and must render a byte-count radiogroup whose buttons are byte values
+    // (delimited stores a byte count, not bits, so the seeded 4 must show "4B").
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(
+      group,
+      "delimited bytes must surface a width radiogroup",
+    ).not.toBeNull();
+    expect(container.textContent ?? "").toMatch(/Delimited length/i);
+    const buttons = Array.from(
+      group!.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    expect(buttons.map((b) => b.textContent)).toContain("4B");
+    const active = buttons.find(
+      (b) => b.getAttribute("aria-checked") === "true",
+    );
+    expect(active?.textContent).toBe("4B");
+
+    // Picking a different option writes a BYTE count under the field id.
+    const eight = buttons.find((b) => b.textContent === "8B")!;
+    await act(async () => {
+      eight.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith("hostname", 8);
   });
 });

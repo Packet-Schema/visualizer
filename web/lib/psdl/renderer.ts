@@ -29,6 +29,9 @@ export type SubField = {
   switchCases?: { value: number; label: string }[];
   varintEncoding?: VarintEncoding;
   isBerLength?: boolean;
+  /** True when this subfield's PSDL type is a delimiter-terminated `bytes`.
+   *  Its width env value is a BYTE count (not bits), keyed by id. */
+  isDelimited?: boolean;
   optionalGateFor?: string[];
   enumVariants?: Record<number, string>;
   defaultValue?: number;
@@ -158,6 +161,10 @@ export type Field = {
   /** True when this field's PSDL type is `berLength`. Same env override
    *  convention as `varintEncoding`. */
   isBerLength?: boolean;
+  /** True when this field's PSDL type is a delimiter-terminated `bytes`.
+   *  The width override is a BYTE count keyed by this field's id (bridged
+   *  to `__bytesDelimLen__<id>` in layout.ts). */
+  isDelimited?: boolean;
   /**
    * List of Optional containers whose `when` expression is
    * `ref(<this field id>)`. Each entry is the inner field's name so the

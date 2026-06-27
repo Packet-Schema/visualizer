@@ -390,7 +390,10 @@ export default function OverridePanel({
     );
   }
 
-  if ((field.varintEncoding || field.isBerLength) && onControllerChange) {
+  if (
+    (field.varintEncoding || field.isBerLength || field.isDelimited) &&
+    onControllerChange
+  ) {
     widgets.push(
       <WidthPicker
         key="width"
@@ -468,6 +471,7 @@ function subfieldWidgets(
     switchCases: sub.switchCases,
     varintEncoding: sub.varintEncoding,
     isBerLength: sub.isBerLength,
+    isDelimited: sub.isDelimited,
     optionalGateFor: sub.optionalGateFor,
     enumVariants: sub.enumVariants,
   };
@@ -482,7 +486,7 @@ function subfieldWidgets(
       />,
     );
   }
-  if (sub.varintEncoding || sub.isBerLength) {
+  if (sub.varintEncoding || sub.isBerLength || sub.isDelimited) {
     out.push(
       <WidthPicker
         key="width"
@@ -528,6 +532,7 @@ type WidgetTarget = {
   switchCases?: Field["switchCases"];
   varintEncoding?: Field["varintEncoding"];
   isBerLength?: Field["isBerLength"];
+  isDelimited?: Field["isDelimited"];
   optionalGateFor?: Field["optionalGateFor"];
   enumVariants?: Field["enumVariants"];
 };
@@ -540,6 +545,7 @@ function fieldAsTarget(f: Field): WidgetTarget {
     switchCases: f.switchCases,
     varintEncoding: f.varintEncoding,
     isBerLength: f.isBerLength,
+    isDelimited: f.isDelimited,
     optionalGateFor: f.optionalGateFor,
     enumVariants: f.enumVariants,
   };
@@ -699,17 +705,24 @@ function SwitchDropdown({ target, controllers, onChange }: WidgetProps) {
 }
 
 function WidthPicker({ target, controllers, onChange }: WidgetProps) {
-  // Valid widths in bits per encoding. The env override key is the field id
-  // (PSDL convention — see normalize.ts).
+  // The env override key is the field id (PSDL convention — see normalize.ts).
+  // For varint / berLength the stored value is the wire width in BITS (shown
+  // as `{value/8}B`). For a delimiter-terminated `bytes` field the engine
+  // reads a BYTE count instead (`__bytesDelimLen__`, normalize.ts), so its
+  // options and stored value are in bytes and shown as `{value}B`.
   const widths = pickerWidths(target);
   const current = controllers[target.id] ?? widths[0];
+  const delimited = !!target.isDelimited;
+  const label = delimited
+    ? "Delimited length"
+    : target.varintEncoding
+      ? `Varint width (${target.varintEncoding})`
+      : "BER length width";
   return (
     <div>
       <WidgetLabel>
-        {target.varintEncoding
-          ? `Varint width (${target.varintEncoding})`
-          : "BER length width"}{" "}
-        · sets <code className="font-mono normal-case">{target.id}</code>
+        {label} · sets{" "}
+        <code className="font-mono normal-case">{target.id}</code>
       </WidgetLabel>
       <div role="radiogroup" className="flex flex-wrap gap-1.5">
         {widths.map((w) => {
@@ -728,7 +741,7 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
                 color: active ? "var(--accent-fg)" : "var(--fg)",
               }}
             >
-              {w / 8}B
+              {delimited ? w : w / 8}B
             </button>
           );
         })}
@@ -738,6 +751,9 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
 }
 
 function pickerWidths(target: WidgetTarget): number[] {
+  // Delimited bytes: the value is a byte count, not a bit width. Offer a
+  // representative ladder around the seeded 4-byte default.
+  if (target.isDelimited) return [1, 2, 4, 8, 16, 32];
   if (target.isBerLength) return [8, 16, 24, 40, 72]; // 1/2/3/5/9 bytes
   switch (target.varintEncoding) {
     case "quic":

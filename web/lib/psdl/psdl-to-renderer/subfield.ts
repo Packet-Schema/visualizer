@@ -5,6 +5,7 @@
 // can draw e.g. IPv4 flag bits R/DF/MF as sub-cells inside one Field).
 
 import { isField } from "../utils";
+import { isBytesDelimited } from "../normalize";
 import type { EnumVariant, Field as PsdlField, Group } from "../types";
 import type { Field as RendererField, SubField } from "../renderer";
 
@@ -43,6 +44,8 @@ export function groupToSubfieldField(g: Group): RendererField | null {
     if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
     if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
     if (child.type.kind === "berLength") sf.isBerLength = true;
+    if (child.type.kind === "bytes" && isBytesDelimited(child.type.n))
+      sf.isDelimited = true;
     if (child.type.kind === "enum")
       sf.enumVariants = enumLabels(child.type.variants);
     subs.push(sf);
@@ -73,6 +76,8 @@ export function plainFieldToRenderer(f: PsdlField): RendererField {
   // Data-dependent type widths get an env-override widget in OverridePanel.
   if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
   if (f.type.kind === "berLength") out.isBerLength = true;
+  if (f.type.kind === "bytes" && isBytesDelimited(f.type.n))
+    out.isDelimited = true;
   if (f.type.kind === "enum") out.enumVariants = enumLabels(f.type.variants);
   if (f.byteOrder) out.byteOrder = f.byteOrder;
   return out;
