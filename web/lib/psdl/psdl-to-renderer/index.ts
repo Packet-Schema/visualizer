@@ -26,6 +26,7 @@ import type {
   NamedStruct,
   Packet as PsdlPacket,
   Repeat,
+  Switch,
 } from "../types";
 import type {
   Field as RendererField,
@@ -458,6 +459,93 @@ function collectFieldBits(body: PsdlPacket["body"]): Map<string, number> {
   };
   visit(body);
   return bits;
+}
+
+/** Map each `enum` field id to its `value → label` table. Used to render a
+ *  switch discriminator value (msdpType=3) as a human-readable case label
+ *  ("SA-Response") when disambiguating colliding switch-case-nested freeRepeat
+ *  steppers. Plain int discriminators (icmpv6Ndp `type`) have no entry; the
+ *  caller falls back to the bare numeric value. */
+function collectEnumVariants(
+  body: PsdlPacket["body"],
+): Map<string, Record<string, string>> {
+  const out = new Map<string, Record<string, string>>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "enum") {
+          const table: Record<string, string> = {};
+          for (const [k, v] of Object.entries(c.type.variants)) {
+            table[k] = typeof v === "string" ? v : v.label;
+          }
+          out.set(c.id, table);
+        }
+        continue;
+      }
+      if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+    }
+  };
+  visit(body);
+  return out;
+}
+
+/** Map each field id to its display name (falling back to the id). Used to
+ *  label a plain-int discriminator value as "Type=133" rather than the raw id
+ *  "type=133" when no enum variant table is available (icmpv6Ndp). */
+function collectFieldNames(body: PsdlPacket["body"]): Map<string, string> {
+  const out = new Map<string, string>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        out.set(c.id, c.name ?? c.id);
+        continue;
+      }
+      if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+    }
+  };
+  visit(body);
+  return out;
+}
+
+/**
+ * Build a human-readable label for a single Switch case, used to qualify the
+ * name of a freeRepeat surfaced from INSIDE that case so colliding labels
+ * (icmpv6Ndp's five `Options` repeats, one per Type case; msdp's two `SA
+ * Entries`, in the SA and SA-Response cases) become distinct and the user can
+ * tell which stepper is live (override-design-audit). Preference order:
+ *   1. the discriminator enum's variant label for the case key (msdp:
+ *      `msdpType` enum → "SA-Response"),
+ *   2. the discriminator field's display name and value (icmpv6Ndp: `type` is a
+ *      plain int → "Type=133").
+ * Returns null for the `_` default arm (no meaningful selector value).
+ */
+function switchCaseLabel(
+  on: Switch["on"],
+  caseKey: string,
+  enumVariants: Map<string, Record<string, string>>,
+  fieldNames: Map<string, string>,
+): string | null {
+  const value = firstCaseKeyValue(caseKey);
+  if (value === null) return null;
+  if (on.kind === "ref") {
+    const variants = enumVariants.get(on.field);
+    const label = variants?.[String(value)];
+    if (label) return label;
+    return `${fieldNames.get(on.field) ?? on.field}=${value}`;
+  }
+  return `case ${value}`;
 }
 
 /**
@@ -895,6 +983,12 @@ function collectFreeRepeats(
   // Repeat ids whose count IS user-drivable via a surfaced control (populated
   // alongside `out` / `boundedOut` below).
   const instantiableRepeatIds = new Set<string>();
+  // Enum variant labels + field display names per discriminator — used to
+  // qualify a switch-case-nested freeRepeat's name with its enclosing case so
+  // colliding labels (icmpv6Ndp's five `Options`, msdp's two `SA Entries`) stay
+  // distinct.
+  const enumVariants = collectEnumVariants(body);
+  const fieldNames = collectFieldNames(body);
   // `boundedKey` is the single-ref length field of the nearest enclosing
   // `bounded` byte-budget (or null). An eos/until repeat inside one must NOT get
   // a naked count stepper (bumping it over-consumes the budget — a destructive
@@ -927,6 +1021,15 @@ function collectFreeRepeats(
     // guard relax for it exactly as `insideSwitch` does for a switch-case-nested
     // TLV repeat (icmpv6Ndp), surfacing the eos count stepper + peek/ref picker.
     insideOptional: boolean,
+    // Human-readable label of the nearest enclosing switch CASE (or null at top
+    // level / outside any case). When a repeat surfaced from inside a switch
+    // case becomes a packet-level stepper, its own name is qualified with this
+    // so several same-named repeats living in DIFFERENT cases of a top-level
+    // message-type switch (icmpv6Ndp rsOptions/raOptions/… all `Options`; msdp
+    // msdpSAEntries vs msdpRespSAEntries both `SA Entries`) render as distinctly
+    // labelled steppers instead of N identical, partly-inert ones (the only live
+    // one is the currently-selected variant's). override-design-audit.
+    caseLabel: string | null,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -947,6 +1050,7 @@ function collectFreeRepeats(
           insideSwitch,
           enclosingInstantiable,
           insideOptional,
+          caseLabel,
         );
         continue;
       }
@@ -972,6 +1076,7 @@ function collectFreeRepeats(
             insideSwitch,
             enclosingInstantiable,
             insideOptional,
+            caseLabel,
           );
         continue;
       }
@@ -1144,8 +1249,15 @@ function collectFreeRepeats(
             }
           }
           if (countKey) {
+            // Qualify a switch-case-nested repeat's label with its enclosing
+            // case so steppers for repeats living in DIFFERENT cases of a
+            // top-level message-type switch don't collide (icmpv6Ndp's five
+            // `Options`, msdp's two `SA Entries`). Only the active variant's
+            // stepper drives the diagram; the qualified label tells the user
+            // which case each one belongs to (override-design-audit).
+            const qualifiedName = caseLabel ? `${caseLabel} → ${label}` : label;
             out.push({
-              name: label,
+              name: qualifiedName,
               countKey,
               ...(defaultCount !== undefined ? { defaultCount } : {}),
               ...(transform !== undefined ? { transform } : {}),
@@ -1169,6 +1281,7 @@ function collectFreeRepeats(
           // A repeat element is its own scope: the enclosing optional wrapper no
           // longer applies once we descend into the iterated records.
           false,
+          caseLabel,
         );
         continue;
       }
@@ -1180,11 +1293,12 @@ function collectFreeRepeats(
           insideSwitch,
           enclosingInstantiable,
           insideOptional,
+          caseLabel,
         );
         continue;
       }
       if (c.kind === "switch") {
-        for (const struct of Object.values(c.cases))
+        for (const [key, struct] of Object.entries(c.cases))
           visit(
             struct.fields,
             bounded,
@@ -1193,6 +1307,10 @@ function collectFreeRepeats(
             enclosingInstantiable,
             // A switch case is a flattened scope, not the optional wrapper.
             false,
+            // Descend with this case's readable label so any repeat surfaced
+            // directly inside it gets a case-qualified stepper name. Falls back
+            // to the existing (outer) caseLabel for the `_` default arm.
+            switchCaseLabel(c.on, key, enumVariants, fieldNames) ?? caseLabel,
           );
         continue;
       }
@@ -1206,6 +1324,7 @@ function collectFreeRepeats(
           insideSwitch,
           enclosingInstantiable,
           true,
+          caseLabel,
         );
         continue;
       }
@@ -1217,12 +1336,13 @@ function collectFreeRepeats(
           insideSwitch,
           enclosingInstantiable,
           insideOptional,
+          caseLabel,
         );
         continue;
       }
     }
   };
-  visit(body, null, false, false, true, false);
+  visit(body, null, false, false, true, false, null);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
