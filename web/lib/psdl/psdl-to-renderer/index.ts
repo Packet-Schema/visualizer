@@ -25,6 +25,7 @@ import type {
   Expr,
   NamedStruct,
   Packet as PsdlPacket,
+  Repeat,
 } from "../types";
 import type {
   Field as RendererField,
@@ -322,12 +323,14 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   for (const f of fields) {
     if (f.chainCatalog && f.switchCases) delete f.switchCases;
   }
-  const { freeRepeats, boundedRepeats } = collectFreeRepeats(
+  const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
+    collectFreeRepeats(packet.body, fields);
+  const peekSwitches = collectPeekSwitches(packet.body);
+  const refSwitches = collectRefSwitches(
     packet.body,
     fields,
+    instantiableRepeatIds,
   );
-  const peekSwitches = collectPeekSwitches(packet.body);
-  const refSwitches = collectRefSwitches(packet.body, fields);
   return {
     name: packet.name,
     rowBits: packet.rowBits,
@@ -443,6 +446,7 @@ function collectFieldBits(body: PsdlPacket["body"]): Map<string, number> {
 function collectRefSwitches(
   body: PsdlPacket["body"],
   fields: RendererField[],
+  instantiableRepeatIds: Set<string>,
 ): NonNullable<RendererPacket["refSwitches"]> {
   const out: NonNullable<RendererPacket["refSwitches"]> = [];
   const lengthDriving = collectLengthDrivingRefs(body);
@@ -450,16 +454,22 @@ function collectRefSwitches(
   const seen = new Set<string>();
   const visit = (
     containers: PsdlPacket["body"],
-    insidePlainRepeat: boolean,
+    // The nearest enclosing PLAIN (non-TLV/non-chain) repeat, or null. We track
+    // the repeat ITSELF (not just a boolean) so we can check whether its records
+    // are instantiable by a surfaced count control. A refSwitch whose records can
+    // never appear (its repeat is in NEITHER freeRepeats NOR boundedRepeats) is a
+    // visible control with no possible effect on the diagram — an inert/misleading
+    // surface — so it must be suppressed (bgpPathAttributes' attrTypeCode picker).
+    enclosingPlainRepeat: Repeat | null,
   ): void => {
     for (const c of flattenForMirror(containers)) {
       if (c.kind === "repeat") {
         const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
-        visit(c.element.fields, insidePlainRepeat || plain);
+        visit(c.element.fields, plain ? c : enclosingPlainRepeat);
         continue;
       }
       if (c.kind === "switch") {
-        if (insidePlainRepeat && c.on.kind === "ref") {
+        if (enclosingPlainRepeat && c.on.kind === "ref") {
           const refKey = c.on.field;
           const covered = fields.find(
             (f) =>
@@ -476,7 +486,16 @@ function collectRefSwitches(
           const isEncoder =
             lengthDriving.has(refKey) ||
             (discBits !== undefined && discBits < 8);
-          if (!covered && !isEncoder && !seen.has(refKey)) {
+          // Suppress the picker when the enclosing repeat has NO surfaced count
+          // control: its records are never instantiated at any value, so the
+          // variant choice can't change the diagram. bgpPathAttributes wraps a
+          // per-record nested bounded scope, so collectFreeRepeats deliberately
+          // leaves it non-derived (it's in neither freeRepeats nor
+          // boundedRepeats) — its attrTypeCode picker would be permanently inert.
+          const instantiable = instantiableRepeatIds.has(
+            enclosingPlainRepeat.id,
+          );
+          if (!covered && !isEncoder && instantiable && !seen.has(refKey)) {
             const cases: { value: number; label: string }[] = [];
             for (const [key, struct] of Object.entries(c.cases)) {
               const v = firstCaseKeyValue(key);
@@ -490,24 +509,24 @@ function collectRefSwitches(
           }
         }
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, insidePlainRepeat);
+          visit(struct.fields, enclosingPlainRepeat);
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, insidePlainRepeat);
+        visit(c.children, enclosingPlainRepeat);
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], insidePlainRepeat);
+        visit([c.container], enclosingPlainRepeat);
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, insidePlainRepeat);
+        visit(c.plaintext.fields, enclosingPlainRepeat);
         continue;
       }
     }
   };
-  visit(body, false);
+  visit(body, null);
   return out;
 }
 
@@ -594,9 +613,17 @@ function collectFreeRepeats(
 ): {
   freeRepeats: NonNullable<RendererPacket["freeRepeats"]>;
   boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>;
+  /** Repeat ids that got a SURFACED count control (a freeRepeat stepper or a
+   *  budget-derived boundedRepeat). A refSwitch inside a repeat NOT in this set
+   *  is inert — its records can never be instantiated by any control — so
+   *  collectRefSwitches suppresses it (bgpPathAttributes' attrTypeCode picker). */
+  instantiableRepeatIds: Set<string>;
 } {
   const out: NonNullable<RendererPacket["freeRepeats"]> = [];
   const boundedOut: NonNullable<RendererPacket["boundedRepeats"]> = [];
+  // Repeat ids whose count IS user-drivable via a surfaced control (populated
+  // alongside `out` / `boundedOut` below).
+  const instantiableRepeatIds = new Set<string>();
   // `boundedKey` is the single-ref length field of the nearest enclosing
   // `bounded` byte-budget (or null). An eos/until repeat inside one must NOT get
   // a naked count stepper (bumping it over-consumes the budget — a destructive
@@ -671,6 +698,7 @@ function collectFreeRepeats(
                 perRecordBytes: estimateElementBytes(c.element),
                 prefixBytes: bounded.prefix,
               });
+              instantiableRepeatIds.add(c.id);
             } else if (!bounded) {
               // Free eos/until: a real count env key the user steps directly.
               countKey = c.id;
@@ -738,6 +766,7 @@ function collectFreeRepeats(
               ...(defaultCount !== undefined ? { defaultCount } : {}),
               ...(transform !== undefined ? { transform } : {}),
             });
+            instantiableRepeatIds.add(c.id);
           }
         }
         // A repeat element is its own scope: the bounded budget does not pass
@@ -766,7 +795,11 @@ function collectFreeRepeats(
     }
   };
   visit(body, null, false, false);
-  return { freeRepeats: out, boundedRepeats: boundedOut };
+  return {
+    freeRepeats: out,
+    boundedRepeats: boundedOut,
+    instantiableRepeatIds,
+  };
 }
 
 // A variable-length leaf (bytes with a dynamic `n`, varint, berLength) has no

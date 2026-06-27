@@ -80,12 +80,40 @@ describe("collectRefSwitches", () => {
     // of choosing a record variant — they must NOT be surfaced.
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
     const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
-    expect(bgpKeys).toContain("attrTypeCode"); // 8-bit type code — kept
     expect(bgpKeys).not.toContain("attrExtLen"); // 1-bit flag — dropped
 
     // CoAP's optDelta/optLength are 4-bit nibbles whose cases add
     // length-extension fields — both dropped (no record-variant switch left).
     const coap = psdlToRenderer(PRESETS.coap!);
     expect(coap.refSwitches ?? []).toHaveLength(0);
+
+    // dnsResponse's dnsRrType is an 8-bit record-type code whose dnsAnswers
+    // repeat IS instantiable (count: ref(dnsAnCount)) — it stays surfaced.
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    const dnsKeys = (dns.refSwitches ?? []).map((r) => r.refKey);
+    expect(dnsKeys).toContain("dnsRrType");
+  });
+
+  it("suppresses a refSwitch whose enclosing repeat has no count control", () => {
+    // critical: bgpUpdateFull's bgpPathAttributes repeat wraps a PER-RECORD
+    // nested bounded scope, so collectFreeRepeats deliberately leaves it
+    // non-derived — it appears in NEITHER freeRepeats NOR boundedRepeats. With
+    // no control able to instantiate even one path-attribute record, its
+    // attrTypeCode "Record variants" picker could never change the diagram at
+    // any value of bgpTotalPathAttributeLength or attrTypeCode. A visible
+    // control with no possible effect must not be shown, so it is suppressed.
+    const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
+    const repeatIds = new Set([
+      ...(bgp.freeRepeats ?? []).map((r) => r.countKey),
+      ...(bgp.boundedRepeats ?? []).map((r) => r.countKey),
+    ]);
+    expect(repeatIds.has("bgpPathAttributes")).toBe(false);
+    const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
+    expect(bgpKeys).not.toContain("attrTypeCode");
+
+    // Sanity: a refSwitch on an instantiable repeat is NOT suppressed, so the
+    // suppression is specific to the inert case (dnsResponse's dnsRrType stays).
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
   });
 });
