@@ -9,6 +9,7 @@
 
 import type {
   Container,
+  EnumVariant,
   Normalized,
   NormalizedField,
   PacketEnv,
@@ -99,6 +100,13 @@ export function resolveLayout(
   // to a field with no width hint and OverridePanel shows no WidthPicker even
   // though `env[fieldId]` genuinely drives the cell width.
   const dynWidth = collectDynamicWidthFlags(packet);
+  // Enum metadata for leaves that live inside switch cases / optionals /
+  // repeats — same rationale as `dynWidth`: `psdlToRenderer` never reaches them,
+  // so without stamping `enumVariants` onto the synthetic cell field a click
+  // resolves (via resolveFromCells) to a field with no enum hint and
+  // OverridePanel shows no EnumDropdown even though `env[fieldId]` genuinely
+  // drives the cell value (see-but-cannot-edit).
+  const enumFlags = collectEnumFlags(packet);
   for (const g of groups) {
     if (g.kind === "flat") {
       const nf = g.field;
@@ -109,6 +117,7 @@ export function resolveLayout(
         ...(nf.category ? { category: nf.category } : {}),
         ...(nf.doc ? { description: nf.doc } : {}),
         ...(dynWidth.get(stripRepeatTag(nf.id)) ?? {}),
+        ...(enumFlags.get(stripRepeatTag(nf.id)) ?? {}),
       };
       bitPos = emitField(synthetic, nf, bitPos, packet.rowBits, cells);
       continue;
@@ -327,6 +336,80 @@ function collectDynamicWidthFlags(
           visit(c.fields);
           break;
         // virtual / align / ref expose no dynamic-width leaf to flag.
+      }
+    }
+  };
+  visit(packet.body);
+  return map;
+}
+
+/** Enum metadata for a single leaf field, mirroring the `enumVariants` label
+ *  map that `plainFieldToRenderer` stamps onto top-level renderer mirror fields. */
+type EnumFlags = {
+  enumVariants: Record<number, string>;
+};
+
+/**
+ * Flatten 0.5 enum variants (`string | { label; … }`) down to the renderer's
+ * `Record<number, string>` label map — mirror of `subfield.ts`'s `enumLabels`.
+ */
+function enumLabels(
+  variants: Record<number, EnumVariant>,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const [k, v] of Object.entries(variants)) {
+    out[Number(k)] = typeof v === "string" ? v : v.label;
+  }
+  return out;
+}
+
+/**
+ * Precompute a `fieldId -> EnumFlags` map by walking EVERY container in the
+ * source PSDL packet — including switch cases, optionals and repeats that
+ * `flattenForMirror` (and therefore `psdlToRenderer`) never descends into.
+ *
+ * Why this exists (mirror of `collectDynamicWidthFlags`): a plain enum leaf that
+ * lives inside a repeat record (dnsResponse `dnsQType`) or a switch case is a
+ * visible, genuinely-editable cell — the engine reads its value from
+ * `env[fieldId]`, so an EnumDropdown WOULD change the diagram exactly as it does
+ * for a top-level enum (arp `oper`, dhcpv4 `op`). But it never becomes a
+ * renderer mirror field, so a click resolves through `resolveFromCells` to the
+ * synthetic cell field, which — unless we stamp `enumVariants` here — carries no
+ * enum hint and OverridePanel renders no EnumDropdown (see-but-cannot-edit).
+ *
+ * These are plain enum *values*, not switch discriminators, so they are not
+ * covered by refSwitches / peekSwitches.
+ */
+function collectEnumFlags(packet: PsdlPacket): Map<string, EnumFlags> {
+  const map = new Map<string, EnumFlags>();
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "enum") {
+          map.set(c.id, { enumVariants: enumLabels(c.type.variants) });
+        }
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        // virtual / align / ref expose no enum leaf to flag.
       }
     }
   };

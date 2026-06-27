@@ -435,8 +435,15 @@ describe("OverridePanel widgets", () => {
       />,
     );
     const text = container.textContent ?? "";
+    // A1: the click must resolve via the diagram cells (no dead-end), not
+    // "Field not found".
     expect(text).not.toMatch(/Field not found/);
-    expect(text).toMatch(/no runtime override/i);
+    // dnsRrType is an enum (RR Type) leaf, so the resolved cell now carries
+    // `enumVariants` (layout stamps them) and surfaces an editable dropdown
+    // rather than the read-only fallback — see-but-cannot-edit fixed.
+    const select = container.querySelector("select");
+    expect(select, "enum leaf must surface a <select>").not.toBeNull();
+    expect(text).not.toMatch(/no runtime override/i);
   });
 
   it("surfaces a delimited length width picker for syslog's delimiter-terminated bytes (#3)", async () => {
@@ -569,5 +576,41 @@ describe("OverridePanel widgets", () => {
       "repeat-nested berLength must surface a width radiogroup",
     ).not.toBeNull();
     expect(container.textContent ?? "").toMatch(/BER length width/i);
+  });
+
+  it("surfaces an EnumDropdown for a repeat-nested enum leaf (dnsResponse dnsQType) (#enum)", async () => {
+    // see-but-cannot-edit: a plain enum leaf inside a repeat record never
+    // becomes a renderer mirror field, so a click resolves through
+    // resolveFromCells to the synthetic layout cell. layout.ts must stamp
+    // `enumVariants` onto that cell so OverridePanel's EnumDropdown fires —
+    // exactly as it does for a top-level enum (arp.oper, dhcpv4.op).
+    const src = PRESETS.dnsResponse!;
+    const packet = psdlToRenderer(src);
+    // No mirror field exists for the repeat-nested enum leaf...
+    expect(packet.fields.some((f) => f.id === "dnsQType")).toBe(false);
+    // ...but a query record (dnsQdCount=1) makes it a visible diagram cell.
+    const env = packetViewerEnv(src);
+    env.set("dnsQdCount", 1);
+    const { cells } = resolveLayout(src, { env });
+    const cell = cells.find((c) => c.field.id === "dnsQType#0");
+    expect(cell, "dnsQType cell must be present").toBeTruthy();
+    expect(
+      cell!.field.enumVariants,
+      "layout must stamp enumVariants onto the synthetic cell field",
+    ).toBeTruthy();
+
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="dnsQType#0"
+        controllers={{}}
+        onControllerChange={() => {}}
+        cells={cells}
+      />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    const select = container.querySelector("select");
+    expect(select, "repeat-nested enum must surface a <select>").not.toBeNull();
+    expect(select?.options.length).toBeGreaterThan(0);
   });
 });
