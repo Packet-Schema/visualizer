@@ -56,7 +56,11 @@ type Props = {
   /** Current resolved layout (used to export the live diagram). */
   layout: ResolvedLayout;
   onClose: () => void;
-  onImport: (packet: Packet, controllers: ControllerState) => void;
+  onImport: (
+    packet: Packet,
+    controllers: ControllerState,
+    sourcePsdl: PsdlPacket,
+  ) => void;
 };
 
 type StatusKind = "ok" | "warn" | "error";
@@ -225,7 +229,11 @@ export default function ImportExportDrawer({
       const runtime = psdlToRenderer(psdl);
       const controllers: ControllerState = {};
       if (env) for (const [k, v] of env) controllers[k] = v;
-      onImport(runtime, controllers);
+      // Pass the parsed PSDL as the lossless source so the viewer can lift
+      // edits via mergeInstancesIntoPsdl(source, mirror) instead of the lossy
+      // rendererToPsdl — letting ANY imported PSDL (Switch/Encrypted/variable
+      // payloads) round-trip faithfully on share/export.
+      onImport(runtime, controllers, psdl);
       if (warnings && warnings.length) {
         const prefix =
           format === "ksy"

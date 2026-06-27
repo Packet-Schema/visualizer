@@ -187,6 +187,13 @@ export default function PacketViewer({
       [PSDL_INITIAL_KEY]: psdlToRenderer(initialPsdlPacket),
     } as PacketRegistry;
   });
+  // Lossless source PSDL for each drawer-imported packet (keyed `imported:`),
+  // so lifts merge instances onto the original instead of reconstructing from
+  // the lossy renderer mirror. The PSDL_INITIAL_KEY share already has its source
+  // in `customPresets`, so it isn't seeded here.
+  const [importedSources, setImportedSources] = useState<
+    Record<string, PsdlPacket>
+  >(() => ({}));
   // Lazy cache of lowered built-in presets. Seeded with just the initial
   // preset; other built-ins are fetched + lowered on demand by the effect that
   // watches `packetKey` (see below). TLV/Chain edits replace the relevant entry
@@ -380,17 +387,31 @@ export default function PacketViewer({
   // then a custom preset, then a lifted version of the imported renderer
   // packet (lossy but acceptable as a starting point for editing).
   const activePsdlPacket: PsdlPacket = useMemo(() => {
+    const importedMirror = importedPackets[packetKey];
+    const importedSource = importedSources[packetKey];
     return (
       getLoadedPreset(packetKey) ??
       customPresets[packetKey] ??
-      (importedPackets[packetKey]
-        ? rendererToPsdl(importedPackets[packetKey])
+      (importedMirror
+        ? // Lift the imported packet losslessly: merge the mirror's instance
+          // edits onto the retained source PSDL (preserves Switch/Encrypted/
+          // variable payloads). Only a source-less mirror falls back to the
+          // lossy reconstruction.
+          importedSource
+          ? mergeInstancesIntoPsdl(importedSource, importedMirror)
+          : rendererToPsdl(importedMirror)
         : seedPsdl)
     );
     // `renderedPresets` is included so this recomputes once a lazily-fetched
     // built-in body lands in the load cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packetKey, customPresets, importedPackets, renderedPresets]);
+  }, [
+    packetKey,
+    customPresets,
+    importedPackets,
+    importedSources,
+    renderedPresets,
+  ]);
 
   // Re-seed the studio reducer in-place when the active PSDL packet swaps
   // (preset change, custom preset selection, import). Detecting the change
@@ -505,9 +526,16 @@ export default function PacketViewer({
   );
 
   const handleImport = useCallback(
-    (imported: Packet, importedControllers: ControllerState) => {
+    (
+      imported: Packet,
+      importedControllers: ControllerState,
+      sourcePsdl: PsdlPacket,
+    ) => {
       const key = `imported:${imported.name}`;
       setImportedPackets((prev) => ({ ...prev, [key]: imported }));
+      // Retain the parsed source PSDL so every lift (diagram / share / export)
+      // merges instances onto it rather than reconstructing lossily.
+      setImportedSources((prev) => ({ ...prev, [key]: sourcePsdl }));
       setPacketKey(key);
       setControllers({ ...initialState(imported), ...importedControllers });
       uiDispatch({ type: "clear-selection" });
@@ -848,7 +876,12 @@ export default function PacketViewer({
     // key even before the body arrives, so it must share as `preset=<key>` —
     // NOT psdl-encode the stale fallback packet currently on screen (Codex P2).
     const isUnloadedBuiltIn = !builtInPsdl && packetKey in PRESET_INDEX;
-    const customSource = builtInPsdl ? undefined : customPresets[packetKey];
+    // The lossless source PSDL for a non-built-in: a custom preset's stored
+    // PSDL, or an imported packet's retained source. Either lets the share lift
+    // merge instances onto the original rather than reconstruct lossily.
+    const customSource = builtInPsdl
+      ? undefined
+      : (customPresets[packetKey] ?? importedSources[packetKey]);
     // Custom preset edits live in `renderedPresets` (see
     // `replaceActivePacket` custom arm) and the source PSDL in
     // `customPresets[packetKey]` stays untouched. Decide which one to
@@ -882,6 +915,9 @@ export default function PacketViewer({
       builtInPsdl !== undefined &&
       builtInMerged !== undefined &&
       !samePsdlPacket(builtInMerged, builtInPsdl);
+    // Mark `hasCustomRendererOverride` consumed (kept for readability of the
+    // branch logic above); the actual share lift always merges onto a source.
+    void hasCustomRendererOverride;
     const sharePacket = editMode
       ? // In editMode the diagram draws from studioState.packet but TLV /
         // chain edits only land on the renderer mirror — without the
@@ -893,15 +929,14 @@ export default function PacketViewer({
         ? builtInHasOverride && builtInMerged
           ? builtInMerged
           : builtInPsdl
-        : hasCustomRendererOverride
-          ? // A custom preset edited via the diagram: prefer the lossless
-            // source + instance merge (same as the export lift) so its
-            // Switch / Encrypted / variable-length payloads survive; only an
-            // imported packet with no source PSDL falls back to the lossy lift.
-            customSource
-            ? mergeInstancesIntoPsdl(customSource, packet)
-            : rendererToPsdl(packet)
-          : (customSource ?? rendererToPsdl(packet));
+        : // Custom OR imported: always merge the mirror's edits onto the
+          // lossless source PSDL (preserves Switch / Encrypted / variable
+          // payloads AND captures any diagram edit). Merge is a no-op when
+          // unedited. Only a genuinely source-less packet falls back to the
+          // lossy reconstruction.
+          customSource
+          ? mergeInstancesIntoPsdl(customSource, packet)
+          : rendererToPsdl(packet);
     const defaultControllers = builtInPsdl
       ? initialState(psdlToRenderer(builtInPsdl))
       : undefined;
@@ -938,6 +973,7 @@ export default function PacketViewer({
   }, [
     controllers,
     customPresets,
+    importedSources,
     editMode,
     mergedStudioPacket,
     packet,
@@ -958,8 +994,17 @@ export default function PacketViewer({
     if (builtIn) return mergeInstancesIntoPsdl(builtIn, packet);
     const custom = customPresets[packetKey];
     if (custom) return mergeInstancesIntoPsdl(custom, packet);
+    const importedSource = importedSources[packetKey];
+    if (importedSource) return mergeInstancesIntoPsdl(importedSource, packet);
     return rendererToPsdl(packet);
-  }, [editMode, mergedStudioPacket, packet, packetKey, customPresets]);
+  }, [
+    editMode,
+    mergedStudioPacket,
+    packet,
+    packetKey,
+    customPresets,
+    importedSources,
+  ]);
 
   useEffect(() => {
     if (!urlHydrated || typeof window === "undefined") return;
