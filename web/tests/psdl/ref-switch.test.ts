@@ -198,3 +198,92 @@ describe("collectRefSwitches", () => {
     expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
   });
 });
+
+describe("record-bearing ref-count repeats seed one record (#11/#12)", () => {
+  // The app-realistic env: controllers START as initialState(renderer) (which
+  // applies freeRepeat.defaultCount and seeds refSwitch discriminators to their
+  // first case), layered over packet defaults and 0-fallbacks — mirroring
+  // PacketViewer's layout memo. This is what the diagram actually renders at
+  // load, BEFORE the user touches any control.
+  function appEnv(
+    psdl: PsdlPacket,
+    overrides: Record<string, number> = {},
+  ): Map<string, number> {
+    const env = new Map<string, number>(Object.entries(overrides));
+    const state = initialState(psdlToRenderer(psdl));
+    for (const [k, v] of Object.entries(state))
+      if (!env.has(k)) env.set(k, Number(v));
+    for (const [k, v] of initialEnv(psdl)) if (!env.has(k)) env.set(k, v);
+    for (const r of collectPsdlRefs(psdl)) if (!env.has(r)) env.set(r, 0);
+    return env;
+  }
+  function appCellIds(
+    psdl: PsdlPacket,
+    overrides: Record<string, number> = {},
+  ): string[] {
+    return resolveLayout(psdl, { env: appEnv(psdl, overrides) }).cells.flatMap(
+      (c) => [c.field.id, ...(c.subCells ?? []).map((s) => s.subfield.id)],
+    );
+  }
+
+  it("gives the dnsAnswers (dnsRrType) and dnsQuestions repeats a defaultCount", () => {
+    // The fix: a ref-count repeat that encloses a surfaced variant Switch
+    // (dnsAnswers → dnsRrType) or a nested record Repeat (dnsQuestions →
+    // dnsQNameLabels) is seeded to ONE record so its picker / records are not
+    // inert at load. Previously these fell back to the 0-seed.
+    const dns = psdlToRenderer(PRESETS.dnsResponse!);
+    const byKey = new Map(
+      (dns.freeRepeats ?? []).map((f) => [f.countKey, f] as const),
+    );
+    expect(byKey.get("dnsAnCount")?.defaultCount).toBe(1);
+    expect(byKey.get("dnsQdCount")?.defaultCount).toBe(1);
+  });
+
+  it("renders a representative RR variant at the DEFAULT count (picker is not inert)", () => {
+    // The core bug: at load (app-realistic env, NO manual dnsAnCount raise)
+    // picking any dnsRrType variant must change the diagram. Before the fix
+    // dnsAnCount fell back to 0 → ZERO answer records → choosing AAAA / MX did
+    // nothing. We do NOT pass dnsAnCount here: only the seeded default applies.
+    const src = PRESETS.dnsResponse!;
+    const aaaa = appCellIds(src, { dnsRrType: 28 }); // AAAA
+    const mx = appCellIds(src, { dnsRrType: 15 }); // MX
+    // The AAAA record body must actually appear (cells carry a per-instance
+    // `#0` suffix, so match by prefix)...
+    const has = (ids: string[], base: string): boolean =>
+      ids.some((id) => id === base || id.startsWith(`${base}#`));
+    expect(has(aaaa, "dnsRdataAaaaAddr")).toBe(true);
+    // ...and a different variant renders a different body — proving the picker
+    // drives the diagram without the user first raising any count stepper.
+    expect(has(mx, "dnsRdataMxPref")).toBe(true);
+    expect(aaaa).not.toEqual(mx);
+  });
+
+  it("does NOT seed plain scalar-list ref-count repeats", () => {
+    // The fix is scoped to record-bearing repeats. A plain scalar list whose
+    // element is just fixed-width values (vrrp IP addresses, RTP CSRC list)
+    // stays at the 0-seed — no spurious record on load.
+    for (const [preset, key] of [
+      ["vrrp", "vrrpAddrCount"],
+      ["rtp", "cc"],
+      ["netbiosNs", "ancount"],
+    ] as const) {
+      const r = psdlToRenderer(PRESETS[preset]!);
+      const fr = (r.freeRepeats ?? []).find((f) => f.countKey === key);
+      expect(fr, `${preset} ${key} freeRepeat`).toBeTruthy();
+      expect(fr!.defaultCount, `${preset} ${key} defaultCount`).toBeUndefined();
+    }
+  });
+
+  it("lispMapReply records (lispRecEIDAFI picker) also seed one record", () => {
+    // Same shape as dnsAnswers: a ref-count repeat enclosing a surfaced
+    // refSwitch (lispRecEIDAFI). It must seed one record so the picker is live.
+    const lisp = psdlToRenderer(PRESETS.lispMapReply!);
+    const fr = (lisp.freeRepeats ?? []).find(
+      (f) => f.countKey === "lispReplyRecCount",
+    );
+    expect(fr?.defaultCount).toBe(1);
+    expect((lisp.refSwitches ?? []).map((r) => r.refKey)).toContain(
+      "lispRecEIDAFI",
+    );
+  });
+});

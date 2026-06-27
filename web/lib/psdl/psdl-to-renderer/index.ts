@@ -668,6 +668,53 @@ function affineCountTransform(
 }
 
 /**
+ * A `ref`-count Repeat is "record-bearing" when its element encloses a variant
+ * `Switch` (whose `ref`/`peek` discriminator becomes a surfaced refSwitch /
+ * peekSwitch picker) or a nested `Repeat`. Such a repeat needs at least one
+ * instance at load so that picker (or the nested structure) is not inert —
+ * choosing a variant at count 0 changes nothing because no record exists to
+ * take it (#11/#12). Plain scalar-list ref-count repeats (vrrp IP addresses,
+ * RTP CSRC list, …) are NOT record-bearing: they stay at the 0-seed.
+ */
+function repeatIsRecordBearing(repeat: Repeat): boolean {
+  const walk = (containers: Container[]): boolean => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "repeat") return true;
+      if (c.kind === "switch") {
+        // Only a Switch with at least one numeric (non-`_`) case key — a real
+        // variant selector. A bare default-only switch carries no picker.
+        const hasVariant = Object.keys(c.cases).some(
+          (k) => firstCaseKeyValue(k) !== null,
+        );
+        if (hasVariant) return true;
+        for (const struct of Object.values(c.cases))
+          if (walk(struct.fields)) return true;
+        continue;
+      }
+      if (c.kind === "group") {
+        if (walk(c.children)) return true;
+        continue;
+      }
+      if (c.kind === "bounded") {
+        if (walk(c.fields)) return true;
+        continue;
+      }
+      if (c.kind === "optional") {
+        if (walk([c.container])) return true;
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        if (walk(c.plaintext.fields)) return true;
+        continue;
+      }
+    }
+    return false;
+  };
+  return walk(repeat.element.fields);
+}
+
+/**
  * Find Repeats whose count isn't already covered by an existing override:
  *   * Not a TLV / chain Repeat (those get list editors).
  *   * Their `count: ref(X)` doesn't land on a field with `controlsLength`
@@ -793,7 +840,20 @@ function collectFreeRepeats(
                 f.id === ref &&
                 (f.controlsLength || f.switchCases || f.enumVariants),
             );
-            if (!covered) countKey = ref;
+            if (!covered) {
+              countKey = ref;
+              // Seed ONE record when the repeat is record-bearing — its element
+              // encloses a variant Switch (the surfaced refSwitch/peekSwitch
+              // picker) or a nested Repeat. Without this the count falls back to
+              // the 0-seed, so at load (and after every preset switch) there are
+              // ZERO records and a "Record variants" picker is INERT: choosing
+              // any variant changes nothing because no record exists to take it
+              // (#11/#12 — dnsResponse dnsAnswers/dnsRrType, dnsQuestions,
+              // lispMapReply lispReplyRecords). One representative record is a
+              // ref-count (NOT a budget) repeat, so seeding 1 never over-consumes
+              // a byte budget. Plain scalar-list ref-count repeats stay at 0.
+              if (repeatIsRecordBearing(c)) defaultCount = 1;
+            }
           } else if (
             typeof c.count === "object" &&
             (c.count.kind === "op" || c.count.kind === "cond") &&
