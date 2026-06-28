@@ -52,7 +52,9 @@ function layoutCells(
     const forRecords = Math.max(0, budget - br.prefixBytes);
     const overage = (br.innerScopeSeeds ?? []).reduce(
       (sum, seed) =>
-        sum + Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value),
+        sum +
+        Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+          (seed.bytesPerUnit ?? 1),
       0,
     );
     const livePerRecordBytes = br.perRecordBytes + overage;

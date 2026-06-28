@@ -377,7 +377,7 @@ export type Packet = {
      *  record (and the length CELL stays user-editable). `perRecordBytes`
      *  already accounts for the seeded inner bytes, so the derived count never
      *  over-consumes the ENCLOSING scope either. */
-    innerScopeSeeds?: { key: string; value: number }[];
+    innerScopeSeeds?: { key: string; value: number; bytesPerUnit?: number }[];
     /** A representative OUTER-budget byte count to seed `env[lengthKey]` with on
      *  load, so one representative record renders immediately and any
      *  refSwitch/peek picker gated on this repeat is LIVE from the start.

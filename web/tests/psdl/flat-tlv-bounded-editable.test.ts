@@ -203,3 +203,68 @@ describe("flat bounded-eos TLV records with offset/scaled value lengths", () => 
     },
   );
 });
+
+// A flat bounded-eos TLV record under a *SCALED* affine budget (hip's
+// `hipHeaderLength*8 - 32`) used to render NOTHING at load: the flat-TLV
+// `defaultLength` seed only fired for a PLAIN-ref budget (`budgetIsPlainRefFlat`)
+// and the record-switch seed only for an element holding a switch — hip is
+// neither (scaled budget + switch-free {type,length,contents} element), so no
+// `defaultLength` was emitted. Worse, hip's budget field `hipHeaderLength` is a
+// `controlsLength` octet seeded to its RFC minimum 4 (a header with NO
+// parameters → budget `4*8-32 = 0`), so even an emitted `defaultLength` was
+// suppressed by the old `!state[lengthKey]` gate. At load the derived count was
+// `floor((0)/perRecord) = 0` and the ENTIRE hipParameters TLV section (type,
+// length, contents) was invisible — the user saw only the fixed HIP header with
+// no cue the parameter list existed (#11/#12 discoverability, the class
+// babel/isisLsp/bgpOpen already fix via the plain-ref defaultLength).
+describe("hip parameters render at load under a scaled affine budget", () => {
+  const src = PRESETS.hip!;
+  const mirror = psdlToRenderer(src);
+
+  it("emits a defaultLength solved against the *8 budget multiplier", () => {
+    const br = (mirror.boundedRepeats ?? []).find(
+      (b) => b.countKey === "hipParameters",
+    );
+    expect(br, "hipParameters must surface a boundedRepeat").toBeDefined();
+    expect(br!.lengthKey).toBe("hipHeaderLength");
+    // perRecord=8, prefix=1, budget = hipHeaderLength*8 - 32: the smallest
+    // hipHeaderLength giving one record is ceil((32 + 1 + 8) / 8) = 6, NOT the
+    // un-scaled `32 + 1 + 8 = 41` the multiplier-blind record-switch path emits.
+    expect(br!.defaultLength).toBe(6);
+  });
+
+  it("raises hipHeaderLength past its RFC-minimum default so the budget admits a record", () => {
+    // The field default is 4 (RFC minimum for a header with NO parameters);
+    // initialState raises it to the defaultLength because 4 < 6.
+    expect(initialState(mirror).hipHeaderLength).toBe(6);
+  });
+
+  it("renders exactly one complete hipParameters record at load (was entirely invisible)", () => {
+    const load = cellIds(src, mirror, {});
+    expect(load).toContain("hipParamType#0");
+    expect(load).toContain("hipParamLen#0");
+    expect(load).toContain("hipParamContents#0");
+    // Conservative: the budget admits exactly one record at the seed.
+    expect(load).not.toContain("hipParamType#1");
+  });
+
+  it("a deliberate sub-threshold hipHeaderLength still collapses the section (no override)", () => {
+    // A user / saved-env value wins over the seed (merged on top of
+    // initialState), so the RFC-minimum 4 still yields the no-parameters layout.
+    const load = cellIds(src, mirror, { hipHeaderLength: 4 });
+    expect(load).not.toContain("hipParamType#0");
+  });
+
+  it("never over-consumes the parameter scope across a header-length sweep", () => {
+    for (let len = 0; len <= 255; len++) {
+      expect(
+        () => cellIds(src, mirror, { hipHeaderLength: len }),
+        `hipHeaderLength=${len} must not over-consume`,
+      ).not.toThrow();
+    }
+    // More budget → strictly more records.
+    const one = cellIds(src, mirror, {});
+    const more = cellIds(src, mirror, { hipHeaderLength: 12 });
+    expect(more.length).toBeGreaterThan(one.length);
+  });
+});

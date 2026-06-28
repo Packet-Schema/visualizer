@@ -106,7 +106,9 @@ function cellCount(
     // controller shrinks the derived count instead of over-consuming the scope.
     const overage = (br.innerScopeSeeds ?? []).reduce(
       (sum, seed) =>
-        sum + Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value),
+        sum +
+        Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+          (seed.bytesPerUnit ?? 1),
       0,
     );
     env.set(

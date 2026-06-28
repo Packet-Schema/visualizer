@@ -3804,6 +3804,42 @@ function collectFreeRepeats(
                 flat && flat.innerSeeds.length > 0 && budgetIsPlainRefFlat
                   ? perRecordBytesFlat + bounded.prefix
                   : undefined;
+              // FLAT TLV record under a *SCALED* affine budget (hip's
+              // `hipHeaderLength*8 - 32`, gist's `gistMessageLength*4`): the
+              // record is the same flat `[type, length X, value = bytes(ref X)]`
+              // triplet (so `flat` seeds the per-record value), but its byte
+              // budget MULTIPLIES the length field, so `budgetIsPlainRefFlat`
+              // (which needs a bare `ref(lengthKey)`) is false and no
+              // `defaultLength` is emitted. At load the budget field 0-fills,
+              // `floor((budget-prefix)/perRecord)=0` records render, and the
+              // ENTIRE TLV section (type, length, value) is invisible — the user
+              // sees only the fixed header with no cue the parameter list exists
+              // (#11/#12 discoverability, the class babel/isisLsp/bgpOpen already
+              // fix via the plain-ref `flatDefaultLength`). Solve the SMALLEST
+              // budget-field value giving one record accounting for the `*mul`
+              // scale: `ceil((sub + prefix + perRecord) / mul)`. Only attempted
+              // when the budget genuinely SCALES its length field (`mul > 1`);
+              // unscaled `ref - c` budgets keep their existing (deliberately
+              // unseeded) behavior, so only the scaled gap is newly filled.
+              const affineParts = budgetAffineParts(bounded.bytes);
+              const flatAffineDefaultLength =
+                flat &&
+                flat.innerSeeds.length > 0 &&
+                !budgetIsPlainRefFlat &&
+                perRecordBytesFlat > 0 &&
+                affineParts !== null &&
+                affineParts.mul > 1 &&
+                affineParts.field === bounded.key
+                  ? Math.max(
+                      1,
+                      Math.ceil(
+                        (affineParts.sub +
+                          bounded.prefix +
+                          perRecordBytesFlat) /
+                          affineParts.mul,
+                      ),
+                    )
+                  : undefined;
               // Seed `defaultLength` so the budget yields >=1 record at load,
               // BUT ONLY for a RECORD-BEARING repeat (its element holds a
               // ref/peek-discriminated switch → a surfaced 'Record variants'
@@ -3827,7 +3863,10 @@ function collectFreeRepeats(
                 perRecordBytesFlat > 0
                   ? affineConst + bounded.prefix + perRecordBytesFlat
                   : undefined;
-              const seedLength = flatDefaultLength ?? recordSwitchDefaultLength;
+              const seedLength =
+                flatDefaultLength ??
+                flatAffineDefaultLength ??
+                recordSwitchDefaultLength;
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: bounded.key,
@@ -4440,6 +4479,39 @@ function budgetAffineConst(bytes: Expr): number | null {
 }
 
 /**
+ * Decompose a budget expression of shape `ref`, `ref - c`, `ref*k`, or
+ * `ref*k - c` into `{ field, mul: k, sub: c }` (k defaults to 1, c to 0) so the
+ * smallest length-field value yielding >=1 record can be SOLVED accounting for
+ * the multiplier. Unlike `budgetAffineConst` (which only recovers the offset),
+ * this also recovers `k` — needed when the budget SCALES its length field, e.g.
+ * hip's `hipHeaderLength*8 - 32`: seeding the budget value `c + prefix +
+ * perRecord` directly into `hipHeaderLength` would over-shoot the scope 8×.
+ * The required field value is `ceil((c + prefix + perRecord) / k)`. Returns
+ * null for any other shape (cond budgets, multi-ref, etc.) — those stay
+ * unseeded, no regression.
+ */
+function budgetAffineParts(
+  bytes: Expr,
+): { field: string; mul: number; sub: number } | null {
+  const mulParts = (e: Expr): { field: string; mul: number } | null => {
+    if (e.kind === "ref") return { field: e.field, mul: 1 };
+    if (e.kind === "op" && e.op === "*") {
+      if (e.a.kind === "ref" && e.b.kind === "lit")
+        return { field: e.a.field, mul: e.b.value };
+      if (e.b.kind === "ref" && e.a.kind === "lit")
+        return { field: e.b.field, mul: e.a.value };
+    }
+    return null;
+  };
+  if (bytes.kind === "op" && bytes.op === "-" && bytes.b.kind === "lit") {
+    const m = mulParts(bytes.a);
+    return m ? { field: m.field, mul: m.mul, sub: bytes.b.value } : null;
+  }
+  const m = mulParts(bytes);
+  return m ? { field: m.field, mul: m.mul, sub: 0 } : null;
+}
+
+/**
  * The LENGTH-bearing field refs of a budget expression — the fields whose value
  * is the byte count, as opposed to a discriminator that merely SELECTS which
  * length applies. For a `cond test ? t : f` budget (bgpUpdateFull's
@@ -4851,7 +4923,7 @@ const FLAT_TLV_MAX_LEN_SEED = 64;
  * or no seed in range makes a value visible (don't fabricate a control).
  */
 function flatTlvInnerSeeds(element: { fields: Container[] }): {
-  innerSeeds: { key: string; value: number }[];
+  innerSeeds: { key: string; value: number; bytesPerUnit?: number }[];
   perRecordBytes: number;
 } | null {
   // A record wrapping its OWN nested bounded is the TLV-extension idiom handled
@@ -4859,7 +4931,8 @@ function flatTlvInnerSeeds(element: { fields: Container[] }): {
   if (containsBounded(element.fields)) return null;
   const siblingIds = new Set<string>();
   collectRecordFieldIds(element.fields, siblingIds);
-  const innerSeeds: { key: string; value: number }[] = [];
+  const innerSeeds: { key: string; value: number; bytesPerUnit?: number }[] =
+    [];
   const seededKeys = new Set<string>();
   // Bytes a value resolves to once its length field(s) are seeded — summed so
   // perRecordBytes charges the seeded (not ~0-byte) size of each value.
@@ -4900,7 +4973,22 @@ function flatTlvInnerSeeds(element: { fields: Container[] }): {
           resolvedValueFields += 1;
           if (!seededKeys.has(key)) {
             seededKeys.add(key);
-            innerSeeds.push({ key, value: chosen.seed });
+            // Byte slope of the value per +1 unit of the length field, so a
+            // consumer (PacketViewer's bounded derive) can charge the EXACT extra
+            // bytes when the field is raised above its seed — `bytes(X)` → 1,
+            // `bytes(X * 4)` (gist `gistObjLen`) → 4. Without this a scaled value
+            // over-consumes the bounded scope as the field grows.
+            const widthAt = (seed: number): number =>
+              evalExprOr(n, new Map([[key, seed]]), 0);
+            const bytesPerUnit = Math.max(
+              1,
+              widthAt(chosen.seed + 1) - widthAt(chosen.seed),
+            );
+            innerSeeds.push(
+              bytesPerUnit !== 1
+                ? { key, value: chosen.seed, bytesPerUnit }
+                : { key, value: chosen.seed },
+            );
           }
         } else {
           const env = new Map(

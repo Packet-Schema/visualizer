@@ -329,10 +329,24 @@ export function initialState(packet: Packet): ControllerState {
     // at load. Without this the outer length (tlsClientHello's `extensionsLen`)
     // 0-fills → `floor(0/perRecord)=0` records → the surfaced refSwitch variant
     // picker (extType) is INERT and contradicts an empty diagram (#11/#12).
-    // Only set when unset/0 — a user width still wins — and surfaced via
-    // initialState, so it stays out of the share URL (same default-set reasoning
-    // as the innerScopeSeeds / freeRepeat defaultCount / discriminator seeds).
-    if (br.defaultLength !== undefined && !state[br.lengthKey]) {
+    // RAISE the length to `defaultLength` whenever the current default is too
+    // SMALL to yield a record — not just when it is unset/0. Most boundedRepeat
+    // length fields default to 0 (so this matches the old `!state` gate exactly),
+    // but a few are length-octet `controlsLength` fields seeded to a protocol
+    // minimum that is itself below the parameter-list threshold: hip's
+    // `hipHeaderLength` defaults to 4 (RFC-minimum for a header with NO
+    // parameters → budget `4*8-32 = 0`), so the WHOLE hipParameters TLV section
+    // (type, length, contents) renders nothing at load and the user has no cue
+    // it exists. `defaultLength` is by construction the smallest value yielding
+    // one record, so raising to it never shrinks a larger user/preset value and
+    // shows a representative record. A user / saved-env value still wins (it is
+    // merged ON TOP of initialState) and a deliberate sub-threshold choice stays
+    // share-url-encoded via `nonDefaultControllerEnv` (it now differs from the
+    // seeded default).
+    if (
+      br.defaultLength !== undefined &&
+      (state[br.lengthKey] ?? 0) < br.defaultLength
+    ) {
       state[br.lengthKey] = br.defaultLength;
     }
   }
