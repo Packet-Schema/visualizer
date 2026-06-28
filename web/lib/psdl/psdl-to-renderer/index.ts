@@ -1679,7 +1679,23 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     siblingSizesByLenId,
   );
   const controllerIds = new Set<string>(lengthControllers.map((lc) => lc.id));
+  // A length field that is ALSO a repeat-count ref (msdp `msdpSAEntryCount`:
+  // `repeat msdpSAEntries count:ref(msdpSAEntryCount)` AND
+  // `msdpSAEncapData = bytes(msdpLength-8-12*msdpSAEntryCount)`) is already the
+  // freeRepeat 'SA Entries' add/remove stepper's key. Surfacing it ALSO as a
+  // sibling length controller would put TWO independent panel controls — a
+  // record stepper and a byte-length slider — on the SAME env key in different
+  // sections, fighting over it: moving the slider silently changes the record
+  // count and vice-versa, and one 'length' slider would simultaneously ADD
+  // 12-byte records and SHRINK the encap region (the `-12*count` term). The
+  // record stepper is the correct single control; the encap width then follows
+  // the count, like any budget-derived length. Skip the length controller for
+  // such ids (the only collision across the 184 presets is msdp). Built the
+  // same way collectOptionalGateLengthControllers builds its count-ref set.
+  const repeatCountRefs = new Set<string>();
+  collectRepeatCountRefs(packet.body, packet.defs, repeatCountRefs);
   for (const [id, field] of siblingLengthFields) {
+    if (repeatCountRefs.has(id)) continue;
     const sizedValueIds = siblingSizesByLenId.get(id);
     const lengthSizesFieldIds =
       sizedValueIds && sizedValueIds.size > 0 ? [...sizedValueIds] : undefined;
