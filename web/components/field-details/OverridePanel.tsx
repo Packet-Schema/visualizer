@@ -200,20 +200,38 @@ function EmptyState({
         <div className="pt-2 border-t" style={{ borderColor: "var(--border)" }}>
           <WidgetLabel>Length controllers</WidgetLabel>
           <div className="space-y-2">
-            {lengthCtrls.map((lc) => (
-              <OverrideSlider
-                key={lc.id}
-                field={lc}
-                controllers={controllers}
-                drivenByTlv={false}
-                maxBytes={
-                  lc.controlsLength && !boundedLengthKeys.has(lc.controlsLength)
-                    ? MAX_LENGTH_CONTROLLER_BYTES
-                    : undefined
-                }
-                onChange={onControllerChange}
-              />
-            ))}
+            {lengthCtrls.map((lc) => {
+              // Same live-gate as the refSwitch picker above: a length
+              // controller's field is only in the diagram once its switch arm is
+              // selected / its record is instantiated (socks5's socksDomainLen
+              // only sizes a payload when socksAtyp=domain). Until then the
+              // slider can't change a single bit, so disable it with a hint
+              // pointing at what to set first instead of a live-looking but inert
+              // control. `cells` IS the live diagram, so this is layout-faithful.
+              const live = lc.controlsLength
+                ? fieldRendered(cells, lc.controlsLength)
+                : true;
+              return (
+                <OverrideSlider
+                  key={lc.id}
+                  field={lc}
+                  controllers={controllers}
+                  drivenByTlv={false}
+                  maxBytes={
+                    lc.controlsLength &&
+                    !boundedLengthKeys.has(lc.controlsLength)
+                      ? MAX_LENGTH_CONTROLLER_BYTES
+                      : undefined
+                  }
+                  disabledHint={
+                    live
+                      ? undefined
+                      : `Select its variant / add a record to edit ${lc.controlsLength}`
+                  }
+                  onChange={onControllerChange}
+                />
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -659,6 +677,12 @@ type SliderProps = {
    *  slider/number max is clamped here so the input can't request an explosive
    *  (freeze/OOM) payload. Omitted for boundedRepeat-driven length sliders. */
   maxBytes?: number;
+  /** When set, the controlled field is NOT in the current diagram (its switch
+   *  arm is unselected / its record isn't instantiated), so dragging the slider
+   *  can't change anything. Render the inputs disabled with this hint telling
+   *  the user what to set first, instead of a live-looking but inert control
+   *  (same gate as the refSwitch picker). Absent = live. */
+  disabledHint?: string;
   onChange: (key: string, value: number) => void;
 };
 
@@ -667,6 +691,7 @@ function OverrideSlider({
   controllers,
   drivenByTlv,
   maxBytes,
+  disabledHint,
   onChange,
 }: SliderProps) {
   const key = field.controlsLength!;
@@ -686,6 +711,7 @@ function OverrideSlider({
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const disabled = disabledHint !== undefined;
 
   return (
     <div>
@@ -696,7 +722,10 @@ function OverrideSlider({
       >
         Length · drives <code className="font-mono normal-case">{key}</code>
       </label>
-      <div className="flex items-center gap-2.5">
+      <div
+        className="flex items-center gap-2.5"
+        style={{ opacity: disabled ? 0.55 : 1 }}
+      >
         <span className="pv-slider-wrap flex-1">
           <input
             suppressHydrationWarning
@@ -706,6 +735,7 @@ function OverrideSlider({
             min={min}
             max={max}
             value={value}
+            disabled={disabled}
             onChange={(e) => apply(e.target.value)}
             onPointerDown={() => setTooltipVisible(true)}
             onPointerUp={() => setTooltipVisible(false)}
@@ -714,6 +744,7 @@ function OverrideSlider({
             onBlur={() => setTooltipVisible(false)}
             className="pv-slider"
             aria-labelledby={labelId}
+            style={{ cursor: disabled ? "not-allowed" : undefined }}
           />
           <SliderTooltip
             value={Number(value)}
@@ -730,6 +761,7 @@ function OverrideSlider({
           min={min}
           max={max}
           value={value}
+          disabled={disabled}
           onChange={(e) => apply(e.target.value)}
           aria-labelledby={labelId}
           className="w-16 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight"
@@ -737,9 +769,13 @@ function OverrideSlider({
             borderColor: "var(--border-strong)",
             background: "var(--bg-elevated)",
             color: "var(--fg)",
+            cursor: disabled ? "not-allowed" : undefined,
           }}
         />
       </div>
+      {disabledHint ? (
+        <p className="mt-1.5 text-3xs text-fg-muted m-0">{disabledHint}</p>
+      ) : null}
       {drivenByTlv ? (
         <p className="mt-1.5 text-3xs text-fg-muted m-0">
           Synced from TLV editor — direct edits reset on the next TLV change.
