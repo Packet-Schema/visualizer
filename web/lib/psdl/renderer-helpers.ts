@@ -12,11 +12,16 @@ import type {
   Field,
   Packet,
   ResolvedTlv,
+  SubField,
   TlvBlock,
   TlvCatalogEntry,
   TlvCatalogField,
   TlvInstance,
 } from "./renderer";
+import {
+  DELIMITED_DEFAULT_BYTES,
+  VARINT_DEFAULT_BITS,
+} from "./dynamic-width-defaults";
 
 /**
  * Validate renderer-Packet structural invariants:
@@ -176,6 +181,28 @@ export function initialState(packet: Packet): ControllerState {
     if (field.controlsLength) {
       state[field.controlsLength] = field.defaultValue ?? 0;
     }
+  }
+  // Seed the SAME dynamic-width default the diagram layout seeds
+  // (`seedDynamicWidthDefaults`) into the bootstrap `controllers` state, so the
+  // OverridePanel WidthPicker's active option matches the rendered cell on load.
+  // Without this the picker falls back to `pickerWidths(target)[0]` — 1 byte for
+  // a delimiter-terminated `bytes` field — while the diagram already shows the
+  // seeded 4-byte cell, an inert-looking control that contradicts the diagram
+  // until the user clicks (syslog's pri/version/… delimited fields). A field
+  // that is ALSO a switch discriminator (`switchCases`) overloads env[id] for
+  // the case value, so it is skipped here exactly as `collectSwitchOnRefIds`
+  // carves it out in the layout seed. Only fills an unset key, so a user /
+  // saved-env width still wins, and (via `nonDefaultControllerEnv`) it stays out
+  // of the share URL.
+  const seedDynamicWidth = (f: Field | SubField): void => {
+    if (f.switchCases) return;
+    if (state[f.id] !== undefined) return;
+    if (f.isDelimited) state[f.id] = DELIMITED_DEFAULT_BYTES;
+    else if (f.varintEncoding) state[f.id] = VARINT_DEFAULT_BITS;
+  };
+  for (const field of packet.fields) {
+    seedDynamicWidth(field);
+    for (const sub of field.subfields ?? []) seedDynamicWidth(sub);
   }
   // Packet-level length controllers (bounded scopes whose length field is
   // group-nested) seed the same way as top-level controlsLength fields.

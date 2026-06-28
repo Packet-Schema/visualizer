@@ -20,9 +20,12 @@ import {
 import { isField } from "./utils";
 
 /** A varint with no width is 1 byte minimum on the wire; a delimited string is
- *  shown at a small representative length until the user sets one. */
-const VARINT_DEFAULT_BITS = 8;
-const DELIMITED_DEFAULT_BYTES = 4;
+ *  shown at a small representative length until the user sets one. Exported so
+ *  the renderer-mirror bootstrap (`initialState`) can seed the SAME defaults
+ *  into the `controllers` React state, keeping the OverridePanel WidthPicker's
+ *  highlighted option in agreement with the seeded diagram cell. */
+export const VARINT_DEFAULT_BITS = 8;
+export const DELIMITED_DEFAULT_BYTES = 4;
 
 /**
  * Collect the ids of every field that is a `switch ... on: ref(field)`

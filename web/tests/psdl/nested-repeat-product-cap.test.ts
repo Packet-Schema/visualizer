@@ -198,7 +198,12 @@ describe("nested / per-record repeat product cell-count cap", () => {
         `${key}: product-clamped cell count must stay renderable (got ${clamped})`,
       ).toBeLessThanOrEqual(MAX_DERIVED_PRODUCT * 64 + 4096);
     }
-  });
+    // This case resolves the layout (with every count/length control maxed) for
+    // ALL ~184 presets in one pass; in isolation it runs in ~5s, but under the
+    // full suite's parallel contention it can edge past the 5s default and time
+    // out flakily. Give it explicit headroom (the assertions themselves are
+    // fast — the cost is the per-preset layout resolution).
+  }, 30000);
 
   it("bounds the repeat × per-record-length product (diameter, dhcpv6, dhcpv6Relay)", () => {
     for (const key of ["diameter", "dhcpv6", "dhcpv6Relay"]) {

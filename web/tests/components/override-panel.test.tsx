@@ -16,7 +16,11 @@ import {
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
-import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
+import {
+  seedDynamicWidthDefaults,
+  DELIMITED_DEFAULT_BYTES,
+} from "@/lib/psdl/dynamic-width-defaults";
+import { initialState } from "@/lib/psdl/renderer-helpers";
 
 let activeRoot: Root | null = null;
 let activeContainer: HTMLElement | null = null;
@@ -488,11 +492,15 @@ describe("OverridePanel widgets", () => {
     ]);
 
     const onChange = vi.fn();
+    // Drive the panel from the REAL bootstrap controllers (`initialState`), not a
+    // hardcoded value — otherwise the regression below (picker highlights 1B
+    // while the diagram shows the seeded 4-byte cell) would be masked.
+    const controllers = initialState(packet);
     const { container } = await mount(
       <OverridePanel
         packet={packet}
         selectedFieldId="hostname"
-        controllers={{ hostname: 4 }}
+        controllers={controllers}
         onControllerChange={onChange}
       />,
     );
@@ -521,6 +529,52 @@ describe("OverridePanel widgets", () => {
       eight.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(onChange).toHaveBeenCalledWith("hostname", 8);
+  });
+
+  it("bootstrap controllers seed the delimited default so the WidthPicker matches the diagram cell (panel must not contradict diagram on load)", async () => {
+    const packet = psdlToRenderer(PRESETS.syslog!);
+    const delimited = packet.fields.filter((f) => f.isDelimited);
+    expect(delimited.length).toBeGreaterThan(0);
+
+    // The renderer-mirror bootstrap must seed the SAME default the diagram layout
+    // seeds, so every delimited field's controller is the visible byte count
+    // (NOT undefined → pickerWidths[0]=1B, which contradicted the diagram).
+    const controllers = initialState(packet);
+    for (const f of delimited) {
+      expect(
+        controllers[f.id],
+        `${f.id} must be seeded in bootstrap controllers`,
+      ).toBe(DELIMITED_DEFAULT_BYTES);
+    }
+
+    // Cross-check against the actual diagram: the seeded layout cell width (in
+    // bytes) equals the picker's active byte count, for the same env the
+    // bootstrap controllers represent.
+    const env = packetViewerEnv(PRESETS.syslog!);
+    const layout = resolveLayout(PRESETS.syslog!, { env });
+    const cell = layout.cells.find((c) => c.field.id === "hostname");
+    expect(cell, "hostname cell must be present in the diagram").toBeDefined();
+    expect(cell!.bitsTotal / 8).toBe(DELIMITED_DEFAULT_BYTES);
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="hostname"
+        controllers={controllers}
+        onControllerChange={onChange}
+      />,
+    );
+    const buttons = Array.from(
+      container.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    const active = buttons.find(
+      (b) => b.getAttribute("aria-checked") === "true",
+    );
+    // The highlighted option must match the diagram cell (4B), NOT the 1B
+    // pickerWidths[0] fallback the unseeded controllers used to produce.
+    expect(active?.textContent).toBe(`${cell!.bitsTotal / 8}B`);
+    expect(active?.textContent).toBe("4B");
   });
 
   // A varint / berLength leaf that lives INSIDE a switch case / optional /
