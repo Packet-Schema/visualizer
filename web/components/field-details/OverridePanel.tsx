@@ -544,8 +544,18 @@ export default function OverridePanel({
     );
   }
 
+  // Suppress the berLength width picker for a leaf nested in a tight
+  // value-budgeted bounded scope: every non-default width overflows the fixed
+  // budget and freezes the diagram, so the picker is inert / misleading. The
+  // resolved field id may carry a per-instance repeat suffix (`requestSeqLength#0`),
+  // so compare on the bare id. See `berLengthWidthLocked` on the renderer Packet.
+  const berLengthWidthLocked = field.isBerLength
+    ? (packet.berLengthWidthLocked ?? []).includes(stripRepeatTag(field.id))
+    : false;
   if (
-    (field.varintEncoding || field.isBerLength || field.isDelimited) &&
+    (field.varintEncoding ||
+      (field.isBerLength && !berLengthWidthLocked) ||
+      field.isDelimited) &&
     onControllerChange
   ) {
     widgets.push(

@@ -20,6 +20,7 @@ import {
   seedDynamicWidthDefaults,
   DELIMITED_DEFAULT_BYTES,
 } from "@/lib/psdl/dynamic-width-defaults";
+import { evalExprOr } from "@/lib/psdl/expr";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 
 let activeRoot: Root | null = null;
@@ -664,6 +665,62 @@ describe("OverridePanel widgets", () => {
       twoBytes.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(onChange).toHaveBeenCalledWith(berLenEnvKey("padataCtxLength"), 16);
+  });
+
+  // The flip side of the kerberos case above: ocspRequest's CertID berLength
+  // leaves (requestSeqLength / certIdLength / ...) live inside a bounded scope
+  // whose budget is `bytes(ref <siblingLength>)`, so widening the prefix octet
+  // overflows the fixed value-budget and core's normalize THROWS — the diagram
+  // freezes while the picker's active option moves (inert / misleading control).
+  // psdlToRenderer flags them on `berLengthWidthLocked`; OverridePanel must NOT
+  // render a width picker for them (the octet stays at its valid 8-bit default).
+  it("does NOT surface a BER length width picker for a value-budgeted leaf (ocspRequest requestSeqLength)", async () => {
+    const src = PRESETS.ocspRequest!;
+    const packet = psdlToRenderer(src);
+    expect(packet.berLengthWidthLocked ?? []).toContain("requestSeqLength");
+
+    // Build the PacketViewer layout env (bounded-repeat count derived from the
+    // length budget) so a representative request record — and its
+    // requestSeqLength octet cell — actually renders to click on.
+    const env = new Map<string, number>(
+      Object.entries(initialState(packet)).map(([k, v]) => [k, Number(v)]),
+    );
+    for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+    for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+    seedDynamicWidthDefaults(src, env);
+    for (const br of packet.boundedRepeats ?? []) {
+      for (const seed of br.innerScopeSeeds ?? []) {
+        if (!env.get(seed.key)) env.set(seed.key, seed.value);
+      }
+      const budget = evalExprOr(br.bytesExpr, env, 0);
+      env.set(
+        br.countKey,
+        Math.floor(Math.max(0, budget - br.prefixBytes) / br.perRecordBytes),
+      );
+    }
+    const { cells } = resolveLayout(src, { env });
+    const cell = cells.find(
+      (c) => c.field.id.split("#")[0] === "requestSeqLength",
+    );
+    expect(cell, "requestSeqLength octet must render as a cell").toBeDefined();
+    // The cell still carries the berLength flag (it IS a berLength octet); the
+    // suppression is purely about the editing surface.
+    expect(cell!.field.isBerLength).toBe(true);
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={cell!.field.id}
+        controllers={{}}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    // No BER-length width radiogroup — the read-only empty state is shown instead.
+    expect(container.textContent ?? "").not.toMatch(/BER length width/i);
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+    expect(container.textContent ?? "").toMatch(/no runtime override/i);
   });
 
   // A delimiter-terminated (NUL-terminated) `bytes` leaf that lives INSIDE a

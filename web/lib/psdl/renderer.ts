@@ -428,6 +428,19 @@ export type Packet = {
     id: string;
     kind: "delimited" | "varint" | "berLength";
   }[];
+  /** berLength leaf ids whose width PICKER is suppressed because every non-default
+   *  width freezes the diagram. A berLength octet nested inside a `bounded` scope
+   *  whose budget is `bytes(ref X)` for a `length`-category sibling X (a tight
+   *  value-budgeted scope) cannot widen: the extra prefix byte overflows the fixed
+   *  value-budget and core's `normalize` throws `bounded scope over-consumed`,
+   *  which PacketViewer's layout try/catch swallows — so the picker's active
+   *  option moves to the clicked width while the diagram is unchanged (an inert /
+   *  misleading control). OverridePanel skips the WidthPicker for these ids so no
+   *  control is shown that cannot change the diagram; the octet still renders at
+   *  its valid 8-bit short-form default. Populated by `psdlToRenderer`; across all
+   *  184 presets this matches ONLY ocspRequest's 6 CertID berLength leaves. Absent
+   *  ⇒ no suppression. */
+  berLengthWidthLocked?: string[];
   /** Per-field byteOrder flips applied via the diagram, keyed by field id.
    *  A top-level field carries its byteOrder on the matching `fields` entry,
    *  but a field nested inside a Switch case / Repeat element / Group never

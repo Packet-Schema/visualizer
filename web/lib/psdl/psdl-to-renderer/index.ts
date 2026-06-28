@@ -1632,6 +1632,136 @@ function collectNestedDynamicWidthLeaves(
 }
 
 /**
+ * Collect berLength leaf ids whose width PICKER must be SUPPRESSED because every
+ * non-default width freezes the diagram.
+ *
+ * A berLength octet inside a `bounded` scope whose budget is `bytes(ref X)` for a
+ * `length`-category sibling X is sized by a DECODED value, not a fixed numeric
+ * constant — the scope's byte budget is computed assuming every nested berLength
+ * prefix octet is at its 8-bit (1-byte) default. Widening the octet (the
+ * WidthPicker's only purpose) grows the prefix, overflows the fixed value-budget,
+ * and core's `normalize` throws `bounded scope over-consumed`. PacketViewer's
+ * layout try/catch then swallows the throw, so the picker's active option visibly
+ * moves to the clicked width while the diagram does NOT change — an inert /
+ * misleading control that silently no-ops. The existing `innerScopeSeeds`
+ * `derivesBudgetKey` grow-path only grows a budget for a widened VALUE length, not
+ * for a widened PREFIX octet that itself sizes the (possibly multiply-nested)
+ * budget — there is no crash-free grow path here. So OverridePanel suppresses the
+ * WidthPicker for these ids; the octet still renders at its valid 8-bit short-form
+ * default, and nothing is shown that cannot change the diagram.
+ *
+ * Across all 184 presets this matches ONLY ocspRequest's 6 CertID berLength leaves
+ * (requestSeqLength / certIdLength / hashAlgLength / issuerNameHashLength /
+ * issuerKeyHashLength / serialNumberLength), each nested in
+ * `requestListScope = bytes(ref reqListLength)` or
+ * `requestContentScope = bytes(ref requestSeqLength)`.
+ */
+function collectBerLengthWidthLocked(packet: PsdlPacket): string[] {
+  const out = new Set<string>();
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>();
+  const categoryById = collectFieldCategories(packet);
+  const isValueBudgetedBounded = (
+    c: Extract<Container, { kind: "bounded" }>,
+  ): boolean => {
+    if (c.bytes.kind !== "ref") return false;
+    const ref = singleRefController(c.bytes);
+    return ref !== null && categoryById.get(ref) === "length";
+  };
+  const visit = (
+    containers: Container[],
+    insideValueBudgeted: boolean,
+  ): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "berLength" && insideValueBudgeted) out.add(c.id);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children, insideValueBudgeted);
+          break;
+        case "repeat":
+          visit(c.element.fields, insideValueBudgeted);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases))
+            visit(s.fields, insideValueBudgeted);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields, insideValueBudgeted);
+          break;
+        case "optional":
+          visit([c.container], insideValueBudgeted);
+          break;
+        case "bounded":
+          visit(c.fields, insideValueBudgeted || isValueBudgetedBounded(c));
+          break;
+        case "ref": {
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields, insideValueBudgeted);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+      }
+    }
+  };
+  visit(packet.body, false);
+  return [...out];
+}
+
+/** Map every declared field id to its `category` (descending through every
+ *  structural container and inlining `ref` defs). Used to classify a
+ *  `bounded(ref X)` budget as value-sized when X is a `length` field. */
+function collectFieldCategories(packet: PsdlPacket): Map<string, string> {
+  const out = new Map<string, string>();
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>();
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.category) out.set(c.id, c.category);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        case "ref": {
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+      }
+    }
+  };
+  visit(packet.body);
+  return out;
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -2003,6 +2133,9 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   const dynamicWidthLeaves = collectNestedDynamicWidthLeaves(packet).filter(
     (leaf) => !mirrorLeafIds.has(leaf.id),
   );
+  // berLength leaves whose width PICKER must be suppressed (it would freeze the
+  // diagram on every non-default width). See collectBerLengthWidthLocked.
+  const berLengthWidthLocked = collectBerLengthWidthLocked(packet);
   return {
     name: packet.name,
     rowBits: packet.rowBits,
@@ -2015,6 +2148,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     ...(lengthControllers.length > 0 ? { lengthControllers } : {}),
     ...(boundedRepeats.length > 0 ? { boundedRepeats } : {}),
     ...(dynamicWidthLeaves.length > 0 ? { dynamicWidthLeaves } : {}),
+    ...(berLengthWidthLocked.length > 0 ? { berLengthWidthLocked } : {}),
   };
 }
 
