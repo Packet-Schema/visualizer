@@ -173,6 +173,16 @@ function variableValueExtra(field: PsdlField): VariableBytesSeed | null {
     } else if (t.n.kind === "ref") {
       isVariable = true;
       lengthFieldId = t.n.field;
+    } else if (t.n.kind !== "lit") {
+      // A dynamic `bytes(<expr>)` whose length is a computed expression rather
+      // than a bare `ref` — e.g. tcp `optionGeneric.value` = `bytes(length-2)`
+      // (an `op`), or any `cond`/`peek`/`remaining`-sized value. `typeBits`
+      // collapses these to 0 at design time, so without a knob the value cell
+      // is permanently zero-width and invisible (see-but-cannot-edit). Seed a
+      // representative width + per-instance byte knob. We can't extract a single
+      // sibling-length field id from an arbitrary expression, so omit
+      // `lengthFieldId` — the value carries its own byte count via `extras`.
+      isVariable = true;
     }
     // A `bytes(lit N)` is fixed-width — typeBits already sized it.
   } else if (t.kind === "varint" || t.kind === "berLength") {
