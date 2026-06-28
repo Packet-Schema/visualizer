@@ -4435,6 +4435,80 @@ function attachOverrideMetadata(
   const primaryRef = (expr: import("../types").Expr): string | null =>
     exprRefs(expr)[0] ?? null;
 
+  // Map every body `virtual` field id → the refs of its expr. An Optional whose
+  // `when` is `ref(V)` where V is a virtual has NO cell to stamp (a virtual is
+  // computed, never written), so `findOrSurfaceGateTarget(V)` finds nothing and
+  // the gated region is see-but-cannot-edit (gtpv1u / gtpv1c: the optional
+  // Sequence-Number / N-PDU / Next-Ext-Header block is gated on the virtual
+  // `gtpOptPresent = gtpE | gtpS | gtpPN`). Expanding the virtual to its driving
+  // refs lets us stamp each real bit leaf (gtpE / gtpS / gtpPN) as a
+  // Present/Absent toggle whose env truthiness ORs back into the virtual.
+  // A virtual gate only maps cleanly to per-leaf Present/Absent toggles when
+  // its expr is a pure OR of refs (`gtpE | gtpS | gtpPN`): the region is present
+  // iff at least one leaf is truthy, so flipping ANY leaf's env truthiness ORs
+  // back into the virtual exactly. A virtual built from a `cond` / comparison
+  // (rtmp's `tsSentinel = (fmt==0 && timestamp0==0xFFFFFF) || …`) does NOT — its
+  // presence hinges on a specific VALUE of an operand, so a checkbox that writes
+  // 0/1 onto that operand would be inert or misleading (the same trap the plain
+  // op/cond gate guard above avoids). Only OR-of-refs virtuals are expanded.
+  const isOrOfRefs = (expr: import("../types").Expr): boolean => {
+    if (expr.kind === "ref") return true;
+    if (expr.kind === "op" && expr.op === "|") {
+      return isOrOfRefs(expr.a) && isOrOfRefs(expr.b);
+    }
+    return false;
+  };
+  const virtualRefs = new Map<string, string[]>();
+  const virtualIds = new Set<string>();
+  const collectVirtuals = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "virtual") {
+        virtualIds.add(c.id);
+        if (isOrOfRefs(c.expr)) virtualRefs.set(c.id, exprRefs(c.expr));
+      } else if (c.kind === "group") collectVirtuals(c.children);
+      else if (c.kind === "bounded") collectVirtuals(c.fields);
+      else if (c.kind === "optional") collectVirtuals([c.container]);
+      else if (c.kind === "encrypted") collectVirtuals(c.plaintext.fields);
+      else if (c.kind === "repeat") collectVirtuals(c.element.fields);
+      else if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases))
+          collectVirtuals(struct.fields);
+      } else if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def) collectVirtuals(def.fields);
+      }
+    }
+  };
+  collectVirtuals(body);
+
+  // Resolve a gate ref to the set of concrete (non-virtual) ref ids that drive
+  // it: a virtual expands (transitively) to its expr's refs; a plain ref stays
+  // itself. Virtuals that reference other virtuals chain through.
+  const resolveGateRefs = (ref: string): string[] => {
+    if (!virtualIds.has(ref)) return [ref];
+    // A virtual that is not a pure OR-of-refs (`cond` / comparison / literal)
+    // has no expansion we can map to toggles → drive nothing (the gated region
+    // surfaces its control elsewhere, or is structurally fixed like a `lit`).
+    if (!virtualRefs.has(ref)) return [];
+    const out: string[] = [];
+    const pending = [ref];
+    const expanded = new Set<string>();
+    while (pending.length > 0) {
+      const r = pending.pop()!;
+      if (expanded.has(r)) continue;
+      expanded.add(r);
+      const refs = virtualRefs.get(r);
+      if (!refs) {
+        // A concrete leaf (or a virtual we chose not to expand).
+        if (!virtualIds.has(r)) out.push(r);
+        continue;
+      }
+      for (const inner of refs) pending.push(inner);
+    }
+    return out;
+  };
+
   const visit = (containers: PsdlPacket["body"]): void => {
     for (const c of flattenForMirror(containers, defs)) {
       if (c.kind === "switch") {
@@ -4536,16 +4610,25 @@ function attachOverrideMetadata(
         // value is surfaced through its own editor instead (e.g. the
         // length-driven reason string via `collectOptionalLengthGates`).
         if (c.when.kind === "ref") {
-          const ref = c.when.field;
-          const t = findOrSurfaceGateTarget(ref, containers);
-          if (t) {
-            if (t.kind === "field") {
-              t.field.optionalGateFor = [
-                ...(t.field.optionalGateFor ?? []),
-                gated,
-              ];
-            } else {
-              t.sub.optionalGateFor = [...(t.sub.optionalGateFor ?? []), gated];
+          // A virtual gate (`when: ref(V)` where V has no cell) expands to the
+          // real bits its expr ORs together — gtpv1u / gtpv1c's `gtpOptPresent =
+          // gtpE | gtpS | gtpPN`. Each driving leaf becomes a Present/Absent
+          // toggle whose env truthiness feeds back into the virtual, so the
+          // gated block is finally controllable. A plain ref expands to itself.
+          for (const ref of resolveGateRefs(c.when.field)) {
+            const t = findOrSurfaceGateTarget(ref, containers);
+            if (t) {
+              if (t.kind === "field") {
+                t.field.optionalGateFor = [
+                  ...(t.field.optionalGateFor ?? []),
+                  gated,
+                ];
+              } else {
+                t.sub.optionalGateFor = [
+                  ...(t.sub.optionalGateFor ?? []),
+                  gated,
+                ];
+              }
             }
           }
         }
