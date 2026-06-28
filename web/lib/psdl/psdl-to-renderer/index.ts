@@ -4336,12 +4336,24 @@ function collectPeekSwitches(
       if (c.kind === "switch") {
         // Suppress an inert peek picker whose every selectable arm renders to
         // the same geometry: choosing any case can't change the diagram, so the
-        // dropdown is a misleading see-but-cannot-edit control. snmpV2c's
-        // `pduSwitch` (8 PDU-type arms, each the same ASN.1 tag/berLength/body
-        // shape differing only in per-arm field ids) is exactly this. Mirrors
-        // the structural-identity gate `attachOverrideMetadata` /
+        // dropdown is a misleading see-but-cannot-edit control. Mirrors the
+        // structural-identity gate `attachOverrideMetadata` /
         // `collectRefSwitches` apply to ref-discriminated pickers.
-        if (c.on.kind === "peek" && !switchArmsRenderIdentical(c.cases)) {
+        //
+        // EXCEPTION: even when every LISTED arm renders identically, a present
+        // `_` default arm whose geometry DIFFERS from those listed arms makes
+        // the picker live — selecting a listed value vs. falling through to the
+        // distinct default changes the diagram. snmpV2c's `pduSwitch` is exactly
+        // this: its 8 PDU-type arms render the same ASN.1 envelope (differing
+        // only by per-arm field id / NAME), but its `_` default `unknownPdu` is
+        // a degenerate 3-field stub. With the picker suppressed, the unset peek
+        // 0-fills → selects `_` → the diagram loads only the Unknown-PDU stub
+        // with no surface to reveal any real PDU (see-but-cannot-edit). When the
+        // listed arms differ only by name we still surface the picker so the
+        // user can name the PDU and, critically, escape the stub.
+        const defaultCase = defaultArmSyntheticCase(c.cases);
+        const armsLook = !switchArmsRenderIdentical(c.cases);
+        if (c.on.kind === "peek" && (armsLook || defaultCase)) {
           const cases: { value: number; label: string }[] = [];
           for (const [key, struct] of Object.entries(c.cases)) {
             const v = firstCaseKeyValue(key);
@@ -4355,14 +4367,25 @@ function collectPeekSwitches(
           // `rohcHeader`: listed `126`=IR Packet vs `_`=normal datagram), so
           // the peek picker can select the default-arm layout instead of only
           // the listed value(s). The sentinel value is unlisted, so core's
-          // `selectArm` falls through to `_`. `unshift` (not `push`) places the
-          // default FIRST so `initialState` seeds the basic default shape (the
-          // RFC 5795 normal datagram) rather than the special listed value
-          // (ROHC IR 126). For a switch-nested option-list switch (icmpv6Ndp's
-          // NDP option types) the same generic "unknown option" `_` arm is also
-          // a real, RFC-defined reachable state, so it is surfaced too.
-          const defaultCase = defaultArmSyntheticCase(c.cases);
-          if (defaultCase) cases.unshift(defaultCase);
+          // `selectArm` falls through to `_`. When the listed arms genuinely
+          // differ, `unshift` (not `push`) places the default FIRST so
+          // `initialState` seeds the basic default shape (the RFC 5795 normal
+          // datagram) rather than the special listed value (ROHC IR 126); for a
+          // switch-nested option-list switch (icmpv6Ndp's NDP option types) the
+          // same generic "unknown option" `_` arm is also a real, RFC-defined
+          // reachable state, so it is surfaced first too.
+          //
+          // But when the picker is surfaced ONLY because the default differs
+          // (the listed arms render identically — snmpV2c's pduSwitch, whose `_`
+          // is the degenerate "Unknown PDU" stub), placing the default first
+          // would seed the load to that stub — the very see-but-cannot-edit
+          // state we are fixing. So `push` it LAST, leaving the first real
+          // listed PDU tag (160 GetRequest) as `cases[0]` for `initialState` to
+          // seed — the diagram then shows a real PDU on load.
+          if (defaultCase) {
+            if (armsLook) cases.unshift(defaultCase);
+            else cases.push(defaultCase);
+          }
           if (cases.length > 0) {
             const peek = c.on;
             // Only surface peek switches whose offset is a compile-time
