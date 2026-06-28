@@ -42,6 +42,14 @@ type Props = {
   /** Diagram cells, used to resolve clicks on cells that have no renderer
    *  mirror field (records inside a plain repeat). */
   cells?: readonly Cell[];
+  /** `controlsLength` keys whose slider is INERT in the current diagram: the
+   *  controlled field renders, but the ACTIVE switch/refSwitch arm sizes its
+   *  value fixed, so perturbing the length changes zero cell widths
+   *  (dnsResponse's dnsRdLength at the seeded A-record arm). PacketViewer probes
+   *  this by re-resolving with the value bumped; OverridePanel gates such a
+   *  slider with a hint pointing at the variant picker instead of a live-looking
+   *  but inert control (same class as the absent-field `fieldRendered` gate). */
+  inertLengthControllers?: ReadonlySet<string>;
 };
 
 /** True when a field id is materialised as a cell (or sub-cell) in the current
@@ -52,7 +60,7 @@ type Props = {
  *  selected (oncRpc's rpcMsgType→replyStat→acceptStat chain) AND its enclosing
  *  repeat has a record (lispMapReply's per-record locator AFI), so a rendered
  *  discriminator cell is an exact, layout-faithful "this picker is live" signal. */
-function fieldRendered(
+export function fieldRendered(
   cells: readonly Cell[] | undefined,
   id: string,
 ): boolean {
@@ -75,6 +83,7 @@ function EmptyState({
   onTlvChange,
   tlvSlotBytes,
   cells,
+  inertLengthControllers,
 }: {
   message: string;
   packet: Packet;
@@ -83,6 +92,7 @@ function EmptyState({
   onTlvChange?: (field: Field, next: TlvInstance[]) => void;
   tlvSlotBytes?: Record<string, number>;
   cells?: readonly Cell[];
+  inertLengthControllers?: ReadonlySet<string>;
 }) {
   // Packet-level extras (free Repeats, peek Switches) surface here so the
   // panel never reads as truly empty when the packet has stoppable knobs
@@ -201,16 +211,31 @@ function EmptyState({
           <WidgetLabel>Length controllers</WidgetLabel>
           <div className="space-y-2">
             {lengthCtrls.map((lc) => {
-              // Same live-gate as the refSwitch picker above: a length
-              // controller's field is only in the diagram once its switch arm is
-              // selected / its record is instantiated (socks5's socksDomainLen
-              // only sizes a payload when socksAtyp=domain). Until then the
-              // slider can't change a single bit, so disable it with a hint
-              // pointing at what to set first instead of a live-looking but inert
-              // control. `cells` IS the live diagram, so this is layout-faithful.
-              const live = lc.controlsLength
+              // Two-stage live-gate. (1) ABSENT field: a length controller's
+              // field is only in the diagram once its switch arm is selected /
+              // its record is instantiated (socks5's socksDomainLen only sizes a
+              // payload when socksAtyp=domain). (2) INERT field: the field IS
+              // drawn, but the ACTIVE refSwitch arm sizes its value FIXED so
+              // moving the slider changes zero cell widths (dnsResponse's
+              // dnsRdLength at the seeded A-record arm — RDATA is a fixed 32-bit
+              // address; only the CNAME/NS/PTR/MX/TXT/SRV/RAW arms are sized by
+              // RDLENGTH). `fieldRendered` catches (1); PacketViewer's
+              // re-resolve probe (`inertLengthControllers`) catches (2). Either
+              // way disable with a hint pointing at the variant to select first,
+              // instead of a live-looking but inert control. `cells` IS the live
+              // diagram, so this is layout-faithful.
+              const fieldThere = lc.controlsLength
                 ? fieldRendered(cells, lc.controlsLength)
                 : true;
+              const inert =
+                !!lc.controlsLength &&
+                !!inertLengthControllers?.has(lc.controlsLength);
+              const live = fieldThere && !inert;
+              const disabledHint = fieldThere
+                ? inert
+                  ? `Select an RDATA variant (CNAME / NS / PTR / MX / TXT / SRV) whose value is sized by ${lc.controlsLength}`
+                  : undefined
+                : `Select its variant / add a record to edit ${lc.controlsLength}`;
               return (
                 <OverrideSlider
                   key={lc.id}
@@ -223,11 +248,7 @@ function EmptyState({
                       ? MAX_LENGTH_CONTROLLER_BYTES
                       : undefined
                   }
-                  disabledHint={
-                    live
-                      ? undefined
-                      : `Select its variant / add a record to edit ${lc.controlsLength}`
-                  }
+                  disabledHint={live ? undefined : disabledHint}
                   onChange={onControllerChange}
                 />
               );
@@ -292,6 +313,7 @@ export default function OverridePanel({
   onByteOrderChange,
   tlvSlotBytes,
   cells,
+  inertLengthControllers,
 }: Props) {
   // TLV cells emitted by `applyTlvInstances` carry synthetic ids that
   // don't live in `packet.fields`. `parseTlvCellId` peels back the role
@@ -379,6 +401,7 @@ export default function OverridePanel({
     onTlvChange,
     tlvSlotBytes,
     cells,
+    inertLengthControllers,
   };
 
   if (r.kind === "empty") {

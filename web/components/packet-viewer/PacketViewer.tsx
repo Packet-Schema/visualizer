@@ -70,7 +70,9 @@ import type {
 import type { PsdlPacket } from "@/lib/psdl/types";
 import { EnrichedText } from "@/components/common/EnrichedText";
 import DetailPanel from "@/components/field-details/DetailPanel";
-import OverridePanel from "@/components/field-details/OverridePanel";
+import OverridePanel, {
+  fieldRendered,
+} from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
@@ -1328,141 +1330,160 @@ export default function PacketViewer({
     null,
   );
 
+  // Build the fully-seeded, freeze-guarded layout env from a controllers map.
+  // Extracted so the layout memo AND the inert-length-controller probe below
+  // (which re-resolves with a single length value perturbed) share the EXACT
+  // same env-derivation pipeline — otherwise the probe could disagree with the
+  // diagram about whether a slider moves anything.
+  const buildLayoutEnv = useCallback(
+    (controllerValues: ControllerState): Map<string, number> => {
+      const env = new Map(
+        Object.entries(controllerValues).map(
+          ([k, v]) => [k, Number(v)] as const,
+        ),
+      );
+      // Default value seed: packet が宣言する Field.defaultValue を env に
+      // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
+      // 入力を上書きしない)。 これを fallback seed より先にやらないと、
+      // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
+      // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
+      // 既存 preset の variable-length field が zero-length に描かれる
+      // regression を起こす (Codex P1 指摘)。
+      const packetDefaults = initialEnv(targetPsdl);
+      for (const [k, v] of packetDefaults) {
+        if (!env.has(k)) env.set(k, v);
+      }
+      // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
+      // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
+      // PacketViewer 側が手動で seed しない限り `resolveLayout` が
+      // MissingRefError で throw → React render が落ちて "Application error"
+      // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
+      // と命名が一致しない ref をまとめて吸収する。
+      for (const r of psdlRefs) {
+        if (!env.has(r)) env.set(r, 0);
+      }
+      // Give varint / delimited-bytes fields a visible default width (a user width
+      // still wins — seed only fills unset/0).
+      seedDynamicWidthDefaults(targetPsdl, env);
+      // PRODUCT-AWARE freeze guard. Each control below (a bounded-derived count, a
+      // freeRepeat count, a direct length byte-count) is bounded individually to
+      // MAX_DERIVED_RECORDS, but the layout MULTIPLIES nested / sibling controls
+      // together (a repeat inside a repeat, or a repeat × a per-record length), so
+      // the PRODUCT — not any single value — is what explodes the cell count and
+      // freezes the un-virtualized diagram. We walk every layout-multiplying driver
+      // against a single shrinking budget: each driver gets `min(its own per-key
+      // cap, remaining budget)`, then divides the remaining budget by the value it
+      // actually took. The first drivers keep their full 1024 cap; later ones drop
+      // only as far as the running product forces, so the resolved cell count can
+      // never exceed the already-accepted single-maxed-control ceiling. The
+      // underlying controller VALUES stay user-editable (this is layout-env-only);
+      // OverridePanel's per-key SOFT_MAX still caps each input independently.
+      let productBudget = MAX_DERIVED_PRODUCT;
+      // `factor` consumes the shared budget: returns the value clamped to both the
+      // per-key cap and what the running product can still afford, then shrinks the
+      // budget by that value (>=1, so a 0/empty control never zeroes the budget for
+      // the controls after it).
+      const factor = (value: number, perKeyCap: number): number => {
+        const capped = Math.max(0, Math.min(value, perKeyCap, productBudget));
+        productBudget = Math.max(
+          1,
+          Math.floor(productBudget / Math.max(1, capped)),
+        );
+        return capped;
+      };
+      // Derive the iteration count of each bounded eos/until repeat from its
+      // scope's length budget, so raising the length slider fills the scope with
+      // records (core reads the eos count from env[countKey], not the budget).
+      // The user controls the length; the count follows — one intuitive control.
+      for (const br of packet.boundedRepeats ?? []) {
+        // Seed each PER-RECORD inner-scope length (tlsClientHello's `extLen`) so
+        // the representative record fits its own nested bounded — without this the
+        // budget-derived record over-consumes the empty inner scope. Only fills
+        // unset/0 so a user-set inner length still wins.
+        for (const seed of br.innerScopeSeeds ?? []) {
+          if (!env.get(seed.key)) env.set(seed.key, seed.value);
+        }
+        // The budget is the bounded.bytes expr (ref, or `field*k - c`) evaluated
+        // against the live env — not the raw slider value.
+        const budget = evalExprOr(br.bytesExpr, env, 0);
+        const forRecords = Math.max(0, budget - br.prefixBytes);
+        // Clamp to MAX_DERIVED_RECORDS AND the shared product budget: a maxed
+        // length slider would otherwise derive tens of thousands of records, and
+        // even a capped count can multiply with an inner repeat/length below. The
+        // length CELL stays user-editable; only the DERIVED count is capped.
+        env.set(
+          br.countKey,
+          factor(
+            Math.floor(forRecords / br.perRecordBytes),
+            MAX_DERIVED_RECORDS,
+          ),
+        );
+      }
+      // Cap each freeRepeat's DERIVED record count. Unlike boundedRepeats (count
+      // derived from a byte budget) and direct length controllers, a freeRepeat's
+      // record count is driven STRAIGHT by env[countKey] (via the affine
+      // transform), so an uncapped value — reachable not only through
+      // RepeatCountStepper but, crucially, BYPASSING it via share-URL hydration /
+      // JSON import (freeRepeat countKeys ride in `controllers` → env) — feeds e.g.
+      // 65535 directly into resolveLayout. Clamp the DERIVED record count to both
+      // the per-key cap and the shared product budget (so a repeat nested in
+      // another repeat — dnsResponse's dnsQuestions ⊃ dnsQNameLabels — cannot
+      // multiply two maxed steppers into a million-cell freeze), then invert
+      // through the transform back to the env value so the displayed count and the
+      // layout agree. Layout-only: the underlying controller value stays
+      // user-editable (OverridePanel's stepper SOFT_MAX caps each input).
+      for (const fr of packet.freeRepeats ?? []) {
+        const v = env.get(fr.countKey);
+        if (typeof v !== "number") continue;
+        const mul = fr.transform?.mul ?? 1;
+        const add = fr.transform?.add ?? 0;
+        const recordCount = v * mul + add;
+        const allowed = factor(recordCount, MAX_DERIVED_RECORDS);
+        if (allowed !== recordCount) {
+          // Invert recordCount = env * mul + add → env = (allowed - add) / mul.
+          // `mul` is always non-zero for a surfaced transform (the adapter rejects
+          // `*0`); clamp >= 0 so the unsigned wire field never goes negative.
+          const capped = Math.max(0, Math.floor((allowed - add) / mul));
+          env.set(fr.countKey, capped);
+        }
+      }
+      // Cap each DIRECT length-controller byte count (a `bytes(ref X)` payload sized
+      // straight by env[X], not via a budget-derived repeat). resolveLayout emits
+      // ~1 cell per payload byte, so an uncapped slider maxed to the field's full
+      // int range (16/24/32-bit) would generate millions-to-billions of cells in
+      // the un-virtualized diagram → freeze / OOM. Cap each to its per-key ceiling
+      // AND whatever the repeats LEFT in the shared product budget — a per-record
+      // length controller multiplies with its enclosing repeat's count (diameter
+      // avpLength × diameterAvps; dhcpv6 optionLen × options), so when the repeats
+      // have consumed the budget the per-record length must shrink with it. We read
+      // the LEFTOVER budget without each length draining it for the next, because
+      // sibling top-level length payloads (oncRpc credLength + verfLength) are
+      // ADDITIVE, not multiplicative — they must each keep their full per-key cap.
+      // The length CELL value stays user-editable in `controllers`; only the layout
+      // env is clamped (OverridePanel lowers the slider max to the per-key ceiling).
+      const directLengthCap = Math.min(
+        MAX_LENGTH_CONTROLLER_BYTES,
+        productBudget,
+      );
+      for (const id of directLengthControllerIds) {
+        const v = env.get(id);
+        if (typeof v === "number" && v > directLengthCap) {
+          env.set(id, directLengthCap);
+        }
+      }
+      return env;
+    },
+    [
+      targetPsdl,
+      psdlRefs,
+      packet.boundedRepeats,
+      packet.freeRepeats,
+      directLengthControllerIds,
+    ],
+  );
+
   const layout = useMemo(() => {
-    // Every preset is PSDL now — route the diagram through resolveLayout so
-    // Encrypted-container decoration and viewMode toggling are uniform.
-    // For imported packets the renderer mirror is the source of truth and we
-    // lift it back to PSDL on demand (lossy for variable-length payloads
-    // without TLV metadata, which is acceptable for layout purposes).
-    const env = new Map(
-      Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
-    );
-    // Default value seed: packet が宣言する Field.defaultValue を env に
-    // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
-    // 入力を上書きしない)。 これを fallback seed より先にやらないと、
-    // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
-    // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
-    // 既存 preset の variable-length field が zero-length に描かれる
-    // regression を起こす (Codex P1 指摘)。
-    const packetDefaults = initialEnv(targetPsdl);
-    for (const [k, v] of packetDefaults) {
-      if (!env.has(k)) env.set(k, v);
-    }
-    // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
-    // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
-    // PacketViewer 側が手動で seed しない限り `resolveLayout` が
-    // MissingRefError で throw → React render が落ちて "Application error"
-    // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
-    // と命名が一致しない ref をまとめて吸収する。
-    for (const r of psdlRefs) {
-      if (!env.has(r)) env.set(r, 0);
-    }
-    // Give varint / delimited-bytes fields a visible default width (a user width
-    // still wins — seed only fills unset/0).
-    seedDynamicWidthDefaults(targetPsdl, env);
-    // PRODUCT-AWARE freeze guard. Each control below (a bounded-derived count, a
-    // freeRepeat count, a direct length byte-count) is bounded individually to
-    // MAX_DERIVED_RECORDS, but the layout MULTIPLIES nested / sibling controls
-    // together (a repeat inside a repeat, or a repeat × a per-record length), so
-    // the PRODUCT — not any single value — is what explodes the cell count and
-    // freezes the un-virtualized diagram. We walk every layout-multiplying driver
-    // against a single shrinking budget: each driver gets `min(its own per-key
-    // cap, remaining budget)`, then divides the remaining budget by the value it
-    // actually took. The first drivers keep their full 1024 cap; later ones drop
-    // only as far as the running product forces, so the resolved cell count can
-    // never exceed the already-accepted single-maxed-control ceiling. The
-    // underlying controller VALUES stay user-editable (this is layout-env-only);
-    // OverridePanel's per-key SOFT_MAX still caps each input independently.
-    let productBudget = MAX_DERIVED_PRODUCT;
-    // `factor` consumes the shared budget: returns the value clamped to both the
-    // per-key cap and what the running product can still afford, then shrinks the
-    // budget by that value (>=1, so a 0/empty control never zeroes the budget for
-    // the controls after it).
-    const factor = (value: number, perKeyCap: number): number => {
-      const capped = Math.max(0, Math.min(value, perKeyCap, productBudget));
-      productBudget = Math.max(
-        1,
-        Math.floor(productBudget / Math.max(1, capped)),
-      );
-      return capped;
-    };
-    // Derive the iteration count of each bounded eos/until repeat from its
-    // scope's length budget, so raising the length slider fills the scope with
-    // records (core reads the eos count from env[countKey], not the budget).
-    // The user controls the length; the count follows — one intuitive control.
-    for (const br of packet.boundedRepeats ?? []) {
-      // Seed each PER-RECORD inner-scope length (tlsClientHello's `extLen`) so
-      // the representative record fits its own nested bounded — without this the
-      // budget-derived record over-consumes the empty inner scope. Only fills
-      // unset/0 so a user-set inner length still wins.
-      for (const seed of br.innerScopeSeeds ?? []) {
-        if (!env.get(seed.key)) env.set(seed.key, seed.value);
-      }
-      // The budget is the bounded.bytes expr (ref, or `field*k - c`) evaluated
-      // against the live env — not the raw slider value.
-      const budget = evalExprOr(br.bytesExpr, env, 0);
-      const forRecords = Math.max(0, budget - br.prefixBytes);
-      // Clamp to MAX_DERIVED_RECORDS AND the shared product budget: a maxed
-      // length slider would otherwise derive tens of thousands of records, and
-      // even a capped count can multiply with an inner repeat/length below. The
-      // length CELL stays user-editable; only the DERIVED count is capped.
-      env.set(
-        br.countKey,
-        factor(Math.floor(forRecords / br.perRecordBytes), MAX_DERIVED_RECORDS),
-      );
-    }
-    // Cap each freeRepeat's DERIVED record count. Unlike boundedRepeats (count
-    // derived from a byte budget) and direct length controllers, a freeRepeat's
-    // record count is driven STRAIGHT by env[countKey] (via the affine
-    // transform), so an uncapped value — reachable not only through
-    // RepeatCountStepper but, crucially, BYPASSING it via share-URL hydration /
-    // JSON import (freeRepeat countKeys ride in `controllers` → env) — feeds e.g.
-    // 65535 directly into resolveLayout. Clamp the DERIVED record count to both
-    // the per-key cap and the shared product budget (so a repeat nested in
-    // another repeat — dnsResponse's dnsQuestions ⊃ dnsQNameLabels — cannot
-    // multiply two maxed steppers into a million-cell freeze), then invert
-    // through the transform back to the env value so the displayed count and the
-    // layout agree. Layout-only: the underlying controller value stays
-    // user-editable (OverridePanel's stepper SOFT_MAX caps each input).
-    for (const fr of packet.freeRepeats ?? []) {
-      const v = env.get(fr.countKey);
-      if (typeof v !== "number") continue;
-      const mul = fr.transform?.mul ?? 1;
-      const add = fr.transform?.add ?? 0;
-      const recordCount = v * mul + add;
-      const allowed = factor(recordCount, MAX_DERIVED_RECORDS);
-      if (allowed !== recordCount) {
-        // Invert recordCount = env * mul + add → env = (allowed - add) / mul.
-        // `mul` is always non-zero for a surfaced transform (the adapter rejects
-        // `*0`); clamp >= 0 so the unsigned wire field never goes negative.
-        const capped = Math.max(0, Math.floor((allowed - add) / mul));
-        env.set(fr.countKey, capped);
-      }
-    }
-    // Cap each DIRECT length-controller byte count (a `bytes(ref X)` payload sized
-    // straight by env[X], not via a budget-derived repeat). resolveLayout emits
-    // ~1 cell per payload byte, so an uncapped slider maxed to the field's full
-    // int range (16/24/32-bit) would generate millions-to-billions of cells in
-    // the un-virtualized diagram → freeze / OOM. Cap each to its per-key ceiling
-    // AND whatever the repeats LEFT in the shared product budget — a per-record
-    // length controller multiplies with its enclosing repeat's count (diameter
-    // avpLength × diameterAvps; dhcpv6 optionLen × options), so when the repeats
-    // have consumed the budget the per-record length must shrink with it. We read
-    // the LEFTOVER budget without each length draining it for the next, because
-    // sibling top-level length payloads (oncRpc credLength + verfLength) are
-    // ADDITIVE, not multiplicative — they must each keep their full per-key cap.
-    // The length CELL value stays user-editable in `controllers`; only the layout
-    // env is clamped (OverridePanel lowers the slider max to the per-key ceiling).
-    const directLengthCap = Math.min(
-      MAX_LENGTH_CONTROLLER_BYTES,
-      productBudget,
-    );
-    for (const id of directLengthControllerIds) {
-      const v = env.get(id);
-      if (typeof v === "number" && v > directLengthCap) {
-        env.set(id, directLengthCap);
-      }
-    }
+    const env = buildLayoutEnv(controllers);
     // 0-fill above only absorbs MissingRefError. Other normalize throws —
     // notably a `bounded` scope being over-consumed when an override stepper
     // bumps a repeat count past its byte budget — must not crash React render
@@ -1475,14 +1496,65 @@ export default function PacketViewer({
     } catch {
       return lastGoodLayoutRef.current ?? { cells: [], totalBits: 0 };
     }
+  }, [buildLayoutEnv, controllers, targetPsdl, viewMode]);
+
+  // Length controllers whose slider is INERT in the current diagram: the
+  // controlled field renders, but perturbing its value changes ZERO cell widths
+  // because the active switch/refSwitch arm sizes its value FIXED (dnsResponse's
+  // dnsRdLength sizes RDATA only for the CNAME/NS/PTR/MX/TXT/SRV/RAW arms — at
+  // the seeded dnsRrType=1 A-record arm the value is a fixed 32-bit address, so
+  // the RDLENGTH slider moves nothing). `fieldRendered` alone can't see this (the
+  // RDLENGTH header octet is ALWAYS drawn), so OverridePanel would show a
+  // live-looking but inert control. We probe each controller by re-resolving with
+  // its value bumped through the SAME env pipeline and comparing total bits; an
+  // unchanged layout means the slider is inert and the panel gates it with a hint
+  // pointing at the RDATA-variant picker. Cheap: presets carry 0-4 length
+  // controllers, and this re-runs only when the layout inputs change.
+  const inertLengthControllers = useMemo(() => {
+    const inert = new Set<string>();
+    const keys = new Set<string>();
+    for (const lc of packet.lengthControllers ?? []) {
+      if (lc.controlsLength) keys.add(lc.controlsLength);
+    }
+    for (const f of packet.fields) {
+      if (f.controlsLength) keys.add(f.controlsLength);
+    }
+    if (keys.size === 0) return inert;
+    const baseBits = layout.totalBits;
+    for (const key of keys) {
+      // Only meaningful when the controlled field is actually in the diagram —
+      // an absent field is gated by the separate `fieldRendered` check, and a
+      // bumped value there can legitimately materialise a cell (NOT inert).
+      if (!fieldRendered(layout.cells, key)) continue;
+      const current = Number(controllers[key] ?? 0);
+      // Bump by a representative amount (and toward 0 when already high) so the
+      // probe perturbs the value regardless of where the slider currently sits.
+      const probeValue = current === 0 ? 8 : Math.max(0, current - 1);
+      if (probeValue === current) continue;
+      const probedEnv = buildLayoutEnv({
+        ...controllers,
+        [key]: probeValue,
+      });
+      try {
+        const probed = resolveLayout(targetPsdl, {
+          env: probedEnv,
+          viewMode,
+        });
+        if (probed.totalBits === baseBits) inert.add(key);
+      } catch {
+        // A throw means the perturbation DID change the structure (e.g. an
+        // over-consumed bounded scope) — treat as live, not inert.
+      }
+    }
+    return inert;
   }, [
-    targetPsdl,
-    psdlRefs,
+    buildLayoutEnv,
     controllers,
+    targetPsdl,
     viewMode,
-    packet.boundedRepeats,
-    packet.freeRepeats,
-    directLengthControllerIds,
+    layout,
+    packet.lengthControllers,
+    packet.fields,
   ]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
@@ -1651,6 +1723,7 @@ export default function PacketViewer({
               onByteOrderChange={handleByteOrderChange}
               tlvSlotBytes={tlvSlotBytes}
               cells={layout.cells}
+              inertLengthControllers={inertLengthControllers}
             />
           </section>
         </div>

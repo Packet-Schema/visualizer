@@ -161,32 +161,99 @@ describe("length-controller live gating", () => {
     }
   });
 
-  it("keeps a length controller whose field renders at default LIVE (dnsResponse rdLength)", async () => {
-    // Counter-case: dnsResponse.dnsRdLength sizes a field that IS in the default
-    // diagram, so its slider must stay live — proving the gate discriminates on
-    // the rendered field, not a blanket disable of every length controller.
+  it("gates dnsResponse's RDLENGTH slider in the seeded A-record arm (inert), enables it for CNAME", async () => {
+    // dnsResponse seeds dnsRrType=1 (an A record), whose RDATA is a FIXED 32-bit
+    // address — the dnsRdLength slider sizes the value only for the
+    // CNAME/NS/PTR/MX/TXT/SRV/RAW arms. The RDLENGTH header octet is ALWAYS in
+    // the diagram, so the older `fieldRendered`-only gate (the controller's OWN
+    // cell renders) wrongly showed the slider as live even though sweeping it
+    // moves ZERO cell widths in the A arm. The strengthened gate probes whether
+    // perturbing the value changes any rendered cell (PacketViewer's
+    // `inertLengthControllers` re-resolve), so the slider is disabled with a hint
+    // pointing at the RDATA-variant picker in the A arm, and live once a
+    // length-sized arm (CNAME) is selected.
     const src = PRESETS.dnsResponse!;
     const packet = psdlToRenderer(src);
     const lc = (packet.lengthControllers ?? []).find(
       (c) => c.controlsLength && c.controlsLength.startsWith("dnsRdLength"),
     );
-    if (!lc) return; // preset shape changed — nothing to assert
-    const { env, controllers } = loadEnv(src);
-    const { cells } = resolveLayout(src, { env });
-    const { container } = await mount(
-      <OverridePanel
-        packet={packet}
-        selectedFieldId={null}
-        controllers={controllers}
-        onControllerChange={() => {}}
-        cells={cells}
-      />,
-    );
-    const slider = lengthSlider(container, lc.id);
-    expect(slider, "dnsRdLength slider must render").not.toBeNull();
     expect(
-      slider!.disabled,
-      "must stay live when its field is in the diagram",
-    ).toBe(false);
+      lc,
+      "dnsResponse must surface the dnsRdLength length controller",
+    ).toBeDefined();
+
+    // The same probe PacketViewer runs: a length controller is INERT when
+    // perturbing its value (through the SAME env pipeline) leaves the total
+    // layout bits unchanged while its field is in the diagram.
+    function inertSet(overrides: Record<string, number>): Set<string> {
+      const { env, controllers } = loadEnv(src, overrides);
+      const base = resolveLayout(src, { env });
+      const inert = new Set<string>();
+      for (const c of packet.lengthControllers ?? []) {
+        const key = c.controlsLength;
+        if (!key) continue;
+        if (!base.cells.some((cell) => cell.field.id.startsWith(`${key}`)))
+          continue;
+        const current = Number(controllers[key] ?? 0);
+        const probeValue = current === 0 ? 8 : Math.max(0, current - 1);
+        if (probeValue === current) continue;
+        const probedEnv = new Map(env);
+        probedEnv.set(key, probeValue);
+        try {
+          const probed = resolveLayout(src, { env: probedEnv });
+          if (probed.totalBits === base.totalBits) inert.add(key);
+        } catch {
+          /* a throw means the structure changed → live */
+        }
+      }
+      return inert;
+    }
+
+    // Seeded A-record arm (dnsRrType=1): inert → slider disabled with the
+    // variant-picker hint.
+    {
+      const { env, controllers } = loadEnv(src);
+      const { cells } = resolveLayout(src, { env });
+      const { container } = await mount(
+        <OverridePanel
+          packet={packet}
+          selectedFieldId={null}
+          controllers={controllers}
+          onControllerChange={() => {}}
+          cells={cells}
+          inertLengthControllers={inertSet({})}
+        />,
+      );
+      const slider = lengthSlider(container, lc!.id);
+      expect(slider, "dnsRdLength slider must render").not.toBeNull();
+      expect(
+        slider!.disabled,
+        "must be gated in the fixed-width A-record arm",
+      ).toBe(true);
+      expect(container.textContent ?? "").toMatch(/sized by dnsRdLength/i);
+    }
+
+    // CNAME arm (dnsRrType=5): the value IS sized by RDLENGTH → live slider.
+    {
+      const overrides = { dnsRrType: 5 };
+      const { env, controllers } = loadEnv(src, overrides);
+      const { cells } = resolveLayout(src, { env });
+      const { container } = await mount(
+        <OverridePanel
+          packet={packet}
+          selectedFieldId={null}
+          controllers={controllers}
+          onControllerChange={() => {}}
+          cells={cells}
+          inertLengthControllers={inertSet(overrides)}
+        />,
+      );
+      const slider = lengthSlider(container, lc!.id);
+      expect(slider, "dnsRdLength slider must render").not.toBeNull();
+      expect(
+        slider!.disabled,
+        "must be live in the CNAME arm whose value is sized by RDLENGTH",
+      ).toBe(false);
+    }
   });
 });
