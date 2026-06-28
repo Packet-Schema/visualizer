@@ -66,7 +66,7 @@ function findRendererField(
  *  diagram edits (byteOrder flips + TLV / chain instances) survive the
  *  lift. No-op when the def is absent (dangling ref): the body's `ref`
  *  node passes through untouched and nothing is written to `outDefs`. */
-function mergeRefDef(ref: string, ctx: MergeCtx): void {
+function mergeRefDef(ref: string, ctx: MergeCtx, idPrefix = ""): void {
   if (ref in ctx.outDefs) return; // already merged (or being merged)
   const def = ctx.srcDefs?.[ref];
   if (!def) return;
@@ -74,7 +74,7 @@ function mergeRefDef(ref: string, ctx: MergeCtx): void {
   // referential def cannot loop forever.
   ctx.outDefs[ref] = def;
   const mergedFields = def.fields.map((f) => {
-    const overlaid = overlayFieldEdits(f, ctx);
+    const overlaid = overlayFieldEdits(f, ctx, idPrefix);
     return mergeRepeats(overlaid, ctx);
   });
   ctx.outDefs[ref] = { ...def, fields: mergedFields };
@@ -142,7 +142,11 @@ function mergeRepeat(c: Repeat, ctx: MergeCtx): Repeat {
  *  Container subtree. Walks Group, Optional, Switch, Encrypted, and
  *  Repeat-element fields so a `byteOrder` flip on a leaf nested under
  *  any composition primitive still rides the merge. */
-function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
+function overlayFieldEdits(
+  c: Container,
+  ctx: MergeCtx,
+  idPrefix = "",
+): Container {
   const { mirror } = ctx;
   if (isField(c)) {
     // A field nested in a Switch case / Repeat element / Group never reaches
@@ -152,8 +156,8 @@ function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
     // round-trip through the mirror (the override map also carries those, so
     // the map alone would suffice — the fields path is kept for mirrors built
     // without going through `handleByteOrderChange`).
-    const overridden = mirror.byteOrderOverrides?.[c.id];
-    const mirrorField = findRendererField(mirror, c.id);
+    const overridden = mirror.byteOrderOverrides?.[idPrefix + c.id];
+    const mirrorField = findRendererField(mirror, idPrefix + c.id);
     const effective = overridden ?? mirrorField?.byteOrder;
     if (effective && effective !== c.byteOrder) {
       return { ...c, byteOrder: effective };
@@ -171,7 +175,7 @@ function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
   if (c.kind === "group") {
     return {
       ...c,
-      children: c.children.map((ch) => overlayFieldEdits(ch, ctx)),
+      children: c.children.map((ch) => overlayFieldEdits(ch, ctx, idPrefix)),
     };
   }
   if (c.kind === "repeat") {
@@ -179,7 +183,9 @@ function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
       ...c,
       element: {
         ...c.element,
-        fields: c.element.fields.map((f) => overlayFieldEdits(f, ctx)),
+        fields: c.element.fields.map((f) =>
+          overlayFieldEdits(f, ctx, idPrefix),
+        ),
       },
     };
   }
@@ -188,7 +194,7 @@ function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
     for (const [k, v] of Object.entries(c.cases)) {
       nextCases[k] = {
         ...v,
-        fields: v.fields.map((f) => overlayFieldEdits(f, ctx)),
+        fields: v.fields.map((f) => overlayFieldEdits(f, ctx, idPrefix)),
       };
     }
     // The 0.5 default arm is the "_" case, already handled by the loop above.
@@ -199,20 +205,26 @@ function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
       ...c,
       plaintext: {
         ...c.plaintext,
-        fields: c.plaintext.fields.map((f) => overlayFieldEdits(f, ctx)),
+        fields: c.plaintext.fields.map((f) =>
+          overlayFieldEdits(f, ctx, idPrefix),
+        ),
       },
     };
   }
   if (c.kind === "optional") {
     return {
       ...c,
-      container: overlayFieldEdits(c.container, ctx) as typeof c.container,
+      container: overlayFieldEdits(
+        c.container,
+        ctx,
+        idPrefix,
+      ) as typeof c.container,
     };
   }
   if (c.kind === "bounded") {
     return {
       ...c,
-      fields: c.fields.map((f) => overlayFieldEdits(f, ctx)),
+      fields: c.fields.map((f) => overlayFieldEdits(f, ctx, idPrefix)),
     };
   }
   if (c.kind === "ref") {
@@ -220,7 +232,7 @@ function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
     // its def fields carry mirror edits that must ride the lift. Merge the
     // referenced def's fields (once) into `ctx.outDefs`; the `ref` node
     // itself is structural and passes through unchanged.
-    mergeRefDef(c.ref, ctx);
+    mergeRefDef(c.ref, ctx, `${idPrefix}${c.id}.`);
     return c;
   }
   return c;

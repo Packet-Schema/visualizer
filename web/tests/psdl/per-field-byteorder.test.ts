@@ -14,6 +14,7 @@ import type { Field, Packet } from "../../lib/psdl/types";
 import {
   psdlToRenderer,
   mergeInstancesIntoPsdl,
+  applyByteOrderOverrides,
 } from "../../lib/psdl/psdl-to-renderer";
 import { toJson, fromJson } from "../../lib/formats/json";
 import { PRESETS } from "../../lib/psdl/presets.server";
@@ -167,6 +168,53 @@ describe("per-field byteOrder", () => {
     expect(
       layout.cells.find((c) => c.field.id === "messageStreamId")?.byteOrder,
     ).toBe("BE");
+  });
+
+  it("a RefContainer-nested byteOrder flip changes the diagram and survives lift -> JSON -> re-import", () => {
+    const src: Packet = {
+      name: "RefByteOrder",
+      rowBits: 32,
+      defs: {
+        dst: {
+          id: "dst",
+          fields: [{ id: "a1", name: "A1", type: bits(16), byteOrder: "BE" }],
+        },
+      },
+      body: [
+        { id: "head", name: "Head", type: bits(8) },
+        { kind: "ref", ref: "dst", id: "dst" },
+      ],
+    };
+    expect(
+      resolveLayout(src, {}).cells.find((c) => c.field.id === "dst.a1")
+        ?.byteOrder,
+    ).toBe("BE");
+    const mirror = psdlToRenderer(src) as RendererPacket;
+    expect(mirror.fields.some((f) => f.id === "dst.a1")).toBe(false);
+    const flipped: RendererPacket = {
+      ...mirror,
+      byteOrderOverrides: { "dst.a1": "LE" },
+    };
+    const flippedPsdl = applyByteOrderOverrides(src, flipped);
+    expect(flippedPsdl).not.toBe(src);
+    expect(
+      resolveLayout(flippedPsdl, {}).cells.find((c) => c.field.id === "dst.a1")
+        ?.byteOrder,
+    ).toBe("LE");
+    const lifted = mergeInstancesIntoPsdl(src, flipped);
+    expect(lifted.defs?.dst?.fields[0]).toMatchObject({
+      id: "a1",
+      byteOrder: "LE",
+    });
+    const reimported = fromJson(toJson(lifted)).packet;
+    expect(reimported.defs?.dst?.fields[0]).toMatchObject({
+      id: "a1",
+      byteOrder: "LE",
+    });
+    expect(
+      resolveLayout(reimported, {}).cells.find((c) => c.field.id === "dst.a1")
+        ?.byteOrder,
+    ).toBe("LE");
   });
 
   it("validator rejects an invalid byteOrder string", () => {

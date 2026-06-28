@@ -337,7 +337,9 @@ describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
     const mirror = psdlToRenderer(packet);
     const innerVal = mirror.fields.find((f) => f.id === "innerVal");
     if (!innerVal) throw new Error("ref-resolved innerVal not surfaced");
-    innerVal.byteOrder = "LE";
+    // A ref-resolved field's flip is recorded on the override map under its
+    // QUALIFIED id (`<refId>.<fieldId>`), matching the diagram cell id.
+    mirror.byteOrderOverrides = { "hdrRef.innerVal": "LE" };
 
     const merged = mergeInstancesIntoPsdl(packet, mirror);
     const hdrField = merged.defs?.Hdr.fields.find(
@@ -353,7 +355,8 @@ describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
     const innerVal = mirror.fields.find((f) => f.id === "innerVal");
     if (!tlv?.tlv || !innerVal) throw new Error("ref surface missing");
     tlv.tlv.instances = [{ kind: 2 }];
-    innerVal.byteOrder = "LE";
+    // Flip recorded under the qualified (cell) id.
+    mirror.byteOrderOverrides = { "hdrRef.innerVal": "LE" };
 
     const merged = mergeInstancesIntoPsdl(packet, mirror);
     const { packet: reimported } = fromJson(toJson(merged));
