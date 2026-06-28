@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { fromJson, toJson } from "../../lib/formats/json";
 import { initialEnv } from "../../lib/psdl/normalize";
 import { PRESETS as ALL_PRESETS } from "../../lib/psdl/presets.server";
+import { stableStringify } from "../../lib/stable-stringify";
 import type { Packet, PacketEnv } from "../../lib/psdl/types";
 
 describe("toJson / fromJson — every preset round-trips", () => {
@@ -87,6 +88,83 @@ describe("toJson — preset shape", () => {
     };
     const obj = JSON.parse(toJson(pkt));
     expect(obj.constraints).toBeUndefined();
+  });
+});
+
+describe("toJson / fromJson — top-level meta / rendererHints / abbrev / imports", () => {
+  // Bar #2: ANY user-supplied PSDL must round-trip losslessly through
+  // import → export/share → re-import. These four optional top-level fields
+  // are permitted by the PSDL schema and carried by Core.Packet, and
+  // `rendererHints` is render-affecting (core layout reads
+  // `rendererHints?.rowBits ?? rowBits` and `rendererHints.sections`), so the
+  // JSON / share-URL path (both go through toJson) must NOT drop them.
+  const authored: Packet = {
+    name: "Authored",
+    abbrev: "MCP",
+    rowBits: 16,
+    rendererHints: {
+      rowBits: 32,
+      sections: [{ id: "s1", label: "Section 1", fields: ["a"] }],
+    },
+    meta: {
+      rfc: 9999,
+      section: "1.2",
+      aliases: ["AuthoredAlias"],
+      tags: ["test", "metadata"],
+      family: "mcp",
+    },
+    imports: [{ source: "common.psdl", as: "common" }],
+    body: [{ id: "a", name: "A", type: { kind: "bits", n: 16 } }],
+  };
+
+  it("emits the fields in the canonical JSON text when present", () => {
+    const obj = JSON.parse(toJson(authored, new Map()));
+    expect(obj.abbrev).toBe("MCP");
+    expect(obj.rendererHints).toEqual(authored.rendererHints);
+    expect(obj.meta).toEqual(authored.meta);
+    expect(obj.imports).toEqual(authored.imports);
+  });
+
+  it("preserves all four fields field-by-field across fromJson(toJson(p))", () => {
+    const { packet: re } = fromJson(toJson(authored, new Map()));
+    expect(re.abbrev).toEqual(authored.abbrev);
+    expect(re.rendererHints).toEqual(authored.rendererHints);
+    expect(re.meta).toEqual(authored.meta);
+    expect(re.imports).toEqual(authored.imports);
+  });
+
+  it("byte-identical canonical text after one round-trip", () => {
+    const t1 = toJson(authored, new Map());
+    const round = fromJson(t1);
+    expect(toJson(round.packet, round.env)).toBe(t1);
+  });
+
+  it("omits the fields entirely when the packet does not carry them", () => {
+    const bare: Packet = {
+      name: "Bare",
+      rowBits: 8,
+      body: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
+    };
+    const obj = JSON.parse(toJson(bare, new Map()));
+    expect(obj.abbrev).toBeUndefined();
+    expect(obj.rendererHints).toBeUndefined();
+    expect(obj.meta).toBeUndefined();
+    expect(obj.imports).toBeUndefined();
+  });
+
+  it("preserves meta/rendererHints/abbrev/imports for every preset that carries them", () => {
+    // All 184 baked presets carry `meta`; one (vxlan) carries `rendererHints`.
+    // Sweep every preset and assert that whichever of these wire-preserved
+    // fields it carries survives a JSON round-trip identically.
+    const lost: string[] = [];
+    for (const [key, pkt] of Object.entries(ALL_PRESETS)) {
+      const { packet: re } = fromJson(toJson(pkt, new Map()));
+      for (const f of ["meta", "rendererHints", "abbrev", "imports"] as const) {
+        if (stableStringify(re[f]) !== stableStringify(pkt[f]))
+          lost.push(`${key}.${f}`);
+      }
+    }
+    expect(lost).toEqual([]);
   });
 });
 
