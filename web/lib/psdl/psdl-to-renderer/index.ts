@@ -2515,6 +2515,73 @@ function subByteDiscriminatorSelectsVariant(
 }
 
 /**
+ * True for a TOP-LEVEL length-EXTENSION switch whose arms insert Extended-Length
+ * value cells of STRUCTURALLY DISTINCT WIDTH (websocketFrame `byPayloadLength7`:
+ * `payloadLength7` == 126 → a 16-bit `extPayloadLength16`, == 127 → a 64-bit
+ * `extPayloadLength64`, default `_` → nothing). Such a switch is shaped exactly
+ * like a length encoder — the discriminator is `lengthDriving` (the trailing
+ * `payload` width reads it) AND sub-byte with `category: "length"` arms
+ * (`subByteDiscriminatorSelectsVariant` is false) — so the encoder gate would
+ * suppress it. But unlike a CoAP/BGP nibble — whose extension bytes re-encode an
+ * already-decoded length inside a BOUNDED record and whose arm widths collapse to
+ * the SAME budget — toggling this discriminator visibly GAINS or LOSES a
+ * fixed-width Extended-Length cell on the diagram (126 ≠ 127 ≠ default in both
+ * presence AND width). The user can SEE that cell on a 126/127 frame but, with
+ * the switch suppressed, has no control to toggle it off or reach the
+ * discriminator (it is sub-byte AND group-nested) — a see-but-cannot-edit gap.
+ * Surfacing the picker is therefore safe and required.
+ *
+ * The signal that separates this from a true length encoder: the arms render
+ * DISTINCT fixed (non-`bytes(ref …)`) widths — at least two selectable/default
+ * arms whose collapsed structural shape differs — so selecting a value genuinely
+ * changes the rendered geometry rather than re-encoding the same byte count. A
+ * repeat-nested encoder (CoAP `byOptDelta`/`byOptLength`, BGP `bgpAttrLengthByExt`)
+ * is NEVER passed here (the caller only consults this for a non-repeat,
+ * group/case-nested switch), so their suppression stays untouched.
+ */
+function lengthExtensionArmsHaveDistinctWidths(
+  cases: Record<string, { fields: Container[] }>,
+  defaultArm: { fields: Container[] } | undefined,
+): boolean {
+  // A fixed-width arm is one whose every field has a statically-known bit width
+  // (an `int`/`bits`/`enum` with a literal `bits`/`n`) — NOT a `bytes(ref …)`
+  // whose width depends on a length ref (which would collapse to a budget the
+  // encoder gate already handles). An empty arm is fixed-width 0.
+  const armFixedWidthShape = (containers: Container[]): string | null => {
+    const parts: string[] = [];
+    for (const c of containers) {
+      if (!isField(c)) return null; // structural content — not a plain ext field
+      const t = c.type as { kind?: string; bits?: number; n?: unknown };
+      const w =
+        typeof t.bits === "number"
+          ? t.bits
+          : typeof t.n === "number"
+            ? t.n
+            : null;
+      if (w === null) return null; // dynamic / ref-sized width — not a fixed ext
+      parts.push(`${t.kind ?? "?"}:${w}`);
+    }
+    return parts.join(",");
+  };
+  const shapes = new Set<string>();
+  let sawNonEmpty = false;
+  for (const struct of Object.values(cases)) {
+    const shape = armFixedWidthShape(struct.fields);
+    if (shape === null) return false;
+    if (shape !== "") sawNonEmpty = true;
+    shapes.add(shape);
+  }
+  if (defaultArm) {
+    const shape = armFixedWidthShape(defaultArm.fields);
+    if (shape === null) return false;
+    shapes.add(shape);
+  }
+  // Need at least one real extension cell AND ≥ 2 distinct geometries, so the
+  // discriminator visibly toggles a fixed-width region (126/127/default differ).
+  return sawNonEmpty && shapes.size >= 2;
+}
+
+/**
  * Structural fingerprint of a container that ignores identity-only fields
  * (`id`, `name`, `doc`, …) and keeps everything that affects the rendered
  * geometry: the node `kind`, a field's `type`, a Switch's discriminator and
@@ -3425,11 +3492,42 @@ function collectRefSwitches(
           // edit). Only the sub-byte heuristic is relaxed; a true length-driving
           // ref (lengthDriving) stays an encoder regardless.
           const discBits = fieldBits.get(refKey);
+          // EXCEPTION #2 (websocketFrame `byPayloadLength7`): a TOP-LEVEL
+          // (non-repeat), group/case-nested length-extension switch whose arms
+          // insert Extended-Length cells of STRUCTURALLY DISTINCT WIDTH (126 →
+          // 16-bit `extPayloadLength16`, 127 → 64-bit `extPayloadLength64`,
+          // default → empty) is NOT a length encoder in the CoAP/BGP sense.
+          // Two signals would otherwise flag it as an encoder:
+          //   * `lengthDriving` — the discriminator IS read by a later width
+          //     expression (the `payload` byte count is `cond(payloadLength7 ==
+          //     126/127, ext…, payloadLength7)`); but here that just sizes the
+          //     trailing payload, it does NOT re-encode a length inside a bounded
+          //     scope the switch could over-consume, and
+          //   * the sub-byte heuristic — `payloadLength7` is 7 bits and every arm
+          //     is a `category:"length"` field.
+          // Yet toggling this discriminator visibly GAINS or LOSES a fixed-width
+          // Extended-Length cell (126 ≠ 127 ≠ default, in presence AND width) —
+          // the diagram is NOT byte-identical across values. The discriminator is
+          // itself sub-byte AND group-nested, so it has no top-level cell to host
+          // a `switchCases` widget; without the packet-level picker the extended
+          // cell is see-but-cannot-edit (an imported 126-frame's
+          // `extPayloadLength16` can never be toggled off). Relax BOTH encoder
+          // signals for such a switch — but ONLY when it is not inside ANY repeat,
+          // so the repeat-nested CoAP `byOptDelta`/`byOptLength` and BGP
+          // `bgpAttrLengthByExt` encoders keep their existing suppression (their
+          // arms re-encode a length inside a bounded record, not a top-level
+          // fixed-width region, and are reachable via their TLV/record editors).
+          const topLevelLengthExtensionVariant =
+            caseNested &&
+            !enclosingPlainRepeat &&
+            !insideRepeat &&
+            lengthExtensionArmsHaveDistinctWidths(c.cases, c.cases["_"]);
           const isEncoder =
-            lengthDriving.has(refKey) ||
-            (discBits !== undefined &&
-              discBits < 8 &&
-              !subByteDiscriminatorSelectsVariant(c.cases));
+            !topLevelLengthExtensionVariant &&
+            (lengthDriving.has(refKey) ||
+              (discBits !== undefined &&
+                discBits < 8 &&
+                !subByteDiscriminatorSelectsVariant(c.cases)));
           // Suppress the picker when the enclosing repeat has NO surfaced count
           // control: its records are never instantiated at any value, so the
           // variant choice can't change the diagram. bgpPathAttributes wraps a
