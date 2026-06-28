@@ -305,6 +305,50 @@ describe("collectRefSwitches", () => {
     const dns = psdlToRenderer(PRESETS.dnsResponse!);
     expect((dns.refSwitches ?? []).map((r) => r.refKey)).toContain("dnsRrType");
   });
+
+  it("does NOT surface quicLong/quicShort frameType (opaque encrypted payload)", () => {
+    // high: QUIC's `payload`/`frames` is an `encrypted` node with a fixed
+    // `wireBits` footprint, so `resolveLayout` renders it as an OPAQUE ciphertext
+    // blob in the default (wire) view — the plaintext `frameByType` switch is
+    // never instantiated, so the CRYPTO/ACK/STREAM frame-body cells never appear
+    // and EVERY frameType value yields a byte-identical diagram. A `frameType`
+    // refSwitch picker would therefore be permanently inert: a visible
+    // Stream/Crypto/Ack control with no possible effect, its label contradicting
+    // the opaque payload the diagram shows. It must NOT be surfaced.
+    for (const name of ["quicLong", "quicShort"] as const) {
+      const m = psdlToRenderer(PRESETS[name]!);
+      const refKeys = (m.refSwitches ?? []).map((r) => r.refKey);
+      expect(
+        refKeys,
+        `${name} must expose no frameType refSwitch`,
+      ).not.toContain("frameType");
+      // The peek path never carried it (frameByType is ref-discriminated), but
+      // assert no surface leaks it either.
+      const peekKeys = (m.peekSwitches ?? []).map((p) => p.peekKey);
+      expect(peekKeys.some((k) => k.includes("frameType"))).toBe(false);
+    }
+  });
+
+  it("the QUIC frame switch is genuinely inert in the rendered (wire) diagram", () => {
+    // Justifies the suppression: in the default (wire) view the diagram renders
+    // five opaque `payload` ciphertext cells and ZERO frame-body cells, identical
+    // for every frameType — so no picker over frameType could ever change it.
+    for (const name of ["quicLong", "quicShort"] as const) {
+      const src = PRESETS[name]!;
+      const layouts = [2, 6, 8].map((ft) => cellIds(src, { frameType: ft }));
+      // No frame-body cell (CRYPTO/ACK/STREAM/default) ever renders in wire view.
+      for (const ids of layouts) {
+        expect(
+          ids.some((id) =>
+            /crypto_body|ack_body|stream_body|frame_body/.test(id),
+          ),
+        ).toBe(false);
+      }
+      // Every frameType yields a byte-identical layout — the control is inert.
+      expect(layouts[1]).toEqual(layouts[0]);
+      expect(layouts[2]).toEqual(layouts[0]);
+    }
+  });
 });
 
 describe("record-bearing ref-count repeats seed one record (#11/#12)", () => {

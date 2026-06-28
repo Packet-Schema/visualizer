@@ -2615,27 +2615,42 @@ function collectGroupNestedFieldIds(
 
 /** Collect the ids of every field declared (transitively) inside an `encrypted`
  *  block's plaintext that is itself NOT inside a `switch` case and NOT inside a
- *  `repeat` — i.e. a discriminator declared in a top-level encrypted plaintext
- *  (QUIC's `frameType` inside the `payload`/`frames` encrypted block).
- *  `flattenForMirror` does NOT expose an encrypted-plaintext field as a
- *  top-level renderer-mirror cell, so `attachOverrideMetadata` can't stamp a
- *  `switchCases` widget on it, and `collectSwitchCaseFieldIds` /
- *  `collectGroupNestedFieldIds` deliberately exclude it (it is in neither a
- *  switch case nor a group). A switch discriminated on one of these (QUIC's
- *  `frameByType` on `frameType`) therefore falls through every field-anchored
+ *  `repeat` — i.e. a discriminator declared in an encrypted plaintext the engine
+ *  renders INLINE (a header-protected scope with no fixed `wireBits`, e.g. a
+ *  hypothetical decrypted-header field switch). `flattenForMirror` does NOT
+ *  expose an encrypted-plaintext field as a top-level renderer-mirror cell, so
+ *  `attachOverrideMetadata` can't stamp a `switchCases` widget on it, and
+ *  `collectSwitchCaseFieldIds` / `collectGroupNestedFieldIds` deliberately
+ *  exclude it (it is in neither a switch case nor a group). A switch
+ *  discriminated on one of these therefore falls through every field-anchored
  *  path AND the switch-case / group paths — a see-but-cannot-edit gap — so it
  *  needs a packet-level refSwitch picker, exactly like the group-nested path.
  *  Mirrors `collectGroupNestedFieldIds`: fields inside a repeat (records get
  *  their own surface) or inside a switch case (handled by
- *  `collectSwitchCaseFieldIds`) are excluded. */
+ *  `collectSwitchCaseFieldIds`) are excluded.
+ *
+ *  CRITICAL EXCLUSION — opaque ciphertext: an `encrypted` node with a fixed
+ *  `wireBits` footprint (QUIC's `payload`/`frames`, wireBits = 136 bits) is
+ *  rendered by `resolveLayout` as an OPAQUE ciphertext blob in the default
+ *  (wire) view; its plaintext switch is never instantiated, so the frame body
+ *  cells (CRYPTO/ACK/STREAM) never appear and every selectable frameType yields
+ *  a byte-identical diagram. Surfacing the plaintext discriminator (QUIC's
+ *  `frameType` driving `frameByType`) there produces a permanently-inert picker
+ *  whose Stream/Crypto/Ack label CONTRADICTS the opaque payload the diagram
+ *  shows — a visible control with no possible effect. So an opaque
+ *  (`wireBits`-bounded) encrypted node's plaintext fields are NOT collected: the
+ *  whole subtree below it stays disqualified. Only an inline-rendering encrypted
+ *  plaintext (no `wireBits`) contributes discriminators. Swept all 184 presets:
+ *  only quicLong/quicShort carry a switch inside an opaque encrypted node. */
 function collectEncryptedNestedFieldIds(
   body: PsdlPacket["body"],
   defs: Record<string, NamedStruct> | undefined,
 ): Set<string> {
   const acc = new Set<string>();
-  // `insideEncrypted` flips true once we step into an encrypted plaintext;
-  // `blocked` flips true once we enter a repeat or a switch case, which
-  // permanently disqualifies everything below (those scopes own their surfaces).
+  // `insideEncrypted` flips true once we step into an INLINE-rendering encrypted
+  // plaintext; `blocked` flips true once we enter a repeat, a switch case, or an
+  // OPAQUE (`wireBits`-bounded) encrypted node, which permanently disqualifies
+  // everything below (those scopes own their surfaces or render as ciphertext).
   const visit = (
     containers: Container[],
     insideEncrypted: boolean,
@@ -2647,7 +2662,11 @@ function collectEncryptedNestedFieldIds(
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, true, blocked);
+        // A fixed `wireBits` footprint means the diagram renders this node as
+        // opaque ciphertext (never instantiating the plaintext switch), so its
+        // discriminators must NOT be surfaced — block the whole subtree.
+        const opaque = c.wireBits !== undefined;
+        visit(c.plaintext.fields, !opaque, blocked || opaque);
         continue;
       }
       if (c.kind === "switch") {
@@ -2890,14 +2909,19 @@ function collectRefSwitches(
         //       cell either — same field-anchored-widget gap as (2). The user
         //       sees the flag bit and the region the switch selects but gets no
         //       control. Treated identically to the case-nested path.
-        //   (4) it is a TOP-LEVEL switch discriminated on a field declared inside
-        //       a top-level `encrypted` plaintext (QUIC `frameByType` on
-        //       `frameType` inside the `payload` block). `flattenForMirror` does
-        //       not expose an encrypted-plaintext field as a top-level cell, so
-        //       again no field-anchored widget exists. In semantic view the
-        //       plaintext expands and the selected frame body (CRYPTO / ACK /
-        //       Stream / Frame Payload) renders, so the user SEES the variant but
-        //       cannot select it. Treated identically to the case/group paths.
+        //   (4) it is a switch discriminated on a field declared inside an
+        //       `encrypted` plaintext that the diagram renders INLINE (a
+        //       header-protected scope with no fixed `wireBits`).
+        //       `flattenForMirror` does not expose an encrypted-plaintext field
+        //       as a top-level cell, so again no field-anchored widget exists —
+        //       treated identically to the case/group paths.
+        //       NOTE: an OPAQUE (`wireBits`-bounded) encrypted node — QUIC's
+        //       `payload`/`frames` whose `frameByType` switches on `frameType` —
+        //       is rendered as ciphertext: the plaintext switch is never
+        //       instantiated, so every selectable value yields a byte-identical
+        //       diagram. `collectEncryptedNestedFieldIds` deliberately EXCLUDES
+        //       such opaque plaintext, so its discriminator is absent here and no
+        //       permanently-inert picker (contradicting the opaque blob) leaks.
         const fieldNestedNoWidget =
           !enclosingPlainRepeat &&
           !insideRepeat &&
@@ -3001,10 +3025,12 @@ function collectRefSwitches(
           //
           // EXCEPTION (snmpV2c/peek precedent): when the selectable arms render
           // to the SAME geometry but carry DISTINCT NAMES, selecting between them
-          // still relabels the diagram cell (QUIC `frameByType`: 6=CRYPTO Data /
-          // 2,3=ACK Ranges / 8-15=Stream Data / _=Frame Payload — all `bits:128`,
-          // differing only by NAME). That is a real, diagram-visible semantic
-          // edit, so we keep the picker surfaced rather than treating it as inert.
+          // still relabels the diagram cell — a real, diagram-visible semantic
+          // edit — so we keep the picker surfaced rather than treating it as
+          // inert. (This relaxation only matters for a case/group-nested or
+          // INLINE-encrypted discriminator; an OPAQUE encrypted plaintext like
+          // QUIC's `frameByType` is excluded upstream by
+          // `collectEncryptedNestedFieldIds`, so it never reaches this gate.)
           const allArmsIdentical =
             caseNested &&
             switchArmsAllIdentical(c.cases) &&
@@ -4991,7 +5017,14 @@ function collectPeekSwitches(
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, insideSwitch, insideRepeat, insideOptional);
+        // An opaque (`wireBits`-bounded) encrypted node renders as ciphertext in
+        // the default (wire) view — its plaintext switch/optional is never
+        // instantiated, so any peek picker surfaced from inside would be inert
+        // and contradict the opaque blob the diagram shows (QUIC's frame
+        // switch). Don't descend into opaque plaintext (matches
+        // `collectEncryptedNestedFieldIds`).
+        if (c.wireBits === undefined)
+          visit(c.plaintext.fields, insideSwitch, insideRepeat, insideOptional);
         continue;
       }
     }
