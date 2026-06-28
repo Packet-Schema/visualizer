@@ -1,8 +1,10 @@
 // IPv6 chain-catalog extraction (PSDL → renderer) and round-trip back.
 //
 // The IPv6 baseline preset models the extension-header chain as
-// `Repeat<Switch on nextHeader_proto>`. We detect that by id prefix
-// (`*_chain` / `*chain`) and lower it to a renderer `chainCatalog`.
+// `Repeat<Switch on ref(nextHeader)>` whose every case re-declares the
+// `nextHeader` discriminator (forward-linking to the next header). We detect
+// that SHAPE structurally (`isLikelyChainRepeat`, not an id convention) and
+// lower it to a renderer `chainCatalog`.
 
 import type { Repeat, Struct, Switch } from "../types";
 import type {
@@ -109,6 +111,15 @@ export function repeatToChainField(r: Repeat): RendererField {
   if (typeof r.chainFinalProto === "number") {
     field.chainFinalProto = r.chainFinalProto;
   }
+  // Carry the source discriminator id (`sw.on.field`, e.g. `nextHeader`) so the
+  // renderer→PSDL lift can keep the Switch `on` aligned with the id each case
+  // re-declares. Without this, the lift discriminated on a synthetic
+  // `${baseId}_proto` id that NO case re-declares, so `isLikelyChainRepeat`
+  // failed on re-import and the chain degraded into a TLV — silently dropping
+  // chainInstances / chainFinalProto (bar #2 round-trip loss).
+  if (sw && sw.on.kind === "ref") {
+    field.chainDiscId = sw.on.field;
+  }
   if (r.category) field.category = r.category;
   if (r.doc) field.description = r.doc;
   return field;
@@ -121,6 +132,16 @@ export function repeatToChainField(r: Repeat): RendererField {
 export function chainEntryToStruct(
   parentId: string,
   entry: ChainCatalogEntry,
+  /** Id the chain Switch discriminates on. The matching catalog field is
+   *  re-keyed to this so every case re-declares the discriminator — the
+   *  structural signature `isLikelyChainRepeat` keys on. Pass the original
+   *  source discriminator (`field.chainDiscId`) so a lift→re-import keeps the
+   *  same id end-to-end. */
+  discId: string,
+  /** Original id of the catalog's discriminator field (the unprefixed id
+   *  re-declared by every chain case, e.g. `nextHeader`). The field carrying
+   *  this id is re-keyed to `discId`; all other fields keep their ids. */
+  catalogDiscId: string,
 ): Struct {
   return {
     id: `${parentId}_proto_${entry.proto}`,
@@ -130,7 +151,7 @@ export function chainEntryToStruct(
     fields: entry.fields
       .filter((f) => f.bits > 0)
       .map((f) => ({
-        id: f.id,
+        id: f.id === catalogDiscId ? discId : f.id,
         name: f.name,
         type: { kind: "bits", n: f.bits } as const,
         ...(f.description ? { doc: f.description } : {}),
@@ -145,9 +166,29 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
   // trailing marker so we don't emit `${name}_chain_chain` (and all of
   // its derived child ids) on the way back to PSDL.
   const baseId = field.id.replace(/_chain$/, "");
+  const catalog = field.chainCatalog ?? [];
+  // The Switch must discriminate on the SAME id every case re-declares, or
+  // `isLikelyChainRepeat` won't recognise the lifted Repeat as a chain on
+  // re-import (it would fall through to `isTlvRepeat`, silently dropping
+  // chainInstances / chainFinalProto). Prefer the source discriminator id
+  // carried by `repeatToChainField` (`field.chainDiscId`, e.g. `nextHeader`);
+  // for a hand-built mirror with no carried id, fall back to the legacy
+  // synthetic `${baseId}_proto`. In the carried case the catalog already holds
+  // a field with that id (the per-case Next-Header), so re-keying is a no-op;
+  // in the fallback case we re-key the catalog's leading discriminator field
+  // (forward-linked chains lead with the Next-Header field) onto the synthetic
+  // id so the cases still re-declare it.
+  const discId = field.chainDiscId ?? `${baseId}_proto`;
+  const catalogDiscId =
+    field.chainDiscId ?? catalog[0]?.fields[0]?.id ?? discId;
   const cases: Record<string, Struct> = {};
-  for (const entry of field.chainCatalog ?? []) {
-    cases[String(entry.proto)] = chainEntryToStruct(baseId, entry);
+  for (const entry of catalog) {
+    cases[String(entry.proto)] = chainEntryToStruct(
+      baseId,
+      entry,
+      discId,
+      catalogDiscId,
+    );
   }
   // `repeatToChainField` carried the source Repeat name straight onto
   // the renderer Field, so a PSDL→renderer→PSDL round-trip arrives
@@ -189,7 +230,7 @@ export function chainFieldToRepeat(field: RendererField): Repeat {
         {
           kind: "switch",
           id: `${baseId}_byProto`,
-          on: { kind: "ref", field: `${baseId}_proto` },
+          on: { kind: "ref", field: discId },
           cases,
         },
       ],

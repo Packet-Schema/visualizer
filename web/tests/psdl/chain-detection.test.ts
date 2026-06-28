@@ -7,6 +7,9 @@ import { describe, it, expect } from "vitest";
 
 import { PRESETS } from "@/lib/psdl/presets.server";
 import { isLikelyChainRepeat } from "@/lib/psdl/psdl-to-renderer/chain";
+import { psdlToRenderer, rendererToPsdl } from "@/lib/psdl/psdl-to-renderer";
+import { validatePsdlPacket } from "@/lib/psdl/validate";
+import { fromJson, toJson } from "@/lib/formats/json";
 import type { Repeat } from "@/lib/psdl/types";
 
 function repeatFrom(body: unknown): Repeat {
@@ -96,5 +99,63 @@ describe("isLikelyChainRepeat (structural)", () => {
       },
     } as unknown as Repeat;
     expect(isLikelyChainRepeat(repeat)).toBe(false);
+  });
+});
+
+// The rendererToPsdl lift (the source-less export/share fallback) used to
+// discriminate the chain Switch on a synthetic `${baseId}_proto` id that NO
+// case re-declared, while each case kept the ORIGINAL discriminator (`nextHeader`).
+// After one lift the two ids diverged, so `isLikelyChainRepeat` returned false
+// on re-import and the chain degraded into a TLV — silently dropping the user's
+// chosen extension headers (chainInstances) and the terminal Next-Header
+// (chainFinalProto). The existing tests above only check the ORIGINAL preset;
+// this pins the LIFTED form (bar #2 lossless round-trip, bar #1 stable surface).
+describe("chain survives the rendererToPsdl lift → re-import", () => {
+  it("keeps PRESETS.ipv6 a chain (not a TLV) and preserves chain selections", () => {
+    const mirror = psdlToRenderer(PRESETS.ipv6!);
+    const chain = mirror.fields.find((f) => f.chainCatalog);
+    expect(chain, "ipv6 mirror should carry a chain catalog").toBeTruthy();
+
+    // User picks a heterogeneous extension-header chain + a terminal proto.
+    chain!.chainInstances = [{ proto: 43 }, { proto: 44 }];
+    chain!.chainFinalProto = 59;
+
+    // Source-less export/share fallback, then a full JSON round-trip (what a
+    // recipient does on re-import).
+    const lifted = rendererToPsdl(mirror);
+    expect(() => validatePsdlPacket(lifted)).not.toThrow();
+    const { packet: reimported } = fromJson(toJson(lifted, new Map()));
+
+    const m2 = psdlToRenderer(reimported);
+    const chain2 = m2.fields.find((f) => f.chainCatalog);
+    const tlv2 = m2.fields.find((f) => f.tlv);
+
+    // Still a chain, NOT misdetected as a TLV.
+    expect(
+      chain2,
+      "lifted ipv6 must still expose a chain catalog",
+    ).toBeTruthy();
+    expect(tlv2, "lifted ipv6 must NOT degrade into a TLV").toBeFalsy();
+
+    // The chain selections round-trip losslessly.
+    expect(chain2!.chainInstances).toEqual([{ proto: 43 }, { proto: 44 }]);
+    expect(chain2!.chainFinalProto).toBe(59);
+  });
+
+  it("the lifted chain Switch discriminates on the same id every case re-declares", () => {
+    // The structural signature `isLikelyChainRepeat` keys on: the Switch `on`
+    // ref must be a field that EACH case redefines. Assert it directly on the
+    // lifted Repeat so a future refactor that re-introduces a synthetic
+    // discriminator id is caught immediately.
+    const mirror = psdlToRenderer(PRESETS.ipv6!);
+    const lifted = rendererToPsdl(mirror);
+    const repeat = lifted.body.find(
+      (c): c is Repeat => (c as { kind?: string }).kind === "repeat",
+    );
+    expect(
+      repeat,
+      "lifted ipv6 body should contain a chain repeat",
+    ).toBeTruthy();
+    expect(isLikelyChainRepeat(repeat!)).toBe(true);
   });
 });

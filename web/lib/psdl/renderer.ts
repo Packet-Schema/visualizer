@@ -184,6 +184,19 @@ export type Field = {
   /** Final next-header value when no extension headers are attached. */
   chainFinalProto?: number;
   /**
+   * Id of the PSDL field the chain Switch discriminates on (e.g. IPv6's
+   * `nextHeader`). Carried verbatim from the source Repeat by
+   * `repeatToChainField` so the renderer→PSDL lift (`chainFieldToRepeat`) can
+   * emit a Switch whose `on` matches the discriminator each case re-declares.
+   * Keeping these two ids identical preserves the chain's structural signature
+   * across a lift→re-import, so `isLikelyChainRepeat` keeps detecting it as a
+   * chain instead of degrading it to a TLV (which would silently drop
+   * chainInstances / chainFinalProto). Absent for hand-built mirrors; the lift
+   * then falls back to the legacy `${baseId}_proto` id (and re-keys the case
+   * discriminator to match, so detection still holds).
+   */
+  chainDiscId?: string;
+  /**
    * Case list when this field is the discriminator of a top-level PSDL
    * `Switch` whose `on` is `ref(<this field id>)`. Each entry pairs the
    * discriminator value with a human-readable label (the case struct's
