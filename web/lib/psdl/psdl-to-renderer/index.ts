@@ -5983,6 +5983,59 @@ function attachOverrideMetadata(
     return null;
   };
 
+  // Locate a plain leaf Field that is a DIRECT child of a Switch case struct
+  // (`switch.cases[k].fields`), i.e. NOT wrapped in any Group and NOT inside a
+  // Repeat element. Switch-case fields never reach `mirror.fields` (only the
+  // Switch's own discriminator field surfaces), so an Optional gated by such a
+  // plain ref has no target for `groupOwning` (no group owns it) and no
+  // top-level field — a see-but-cannot-edit gate. amt (Membership Query) is the
+  // sole preset where this occurs: `amtMqG` (a 1-bit int declared directly in
+  // the `amtType` case-4 struct) gates `optional{group: amtMqGateway}`. We only
+  // relax the surface for this exact shape — a bare leaf directly under a case,
+  // outside any repeat — so unrelated switch-case fields are not promoted.
+  const switchCaseLeafGate = (id: string): PsdlField | null => {
+    let found: PsdlField | null = null;
+    const scanStruct = (
+      struct: Struct,
+      insideCase: boolean,
+      insideRepeat: boolean,
+    ): void => {
+      for (const child of struct.fields) {
+        if (found) return;
+        if (isField(child)) {
+          if (insideCase && !insideRepeat && child.id === id) found = child;
+          continue;
+        }
+        if (child.kind === "switch") {
+          for (const sub of Object.values(child.cases))
+            scanStruct(sub, true, insideRepeat);
+        } else if (child.kind === "group") {
+          // A bare leaf directly under a case is what we want; a leaf inside a
+          // Group is handled by `groupOwning` instead, so don't descend with
+          // `insideCase` still set — clear it so a group-nested leaf is ignored.
+          scanStruct({ fields: child.children } as Struct, false, insideRepeat);
+        } else if (child.kind === "repeat") {
+          scanStruct(child.element, insideCase, true);
+        } else if (child.kind === "optional") {
+          scanStruct(
+            { fields: [child.container] } as Struct,
+            insideCase,
+            insideRepeat,
+          );
+        } else if (child.kind === "encrypted") {
+          scanStruct(child.plaintext, insideCase, insideRepeat);
+        } else if (child.kind === "bounded") {
+          scanStruct({ fields: child.fields } as Struct, insideCase, true);
+        } else if (child.kind === "ref") {
+          const def = defs?.[child.ref];
+          if (def) scanStruct(def, insideCase, insideRepeat);
+        }
+      }
+    };
+    scanStruct({ fields: body } as Struct, false, false);
+    return found;
+  };
+
   // Resolve an Optional's gate `ref` to a stampable target, lazily surfacing
   // its enclosing Group as a deep subfield-bearing mirror field when the gate
   // is a bit leaf that `groupToSubfieldField` collapsed away. Without this the
@@ -5997,16 +6050,31 @@ function attachOverrideMetadata(
     const direct = findTarget(id);
     if (direct) return direct;
     const owner = groupOwning(id, scope) ?? groupOwning(id, body);
-    if (!owner) return null;
-    // If the owning Group already surfaced (flat collapse), the leaf is a
-    // subfield on it and findTarget would have found it; reaching here means it
-    // did not surface. Build a deep collapse so every bit leaf is reachable.
-    if (fields.some((x) => x.id === owner.id)) return null;
-    const deep = groupToSubfieldFieldDeep(owner);
-    if (!deep) return null;
-    fields.push(deep);
-    const sub = deep.subfields?.find((s) => s.id === id);
-    return sub ? { kind: "subfield", sub } : null;
+    if (owner) {
+      // If the owning Group already surfaced (flat collapse), the leaf is a
+      // subfield on it and findTarget would have found it; reaching here means
+      // it did not surface. Build a deep collapse so every bit leaf is
+      // reachable.
+      if (fields.some((x) => x.id === owner.id)) return null;
+      const deep = groupToSubfieldFieldDeep(owner);
+      if (!deep) return null;
+      fields.push(deep);
+      const sub = deep.subfields?.find((s) => s.id === id);
+      return sub ? { kind: "subfield", sub } : null;
+    }
+    // No group owns the gate — it may be a plain leaf declared directly inside a
+    // Switch case (amt's `amtMqG`). Such a field never reaches `mirror.fields`,
+    // so lazily promote it to a top-level mirror field carrying the gate stamp.
+    // The diagram cell for the leaf already uses this id, so OverridePanel's
+    // selection resolver lands on the promoted field and renders an
+    // OptionalToggle keyed on `env[id]`; the merge-based lift looks fields up by
+    // id and finds no byteOrder/tlv/chain on it, so the promotion is a no-op for
+    // export round-trips.
+    const leaf = switchCaseLeafGate(id);
+    if (!leaf) return null;
+    const promoted = plainFieldToRenderer(leaf);
+    fields.push(promoted);
+    return { kind: "field", field: promoted };
   };
 
   // Pull the primary ref id out of an Expr — the first field referenced
