@@ -123,6 +123,26 @@ const MAX_DERIVED_RECORDS = 1024;
 // the slider/number max in OverridePanel) is clamped to a renderable ceiling.
 const MAX_LENGTH_CONTROLLER_BYTES = MAX_DERIVED_RECORDS;
 
+// MULTIPLICATIVE-FREEZE (product across nested / sibling controls): the per-key
+// caps above each bound ONE control (a freeRepeat count, a bounded-derived count,
+// a direct length byte-count) to MAX_DERIVED_RECORDS. They do NOT bound the
+// PRODUCT of several controls that the layout multiplies together — a repeat
+// nested in another repeat (dnsResponse: dnsQuestions{count=dnsQdCount} ⊃
+// dnsQNameLabels{until}, both surfaced as independent steppers), or a repeat
+// count times a per-record length controller (diameter: diameterAvps × avpLength;
+// dhcpv6/dhcpv6Relay: options × optionLen). With every control at its own 1024
+// cap, the product reaches 1024×1024 ≈ 1.05M cells; resolveLayout expands the
+// repeats INSIDE normalize (so a post-resolve cell truncation can't help — the
+// freeze is in the expansion), taking ~26s and OOM-ing the un-virtualized SVG
+// diagram. We therefore bound the PRODUCT of every layout-multiplying driver
+// (derived record counts AND direct length byte-counts) to this ceiling, walking
+// them in order against a shrinking running budget so the first drivers keep
+// their full per-key cap and later ones are lowered only as far as the remaining
+// budget requires. Set equal to MAX_DERIVED_RECORDS so the worst reachable
+// product matches the already-accepted single-maxed-control cell count (≈1024
+// records' worth, a few thousand cells) — never the million-cell freeze.
+const MAX_DERIVED_PRODUCT = MAX_DERIVED_RECORDS;
+
 // Mapping from a length-controller slider to its TLV Options *slot*: the
 // number of bytes the user has carved out by setting the controller.
 // `applyTlvInstances` reads this to size the Stage 1 placeholder and the
@@ -1340,6 +1360,32 @@ export default function PacketViewer({
     // Give varint / delimited-bytes fields a visible default width (a user width
     // still wins — seed only fills unset/0).
     seedDynamicWidthDefaults(targetPsdl, env);
+    // PRODUCT-AWARE freeze guard. Each control below (a bounded-derived count, a
+    // freeRepeat count, a direct length byte-count) is bounded individually to
+    // MAX_DERIVED_RECORDS, but the layout MULTIPLIES nested / sibling controls
+    // together (a repeat inside a repeat, or a repeat × a per-record length), so
+    // the PRODUCT — not any single value — is what explodes the cell count and
+    // freezes the un-virtualized diagram. We walk every layout-multiplying driver
+    // against a single shrinking budget: each driver gets `min(its own per-key
+    // cap, remaining budget)`, then divides the remaining budget by the value it
+    // actually took. The first drivers keep their full 1024 cap; later ones drop
+    // only as far as the running product forces, so the resolved cell count can
+    // never exceed the already-accepted single-maxed-control ceiling. The
+    // underlying controller VALUES stay user-editable (this is layout-env-only);
+    // OverridePanel's per-key SOFT_MAX still caps each input independently.
+    let productBudget = MAX_DERIVED_PRODUCT;
+    // `factor` consumes the shared budget: returns the value clamped to both the
+    // per-key cap and what the running product can still afford, then shrinks the
+    // budget by that value (>=1, so a 0/empty control never zeroes the budget for
+    // the controls after it).
+    const factor = (value: number, perKeyCap: number): number => {
+      const capped = Math.max(0, Math.min(value, perKeyCap, productBudget));
+      productBudget = Math.max(
+        1,
+        Math.floor(productBudget / Math.max(1, capped)),
+      );
+      return capped;
+    };
     // Derive the iteration count of each bounded eos/until repeat from its
     // scope's length budget, so raising the length slider fills the scope with
     // records (core reads the eos count from env[countKey], not the budget).
@@ -1356,60 +1402,65 @@ export default function PacketViewer({
       // against the live env — not the raw slider value.
       const budget = evalExprOr(br.bytesExpr, env, 0);
       const forRecords = Math.max(0, budget - br.prefixBytes);
-      // Clamp to MAX_DERIVED_RECORDS: a maxed length slider (16-bit → 65535)
-      // would otherwise derive tens of thousands of records and freeze the
-      // un-virtualized diagram. The length CELL stays user-editable; only the
-      // record count the budget DERIVES is capped.
+      // Clamp to MAX_DERIVED_RECORDS AND the shared product budget: a maxed
+      // length slider would otherwise derive tens of thousands of records, and
+      // even a capped count can multiply with an inner repeat/length below. The
+      // length CELL stays user-editable; only the DERIVED count is capped.
       env.set(
         br.countKey,
-        Math.min(
-          MAX_DERIVED_RECORDS,
-          Math.floor(forRecords / br.perRecordBytes),
-        ),
+        factor(Math.floor(forRecords / br.perRecordBytes), MAX_DERIVED_RECORDS),
       );
     }
-    // Cap each DIRECT length-controller byte count (a `bytes(ref X)` payload sized
-    // straight by env[X], not via a budget-derived repeat). resolveLayout emits
-    // ~1 cell per payload byte, so an uncapped slider maxed to the field's full
-    // int range (16/24/32-bit) would generate millions-to-billions of cells in
-    // the un-virtualized diagram → freeze / OOM. Mirror the boundedRepeat guard:
-    // the length CELL value stays user-editable in `controllers`; only the layout
-    // env is clamped to a renderable ceiling (OverridePanel lowers the slider max
-    // to the same ceiling so the input can't request an explosive value).
-    for (const id of directLengthControllerIds) {
-      const v = env.get(id);
-      if (typeof v === "number" && v > MAX_LENGTH_CONTROLLER_BYTES) {
-        env.set(id, MAX_LENGTH_CONTROLLER_BYTES);
-      }
-    }
-    // Cap each freeRepeat's DERIVED record count to MAX_DERIVED_RECORDS. Unlike
-    // boundedRepeats (count derived from a byte budget, capped above) and direct
-    // length controllers (capped above), a freeRepeat's record count is driven
-    // STRAIGHT by env[countKey] (via the affine transform), so an uncapped value
-    // — reachable not only through RepeatCountStepper but, crucially, BYPASSING
-    // it via share-URL hydration / JSON import (freeRepeat countKeys ride in
-    // `controllers` → env) — feeds e.g. 65535 directly into resolveLayout, which
-    // emits ~6-20 cells per record and freezes the un-virtualized diagram
-    // (dnsResponse.dnsAnCount → ~917k cells / 67s). Clamp the DERIVED record
-    // count, then invert through the transform back to the env value so the
-    // displayed count and the layout agree. Layout-only: the underlying
-    // controller value stays user-editable (OverridePanel's stepper SOFT_MAX is
-    // lowered to the same ceiling so its input can't request an explosive count).
+    // Cap each freeRepeat's DERIVED record count. Unlike boundedRepeats (count
+    // derived from a byte budget) and direct length controllers, a freeRepeat's
+    // record count is driven STRAIGHT by env[countKey] (via the affine
+    // transform), so an uncapped value — reachable not only through
+    // RepeatCountStepper but, crucially, BYPASSING it via share-URL hydration /
+    // JSON import (freeRepeat countKeys ride in `controllers` → env) — feeds e.g.
+    // 65535 directly into resolveLayout. Clamp the DERIVED record count to both
+    // the per-key cap and the shared product budget (so a repeat nested in
+    // another repeat — dnsResponse's dnsQuestions ⊃ dnsQNameLabels — cannot
+    // multiply two maxed steppers into a million-cell freeze), then invert
+    // through the transform back to the env value so the displayed count and the
+    // layout agree. Layout-only: the underlying controller value stays
+    // user-editable (OverridePanel's stepper SOFT_MAX caps each input).
     for (const fr of packet.freeRepeats ?? []) {
       const v = env.get(fr.countKey);
       if (typeof v !== "number") continue;
       const mul = fr.transform?.mul ?? 1;
       const add = fr.transform?.add ?? 0;
       const recordCount = v * mul + add;
-      if (recordCount > MAX_DERIVED_RECORDS) {
-        // Invert recordCount = env * mul + add → env = (cap - add) / mul.
+      const allowed = factor(recordCount, MAX_DERIVED_RECORDS);
+      if (allowed !== recordCount) {
+        // Invert recordCount = env * mul + add → env = (allowed - add) / mul.
         // `mul` is always non-zero for a surfaced transform (the adapter rejects
         // `*0`); clamp >= 0 so the unsigned wire field never goes negative.
-        const capped = Math.max(
-          0,
-          Math.floor((MAX_DERIVED_RECORDS - add) / mul),
-        );
+        const capped = Math.max(0, Math.floor((allowed - add) / mul));
         env.set(fr.countKey, capped);
+      }
+    }
+    // Cap each DIRECT length-controller byte count (a `bytes(ref X)` payload sized
+    // straight by env[X], not via a budget-derived repeat). resolveLayout emits
+    // ~1 cell per payload byte, so an uncapped slider maxed to the field's full
+    // int range (16/24/32-bit) would generate millions-to-billions of cells in
+    // the un-virtualized diagram → freeze / OOM. Cap each to its per-key ceiling
+    // AND whatever the repeats LEFT in the shared product budget — a per-record
+    // length controller multiplies with its enclosing repeat's count (diameter
+    // avpLength × diameterAvps; dhcpv6 optionLen × options), so when the repeats
+    // have consumed the budget the per-record length must shrink with it. We read
+    // the LEFTOVER budget without each length draining it for the next, because
+    // sibling top-level length payloads (oncRpc credLength + verfLength) are
+    // ADDITIVE, not multiplicative — they must each keep their full per-key cap.
+    // The length CELL value stays user-editable in `controllers`; only the layout
+    // env is clamped (OverridePanel lowers the slider max to the per-key ceiling).
+    const directLengthCap = Math.min(
+      MAX_LENGTH_CONTROLLER_BYTES,
+      productBudget,
+    );
+    for (const id of directLengthControllerIds) {
+      const v = env.get(id);
+      if (typeof v === "number" && v > directLengthCap) {
+        env.set(id, directLengthCap);
       }
     }
     // 0-fill above only absorbs MissingRefError. Other normalize throws —
