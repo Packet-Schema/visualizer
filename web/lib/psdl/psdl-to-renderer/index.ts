@@ -442,6 +442,32 @@ function collectSiblingLengthControllers(
       ) {
         lengthFields.set(c.id, c);
       }
+      // An OPTIONAL-wrapped length cell is also a controller candidate. rohc's
+      // `feedbackSize` is an `optional {when: feedbackCode==0}` int that sizes a
+      // sibling `feedbackData = bytes(cond(feedbackCode==0 ? feedbackSize : …))`.
+      // At the seeded load state (feedbackCode=0) the Size octet AND the
+      // feedbackData region are both VISIBLE and feedbackData's width is driven
+      // entirely by feedbackSize — but `flattenForMirror` does not descend into
+      // Optional, so feedbackSize is neither a top-level cell nor a Group
+      // subfield, and the direct-sibling `lengthFields` scan above (which only
+      // sees unwrapped fields) misses it. Surface it as a length controller keyed
+      // on `env[feedbackSize]`; OverridePanel's per-controller live gate
+      // (`fieldRendered`) keeps the slider LIVE only while the Size octet is in
+      // the diagram (feedbackCode==0) and disabled otherwise, so the control
+      // appears exactly when the width it drives is the editable one.
+      if (c.kind === "optional") {
+        const inner = c.container;
+        if (
+          isField(inner) &&
+          (inner.type.kind === "int" ||
+            inner.type.kind === "bits" ||
+            inner.type.kind === "varint" ||
+            inner.type.kind === "berLength") &&
+          inner.category === "length"
+        ) {
+          lengthFields.set(inner.id, inner);
+        }
+      }
     }
     for (const [id, field] of lengthFields) {
       if (sizedBy.has(id) && !acc.has(id)) acc.set(id, field);
