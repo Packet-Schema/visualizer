@@ -1117,6 +1117,144 @@ function collectGroupNestedLengthControllers(
 }
 
 /**
+ * Collect every field id used as a `repeat.count` (or `until`) discriminator
+ * anywhere in the body. These are the "other refs" subtracted from an
+ * `optional.when` budget expression by `collectOptionalGateLengthControllers`:
+ * a BYE-style length budget reads `((length+1)*4 - 4) - rtcpByeSrcCount*4`,
+ * where `rtcpByeSrcCount` is the source-count loop's count ref and `length` is
+ * the field the user actually drives. Subtracting the loop-count refs isolates
+ * the length field.
+ */
+function collectRepeatCountRefs(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  acc: Set<string>,
+): void {
+  for (const c of containers) {
+    if (isField(c)) continue;
+    switch (c.kind) {
+      case "repeat": {
+        const count = c.count;
+        if (count !== "eos") {
+          const expr =
+            typeof count === "object" && "until" in count ? count.until : count;
+          for (const r of exprRefs(expr)) acc.add(r);
+        }
+        collectRepeatCountRefs(c.element.fields, defs, acc);
+        break;
+      }
+      case "group":
+        collectRepeatCountRefs(c.children, defs, acc);
+        break;
+      case "optional":
+        collectRepeatCountRefs([c.container], defs, acc);
+        break;
+      case "bounded":
+        collectRepeatCountRefs(c.fields, defs, acc);
+        break;
+      case "encrypted":
+        collectRepeatCountRefs(c.plaintext.fields, defs, acc);
+        break;
+      case "switch":
+        for (const struct of Object.values(c.cases))
+          collectRepeatCountRefs(struct.fields, defs, acc);
+        break;
+      case "ref": {
+        const def = defs?.[c.ref];
+        if (def) collectRepeatCountRefs(def.fields, defs, acc);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+/**
+ * Surface a VISIBLE top-level `length`-category int field X as a packet-level
+ * length controller when X is the SOLE non-loop ref in an `optional.when` budget
+ * expression that materialises the rest of the packet.
+ *
+ * rtcpBye's trailing Reason block is gated by
+ * `optional {when: ((length+1)*4 - 4) - rtcpByeSrcCount*4 > 0}` wrapping
+ * `rtcpByeHasReason`, which in turn gates+sizes `rtcpByeReason`. Raising the
+ * 16-bit `length` cell is the ONLY thing that materialises `rtcpByeHasReason`
+ * (and through it the Reason payload). But `length` lives OUTSIDE the optional
+ * and only drives its `when` via this multi-ref op expr, so NONE of the other
+ * length-controller collectors reach it: it is not a `bytes(ref length)` sizer
+ * (`collectBytesSizers`/`collectSiblingLengthControllers` miss it), not a
+ * `bounded.bytes` ref (`collectBoundedControllers` misses it), and
+ * `collectOptionalLengthGates` only fires when the optional's CONTAINER field is
+ * itself the sizer (here `length` is outside the optional). At the seeded load
+ * state `length=0`, so `rtcpByeHasReason` is absent and the lone control offered
+ * for the region (the `rtcpByeHasReason` length controller) is gated inert by
+ * `fieldRendered`, leaving the user with NO working control to reach the rest of
+ * the packet — a see-but-cannot-edit width-driving cell.
+ *
+ * Detection: for each `optional`, take `exprRefs(when)` minus every
+ * `repeat.count` ref in the body; if exactly one ref X remains, and X is a
+ * VISIBLE top-level int/bits cell of `category === "length"` that does NOT
+ * already drive the diagram (`controlsLength`/`switchCases`/`enumVariants`),
+ * stamp `controlsLength = X` onto that cell. The cell is always rendered, so the
+ * OverridePanel `fieldRendered(cells, 'length')` live gate keeps the slider
+ * live. Returns the stamped field ids so the caller dedupes against earlier
+ * passes.
+ */
+function collectOptionalGateLengthControllers(
+  body: PsdlPacket["body"],
+  fields: RendererField[],
+  defs: Record<string, NamedStruct> | undefined,
+): string[] {
+  const countRefs = new Set<string>();
+  collectRepeatCountRefs(body, defs, countRefs);
+  const stamped: string[] = [];
+  const walk = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "optional") {
+        const refs = new Set(exprRefs(c.when));
+        for (const r of countRefs) refs.delete(r);
+        if (refs.size === 1) {
+          const x = [...refs][0];
+          const target = fields.find((f) => f.id === x);
+          if (
+            target &&
+            (target.category === "length" || target.controlsLength === x) &&
+            !target.controlsLength &&
+            !target.switchCases &&
+            !target.enumVariants
+          ) {
+            target.controlsLength = x;
+            if (target.bits != null) {
+              target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
+            }
+            stamped.push(x);
+          }
+        }
+        walk([c.container]);
+        continue;
+      }
+      if (c.kind === "group") {
+        walk(c.children);
+      } else if (c.kind === "repeat") {
+        walk(c.element.fields);
+      } else if (c.kind === "bounded") {
+        walk(c.fields);
+      } else if (c.kind === "encrypted") {
+        walk(c.plaintext.fields);
+      } else if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases)) walk(struct.fields);
+      } else if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def) walk(def.fields);
+      }
+    }
+  };
+  walk(body);
+  return stamped;
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -1373,6 +1511,22 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       controllerIds.add(lc.id);
       lengthControllers.push(lc);
     }
+  }
+  // A VISIBLE top-level `length` cell whose value is the SOLE non-loop ref in an
+  // `optional.when` budget that materialises the rest of the packet (rtcpBye's
+  // `length` gating `rtcpByeHasReason`→`rtcpByeReason`) is reached by NONE of the
+  // collectors above: it sizes nothing via `bytes(ref …)`, is no `bounded.bytes`
+  // ref, and lives OUTSIDE the optional it drives. Without a control the user can
+  // SEE the Length cell grow the diagram but has no working knob to reveal the
+  // gated tail. Stamp `controlsLength` onto that existing cell so OverridePanel
+  // renders the same slider IHL / Data Offset get; the cell is always present so
+  // its `fieldRendered` live gate keeps the slider live.
+  for (const id of collectOptionalGateLengthControllers(
+    packet.body,
+    fields,
+    packet.defs,
+  )) {
+    controllerIds.add(id);
   }
   attachOverrideMetadata(packet.body, fields, packet.defs);
   // A chain's base field carries a chainCatalog (the chain editor's surface);

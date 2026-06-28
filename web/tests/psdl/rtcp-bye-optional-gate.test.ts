@@ -69,6 +69,33 @@ describe("rtcpBye optional-gate surfacing", () => {
     expect(mirror.fields.some((f) => f.id === "rtcpByeHasReason")).toBe(false);
   });
 
+  it("surfaces the 16-bit Length cell as a length controller that reveals the reason block", () => {
+    // `length` is the ONLY control that, from the seeded load state (length=0),
+    // can materialise `rtcpByeHasReason` (and through it the Reason payload):
+    // the first optional's `when` budget `((length+1)*4-4) - rtcpByeSrcCount*4`
+    // depends on `length` (the loop-count ref `rtcpByeSrcCount` is subtracted).
+    // Without a control on `length` the whole tail is see-but-cannot-reach.
+    const length = mirror.fields.find((f) => f.id === "length");
+    expect(length).toBeDefined();
+    expect(length?.controlsLength).toBe("length");
+    // 16-bit word count → slider max 65535.
+    expect(length?.max).toBe(2 ** 16 - 1);
+
+    // Faithful diagram probe: at the seeded length=0 only [flags,pt,length]
+    // render; bumping `length` to 1 materialises the rtcpByeHasReason cell.
+    const cellIdsAt = (lengthValue: number): string[] => {
+      const env = new Map<string, number>([
+        ["rtcpByeSrcCount", 0],
+        ["length", lengthValue],
+      ]);
+      for (const [k, v] of initialEnv(psdl)) if (!env.has(k)) env.set(k, v);
+      for (const r of collectPsdlRefs(psdl)) if (!env.has(r)) env.set(r, 0);
+      return resolveLayout(psdl, { env }).cells.map((c) => c.field.id);
+    };
+    expect(cellIdsAt(0)).not.toContain("rtcpByeHasReason");
+    expect(cellIdsAt(1)).toContain("rtcpByeHasReason");
+  });
+
   it("the length controller both gates and sizes the reason string", () => {
     // At 0 the reason is gated off — only the count octet shows.
     const at0 = reasonCells(psdl, {
