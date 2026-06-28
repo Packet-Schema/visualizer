@@ -1632,6 +1632,41 @@ function switchArmsMixedCollapsedSiblingLengths(
 }
 
 /**
+ * Distinguish a length-EXTENSION encoder (a sub-byte nibble/flag whose arms only
+ * tack a length-extension field onto an already-being-decoded length — CoAP's
+ * `byOptDelta`/`byOptLength` 13/14 sentinels, BGP's `bgpAttrLengthByExt`
+ * extended-length flag) from a genuine VARIANT SELECTOR (a sub-byte
+ * discriminator that picks WHICH substantive cells render — lwm2mRegister's
+ * `byIdLen` choosing the 8- vs 16-bit Identifier, `byTypeOfLength` choosing the
+ * Length-field width and the short-vs-explicit Value layout).
+ *
+ * Driving a length encoder desyncs the encoded length / over-consumes a bounded
+ * scope, so those stay suppressed (they have no `controlsLength`-free meaning).
+ * But a variant selector genuinely changes the user-visible record skeleton, so
+ * suppressing it leaves a see-but-cannot-edit gap. The signal: a pure
+ * length-extension encoder's every non-empty arm consists SOLELY of
+ * `category: "length"` fields (the extension bytes). The moment any arm carries a
+ * non-length substantive field (an `identifier`, a `variable` Value, …) the
+ * switch is choosing a record variant, not merely extending a length.
+ */
+function subByteDiscriminatorSelectsVariant(
+  cases: Record<string, { fields: Container[] }>,
+): boolean {
+  const armIsLengthOnly = (containers: Container[]): boolean => {
+    // An empty arm contributes no substantive field — treat as length-only so a
+    // lone empty arm can't masquerade as a variant.
+    for (const c of containers) {
+      // A nested container (group/switch/repeat/…) is structural content the
+      // discriminator selects between — that is a variant, not a length nibble.
+      if (!isField(c)) return false;
+      if (c.category !== "length") return false;
+    }
+    return true;
+  };
+  return Object.values(cases).some((s) => !armIsLengthOnly(s.fields));
+}
+
+/**
  * Structural fingerprint of a container that ignores identity-only fields
  * (`id`, `name`, `doc`, …) and keeps everything that affects the rendered
  * geometry: the node `kind`, a field's `type`, a Switch's discriminator and
@@ -2138,10 +2173,22 @@ function collectRefSwitches(
           // variant (review HIGH). Two signals: the discriminator is itself a
           // length ref, or it's a sub-byte nibble/flag (< 8 bits) whose cases
           // add length-extension fields — a record-type code is ≥ 8 bits.
+          //
+          // EXCEPTION: a sub-byte discriminator whose arms pick WHICH
+          // substantive (non-length) cells render — not merely a
+          // length-extension field on an existing length — is a genuine variant
+          // selector, not an encoder (lwm2mRegister's `tlvIdLen` selecting the
+          // 8- vs 16-bit Identifier, `tlvTypeOfLength` selecting the Length-field
+          // width / short-vs-explicit Value layout). Suppressing those leaves the
+          // visible Identifier/Length/Value cells un-editable (see-but-cannot-
+          // edit). Only the sub-byte heuristic is relaxed; a true length-driving
+          // ref (lengthDriving) stays an encoder regardless.
           const discBits = fieldBits.get(refKey);
           const isEncoder =
             lengthDriving.has(refKey) ||
-            (discBits !== undefined && discBits < 8);
+            (discBits !== undefined &&
+              discBits < 8 &&
+              !subByteDiscriminatorSelectsVariant(c.cases));
           // Suppress the picker when the enclosing repeat has NO surfaced count
           // control: its records are never instantiated at any value, so the
           // variant choice can't change the diagram. bgpPathAttributes wraps a

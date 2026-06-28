@@ -88,6 +88,48 @@ describe("collectRefSwitches", () => {
     expect(ipv4.refSwitches ?? []).toHaveLength(0);
   });
 
+  it("surfaces sub-byte VARIANT-SELECTOR discriminators but not length encoders", () => {
+    // override-audit (lwm2mRegister): the `tlvRecords` element's compound Type
+    // byte carries two sub-byte (< 8-bit) discriminators that genuinely pick
+    // WHICH cells render — `tlvIdLen` (1-bit, 8- vs 16-bit Identifier via
+    // `byIdLen`) and `tlvTypeOfLength` (2-bit, Length-field width / short-value
+    // layout via `byTypeOfLength`). Both were force-classed as length-extension
+    // ENCODERS by the blanket `discBits < 8` rule and suppressed, leaving the
+    // visible Identifier / Length / Value cells with NO picker — a
+    // see-but-cannot-edit gap. They must now be surfaced as refSwitch pickers.
+    const lwm2m = psdlToRenderer(PRESETS.lwm2mRegister!);
+    const refKeys = (lwm2m.refSwitches ?? []).map((r) => r.refKey);
+    expect(refKeys).toContain("tlvIdLen");
+    expect(refKeys).toContain("tlvTypeOfLength");
+
+    // A TRUE sub-byte length-extension encoder (CoAP's `optDelta`/`optLength`
+    // 13/14 sentinels, whose arms only add a length byte) must STAY suppressed —
+    // driving it would desync the encoded option length.
+    const coap = psdlToRenderer(PRESETS.coap!);
+    const coapKeys = (coap.refSwitches ?? []).map((r) => r.refKey);
+    expect(coapKeys).not.toContain("optDelta");
+    expect(coapKeys).not.toContain("optLength");
+    // BGP's extended-length flag (`attrExtLen`) is likewise a length encoder.
+    const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
+    const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
+    expect(bgpKeys).not.toContain("attrExtLen");
+  });
+
+  it("lwm2mRegister tlvIdLen picker flips tlvIdentifier8 <-> tlvIdentifier16", () => {
+    // Selecting the variant must change the rendered layout (not an inert
+    // dropdown): tlvIdLen=0 emits the 8-bit Identifier, tlvIdLen=1 the 16-bit
+    // one. The app pipeline (initialState seeds + bounded derivation) is used so
+    // this matches what the diagram renders at load.
+    const src = PRESETS.lwm2mRegister!;
+    const as8 = appCellIdsSeeded(src, { tlvRecords: 1, tlvIdLen: 0 });
+    const as16 = appCellIdsSeeded(src, { tlvRecords: 1, tlvIdLen: 1 });
+    expect(as8).toContain("tlvIdentifier8#0");
+    expect(as8).not.toContain("tlvIdentifier16#0");
+    expect(as16).toContain("tlvIdentifier16#0");
+    expect(as16).not.toContain("tlvIdentifier8#0");
+    expect(as16).not.toEqual(as8);
+  });
+
   it("seeds the refSwitch discriminator to its first case so picker matches diagram", () => {
     // override-design-audit: the discriminator 0-filled to 0 (the `_`/default
     // arm) while the picker showed cases[0] — a label/diagram contradiction.
