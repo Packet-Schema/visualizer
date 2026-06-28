@@ -1352,6 +1352,35 @@ function collectFieldBits(body: PsdlPacket["body"]): Map<string, number> {
   return bits;
 }
 
+/** Map each field id to its declared `defaultValue` (the value `initialEnv`
+ *  seeds the env with). Used to order a surfaced refSwitch's cases so the case
+ *  matching the discriminator's declared default comes FIRST: `initialState`
+ *  seeds `env[refKey] = cases[0].value`, which must AGREE with the author's
+ *  declared default (pgm `pgmType` defaults to 4 = ODATA) — otherwise the load
+ *  diagram would silently switch to a different arm (cases[0]=SPM) and contradict
+ *  the packet's intended default. Fields without an explicit default have no
+ *  entry. */
+function collectFieldDefaults(body: PsdlPacket["body"]): Map<string, number> {
+  const out = new Map<string, number>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (typeof c.defaultValue === "number") out.set(c.id, c.defaultValue);
+        continue;
+      }
+      if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+    }
+  };
+  visit(body);
+  return out;
+}
+
 /** Map each `enum` field id to its `value → label` table. Used to render a
  *  switch discriminator value (msdpType=3) as a human-readable case label
  *  ("SA-Response") when disambiguating colliding switch-case-nested freeRepeat
@@ -1990,6 +2019,65 @@ function collectSwitchCaseFieldIds(
   return acc;
 }
 
+/** Collect the ids of every field declared (transitively) INSIDE a `group`
+ *  that is itself NOT inside a `switch` case and NOT inside a `repeat` — i.e. a
+ *  flags / header Group spliced inline at the top level (dccp's `flagsGroup`
+ *  holding the `x` bit; lisp's `lispFlags` holding lispV/lispI/lispN).
+ *  `flattenForMirror` does NOT descend into groups, so such a field is never a
+ *  top-level renderer-mirror cell and `attachOverrideMetadata` can't stamp a
+ *  `switchCases` / `enumVariants` widget on it. A TOP-LEVEL `switch`
+ *  discriminated on one of these (dccp's `seqNum` on `x`; lisp's `byLispV` on
+ *  `lispV`) therefore falls through every field-anchored path AND the
+ *  switch-case-nested path — a see-but-cannot-edit gap — so it needs a
+ *  packet-level refSwitch picker, exactly like `collectSwitchCaseFieldIds`.
+ *  Fields inside a repeat (the records get their own count / TLV / chain
+ *  surface) or inside a switch case (already handled by
+ *  `collectSwitchCaseFieldIds`) are deliberately excluded. */
+function collectGroupNestedFieldIds(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): Set<string> {
+  const acc = new Set<string>();
+  // `insideGroup` flips true once we step into a group; `blocked` flips true
+  // once we enter a repeat or a switch case, which permanently disqualifies
+  // everything below (those scopes have their own override surfaces).
+  const visit = (
+    containers: Container[],
+    insideGroup: boolean,
+    blocked: boolean,
+  ): void => {
+    for (const c of flattenForMirror(containers, defs)) {
+      if (isField(c)) {
+        if (insideGroup && !blocked) acc.add(c.id);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children, true, blocked);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases))
+          visit(struct.fields, insideGroup, true);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        visit(c.element.fields, insideGroup, true);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.container], insideGroup, blocked);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields, insideGroup, blocked);
+        continue;
+      }
+    }
+  };
+  visit(body, false, false);
+  return acc;
+}
+
 /**
  * Detect a `bytes` field whose length is a `lookup(ref X, table)` — the value's
  * width is selected from `table` by the run-time value of a sibling INT/BITS
@@ -2086,6 +2174,14 @@ function collectRefSwitches(
   // these has no top-level cell to host a `switchCases` widget, so it needs a
   // packet-level refSwitch picker even when it is NOT inside a repeat.
   const switchCaseFieldIds = collectSwitchCaseFieldIds(body, defs);
+  // Field ids declared inside a top-level Group (dccp `flagsGroup` → `x`; lisp
+  // `lispFlags` → lispV/lispI/lispN). Like switch-case-nested ids these have no
+  // top-level cell to host a widget, so a Switch discriminated on one needs a
+  // packet-level refSwitch picker.
+  const groupNestedFieldIds = collectGroupNestedFieldIds(body, defs);
+  // Declared field defaults — used to order a field-nested (group/case) picker's
+  // cases so `initialState`'s `cases[0]` seed agrees with the author's default.
+  const fieldDefaults = collectFieldDefaults(body);
   const seen = new Set<string>();
   const visit = (
     containers: PsdlPacket["body"],
@@ -2177,7 +2273,7 @@ function collectRefSwitches(
         continue;
       }
       if (c.kind === "switch") {
-        // A ref-discriminated switch needs a packet-level picker in two cases:
+        // A ref-discriminated switch needs a packet-level picker in three cases:
         //   (1) it sits inside a plain repeat whose discriminator has no
         //       field-anchored widget (the original A2 path), or
         //   (2) it is discriminated on a field DECLARED INSIDE A SWITCH CASE
@@ -2186,11 +2282,21 @@ function collectRefSwitches(
         //       top-level cell, so attachOverrideMetadata can't stamp
         //       switchCases on it and collectRefSwitches' repeat path never
         //       reaches it — a see-but-cannot-edit gap.
-        const caseNested =
+        //   (3) it is a TOP-LEVEL switch discriminated on a field declared
+        //       inside a top-level GROUP (dccp `seqNum` on the `x` flag bit
+        //       inside `flagsGroup`; lisp `byLispV`/`byLispI`/`byLispNV` on
+        //       lispV/lispI/lispN inside `lispFlags`). `flattenForMirror` does
+        //       not descend into groups, so the discriminator is NOT a top-level
+        //       cell either — same field-anchored-widget gap as (2). The user
+        //       sees the flag bit and the region the switch selects but gets no
+        //       control. Treated identically to the case-nested path.
+        const fieldNestedNoWidget =
           !enclosingPlainRepeat &&
           !insideRepeat &&
           c.on.kind === "ref" &&
-          switchCaseFieldIds.has(c.on.field);
+          (switchCaseFieldIds.has(c.on.field) ||
+            groupNestedFieldIds.has(c.on.field));
+        const caseNested = fieldNestedNoWidget;
         if ((enclosingPlainRepeat || caseNested) && c.on.kind === "ref") {
           const refKey = c.on.field;
           const covered = fields.find(
@@ -2369,6 +2475,24 @@ function collectRefSwitches(
                     ? `${armLabel} (unknown / other type)`
                     : armLabel,
                 });
+              }
+            }
+            // For a field-nested (group/case) picker, `initialState` seeds
+            // `env[refKey] = cases[0].value` on load. If the discriminator
+            // declares a default (pgm `pgmType` = 4 / ODATA), order the matching
+            // case FIRST so the seed agrees with the author's declared default
+            // instead of silently switching the load diagram to a different arm
+            // (cases[0] would otherwise be the lowest-keyed case, e.g. SPM=0).
+            // The repeat path is untouched (its discriminator is 0-filled, not
+            // author-defaulted).
+            if (caseNested) {
+              const dflt = fieldDefaults.get(refKey);
+              if (dflt !== undefined) {
+                const i = cases.findIndex((cc) => cc.value === dflt);
+                if (i > 0) {
+                  const [hit] = cases.splice(i, 1);
+                  cases.unshift(hit);
+                }
               }
             }
             if (cases.length > 0) {
