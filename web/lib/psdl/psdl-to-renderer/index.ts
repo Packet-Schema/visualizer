@@ -2416,6 +2416,47 @@ function switchArmsRenderIdentical(
   return shapes.every((s) => s === shapes[0]);
 }
 
+/**
+ * True when a Switch's selectable arms render to the SAME geometry
+ * (`switchArmsRenderIdentical`) yet carry DISTINCT human-readable NAMES — so the
+ * only thing a value selection changes is the visible label of the cell, not its
+ * bytes. `switchArmsAllIdentical` / `switchArmsRenderIdentical` ignore names and
+ * would report such a picker as inert and suppress it, but the diagram cell's
+ * NAME genuinely changes per arm (a real, user-visible semantic edit), so the
+ * picker must be surfaced anyway.
+ *
+ * QUIC's `frameByType` is exactly this: its arms 6 (CRYPTO Data) / 2,3 (ACK
+ * Ranges) / 8-15 (Stream Data) / _ (Frame Payload) are all a single `bits:128`
+ * body differing only by field id and NAME. In semantic view `resolveLayout`
+ * draws the selected frame body and its NAME (the user clearly SEES the variant),
+ * yet without this the discriminator `frameType` gets no override surface — a
+ * see-but-cannot-edit gap. Mirrors the snmpV2c `pduSwitch` precedent (its 8
+ * PDU-type arms differ only by name and are surfaced so the user can label the
+ * PDU).
+ *
+ * Requires ≥ 2 selectable arms with at least two distinct names; otherwise the
+ * picker would be a single-option / truly-inert control left suppressed.
+ */
+function switchArmsDifferByNameOnly(cases: Record<string, Struct>): boolean {
+  if (!switchArmsRenderIdentical(cases)) return false;
+  const selectable = Object.entries(cases).filter(
+    ([key]) => firstCaseKeyValue(key) !== null,
+  );
+  // The label a surfaced picker would show for each arm — exactly what the
+  // diagram cell's name resolves to (the arm's own name, else its sole field's
+  // name, else a prettified id). If two arms produce different labels, selecting
+  // between them visibly relabels the diagram.
+  const labelOf = (struct: Struct): string => {
+    if (struct.name) return struct.name;
+    const onlyField = struct.fields.length === 1 ? struct.fields[0] : undefined;
+    if (onlyField && isField(onlyField) && onlyField.name)
+      return onlyField.name;
+    return prettifyId(struct.id) ?? struct.id;
+  };
+  const labels = selectable.map(([, struct]) => labelOf(struct));
+  return new Set(labels).size >= 2;
+}
+
 /** Collect the ids of every field declared (transitively) INSIDE a `switch`
  *  case anywhere in the body. Such a field is never a top-level renderer-mirror
  *  cell, so `attachOverrideMetadata.findTarget` can't stamp `switchCases` on it
@@ -2513,6 +2554,66 @@ function collectGroupNestedFieldIds(
       }
       if (c.kind === "encrypted") {
         visit(c.plaintext.fields, insideGroup, blocked);
+        continue;
+      }
+    }
+  };
+  visit(body, false, false);
+  return acc;
+}
+
+/** Collect the ids of every field declared (transitively) inside an `encrypted`
+ *  block's plaintext that is itself NOT inside a `switch` case and NOT inside a
+ *  `repeat` — i.e. a discriminator declared in a top-level encrypted plaintext
+ *  (QUIC's `frameType` inside the `payload`/`frames` encrypted block).
+ *  `flattenForMirror` does NOT expose an encrypted-plaintext field as a
+ *  top-level renderer-mirror cell, so `attachOverrideMetadata` can't stamp a
+ *  `switchCases` widget on it, and `collectSwitchCaseFieldIds` /
+ *  `collectGroupNestedFieldIds` deliberately exclude it (it is in neither a
+ *  switch case nor a group). A switch discriminated on one of these (QUIC's
+ *  `frameByType` on `frameType`) therefore falls through every field-anchored
+ *  path AND the switch-case / group paths — a see-but-cannot-edit gap — so it
+ *  needs a packet-level refSwitch picker, exactly like the group-nested path.
+ *  Mirrors `collectGroupNestedFieldIds`: fields inside a repeat (records get
+ *  their own surface) or inside a switch case (handled by
+ *  `collectSwitchCaseFieldIds`) are excluded. */
+function collectEncryptedNestedFieldIds(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): Set<string> {
+  const acc = new Set<string>();
+  // `insideEncrypted` flips true once we step into an encrypted plaintext;
+  // `blocked` flips true once we enter a repeat or a switch case, which
+  // permanently disqualifies everything below (those scopes own their surfaces).
+  const visit = (
+    containers: Container[],
+    insideEncrypted: boolean,
+    blocked: boolean,
+  ): void => {
+    for (const c of flattenForMirror(containers, defs)) {
+      if (isField(c)) {
+        if (insideEncrypted && !blocked) acc.add(c.id);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields, true, blocked);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases))
+          visit(struct.fields, insideEncrypted, true);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        visit(c.element.fields, insideEncrypted, true);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children, insideEncrypted, blocked);
+        continue;
+      }
+      if (c.kind === "optional") {
+        visit([c.container], insideEncrypted, blocked);
         continue;
       }
     }
@@ -2622,6 +2723,11 @@ function collectRefSwitches(
   // top-level cell to host a widget, so a Switch discriminated on one needs a
   // packet-level refSwitch picker.
   const groupNestedFieldIds = collectGroupNestedFieldIds(body, defs);
+  // Field ids declared inside a top-level `encrypted` plaintext (QUIC `frameType`
+  // inside the `payload` block). Like switch-case / group-nested ids these have
+  // no top-level cell to host a widget, so a Switch discriminated on one needs a
+  // packet-level refSwitch picker.
+  const encryptedNestedFieldIds = collectEncryptedNestedFieldIds(body, defs);
   // Declared field defaults — used to order a field-nested (group/case) picker's
   // cases so `initialState`'s `cases[0]` seed agrees with the author's default.
   const fieldDefaults = collectFieldDefaults(body);
@@ -2733,12 +2839,21 @@ function collectRefSwitches(
         //       cell either — same field-anchored-widget gap as (2). The user
         //       sees the flag bit and the region the switch selects but gets no
         //       control. Treated identically to the case-nested path.
+        //   (4) it is a TOP-LEVEL switch discriminated on a field declared inside
+        //       a top-level `encrypted` plaintext (QUIC `frameByType` on
+        //       `frameType` inside the `payload` block). `flattenForMirror` does
+        //       not expose an encrypted-plaintext field as a top-level cell, so
+        //       again no field-anchored widget exists. In semantic view the
+        //       plaintext expands and the selected frame body (CRYPTO / ACK /
+        //       Stream / Frame Payload) renders, so the user SEES the variant but
+        //       cannot select it. Treated identically to the case/group paths.
         const fieldNestedNoWidget =
           !enclosingPlainRepeat &&
           !insideRepeat &&
           c.on.kind === "ref" &&
           (switchCaseFieldIds.has(c.on.field) ||
-            groupNestedFieldIds.has(c.on.field));
+            groupNestedFieldIds.has(c.on.field) ||
+            encryptedNestedFieldIds.has(c.on.field));
         const caseNested = fieldNestedNoWidget;
         if ((enclosingPlainRepeat || caseNested) && c.on.kind === "ref") {
           const refKey = c.on.field;
@@ -2832,8 +2947,17 @@ function collectRefSwitches(
           // structurally identical (the diagram is byte-identical for every
           // value — an inert dropdown). The repeat path keeps its existing
           // gating untouched.
+          //
+          // EXCEPTION (snmpV2c/peek precedent): when the selectable arms render
+          // to the SAME geometry but carry DISTINCT NAMES, selecting between them
+          // still relabels the diagram cell (QUIC `frameByType`: 6=CRYPTO Data /
+          // 2,3=ACK Ranges / 8-15=Stream Data / _=Frame Payload — all `bits:128`,
+          // differing only by NAME). That is a real, diagram-visible semantic
+          // edit, so we keep the picker surfaced rather than treating it as inert.
           const allArmsIdentical =
-            caseNested && switchArmsAllIdentical(c.cases);
+            caseNested &&
+            switchArmsAllIdentical(c.cases) &&
+            !switchArmsDifferByNameOnly(c.cases);
           if (
             !covered &&
             !isEncoder &&
