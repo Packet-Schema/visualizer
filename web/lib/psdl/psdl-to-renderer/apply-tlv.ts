@@ -181,24 +181,37 @@ export function applyTlvInstances(
   // groups) hold a TLV Repeat that will be expanded? Used to decide whether
   // a `bounded` scope should be spliced inline (so the flattened TLV ids
   // match the renderer mirror) or kept intact.
+  //
+  // `prefix` qualifies a TLV repeat's id with its enclosing `ref`'s id
+  // (`<refId>.`), matching the renderer mirror's `flattenForMirrorQualified`
+  // ids. Two sibling refs to one def therefore probe distinct TLV instance
+  // lists (`src.opts` vs `dst.opts`); without it both refs would resolve onto
+  // the first ref's instances and export identically.
   const containsExpandedTlv = (
     containers: Container[],
+    prefix: string,
     seen: Set<string> = new Set(),
   ): boolean =>
     containers.some((c) => {
-      if (c.kind === "repeat") return tlvExpands(c.id);
-      if (c.kind === "bounded") return containsExpandedTlv(c.fields, seen);
-      if (c.kind === "group") return containsExpandedTlv(c.children, seen);
+      if (c.kind === "repeat") return tlvExpands(`${prefix}${c.id}`);
+      if (c.kind === "bounded")
+        return containsExpandedTlv(c.fields, prefix, seen);
+      if (c.kind === "group")
+        return containsExpandedTlv(c.children, prefix, seen);
       if (c.kind === "optional")
-        return containsExpandedTlv([c.container], seen);
+        return containsExpandedTlv([c.container], prefix, seen);
       if (c.kind === "encrypted")
-        return containsExpandedTlv(c.plaintext.fields, seen);
+        return containsExpandedTlv(c.plaintext.fields, prefix, seen);
       if (c.kind === "ref") {
         if (seen.has(c.ref)) return false;
         const def = resolveRef(c.ref);
         if (!def) return false;
         seen.add(c.ref);
-        const found = containsExpandedTlv(def.fields, seen);
+        const found = containsExpandedTlv(
+          def.fields,
+          `${prefix}${c.id}.`,
+          seen,
+        );
         seen.delete(c.ref);
         return found;
       }
@@ -218,30 +231,46 @@ export function applyTlvInstances(
   // here too rather than re-wrapping them. Only do so when the bounded
   // actually contains a TLV Repeat we expanded; otherwise leave it intact so
   // unrelated wire-scopes round-trip untouched.
-  const expand = (c: Container, seen: Set<string> = new Set()): Container[] => {
+  //
+  // `prefix` carries the enclosing `ref`-id qualifier (`<refId>.`) so a TLV
+  // repeat inside a def is matched against the QUALIFIED renderer-mirror id
+  // (`src.opts`, not `opts`) and mints qualified synthetic ids
+  // (`src.opts__inst_0`) that the diagram-click router (`parseTlvCellId`) and
+  // the merge path resolve back to the correct ref instance. Two sibling refs
+  // to one def thus expand independently.
+  const expand = (
+    c: Container,
+    prefix: string,
+    seen: Set<string> = new Set(),
+  ): Container[] => {
     if (c.kind === "bounded") {
       // Detect whether this scope holds a TLV Repeat we will expand, so the
       // splice-vs-wrap decision keys off *this* bounded rather than the
       // shared `mutated` flag (which a prior sibling may already have set).
-      const expandsHere = containsExpandedTlv(c.fields, new Set(seen));
-      const inner = c.fields.flatMap((x) => expand(x, seen));
+      const expandsHere = containsExpandedTlv(c.fields, prefix, new Set(seen));
+      const inner = c.fields.flatMap((x) => expand(x, prefix, seen));
       return expandsHere ? inner : [{ ...c, fields: inner }];
     }
     if (c.kind === "group") {
-      return [{ ...c, children: c.children.flatMap((x) => expand(x, seen)) }];
+      return [
+        { ...c, children: c.children.flatMap((x) => expand(x, prefix, seen)) },
+      ];
     }
     // A body-level `ref` to a PSDL `def`: resolve the NamedStruct and splice
     // its expanded fields inline at the ref site (mirroring flattenForMirror).
     // We expand a COPY of the def's fields and never mutate the shared def, so
     // a def referenced from multiple sites stays intact. The seen-set guards
-    // against self/mutually recursive defs (`optional{ref self}` idioms).
+    // against self/mutually recursive defs (`optional{ref self}` idioms). The
+    // ref's id extends `prefix` so the inlined TLV ids stay distinct per ref.
     if (c.kind === "ref") {
       if (seen.has(c.ref)) return [c];
       const def = resolveRef(c.ref);
       if (!def) return [c];
       const nextSeen = new Set(seen);
       nextSeen.add(c.ref);
-      return def.fields.flatMap((x) => expand(x, nextSeen));
+      return def.fields.flatMap((x) =>
+        expand(x, `${prefix}${c.id}.`, nextSeen),
+      );
     }
     // `encrypted` (PSDL 0.5 §5.4) keeps its wrapper (it carries the
     // wireBits / headerProtected semantics) but its `plaintext` struct may
@@ -253,7 +282,7 @@ export function applyTlvInstances(
           ...c,
           plaintext: {
             ...c.plaintext,
-            fields: c.plaintext.fields.flatMap((x) => expand(x, seen)),
+            fields: c.plaintext.fields.flatMap((x) => expand(x, prefix, seen)),
           },
         },
       ];
@@ -266,7 +295,7 @@ export function applyTlvInstances(
     // single container, collapse a multi-result into a Group so the Optional
     // keeps wrapping exactly one container.
     if (c.kind === "optional") {
-      const inner = expand(c.container, seen);
+      const inner = expand(c.container, prefix, seen);
       const wrapped: Container =
         inner.length === 1
           ? inner[0]
@@ -281,9 +310,12 @@ export function applyTlvInstances(
             };
       return [{ ...c, container: wrapped }];
     }
-    if (c.kind === "repeat" && tlvByRepeatId.has(c.id)) {
-      const tlv = tlvByRepeatId.get(c.id)!;
-      const slot = Math.max(0, Math.floor(slotBytes[c.id] ?? 0));
+    // Qualify the repeat id with the enclosing ref prefix so it matches the
+    // (now-qualified) renderer-mirror TLV field id.
+    const qid = `${prefix}${c.id}`;
+    if (c.kind === "repeat" && tlvByRepeatId.has(qid)) {
+      const tlv = tlvByRepeatId.get(qid)!;
+      const slot = Math.max(0, Math.floor(slotBytes[qid] ?? 0));
       const newBody: Container[] = [];
 
       // Stage 3: neither instances nor a slot → leave the Repeat alone.
@@ -296,7 +328,7 @@ export function applyTlvInstances(
       // Stage 1: slot only → one empty placeholder Field of bytes(slot).
       if (tlv.instances.length === 0) {
         newBody.push({
-          id: c.id,
+          id: qid,
           name: c.name ?? "Options",
           type: { kind: "bytes", n: { kind: "lit", value: slot } },
           ...(c.category ? { category: c.category } : {}),
@@ -332,7 +364,7 @@ export function applyTlvInstances(
           );
         }
         instanceBytes += Math.ceil(bits / 8);
-        const groupId = `${c.id}__inst_${i}`;
+        const groupId = `${qid}__inst_${i}`;
         const group: PsdlGroup = {
           kind: "group",
           id: groupId,
@@ -361,7 +393,7 @@ export function applyTlvInstances(
       if (slot > instanceBytes) {
         const remaining = slot - instanceBytes;
         newBody.push({
-          id: `${c.id}__remaining`,
+          id: `${qid}__remaining`,
           name: `Options remaining (${remaining} B)`,
           type: { kind: "bytes", n: { kind: "lit", value: remaining } },
           ...(c.category ? { category: c.category } : {}),
@@ -379,6 +411,6 @@ export function applyTlvInstances(
     return [c];
   };
 
-  const newBody = psdl.body.flatMap((c) => expand(c));
+  const newBody = psdl.body.flatMap((c) => expand(c, ""));
   return mutated ? { ...psdl, body: newBody } : psdl;
 }

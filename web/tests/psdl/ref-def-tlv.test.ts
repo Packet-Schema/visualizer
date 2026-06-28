@@ -97,7 +97,10 @@ describe("body-level ref-def TLV repeat is editable end-to-end", () => {
     const mirror = psdlToRenderer(mkPacket());
     const opt = mirror.fields.find((f) => f.tlv);
     expect(opt).toBeDefined();
-    expect(opt!.id).toBe("opts");
+    // The TLV field id is QUALIFIED by the enclosing ref id (`optsRef.`) to
+    // match core's `<refId>.<fieldId>` cell-id scheme, so two refs to one def
+    // would surface distinct TLV fields instead of colliding.
+    expect(opt!.id).toBe("optsRef.opts");
     expect(opt!.tlv!.catalog.map((e) => e.kind).sort()).toEqual([1, 2]);
   });
 
@@ -107,7 +110,7 @@ describe("body-level ref-def TLV repeat is editable end-to-end", () => {
     const opt = mirror.fields.find((f) => f.tlv)!;
     opt.tlv!.instances = [{ kind: 1 }, { kind: 1 }];
 
-    const out = applyTlvInstances(psdl, mirror, { opts: 4 });
+    const out = applyTlvInstances(psdl, mirror, { "optsRef.opts": 4 });
 
     // The packet is actually mutated (the bug returned `psdl` unchanged).
     expect(out).not.toBe(psdl);
@@ -119,9 +122,11 @@ describe("body-level ref-def TLV repeat is editable end-to-end", () => {
     );
     expect(defRepeat).toBeDefined();
 
-    // The per-instance Groups are spliced into the body at the ref site.
+    // The per-instance Groups are spliced into the body at the ref site,
+    // qualified by the ref id (`optsRef.opts__inst_*`).
     const groups = out.body.filter(
-      (c): c is Group => c.kind === "group" && c.id.startsWith("opts__inst_"),
+      (c): c is Group =>
+        c.kind === "group" && c.id.startsWith("optsRef.opts__inst_"),
     );
     expect(groups).toHaveLength(2);
     // No raw repeat / unresolved ref left dangling in the body.
@@ -143,19 +148,19 @@ describe("body-level ref-def TLV repeat is editable end-to-end", () => {
 
     // Pick two Opt-A records.
     opt.tlv!.instances = [{ kind: 1 }, { kind: 1 }];
-    const out = applyTlvInstances(psdl, mirror, { opts: 4 });
+    const out = applyTlvInstances(psdl, mirror, { "optsRef.opts": 4 });
 
     const cells = renderCells(out);
     const ids = cells.map((c) => c.field.id);
     expect(ids).toContain("H");
-    expect(ids).toContain("opts__inst_0");
-    expect(ids).toContain("opts__inst_1");
+    expect(ids).toContain("optsRef.opts__inst_0");
+    expect(ids).toContain("optsRef.opts__inst_1");
 
     // Each instance cell collapses the variant's Type/Value into subCells.
-    const inst0 = cells.find((c) => c.field.id === "opts__inst_0")!;
+    const inst0 = cells.find((c) => c.field.id === "optsRef.opts__inst_0")!;
     const subIds = (inst0.subCells ?? []).map((s) => s.subfield.id);
-    expect(subIds).toContain("opts__inst_0__aType");
-    expect(subIds).toContain("opts__inst_0__aVal");
+    expect(subIds).toContain("optsRef.opts__inst_0__aType");
+    expect(subIds).toContain("optsRef.opts__inst_0__aVal");
   });
 
   it("a self-recursive def does not loop (cycle guard)", () => {
@@ -172,9 +177,9 @@ describe("body-level ref-def TLV repeat is editable end-to-end", () => {
     const opt = mirror.fields.find((f) => f.tlv)!;
     opt.tlv!.instances = [{ kind: 2 }];
     // Must not throw / hang.
-    const out = applyTlvInstances(psdl, mirror, { opts: 3 });
+    const out = applyTlvInstances(psdl, mirror, { "optsRef.opts": 3 });
     const groups = out.body.filter(
-      (c) => c.kind === "group" && c.id.startsWith("opts__inst_"),
+      (c) => c.kind === "group" && c.id.startsWith("optsRef.opts__inst_"),
     );
     expect(groups.length).toBeGreaterThanOrEqual(1);
   });

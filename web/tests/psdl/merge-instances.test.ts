@@ -335,11 +335,10 @@ describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
   it("merges a byteOrder flip on a ref-resolved field back into defs", () => {
     const packet = makeRefPacket();
     const mirror = psdlToRenderer(packet);
-    const innerVal = mirror.fields.find((f) => f.id === "innerVal");
+    // Ref-resolved fields are qualified by the ref id (`hdrRef.innerVal`).
+    const innerVal = mirror.fields.find((f) => f.id === "hdrRef.innerVal");
     if (!innerVal) throw new Error("ref-resolved innerVal not surfaced");
-    // A ref-resolved field's flip is recorded on the override map under its
-    // QUALIFIED id (`<refId>.<fieldId>`), matching the diagram cell id.
-    mirror.byteOrderOverrides = { "hdrRef.innerVal": "LE" };
+    innerVal.byteOrder = "LE";
 
     const merged = mergeInstancesIntoPsdl(packet, mirror);
     const hdrField = merged.defs?.Hdr.fields.find(
@@ -352,11 +351,10 @@ describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
     const packet = makeRefPacket();
     const mirror = psdlToRenderer(packet);
     const tlv = mirror.fields.find((f) => f.tlv);
-    const innerVal = mirror.fields.find((f) => f.id === "innerVal");
+    const innerVal = mirror.fields.find((f) => f.id === "hdrRef.innerVal");
     if (!tlv?.tlv || !innerVal) throw new Error("ref surface missing");
     tlv.tlv.instances = [{ kind: 2 }];
-    // Flip recorded under the qualified (cell) id.
-    mirror.byteOrderOverrides = { "hdrRef.innerVal": "LE" };
+    innerVal.byteOrder = "LE";
 
     const merged = mergeInstancesIntoPsdl(packet, mirror);
     const { packet: reimported } = fromJson(toJson(merged));
@@ -378,9 +376,12 @@ describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
     expect(merged.defs).toEqual(packet.defs);
   });
 
-  it("merges each shared def once when two refs point at the same def", () => {
-    // Two RefContainers in the body resolve the SAME `OptList` def. The
-    // merge must not loop / double-apply; a single merged entry results.
+  it("forks per-ref clones so two refs to one def edit independently", () => {
+    // Two RefContainers in the body resolve the SAME `OptList` def. Each ref
+    // instance surfaces its OWN qualified TLV field (`optsRef.optsRepeat`,
+    // `optsRef2.optsRepeat`), so a record added to the SECOND ref must NOT
+    // land on the first. The merge forks per-ref def clones; the body refs are
+    // rewritten to point at them.
     const packet = makeRefPacket();
     (packet.body as Container[]).push({
       kind: "ref",
@@ -388,19 +389,36 @@ describe("mergeInstancesIntoPsdl — RefContainer / defs", () => {
       id: "optsRef2",
     } as Container);
     const mirror = psdlToRenderer(packet);
-    const tlv = mirror.fields.find((f) => f.tlv);
-    if (!tlv?.tlv) throw new Error("ref-resolved TLV field not surfaced");
-    tlv.tlv.instances = [{ kind: 1 }];
+    const tlv1 = mirror.fields.find((f) => f.id === "optsRef.optsRepeat");
+    const tlv2 = mirror.fields.find((f) => f.id === "optsRef2.optsRepeat");
+    if (!tlv1?.tlv || !tlv2?.tlv) {
+      throw new Error("both ref-resolved TLV fields must be surfaced");
+    }
+    // Distinct edits per ref instance.
+    tlv1.tlv.instances = [{ kind: 1 }];
+    tlv2.tlv.instances = [{ kind: 2 }, { kind: 2 }];
 
     const merged = mergeInstancesIntoPsdl(packet, mirror);
-    const rep = findRepeatInDef(merged.defs?.OptList, "optsRepeat");
-    // A single merged `optsRepeat` carrying exactly the one edit — no
-    // double-applied / duplicated instance list from the two refs.
-    expect(rep?.instances).toEqual([{ kind: 1 }]);
-    // `Hdr` is referenced but unedited; its field carries no byteOrder.
-    const hdrField = merged.defs?.Hdr.fields.find(
-      (c) => (c as { id?: string }).id === "innerVal",
-    ) as { byteOrder?: "BE" | "LE" } | undefined;
-    expect(hdrField?.byteOrder).toBeUndefined();
+
+    // The body `ref` nodes are rewritten to the per-ref clone defs.
+    const bodyRefs = merged.body.filter(
+      (c): c is Extract<Container, { kind: "ref" }> =>
+        "kind" in c && c.kind === "ref",
+    );
+    const optRefNames = bodyRefs
+      .filter((r) => r.id === "optsRef" || r.id === "optsRef2")
+      .map((r) => r.ref)
+      .sort();
+    expect(optRefNames).toEqual(["OptList__optsRef", "OptList__optsRef2"]);
+
+    // Each clone carries ONLY its own ref's instances — no collision.
+    const rep1 = findRepeatInDef(merged.defs?.OptList__optsRef, "optsRepeat");
+    const rep2 = findRepeatInDef(merged.defs?.OptList__optsRef2, "optsRepeat");
+    expect(rep1?.instances).toEqual([{ kind: 1 }]);
+    expect(rep2?.instances).toEqual([{ kind: 2 }, { kind: 2 }]);
+
+    // The shared source `OptList` is never mutated in place.
+    const srcRep = findRepeatInDef(packet.defs?.OptList, "optsRepeat");
+    expect(srcRep?.instances).toBeUndefined();
   });
 });

@@ -38,6 +38,7 @@ import { getSwitchFromRepeat } from "./shared";
 function expandChainRepeat(
   repeat: PsdlRepeat,
   instances: ChainInstance[],
+  qid: string,
 ): Container[] {
   const sw = getSwitchFromRepeat(repeat);
   if (!sw) return [repeat];
@@ -45,7 +46,7 @@ function expandChainRepeat(
   instances.forEach((inst, i) => {
     const caseStruct = sw.cases[String(inst.proto)];
     if (!caseStruct) return;
-    const groupId = `${repeat.id}__chain_${i}`;
+    const groupId = `${qid}__chain_${i}`;
     const group: PsdlGroup = {
       kind: "group",
       id: groupId,
@@ -64,18 +65,23 @@ function expandContainer(
   mirror: RendererPacket,
   defs: Record<string, NamedStruct>,
   seenRefs: Set<string>,
+  prefix: string,
 ): Container[] {
   if (isField(c)) return [c];
   if (c.kind === "repeat" && isLikelyChainRepeat(c)) {
     // The chain catalog merges onto the base field at import (id without the
-    // `_chain` suffix), with a standalone-field fallback.
-    const baseId = c.id.replace(/_chain$/, "");
+    // `_chain` suffix), with a standalone-field fallback. Both the lookup id
+    // and the minted group ids are QUALIFIED by the enclosing `ref` prefix
+    // (`<refId>.`) so they match the renderer mirror's qualified chain field
+    // and the diagram-click router resolves back to the right ref instance.
+    const qid = `${prefix}${c.id}`;
+    const baseId = qid.replace(/_chain$/, "");
     const field =
       mirror.fields.find((f) => f.id === baseId && f.chainCatalog) ??
-      mirror.fields.find((f) => f.id === c.id && f.chainCatalog);
+      mirror.fields.find((f) => f.id === qid && f.chainCatalog);
     const instances = field?.chainInstances ?? [];
     if (instances.length === 0) return [c];
-    return expandChainRepeat(c, instances);
+    return expandChainRepeat(c, instances, qid);
   }
   // Recurse through transparent containers so a chain nested in a bounded
   // scope is still found (defensive; ipv6's chain is top-level).
@@ -84,7 +90,7 @@ function expandContainer(
       {
         ...c,
         fields: c.fields.flatMap((f) =>
-          expandContainer(f, mirror, defs, seenRefs),
+          expandContainer(f, mirror, defs, seenRefs, prefix),
         ),
       },
     ];
@@ -94,7 +100,7 @@ function expandContainer(
       {
         ...c,
         children: c.children.flatMap((f) =>
-          expandContainer(f, mirror, defs, seenRefs),
+          expandContainer(f, mirror, defs, seenRefs, prefix),
         ),
       },
     ];
@@ -103,13 +109,14 @@ function expandContainer(
   // descends `ref`, so the chain catalog surfaces for this placement). Resolve
   // the def and expand its fields inline — with a cycle guard, since defs may
   // be recursive (§6). Expanding inline (rather than rewriting the def) keeps
-  // the per-instance Groups addressable by the same flat ids the diagram uses.
+  // the per-instance Groups addressable by the same flat ids the diagram uses;
+  // the ref's id extends the prefix so the chain id matches the mirror.
   if (c.kind === "ref") {
     const def = defs[c.ref];
     if (!def || seenRefs.has(c.ref)) return [c];
     seenRefs.add(c.ref);
     const inner = def.fields.flatMap((f) =>
-      expandContainer(f, mirror, defs, seenRefs),
+      expandContainer(f, mirror, defs, seenRefs, `${prefix}${c.id}.`),
     );
     seenRefs.delete(c.ref);
     return inner;
@@ -121,7 +128,7 @@ function expandContainer(
   // Group so the Optional keeps wrapping exactly one container (mirrors
   // applyTlvInstances).
   if (c.kind === "optional") {
-    const inner = expandContainer(c.container, mirror, defs, seenRefs);
+    const inner = expandContainer(c.container, mirror, defs, seenRefs, prefix);
     if (inner.length === 1 && inner[0] === c.container) return [c];
     const wrapped: Container =
       inner.length === 1
@@ -166,6 +173,8 @@ export function applyChainInstances(
   const defs = psdl.defs ?? {};
   return {
     ...psdl,
-    body: psdl.body.flatMap((c) => expandContainer(c, mirror, defs, new Set())),
+    body: psdl.body.flatMap((c) =>
+      expandContainer(c, mirror, defs, new Set(), ""),
+    ),
   };
 }

@@ -190,7 +190,9 @@ describe("per-field byteOrder", () => {
         ?.byteOrder,
     ).toBe("BE");
     const mirror = psdlToRenderer(src) as RendererPacket;
-    expect(mirror.fields.some((f) => f.id === "dst.a1")).toBe(false);
+    // psdlToRenderer now qualifies ref-resolved field ids by the ref id
+    // (`dst.a1`), matching the diagram cell id.
+    expect(mirror.fields.some((f) => f.id === "dst.a1")).toBe(true);
     const flipped: RendererPacket = {
       ...mirror,
       byteOrderOverrides: { "dst.a1": "LE" },

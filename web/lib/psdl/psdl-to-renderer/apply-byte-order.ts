@@ -16,9 +16,10 @@
 // every enclosing RefContainer's `id` prefixes the leaf (`<refId>.<leaf>`, and
 // for nested refs `<outerRefId>.<innerRefId>.<leaf>`). The diagram flip is
 // recorded on the override map under that qualified id, so the walk threads a
-// `prefix` accumulated from each RefContainer's `id` and resolves the def out
-// of `psdl.defs`, writing any merged def back (shape-preserving) so the diagram
-// re-derives the flipped marker.
+// `prefix` accumulated from each RefContainer's `id`. Stamping a flip onto a
+// SHARED def would flip every ref to it, so a ref whose subtree carries a flip
+// forks a per-ref clone def (`<def>__<refQualifier>`) and its `ref` node is
+// rewritten to point at the clone — mirroring the lift in `merge-instances`.
 //
 // The walk is shape-preserving: a subtree with no override inside it returns
 // the same reference, so the common no-edit case is O(body) with zero churn.
@@ -29,34 +30,38 @@ import type { Packet as RendererPacket } from "../renderer";
 
 type Overrides = Record<string, "BE" | "LE">;
 
-type WalkCtx = {
+/** Carries the override map plus the source defs and a lazily-populated map of
+ *  per-ref def clones. A ref-resolved field's diagram-driven byteOrder flip is
+ *  keyed by its QUALIFIED id (`<refId>.<fieldId>`, matching the renderer
+ *  mirror's `flattenForMirrorQualified`). Stamping it onto the SHARED def would
+ *  flip every ref to that def, so a ref whose subtree carries a flip forks a
+ *  clone def (`<def>__<refQualifier>`) and its body `ref` node is rewritten to
+ *  point at the clone — exactly like the lift in `merge-instances`. */
+type Ctx = {
   overrides: Overrides;
   defs: Record<string, NamedStruct>;
-  outDefs: Record<string, NamedStruct>;
-  seenRefs: Set<string>;
+  cloneDefs: Record<string, NamedStruct>;
+  /** Def names on the current descent path — guards recursive / cyclic defs. */
+  seen: Set<string>;
 };
 
-function applyToContainer(
-  c: Container,
-  ctx: WalkCtx,
-  prefix: string,
-): Container {
+function applyToContainer(c: Container, prefix: string, ctx: Ctx): Container {
   if (isField(c)) {
-    const next = ctx.overrides[prefix + c.id];
+    const next = ctx.overrides[`${prefix}${c.id}`];
     if (next !== undefined && c.byteOrder !== next) {
       return { ...c, byteOrder: next };
     }
     return c;
   }
   if (c.kind === "group") {
-    const children = c.children.map((ch) => applyToContainer(ch, ctx, prefix));
+    const children = c.children.map((ch) => applyToContainer(ch, prefix, ctx));
     return children.some((ch, i) => ch !== c.children[i])
       ? { ...c, children }
       : c;
   }
   if (c.kind === "repeat") {
     const fields = c.element.fields.map((f) =>
-      applyToContainer(f, ctx, prefix),
+      applyToContainer(f, prefix, ctx),
     );
     return fields.some((f, i) => f !== c.element.fields[i])
       ? { ...c, element: { ...c.element, fields } }
@@ -66,7 +71,7 @@ function applyToContainer(
     let mutated = false;
     const cases: Record<string, (typeof c.cases)[string]> = {};
     for (const [k, v] of Object.entries(c.cases)) {
-      const fields = v.fields.map((f) => applyToContainer(f, ctx, prefix));
+      const fields = v.fields.map((f) => applyToContainer(f, prefix, ctx));
       if (fields.some((f, i) => f !== v.fields[i])) {
         mutated = true;
         cases[k] = { ...v, fields };
@@ -78,34 +83,40 @@ function applyToContainer(
   }
   if (c.kind === "encrypted") {
     const fields = c.plaintext.fields.map((f) =>
-      applyToContainer(f, ctx, prefix),
+      applyToContainer(f, prefix, ctx),
     );
     return fields.some((f, i) => f !== c.plaintext.fields[i])
       ? { ...c, plaintext: { ...c.plaintext, fields } }
       : c;
   }
   if (c.kind === "optional") {
-    const container = applyToContainer(c.container, ctx, prefix);
+    const container = applyToContainer(c.container, prefix, ctx);
     return container !== c.container ? ({ ...c, container } as typeof c) : c;
   }
   if (c.kind === "bounded") {
-    const fields = c.fields.map((f) => applyToContainer(f, ctx, prefix));
+    const fields = c.fields.map((f) => applyToContainer(f, prefix, ctx));
     return fields.some((f, i) => f !== c.fields[i]) ? { ...c, fields } : c;
   }
   if (c.kind === "ref") {
+    // A ref-resolved field's flip is keyed by `<prefix><refId>.<fieldId>`.
+    // Descend the def under that qualifier; if the resolved subtree actually
+    // changes, fork a per-ref clone def and point this ref node at it so two
+    // refs to one def stamp independently (and the shared def stays intact).
     const def = ctx.defs[c.ref];
-    if (def && !ctx.seenRefs.has(c.ref)) {
-      ctx.seenRefs.add(c.ref);
-      const childPrefix = `${prefix}${c.id}.`;
-      const fields = def.fields.map((f) =>
-        applyToContainer(f, ctx, childPrefix),
-      );
-      ctx.seenRefs.delete(c.ref);
-      if (fields.some((f, i) => f !== def.fields[i])) {
-        ctx.outDefs[c.ref] = { ...def, fields };
-      }
-    }
-    return c;
+    if (!def || ctx.seen.has(c.ref)) return c;
+    const childPrefix = `${prefix}${c.id}.`;
+    ctx.seen.add(c.ref);
+    const fields = def.fields.map((f) => applyToContainer(f, childPrefix, ctx));
+    ctx.seen.delete(c.ref);
+    if (!fields.some((f, i) => f !== def.fields[i])) return c; // no flip inside
+    const suffix =
+      childPrefix
+        .replace(/\.$/, "")
+        .replace(/\./g, "__")
+        .replace(/[^A-Za-z0-9_]/g, "_") || c.id;
+    const cloneName = `${c.ref}__${suffix}`;
+    ctx.cloneDefs[cloneName] = { ...def, id: cloneName, fields };
+    return { ...c, ref: cloneName };
   }
   // align carries no nested Field to stamp.
   return c;
@@ -121,17 +132,16 @@ export function applyByteOrderOverrides(
 ): PsdlPacket {
   const overrides = mirror.byteOrderOverrides;
   if (!overrides || Object.keys(overrides).length === 0) return psdl;
-  const ctx: WalkCtx = {
+  const ctx: Ctx = {
     overrides,
     defs: psdl.defs ?? {},
-    outDefs: {},
-    seenRefs: new Set(),
+    cloneDefs: {},
+    seen: new Set(),
   };
-  const body = psdl.body.map((c) => applyToContainer(c, ctx, ""));
-  const bodyChanged = body.some((c, i) => c !== psdl.body[i]);
-  const defsChanged = Object.keys(ctx.outDefs).length > 0;
-  if (!bodyChanged && !defsChanged) return psdl;
-  const next: PsdlPacket = bodyChanged ? { ...psdl, body } : { ...psdl };
-  if (defsChanged) next.defs = { ...psdl.defs, ...ctx.outDefs };
-  return next;
+  const body = psdl.body.map((c) => applyToContainer(c, "", ctx));
+  const changed = body.some((c, i) => c !== psdl.body[i]);
+  if (!changed) return psdl;
+  return Object.keys(ctx.cloneDefs).length > 0
+    ? { ...psdl, body, defs: { ...psdl.defs, ...ctx.cloneDefs } }
+    : { ...psdl, body };
 }

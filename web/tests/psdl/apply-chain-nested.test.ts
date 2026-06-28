@@ -19,7 +19,6 @@ import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import type {
-  Container,
   Packet as PsdlPacket,
   Repeat as PsdlRepeat,
 } from "@/lib/psdl/types";
@@ -43,20 +42,11 @@ function splitIpv6() {
   return { src, chainRepeat, others };
 }
 
-/** A mirror whose chain field carries two heterogeneous instances. Built from a
- *  ref-placement (which surfaces the chainCatalog on the base field) so the
- *  catalog + ids match what `expandContainer` looks up. */
-function chainEditMirror(others: Container[], chainRepeat: PsdlRepeat) {
-  const src = PRESETS.ipv6!;
-  const refSrc: PsdlPacket = {
-    ...src,
-    defs: {
-      ...(src.defs ?? {}),
-      ipv6ExtChain: { id: "ipv6ExtChain", fields: [chainRepeat] },
-    },
-    body: [...others, { kind: "ref", ref: "ipv6ExtChain", id: "extChainRef" }],
-  };
-  const mirror = psdlToRenderer(refSrc);
+/** A mirror whose chain field carries two heterogeneous instances. Built from
+ *  the SAME source it will be applied to, so the (now ref-qualified) chain
+ *  field id matches what `expandContainer` looks up. */
+function chainEditMirror(src: PsdlPacket) {
+  const mirror = psdlToRenderer(src);
   const chainField = mirror.fields.find((f) => f.chainCatalog);
   if (!chainField) throw new Error("nested chain mirror missing chain field");
   // Hop-by-Hop (0) then Routing (43) — two DIFFERENT variants.
@@ -74,7 +64,6 @@ function subNames(cells: ReturnType<typeof cellsOf>, groupId: string) {
 describe("applyChainInstances: ref / optional-nested chain", () => {
   it("materialises a chain reachable only via a body-level ref def", () => {
     const { src, chainRepeat, others } = splitIpv6();
-    const mirror = chainEditMirror(others, chainRepeat);
 
     const refSrc: PsdlPacket = {
       ...src,
@@ -87,22 +76,23 @@ describe("applyChainInstances: ref / optional-nested chain", () => {
         { kind: "ref", ref: "ipv6ExtChain", id: "extChainRef" },
       ],
     };
+    const mirror = chainEditMirror(refSrc);
 
     const before = cellsOf(refSrc).length;
     const cells = cellsOf(applyChainInstances(refSrc, mirror));
-    // The diagram is rewritten: two per-instance groups now render.
+    // The diagram is rewritten: two per-instance groups now render. The chain
+    // id is qualified by the enclosing ref id (`extChainRef.`).
     expect(cells.length).toBeGreaterThan(before);
-    expect(subNames(cells, "nextHeader_chain__chain_0")).toContain(
+    expect(subNames(cells, "extChainRef.nextHeader_chain__chain_0")).toContain(
       "Options + padding",
     );
-    const routing = subNames(cells, "nextHeader_chain__chain_1");
+    const routing = subNames(cells, "extChainRef.nextHeader_chain__chain_1");
     expect(routing).toContain("Routing Type");
     expect(routing).not.toContain("Options + padding");
   });
 
   it("materialises a chain nested inside an optional wrapper", () => {
     const { src, chainRepeat, others } = splitIpv6();
-    const mirror = chainEditMirror(others, chainRepeat);
 
     const optSrc: PsdlPacket = {
       ...src,
@@ -116,9 +106,15 @@ describe("applyChainInstances: ref / optional-nested chain", () => {
         },
       ],
     };
+    // The chain is body-level (only WRAPPED in an optional, no ref), so its
+    // mirror id stays bare. Build the mirror from the real ipv6 preset (which
+    // surfaces the chain catalog on the bare `nextHeader` base field) to match.
+    const mirror = chainEditMirror(src);
 
     const before = cellsOf(optSrc).length;
     const cells = cellsOf(applyChainInstances(optSrc, mirror));
+    // An `optional` is a transparent scope (no ref), so the chain id stays
+    // bare.
     expect(cells.length).toBeGreaterThan(before);
     expect(subNames(cells, "nextHeader_chain__chain_0")).toContain(
       "Options + padding",
