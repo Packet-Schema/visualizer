@@ -19,7 +19,10 @@
 import { isField } from "../utils";
 import { evalExprOr, exprRefs, peekEnvKey } from "../expr";
 import { isBytesDelimited } from "../normalize";
-import { collectSwitchOnRefIds } from "../dynamic-width-defaults";
+import {
+  collectSwitchOnRefIds,
+  seedDynamicWidthDefaults,
+} from "../dynamic-width-defaults";
 import type {
   Bounded,
   Constraint,
@@ -1282,7 +1285,10 @@ function collectNestedDynamicWidthLeaves(
   const discriminators = collectSwitchOnRefIds(packet);
   const defs = packet.defs ?? {};
   const seenRefs = new Set<string>();
-  const add = (id: string, kind: "delimited" | "varint"): void => {
+  const add = (
+    id: string,
+    kind: "delimited" | "varint" | "berLength",
+  ): void => {
     if (discriminators.has(id) || seen.has(id)) return;
     seen.add(id);
     out.push({ id, kind });
@@ -1291,6 +1297,7 @@ function collectNestedDynamicWidthLeaves(
     for (const c of containers) {
       if (isField(c)) {
         if (c.type.kind === "varint") add(c.id, "varint");
+        else if (c.type.kind === "berLength") add(c.id, "berLength");
         else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n)) {
           add(c.id, "delimited");
         }
@@ -4487,6 +4494,12 @@ function nestedGroupBoundedSeeds(
     env.set(repeat.id, count);
     env.set(bounded.key, budget);
     env.set(innerKey, innerSeed);
+    // Match PacketViewer's layout env: it seeds dynamic-width leaves (varint /
+    // delimited / berLength) to a visible default. A berLength octet inside the
+    // inner scope now occupies its 8-bit default (it previously collapsed to 0),
+    // so the probe MUST seed it too — otherwise the probed inner length / budget
+    // undercount the record and the real (seeded) layout over-consumes the scope.
+    seedDynamicWidthDefaults(packet, env);
     try {
       const { cells } = resolveLayout(packet, { env });
       return cells.some((c) => {

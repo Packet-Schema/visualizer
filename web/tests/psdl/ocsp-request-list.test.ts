@@ -25,6 +25,7 @@ import {
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import { evalExprOr } from "@/lib/psdl/expr";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 import type { Packet as RendererPacket } from "@/lib/psdl/renderer";
@@ -44,6 +45,10 @@ function layoutWith(
   );
   for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
   for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+  // PacketViewer seeds dynamic-width leaves (varint / delimited / berLength) to a
+  // visible default before deriving bounded-repeat counts; mirror that so the
+  // berLength octets occupy their 8-bit default exactly as the live diagram.
+  seedDynamicWidthDefaults(src, env);
   for (const br of mirror.boundedRepeats ?? []) {
     for (const seed of br.innerScopeSeeds ?? []) {
       if (!env.get(seed.key)) env.set(seed.key, seed.value);
@@ -105,7 +110,17 @@ describe("ocspRequest requests list is editable", () => {
   it("raising the requestList length slider grows the records", () => {
     const src = PRESETS.ocspRequest!;
     const mirror = psdlToRenderer(src);
-    const small = recordCellCount(src, mirror, { reqListLength: 8 });
+    // Start at the seeded defaultLength (one record fits) — a smaller budget
+    // legitimately renders zero records now that each CertID record charges its
+    // berLength octets at the visible 8-bit default. Raising the slider must add
+    // records.
+    const br = (mirror.boundedRepeats ?? []).find(
+      (b) => b.countKey === "requests",
+    )!;
+    expect(br.defaultLength).toBeDefined();
+    const small = recordCellCount(src, mirror, {
+      reqListLength: br.defaultLength!,
+    });
     const large = recordCellCount(src, mirror, { reqListLength: 400 });
     expect(small).toBeGreaterThan(0);
     expect(large).toBeGreaterThan(small);

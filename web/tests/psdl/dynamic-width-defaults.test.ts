@@ -7,17 +7,38 @@ import { describe, it, expect } from "vitest";
 
 import { PRESETS } from "@/lib/psdl/presets.server";
 import { resolveLayout } from "@/lib/psdl/layout";
-import { initialEnv } from "@/lib/psdl/normalize";
+import { initialEnv, berLenEnvKey } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
-function cellIds(src: PsdlPacket, overrides: Record<string, number> = {}) {
+function buildEnv(src: PsdlPacket, overrides: Record<string, number> = {}) {
   const env = new Map<string, number>(Object.entries(overrides));
   for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
   for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
   seedDynamicWidthDefaults(src, env);
-  return resolveLayout(src, { env }).cells.map((c) => c.field.id);
+  return env;
+}
+
+function cellIds(src: PsdlPacket, overrides: Record<string, number> = {}) {
+  return resolveLayout(src, { env: buildEnv(src, overrides) }).cells.map(
+    (c) => c.field.id,
+  );
+}
+
+/** Resolved wire bits of a leaf, looked up across cells AND group subfields. */
+function leafBits(
+  src: PsdlPacket,
+  leafId: string,
+  overrides: Record<string, number> = {},
+): number | undefined {
+  for (const c of resolveLayout(src, { env: buildEnv(src, overrides) }).cells) {
+    if (c.field.id === leafId && !c.field.subfields) return c.field.bits;
+    for (const sf of c.field.subfields ?? []) {
+      if (sf.id === leafId) return sf.bits;
+    }
+  }
+  return undefined;
 }
 
 describe("seedDynamicWidthDefaults", () => {
@@ -97,6 +118,34 @@ describe("seedDynamicWidthDefaults", () => {
       c.field.id.endsWith("vlen"),
     );
     expect(cell?.field.bits).toBe(24);
+  });
+
+  it("makes berLength octets that ALSO size a sibling bytes(ref) visible (snmpV2c)", () => {
+    // versionValue = bytes(ref versionLength); communityValue = bytes(ref
+    // communityLength). PacketViewer 0-seeds every psdlRef, so env[versionLength]
+    // = env[communityLength] = 0; before the fix the bridge copied that 0 onto
+    // __berLen__<id>, collapsing the BER length octet to 0 bits — invisible, with
+    // its WidthPicker (on the missing cell) unreachable. The dedicated-key seed
+    // keeps the octet at its 1-byte (8-bit) default regardless of the bare 0.
+    const src = PRESETS.snmpV2c!;
+    expect(leafBits(src, "versionLength")).toBeGreaterThan(0);
+    expect(leafBits(src, "communityLength")).toBeGreaterThan(0);
+    // msgLength is a berLength that does NOT directly size a bytes(ref), so it
+    // was never 0-seeded; it stays visible too.
+    expect(leafBits(src, "msgLength")).toBeGreaterThan(0);
+    // The bare key is the length VALUE that sizes the sibling, NOT the octet
+    // width: seeding the octet must not inflate versionValue (which stays 0 until
+    // the user raises the length value).
+    expect(leafBits(src, "versionValue")).toBe(0);
+  });
+
+  it("the BER length octet width is editable via the dedicated key (snmpV2c)", () => {
+    // The WidthPicker drives `__berLen__<id>` (not env[id], whose bare value
+    // sizes the sibling), so a wider octet renders without touching the value.
+    const src = PRESETS.snmpV2c!;
+    const wider = { [berLenEnvKey("versionLength")]: 16 };
+    expect(leafBits(src, "versionLength", wider)).toBe(16);
+    expect(leafBits(src, "versionValue", wider)).toBe(0);
   });
 
   it("a user-set width still wins over the seed", () => {

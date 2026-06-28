@@ -26,6 +26,15 @@ import { isField } from "./utils";
  *  highlighted option in agreement with the seeded diagram cell. */
 export const VARINT_DEFAULT_BITS = 8;
 export const DELIMITED_DEFAULT_BYTES = 4;
+/** A BER length octet (ASN.1 short form) is 1 byte = 8 bits — matching core's
+ *  `typeBits` berLength fallback. Unlike varint/delimited, a berLength field's
+ *  BARE env key often doubles as the byte-COUNT of a sibling `bytes(ref id)`
+ *  value (the normal length-of-value pattern, e.g. snmpV2c `versionValue =
+ *  bytes(ref versionLength)`), so its wire width is seeded on the DEDICATED
+ *  `__berLen__<id>` key — never on `env[id]`, which would also resize the value
+ *  AND get 0-stomped by PacketViewer's `psdlRef` 0-seed before the bridge could
+ *  read it. The WidthPicker drives the same dedicated key. */
+export const BER_LENGTH_DEFAULT_BITS = 8;
 
 /**
  * Collect the ids of every field that is a `switch ... on: ref(field)`
@@ -102,15 +111,26 @@ export function seedDynamicWidthDefaults(
           const widthKey = widthKeyFor(c);
           if (widthKey) {
             const widthDefault =
-              c.type.kind === "bytes"
-                ? DELIMITED_DEFAULT_BYTES
-                : VARINT_DEFAULT_BITS;
+              c.type.kind === "berLength"
+                ? BER_LENGTH_DEFAULT_BITS
+                : c.type.kind === "bytes"
+                  ? DELIMITED_DEFAULT_BYTES
+                  : VARINT_DEFAULT_BITS;
             seed(widthKey, widthDefault);
           }
           continue;
         }
         if (c.type.kind === "varint") seed(c.id, VARINT_DEFAULT_BITS);
-        else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n)) {
+        else if (c.type.kind === "berLength") {
+          // Seed the DEDICATED width key (not env[c.id]): a berLength's bare key
+          // can carry the length VALUE that sizes a sibling `bytes(ref c.id)`,
+          // and PacketViewer's psdlRef 0-seed pre-fills env[c.id]=0. Seeding the
+          // dedicated key both renders the octet at its default width AND, via
+          // `bridgeDynamicWidthKeys`' `!env.has(key)` guard, stops that bare 0
+          // from being copied onto the width key (which dropped the octet to 0
+          // bits — invisible, with its WidthPicker unreachable).
+          seed(berLenEnvKey(c.id), BER_LENGTH_DEFAULT_BITS);
+        } else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n)) {
           seed(c.id, DELIMITED_DEFAULT_BYTES);
         }
         continue;

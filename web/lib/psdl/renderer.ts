@@ -393,7 +393,10 @@ export type Packet = {
    *  `seedDynamicWidthDefaults`). `kind` selects which default to seed.
    *  Populated by `psdlToRenderer`; share-url-default-safe (seeded via
    *  `initialState`, so it stays out of the share URL). */
-  dynamicWidthLeaves?: { id: string; kind: "delimited" | "varint" }[];
+  dynamicWidthLeaves?: {
+    id: string;
+    kind: "delimited" | "varint" | "berLength";
+  }[];
   /** Per-field byteOrder flips applied via the diagram, keyed by field id.
    *  A top-level field carries its byteOrder on the matching `fields` entry,
    *  but a field nested inside a Switch case / Repeat element / Group never

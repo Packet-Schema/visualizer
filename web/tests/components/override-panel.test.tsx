@@ -14,7 +14,7 @@ import {
   applyByteOrderOverrides,
 } from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
-import { initialEnv } from "@/lib/psdl/normalize";
+import { berLenEnvKey, initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import {
   seedDynamicWidthDefaults,
@@ -653,6 +653,17 @@ describe("OverridePanel widgets", () => {
       "repeat-nested berLength must surface a width radiogroup",
     ).not.toBeNull();
     expect(container.textContent ?? "").toMatch(/BER length width/i);
+    // The picker drives the DEDICATED `__berLen__<id>` key (not env[id], whose
+    // bare value can size a sibling bytes(ref id)), so the octet width is
+    // controlled without resizing any value.
+    const buttons = Array.from(
+      group!.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    const twoBytes = buttons.find((b) => b.textContent === "2B")!;
+    await act(async () => {
+      twoBytes.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith(berLenEnvKey("padataCtxLength"), 16);
   });
 
   // A delimiter-terminated (NUL-terminated) `bytes` leaf that lives INSIDE a

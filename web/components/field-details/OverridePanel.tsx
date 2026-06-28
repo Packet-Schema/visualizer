@@ -18,9 +18,11 @@ import { resolveSelection } from "./selection-resolver";
 import { parseTlvCellId } from "./tlv-cell-id";
 import { parseChainCellId } from "@/lib/psdl/psdl-to-renderer";
 import {
+  BER_LENGTH_DEFAULT_BITS,
   DELIMITED_DEFAULT_BYTES,
   VARINT_DEFAULT_BITS,
 } from "@/lib/psdl/dynamic-width-defaults";
+import { berLenEnvKey } from "@/lib/psdl/normalize";
 
 // `OverridePanel` is the editing surface for a selected diagram cell. It
 // dispatches one of six widgets based on what the cell's logical parent
@@ -952,8 +954,20 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
     ? DELIMITED_DEFAULT_BYTES
     : target.varintEncoding
       ? VARINT_DEFAULT_BITS
-      : widths[0];
-  const current = controllers[target.id] ?? seededDefault;
+      : target.isBerLength
+        ? BER_LENGTH_DEFAULT_BITS
+        : widths[0];
+  // A berLength octet's wire width lives on the DEDICATED `__berLen__<id>` key,
+  // NOT `env[id]`: the bare key can double as the length VALUE that sizes a
+  // sibling `bytes(ref id)` (snmpV2c `versionValue = bytes(ref versionLength)`),
+  // and PacketViewer 0-seeds it as a psdlRef. Driving the dedicated key keeps
+  // this picker controlling the octet width without resizing the value (and the
+  // seed on the same key makes the bridge leave the octet at its default rather
+  // than collapsing it to 0 bits). varint/delimited keep using the bare id
+  // (bridged in layout.ts). `seedDynamicWidthDefaults`/`initialState` seed the
+  // matching key, so the active option agrees with the diagram on load.
+  const widthEnvKey = target.isBerLength ? berLenEnvKey(target.id) : target.id;
+  const current = controllers[widthEnvKey] ?? seededDefault;
   const label = delimited
     ? "Delimited length"
     : target.varintEncoding
@@ -963,7 +977,7 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
     <div>
       <WidgetLabel>
         {label} · sets{" "}
-        <code className="font-mono normal-case">{target.id}</code>
+        <code className="font-mono normal-case">{widthEnvKey}</code>
       </WidgetLabel>
       <div role="radiogroup" className="flex flex-wrap gap-1.5">
         {widths.map((w) => {
@@ -974,7 +988,7 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => onChange(target.id, w)}
+              onClick={() => onChange(widthEnvKey, w)}
               className="px-2.5 py-1 rounded-md border font-mono tabular-nums text-sm-tight cursor-pointer"
               style={{
                 borderColor: active ? "var(--accent)" : "var(--border-strong)",

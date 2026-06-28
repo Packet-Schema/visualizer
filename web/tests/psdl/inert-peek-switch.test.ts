@@ -184,7 +184,10 @@ describe("inert peek-switch pickers are suppressed", () => {
     const stubCells = JSON.parse(stub).length as number;
     const loaded = appGeometry(src, {}); // no override → initialState seed wins
     const loadedCells = JSON.parse(loaded).length as number;
-    expect(stubCells).toBe(4); // the degenerate Unknown stub
+    // The degenerate Unknown stub: the SNMP wrapper Tag/Length, version, community
+    // and the unknown PDU's now-visible BER length octet (`pduLengthUnknown`,
+    // previously collapsed to 0 bits — see dynamic-width-defaults berLength seed).
+    expect(stubCells).toBe(5); // the degenerate Unknown stub
     expect(loadedCells).toBeGreaterThan(stubCells);
     expect(loaded).not.toBe(stub);
   });

@@ -19,9 +19,11 @@ import type {
   TlvInstance,
 } from "./renderer";
 import {
+  BER_LENGTH_DEFAULT_BITS,
   DELIMITED_DEFAULT_BYTES,
   VARINT_DEFAULT_BITS,
 } from "./dynamic-width-defaults";
+import { berLenEnvKey } from "./normalize";
 
 /**
  * Validate renderer-Packet structural invariants:
@@ -196,6 +198,16 @@ export function initialState(packet: Packet): ControllerState {
   // of the share URL.
   const seedDynamicWidth = (f: Field | SubField): void => {
     if (f.switchCases) return;
+    // A berLength's wire width lives on the DEDICATED `__berLen__<id>` key (its
+    // bare key can carry the length VALUE that sizes a sibling `bytes(ref id)`);
+    // the WidthPicker drives the same key, so seed there to keep the picker's
+    // active option in step with the seeded octet cell. Mirrors the dedicated-key
+    // seed in `seedDynamicWidthDefaults`.
+    if (f.isBerLength) {
+      const key = berLenEnvKey(f.id);
+      if (state[key] === undefined) state[key] = BER_LENGTH_DEFAULT_BITS;
+      return;
+    }
     if (state[f.id] !== undefined) return;
     if (f.isDelimited) state[f.id] = DELIMITED_DEFAULT_BYTES;
     else if (f.varintEncoding) state[f.id] = VARINT_DEFAULT_BITS;
@@ -214,9 +226,16 @@ export function initialState(packet: Packet): ControllerState {
   // unset key, so a user / saved-env width still wins and it stays out of the
   // share URL (via `nonDefaultControllerEnv`).
   for (const leaf of packet.dynamicWidthLeaves ?? []) {
-    if (state[leaf.id] !== undefined) continue;
-    state[leaf.id] =
-      leaf.kind === "delimited" ? DELIMITED_DEFAULT_BYTES : VARINT_DEFAULT_BITS;
+    // berLength seeds its DEDICATED width key (see seedDynamicWidth above);
+    // varint/delimited seed their bare value key (bridged in layout.ts).
+    const key = leaf.kind === "berLength" ? berLenEnvKey(leaf.id) : leaf.id;
+    if (state[key] !== undefined) continue;
+    state[key] =
+      leaf.kind === "berLength"
+        ? BER_LENGTH_DEFAULT_BITS
+        : leaf.kind === "delimited"
+          ? DELIMITED_DEFAULT_BYTES
+          : VARINT_DEFAULT_BITS;
   }
   // Packet-level length controllers (bounded scopes whose length field is
   // group-nested) seed the same way as top-level controlsLength fields.
