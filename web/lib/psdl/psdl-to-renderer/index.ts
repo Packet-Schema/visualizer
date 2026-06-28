@@ -4101,12 +4101,17 @@ function attachOverrideMetadata(
     return null;
   };
 
-  // Find the top-level Group (after flattening transparent scopes) that
+  // Find the Group (after flattening transparent scopes) within `scope` that
   // transitively contains a leaf Field with `id`. Used to lazily surface a
   // bit-leaf gate target that `groupToSubfieldField` dropped because the Group
   // also nests a sub-group (so it bailed entirely — gtpv2c's `gtpv2Flags`,
   // which nests `gtpv2SpareGroup`, never reached the mirror, hiding `gtpv2T`).
-  const groupOwning = (id: string): Group | null => {
+  // `scope` defaults to the packet body, but the repeat-element recursion
+  // passes its own element children so a flags group that lives INSIDE a
+  // repeat element (diameter's `avpFlagsGroup`, owning the `avpFlagV` gate of
+  // the optional 32-bit `avpVendorId`) is reachable — `flattenForMirror` never
+  // descends into a repeat, so the body-only walk could not see it.
+  const groupOwning = (id: string, scope: Container[]): Group | null => {
     const containsLeaf = (children: Group["children"]): boolean => {
       for (const child of children) {
         if (isField(child)) {
@@ -4117,7 +4122,7 @@ function attachOverrideMetadata(
       }
       return false;
     };
-    for (const c of flattenForMirror(body, defs)) {
+    for (const c of flattenForMirror(scope, defs)) {
       if (!isField(c) && c.kind === "group" && containsLeaf(c.children)) {
         return c;
       }
@@ -4129,13 +4134,16 @@ function attachOverrideMetadata(
   // its enclosing Group as a deep subfield-bearing mirror field when the gate
   // is a bit leaf that `groupToSubfieldField` collapsed away. Without this the
   // user can SEE the gate flag (and the gated region appear/disappear) but has
-  // no control to toggle it — a see-but-cannot-edit dead end.
+  // no control to toggle it — a see-but-cannot-edit dead end. `scope` is the
+  // container list currently being visited so a gate owned by a group nested in
+  // a repeat element is found in the element's own scope, not just the body.
   const findOrSurfaceGateTarget = (
     id: string,
+    scope: Container[],
   ): ReturnType<typeof findTarget> => {
     const direct = findTarget(id);
     if (direct) return direct;
-    const owner = groupOwning(id);
+    const owner = groupOwning(id, scope) ?? groupOwning(id, body);
     if (!owner) return null;
     // If the owning Group already surfaced (flat collapse), the leaf is a
     // subfield on it and findTarget would have found it; reaching here means it
@@ -4242,7 +4250,7 @@ function attachOverrideMetadata(
         // length-driven reason string via `collectOptionalLengthGates`).
         if (c.when.kind === "ref") {
           const ref = c.when.field;
-          const t = findOrSurfaceGateTarget(ref);
+          const t = findOrSurfaceGateTarget(ref, containers);
           if (t) {
             if (t.kind === "field") {
               t.field.optionalGateFor = [
