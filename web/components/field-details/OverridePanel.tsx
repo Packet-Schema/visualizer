@@ -178,6 +178,18 @@ function EmptyState({
                 transform={r.transform}
                 controllers={controllers}
                 onChange={onControllerChange}
+                // An OPTIONAL-wrapped repeat carries `gateFieldId` (a switch-case
+                // gate uses `gate` and is dropped above instead). Its enclosing
+                // `optional{when: ref(X)}` is absent at load, so the count stepper
+                // would read live over a diagram drawing nothing from the section
+                // — disable it with a hint until an inner field renders, the same
+                // gate a refSwitch picker uses (#13, panel-vs-diagram contradiction
+                // for arbitrary PSDL). `cells` IS the live diagram.
+                disabledHint={
+                  r.gateFieldId && !fieldRendered(cells, r.gateFieldId)
+                    ? "Set the enclosing optional's condition (its field) to edit"
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -195,6 +207,19 @@ function EmptyState({
                 cases={p.cases}
                 controllers={controllers}
                 onChange={onControllerChange}
+                // peekSwitches were never `fieldRendered`-gated, so a picker whose
+                // arm isn't drawn (its enclosing repeat has no record, or it sits
+                // in an absent `optional{when: ref(X)}` region) read live over a
+                // diagram drawing nothing. `gateFieldId` anchors on the seeded
+                // arm's inner field — present in every preset at load, so this is
+                // non-regressing — and disables the picker with a hint otherwise,
+                // the same gate the refSwitch picker uses. `cells` IS the live
+                // diagram.
+                disabledHint={
+                  p.gateFieldId && !fieldRendered(cells, p.gateFieldId)
+                    ? "Reveal this region (set its enclosing condition / add a record) to edit"
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -1266,6 +1291,11 @@ type RepeatCountStepperProps = {
   transform?: { mul: number; add: number };
   controllers: ControllerState;
   onChange: (key: string, value: number) => void;
+  /** When set, the stepper is inert (the repeat's section is not in the current
+   *  diagram — an optional-wrapped repeat whose `when` is unset — so changing the
+   *  count can't add a visible record): render it disabled with this hint telling
+   *  the user what to set first. Absent = live. */
+  disabledHint?: string;
 };
 
 function RepeatCountStepper({
@@ -1274,7 +1304,9 @@ function RepeatCountStepper({
   transform,
   controllers,
   onChange,
+  disabledHint,
 }: RepeatCountStepperProps) {
+  const disabled = disabledHint !== undefined;
   const mul = transform?.mul ?? 1;
   const add = transform?.add ?? 0;
   // Displayed record count = env * mul + add. Writing inverts:
@@ -1316,57 +1348,71 @@ function RepeatCountStepper({
       ? Math.max(min, Math.min(SOFT_MAX, Math.floor(n)))
       : value;
   return (
-    <div className="flex items-center gap-2">
-      <span className="flex-1 text-sm-tight text-fg truncate" title={name}>
-        {name}
-      </span>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          aria-label={`Decrement ${name}`}
-          onClick={() => onChange(countKey, toEnv(safe(value - 1)))}
-          className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
-          style={{
-            borderColor: "var(--border-strong)",
-            background: "var(--bg-elevated)",
-            color: "var(--fg)",
-          }}
-        >
-          −
-        </button>
-        <input
-          id={numId}
-          type="number"
-          min={min}
-          max={SOFT_MAX}
-          value={value}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            const nextDisplay = safe(n);
-            const nextEnv = toEnv(nextDisplay);
-            if (nextEnv !== raw) onChange(countKey, nextEnv);
-          }}
-          className="w-14 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight text-center"
-          style={{
-            borderColor: "var(--border-strong)",
-            background: "var(--bg-elevated)",
-            color: "var(--fg)",
-          }}
-        />
-        <button
-          type="button"
-          aria-label={`Increment ${name}`}
-          onClick={() => onChange(countKey, toEnv(safe(value + 1)))}
-          className="w-7 h-7 rounded-md border font-mono text-sm-tight cursor-pointer"
-          style={{
-            borderColor: "var(--border-strong)",
-            background: "var(--bg-elevated)",
-            color: "var(--fg)",
-          }}
-        >
-          +
-        </button>
+    <div>
+      <div
+        className="flex items-center gap-2"
+        style={{ opacity: disabled ? 0.55 : 1 }}
+      >
+        <span className="flex-1 text-sm-tight text-fg truncate" title={name}>
+          {name}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label={`Decrement ${name}`}
+            disabled={disabled}
+            onClick={() => onChange(countKey, toEnv(safe(value - 1)))}
+            className="w-7 h-7 rounded-md border font-mono text-sm-tight"
+            style={{
+              borderColor: "var(--border-strong)",
+              background: "var(--bg-elevated)",
+              color: "var(--fg)",
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            −
+          </button>
+          <input
+            id={numId}
+            type="number"
+            min={min}
+            max={SOFT_MAX}
+            value={value}
+            disabled={disabled}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              const nextDisplay = safe(n);
+              const nextEnv = toEnv(nextDisplay);
+              if (nextEnv !== raw) onChange(countKey, nextEnv);
+            }}
+            className="w-14 px-2 py-1 rounded-md border font-mono tabular-nums text-sm-tight text-center"
+            style={{
+              borderColor: "var(--border-strong)",
+              background: "var(--bg-elevated)",
+              color: "var(--fg)",
+              cursor: disabled ? "not-allowed" : undefined,
+            }}
+          />
+          <button
+            type="button"
+            aria-label={`Increment ${name}`}
+            disabled={disabled}
+            onClick={() => onChange(countKey, toEnv(safe(value + 1)))}
+            className="w-7 h-7 rounded-md border font-mono text-sm-tight"
+            style={{
+              borderColor: "var(--border-strong)",
+              background: "var(--bg-elevated)",
+              color: "var(--fg)",
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            +
+          </button>
+        </div>
       </div>
+      {disabledHint ? (
+        <p className="mt-1 text-3xs text-fg-muted m-0">{disabledHint}</p>
+      ) : null}
     </div>
   );
 }

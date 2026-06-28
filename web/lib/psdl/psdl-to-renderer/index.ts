@@ -74,6 +74,7 @@ import {
 } from "./subfield";
 import { isTlvRepeat, repeatToTlvField } from "./tlv";
 import {
+  caseKeyCoversValue,
   defaultArmSentinel,
   firstCaseKeyValue,
   prettifyId,
@@ -3581,12 +3582,27 @@ function collectFreeRepeats(
             // branches are top-level or repeat-nested (caseGate is null there),
             // so this only attaches a gate where one genuinely applies.
             const gate = caseGate ?? undefined;
+            // An OPTIONAL-wrapped repeat has no `caseGate` (that mechanism is
+            // switch-case only). Its enclosing `optional{when: ref(X)}` makes the
+            // whole section absent at load (X is a plain int with no widget, so it
+            // 0-fills), yet a `defaultCount` would otherwise make the stepper read
+            // live over a diagram drawing NOTHING from the section — a
+            // panel-vs-diagram contradiction. Anchor a `fieldRendered` gate on a
+            // representative inner field id so OverridePanel disables the stepper
+            // with a hint until the optional's `when` is set (the same gate a
+            // refSwitch picker uses). Only for a genuinely optional-nested,
+            // non-switch-case repeat — no built-in preset hits this.
+            const gateFieldId =
+              insideOptional && !gate
+                ? (firstInnerFieldId(c.element.fields) ?? undefined)
+                : undefined;
             out.push({
               name: qualifiedName,
               countKey,
               ...(defaultCount !== undefined ? { defaultCount } : {}),
               ...(transform !== undefined ? { transform } : {}),
               ...(gate !== undefined ? { gate } : {}),
+              ...(gateFieldId !== undefined ? { gateFieldId } : {}),
             });
             instantiableRepeatIds.add(c.id);
           }
@@ -3767,6 +3783,56 @@ function collectRecordFieldIds(
         collectRecordFieldIds(s.fields, acc);
     }
   }
+}
+
+/** The first field id declared anywhere inside `containers` (document order,
+ *  recursing through groups / bounded / optional / switch arms / nested repeats),
+ *  or null if none. Used as a `fieldRendered` gate anchor for a control surfaced
+ *  over a region that may be absent from the diagram (an optional-wrapped repeat,
+ *  a peek switch whose arm isn't drawn): when this id is a rendered cell the
+ *  region is present and the control is live; otherwise the panel disables it with
+ *  a hint instead of contradicting the diagram. */
+function firstInnerFieldId(containers: Container[]): string | null {
+  for (const c of containers) {
+    if (isField(c)) return c.id;
+    if (c.kind === "group") {
+      const id = firstInnerFieldId(c.children);
+      if (id) return id;
+    } else if (c.kind === "bounded") {
+      const id = firstInnerFieldId(c.fields);
+      if (id) return id;
+    } else if (c.kind === "optional") {
+      const id = firstInnerFieldId([c.container]);
+      if (id) return id;
+    } else if (c.kind === "repeat") {
+      const id = firstInnerFieldId(c.element.fields);
+      if (id) return id;
+    } else if (c.kind === "encrypted") {
+      const id = firstInnerFieldId(c.plaintext.fields);
+      if (id) return id;
+    } else if (c.kind === "switch") {
+      for (const s of Object.values(c.cases)) {
+        const id = firstInnerFieldId(s.fields);
+        if (id) return id;
+      }
+    }
+  }
+  return null;
+}
+
+/** The switch arm (Struct) whose case key covers `value`, mirroring core's
+ *  `selectArm` grammar (single int / comma-list / range). Returns undefined when
+ *  no LISTED arm matches (the caller falls back to the `_` default arm). Used to
+ *  locate the arm `initialState` seeds for a peek picker so its `fieldRendered`
+ *  gate anchors on the arm actually drawn at load. */
+function findArmByCaseValue(
+  cases: Record<string, Struct>,
+  value: number,
+): Struct | undefined {
+  for (const [key, struct] of Object.entries(cases)) {
+    if (caseKeyCoversValue(key, value)) return struct;
+  }
+  return undefined;
 }
 
 /** True if `field` is a variable-length `bytes` whose length `n` is an Expr that
@@ -4556,11 +4622,28 @@ function collectPeekSwitches(
               const offsetValue = offset?.kind === "lit" ? offset.value : 0;
               const peekKey = peekEnvKey(offsetValue, peek.bits);
               switchPeekKeys.add(peekKey);
+              // Anchor a `fieldRendered` gate on a representative inner field id
+              // of the arm `initialState` seeds (cases[0].value). A peek picker
+              // whose arm isn't currently drawn — its enclosing repeat has no
+              // record, or it sits in an absent `optional{when: ref(X)}` region —
+              // would read live over a diagram drawing nothing (peekSwitches were
+              // never `fieldRendered`-gated). When the seeded arm IS drawn (every
+              // built-in preset renders its seeded arm at load) the anchor field
+              // is a rendered cell, so the picker stays live and nothing
+              // regresses. Anchor on the seeded arm specifically so the gate isn't
+              // satisfied by a DIFFERENT arm's field; the synthetic `_` default
+              // case (sentinel value not in `c.cases`) anchors on the `_` arm.
+              const seededArm =
+                findArmByCaseValue(c.cases, cases[0]!.value) ?? c.cases["_"];
+              const gateFieldId = seededArm
+                ? (firstInnerFieldId(seededArm.fields) ?? undefined)
+                : undefined;
               out.push({
                 id: c.id,
                 name: c.name ?? c.id,
                 cases,
                 peekKey,
+                ...(gateFieldId !== undefined ? { gateFieldId } : {}),
               });
             }
           }

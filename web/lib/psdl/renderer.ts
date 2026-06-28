@@ -233,6 +233,16 @@ export type Packet = {
      *  repeat's value so the active arm's stepper agrees with the diagram on
      *  load. */
     gate?: { key: string; value: number };
+    /** A representative inner field id of the repeat element, set ONLY for a
+     *  repeat surfaced from inside an `optional{when: ref(X)}` wrapper (icmpv6Ndp's
+     *  switch-case gate uses `gate` instead; caseGate is null for optional
+     *  nesting). The optional's `when` is a plain int field with no dedicated
+     *  widget, so the section is absent at load (X=0) yet the stepper would read
+     *  live over a diagram drawing nothing from the section — a panel-vs-diagram
+     *  contradiction. OverridePanel disables the stepper with a hint until this id
+     *  is a rendered cell (`fieldRendered`), exactly as a refSwitch picker gates on
+     *  its discriminator. Layout-faithful: `cells` IS the live diagram. */
+    gateFieldId?: string;
   }[];
   /** Switches whose `on` is a `peek` expression — discriminator can't be
    *  surfaced via a real cell, so OverridePanel offers a synthetic
@@ -242,6 +252,16 @@ export type Packet = {
     name: string;
     cases: { value: number; label: string }[];
     peekKey: string;
+    /** A representative inner field id from this switch's arms. A peek picker
+     *  whose arm isn't currently drawn (its enclosing repeat has no record, or it
+     *  sits in an absent `optional{when: ref(X)}` region) would read live over a
+     *  diagram drawing nothing — peekSwitches were never gated by `fieldRendered`
+     *  even for switch-case nesting, so any such picker contradicts the diagram.
+     *  OverridePanel disables the picker with a hint until this id is a rendered
+     *  cell, exactly as a refSwitch picker gates on its discriminator. When the
+     *  arm IS drawn at the seeded peek value (every built-in preset) the picker
+     *  stays live, so this is non-regressing. */
+    gateFieldId?: string;
   }[];
   /** Switches inside a plain (non-TLV/non-chain) repeat whose `on` is a
    *  `ref` to a discriminator field. That repeat is not lifted into the mirror,
