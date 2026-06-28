@@ -287,7 +287,7 @@ function EmptyState({
               const live = fieldThere && !inert;
               const disabledHint = fieldThere
                 ? inert
-                  ? `Select an RDATA variant (CNAME / NS / PTR / MX / TXT / SRV) whose value is sized by ${lc.controlsLength}`
+                  ? `Raise ${lc.controlsLength} past its header, or select the variant it sizes, to grow its value`
                   : undefined
                 : `Select its variant / add a record to edit ${lc.controlsLength}`;
               return (
