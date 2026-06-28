@@ -6183,6 +6183,27 @@ function attachOverrideMetadata(
           visit(struct.fields);
         }
         if (cases.length === 0) continue;
+        // A name-only relabel picker (arms render identically but carry DISTINCT
+        // NAMES — `switchArmsDifferByNameOnly`) is only worth surfacing when the
+        // discriminator does NOT ALREADY own a label control on the same env key.
+        // When the discriminator is itself an `enum`, its EnumDropdown already
+        // selects every arm value and relabels the cell per arm, so a second raw
+        // `switchCases` picker on the same key would merely duplicate it (the
+        // eap / tlsHandshake precedent: both discriminators are `enum(8)`, both
+        // surface a complete EnumDropdown, both keep `switchCases` suppressed).
+        // Only a discriminator with NO enum (a plain `int` — the arbitrary-PSDL
+        // P1c shape, two `bytes(ref len)` arms differing only by name) is left
+        // with no labeled case picker, which is the see-but-cannot-edit gap.
+        const onRef = c.on.kind === "ref" ? c.on.field : primaryRef(c.on);
+        const discTarget = onRef ? findTarget(onRef) : null;
+        const discHasEnum =
+          discTarget?.kind === "field"
+            ? Boolean(discTarget.field.enumVariants)
+            : discTarget?.kind === "subfield"
+              ? Boolean(discTarget.sub.enumVariants)
+              : false;
+        const nameOnlyRelabel =
+          !discHasEnum && switchArmsDifferByNameOnly(c.cases);
         // Suppress a multi-option case picker whose every selectable arm is
         // structurally identical: choosing any value yields a byte-identical
         // layout, so the dropdown can never change the diagram (an inert
@@ -6191,7 +6212,17 @@ function attachOverrideMetadata(
         // top-level / plain-field discriminators it never reaches — e.g.
         // tlsHandshake's 10-arm `handshakeType` (each arm a single
         // `bytes(ref tlsHandshakeBodyLen)`).
-        if (switchArmsAllIdentical(c.cases)) continue;
+        //
+        // EXCEPTION (snmpV2c/QUIC `switchArmsDifferByNameOnly` precedent,
+        // mirrored from the case-nested path above): when the selectable arms
+        // render to the SAME geometry but carry DISTINCT NAMES — and the
+        // discriminator has no enum already labeling the cell — selecting
+        // between them still relabels the diagram cell, a real diagram-visible
+        // semantic edit, so we keep the picker surfaced. Without this, two arms
+        // that differ ONLY by name (both `bytes(ref len)`) leave a plain-int
+        // discriminator with no labeled case picker even though the diagram
+        // visibly relabels the cell per arm (see-but-cannot-edit for the labels).
+        if (switchArmsAllIdentical(c.cases) && !nameOnlyRelabel) continue;
         // Suppress a field-level `switchCases` picker whose LISTED arms are all
         // mutually identical: every offered listed value yields a byte-identical
         // layout. The diverging `_` arm IS reachable below (we append a
@@ -6201,7 +6232,11 @@ function attachOverrideMetadata(
         // every meaningful state including the empty `_` body at 3 / 4. Surfacing
         // a second, raw-labelled switch picker on the same key would only add an
         // inert (listed arms identical), enum-colliding control; suppress it.
-        if (listedArmsAllIdentical(c.cases)) continue;
+        //
+        // EXCEPTION (same `nameOnlyRelabel` escape hatch as above): a plain-int
+        // discriminator whose listed arms render identically but carry DISTINCT
+        // NAMES still relabels the diagram cell, so keep the picker surfaced.
+        if (listedArmsAllIdentical(c.cases) && !nameOnlyRelabel) continue;
         // Reach a structurally-distinct `_` default arm through a field-level
         // `switchCases` dropdown, exactly as the peek-switch path does
         // (defaultArmSyntheticCase + unshift, above). Without this the dropdown

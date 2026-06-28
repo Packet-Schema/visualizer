@@ -31,7 +31,7 @@ import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { initialState } from "@/lib/psdl/renderer-helpers";
 import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
-import { evalExprOr } from "@/lib/psdl/expr";
+import { evalExprOr, ref } from "@/lib/psdl/expr";
 import type { Field as RendererField } from "@/lib/psdl/renderer";
 import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
@@ -178,6 +178,65 @@ describe("inert multi-option switchCases pickers are suppressed", () => {
     };
     expect(ids({ eapCode: 1, eapLength: 16 })).toContain("eapType");
     expect(ids({ eapCode: 3, eapLength: 16 })).not.toContain("eapType");
+  });
+
+  it("keeps a top-level switch picker whose arms differ ONLY by NAME (name-only relabel)", () => {
+    // A top-level `switch on ref(kind)` whose two arms render to identical
+    // geometry (each a single `bytes(ref len)` opaque body) but carry DISTINCT
+    // NAMES. `structuralShape` ignores field id/name, so
+    // `switchArmsAllIdentical` reports the arms as identical — yet selecting
+    // between them visibly relabels the diagram cell (kind=1 → "Alpha",
+    // kind=2 → "Beta"). The discriminator must still receive a labeled
+    // `switchCases` picker (the `switchArmsDifferByNameOnly` escape hatch), or
+    // the per-arm names are see-but-cannot-edit. Mirrors the snmpV2c/QUIC
+    // precedent the case-nested refSwitch path already honors.
+    const pkt: PsdlPacket = {
+      name: "nameOnlyTop",
+      rowBits: 32,
+      body: [
+        { id: "kind", name: "Kind", type: { kind: "int", bits: 8 } },
+        { id: "len", name: "Len", type: { kind: "int", bits: 8 } },
+        {
+          kind: "switch",
+          id: "byKind",
+          on: ref("kind"),
+          cases: {
+            "1": {
+              id: "armAlpha",
+              name: "Alpha",
+              fields: [
+                {
+                  id: "aVal",
+                  name: "Alpha",
+                  type: { kind: "bytes", n: ref("len") },
+                },
+              ],
+            },
+            "2": {
+              id: "armBeta",
+              name: "Beta",
+              fields: [
+                {
+                  id: "bVal",
+                  name: "Beta",
+                  type: { kind: "bytes", n: ref("len") },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const mirror = psdlToRenderer(pkt);
+    const kind = findField(mirror.fields, "kind");
+    expect(kind, "kind discriminator field must exist").toBeTruthy();
+    // The name-only picker is surfaced with both selectable arms.
+    expect(kind!.switchCases?.length).toBe(2);
+    expect(kind!.switchCases!.map((c) => c.value).sort()).toEqual([1, 2]);
+    // And the labels are the per-arm names the diagram relabels to.
+    expect(kind!.switchCases!.map((c) => c.label)).toEqual(
+      expect.arrayContaining(["Alpha", "Beta"]),
+    );
   });
 
   it("keeps a multi-option picker whose arms differ (tftp opcode)", () => {
