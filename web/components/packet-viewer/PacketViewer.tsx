@@ -1427,6 +1427,36 @@ export default function PacketViewer({
         for (const seed of br.innerScopeSeeds ?? []) {
           if (!env.get(seed.key)) env.set(seed.key, seed.value);
         }
+        // Grow each PER-RECORD inner bounded BUDGET so it always fits its OWN
+        // value. A TLV-extension arm carries a value sized by a sibling length
+        // (tlsClientHello SNI `serverName = bytes(ref nameLen)`, ocspRequest
+        // `hashAlgData = bytes(ref hashAlgLength)`) INSIDE a nested bounded whose
+        // budget is a different length field (`extLen` / `certIdLength`). The
+        // budget is seeded for the EMPTY value; the instant nameLen is raised (or
+        // an imported / shared / round-tripped packet carries a real name) the
+        // value overruns the inner scope and core throws `bounded over-consumed`
+        // → the diagram FREEZES on the last good layout. Compute the budget the
+        // live value length REQUIRES (its representative seed plus the live
+        // overage above the value's own seed) and lift the budget field up to it
+        // when short. Take the MAX with the current value so a user/import budget
+        // that is already large enough is never shrunk, and so the seed (which is
+        // set above) is never lowered.
+        const budgetSeedOf = (key: string): number =>
+          (br.innerScopeSeeds ?? []).find(
+            (s) => s.key === key && !s.derivesBudgetKey,
+          )?.value ?? 0;
+        for (const seed of br.innerScopeSeeds ?? []) {
+          if (!seed.derivesBudgetKey) continue;
+          const overage =
+            Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+            (seed.bytesPerUnit ?? 1);
+          if (overage <= 0) continue;
+          const budgetKey = seed.derivesBudgetKey;
+          const required = budgetSeedOf(budgetKey) + overage;
+          if (required > Number(env.get(budgetKey) ?? 0)) {
+            env.set(budgetKey, required);
+          }
+        }
         // The budget is the bounded.bytes expr (ref, or `field*k - c`) evaluated
         // against the live env — not the raw slider value.
         const budget = evalExprOr(br.bytesExpr, env, 0);
@@ -1444,9 +1474,15 @@ export default function PacketViewer({
         // approximated, with the graceful over-consume fallback as a backstop.
         const innerOverage = (br.innerScopeSeeds ?? []).reduce(
           (sum, seed) =>
-            sum +
-            Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
-              (seed.bytesPerUnit ?? 1),
+            // A `derivesBudgetKey` value length (nameLen) feeds the inner BUDGET
+            // grown just above; its cost reaches the outer count through that
+            // grown budget field's own overage entry, so counting it here too
+            // would DOUBLE-charge the outer record count.
+            seed.derivesBudgetKey
+              ? sum
+              : sum +
+                Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+                  (seed.bytesPerUnit ?? 1),
           0,
         );
         const livePerRecordBytes = br.perRecordBytes + innerOverage;

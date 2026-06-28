@@ -97,10 +97,13 @@ describe("bounded-repeat ref-sized record estimate (TLV-style)", () => {
 
     // tlvsRegion budget is `pduLength - 27`, prefix 1; one record needs only a
     // few bytes of budget. The fixed header (27B) ends at pduLength 27, so a
-    // record appears within a handful of bytes past it — around pduLength 31.
+    // record appears within a handful of bytes past it. perRecordBytes now also
+    // charges the seeded switch-arm value `tlvValue = bytes(ref tlvLength)` (the
+    // switch-nested per-record value freeze fix), so the first record appears a
+    // few bytes later — around pduLength 34.
     const baseline = cellCount(src, mirror, { pduLength: 27 });
-    const small = cellCount(src, mirror, { pduLength: 31 });
-    expect(small, "a record should appear by pduLength ~31").toBeGreaterThan(
+    const small = cellCount(src, mirror, { pduLength: 40 });
+    expect(small, "a record should appear by pduLength ~34").toBeGreaterThan(
       baseline,
     );
 

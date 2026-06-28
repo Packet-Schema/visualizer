@@ -99,19 +99,25 @@ describe("plain-repeat per-record length controllers", () => {
     );
   });
 
-  it("does NOT surface a per-record length controller for a repeat inside a bounded budget", () => {
-    // isisLsp `tlvs` is inside the `tlvsRegion` bounded scope; its `tlvLength`
-    // is implicitly driven by the budget. collectPlainRepeatLengthControllers
-    // must NOT surface a separate length-controller slider for it (the
-    // `!insideBounded` guard) — that would fight the budget.
+  it("surfaces a flat-TLV per-record length controller for isisLsp tlvLength (switch-arm value)", () => {
+    // isisLsp `tlvs` is inside the `tlvsRegion` bounded scope and each switch arm
+    // carries `tlvLength` + `tlvValue = bytes(ref tlvLength)`. The value sits
+    // INSIDE the switch arm, so it is surfaced via `flatTlvInnerSeeds` (descending
+    // into switch cases) → a `controlsLength` length controller, the SAME way
+    // stun/bgpOpen flat-TLV records get one. The PacketViewer bounded derive
+    // charges its live overage so raising it shrinks the derived count instead of
+    // over-consuming the scope (the per-record TLV value freeze fix). Before the
+    // fix this control was suppressed and the value was see-but-cannot-edit AND a
+    // raised tlvLength on import froze the diagram.
     const mirror = psdlToRenderer(PRESETS.isisLsp!);
-    expect(
-      (mirror.lengthControllers ?? []).some((l) => l.id === "tlvLength"),
-    ).toBe(false);
-    // The isisLsp tlvType picker IS surfaced (#7/#8) via the refSwitch
-    // lengthSeeds rescue, NOT via a length controller — so the bounded budget is
-    // never over-consumed. It carries a `tlvLength` seed equal to the per-record
-    // byte allowance, not a packet-level slider.
+    const lc = (mirror.lengthControllers ?? []).find(
+      (l) => l.id === "tlvLength",
+    );
+    expect(lc).toBeDefined();
+    expect(lc!.controlsLength).toBe("tlvLength");
+    expect(lc!.defaultValue).toBeGreaterThan(0);
+    // The isisLsp tlvType picker is ALSO surfaced (#7/#8) via the refSwitch
+    // lengthSeeds rescue.
     const tlvType = (mirror.refSwitches ?? []).find(
       (r) => r.refKey === "tlvType",
     );

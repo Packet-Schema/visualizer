@@ -154,15 +154,31 @@ describe("flat-TLV per-record length is an editable length controller", () => {
     }
   });
 
-  it("isisLsp keeps NO per-record length controller (value collapses to width 0)", () => {
-    // The suppressed case: its tlvLength sizes a `bytes(ref tlvLength)` value that
-    // collapses to width 0 (no innerScopeSeeds), so surfacing a controller would
-    // un-suppress an inert all-zero-width control. It must stay absent.
+  it("isisLsp surfaces tlvLength as an editable length controller (value lives in a switch arm)", () => {
+    // Previously SUPPRESSED on the false premise that its value "collapses to
+    // width 0": isisLsp's TLV record is `repeat{count: eos, element: [switch on
+    // byType]}` and EACH arm carries `tlvLength` + `tlvValue = bytes(ref
+    // tlvLength)`. Because the value sits INSIDE the switch arm (not a flat
+    // record sibling), the flat scan skipped it, leaving NO innerScopeSeeds — so
+    // raising tlvLength on import / share-URL over-consumed the `tlvsRegion`
+    // bounded scope and FROZE the diagram. `flatTlvInnerSeeds` now descends into
+    // switch arms, so tlvLength is seeded, surfaced, and crash-free.
     const mirror = psdlToRenderer(PRESETS.isisLsp!);
     const lengthIds = (mirror.lengthControllers ?? []).map((l) => l.id);
-    expect(lengthIds).not.toContain("tlvLength");
-    // And the bounded repeat carries no innerScopeSeeds, the discriminator.
+    expect(lengthIds).toContain("tlvLength");
     const br = (mirror.boundedRepeats ?? []).find((b) => b.countKey === "tlvs");
-    expect(br?.innerScopeSeeds).toBeUndefined();
+    expect(br?.innerScopeSeeds?.some((s) => s.key === "tlvLength")).toBe(true);
+  });
+
+  it("isisLsp: raising tlvLength across its full range never over-consumes / freezes", () => {
+    // The freeze-regression guard for the switch-nested per-record value length.
+    const src = PRESETS.isisLsp!;
+    const mirror = psdlToRenderer(src);
+    for (let v = 1; v <= 255; v++) {
+      expect(
+        () => layoutCells(src, mirror, { tlvLength: v }),
+        `isisLsp tlvLength=${v} must not over-consume`,
+      ).not.toThrow();
+    }
   });
 });

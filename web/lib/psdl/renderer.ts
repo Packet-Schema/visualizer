@@ -376,8 +376,24 @@ export type Packet = {
      *  — surfaced via `initialState` so the diagram shows a complete default
      *  record (and the length CELL stays user-editable). `perRecordBytes`
      *  already accounts for the seeded inner bytes, so the derived count never
-     *  over-consumes the ENCLOSING scope either. */
-    innerScopeSeeds?: { key: string; value: number; bytesPerUnit?: number }[];
+     *  over-consumes the ENCLOSING scope either.
+     *
+     *  `derivesBudgetKey` links a per-record VALUE length (tlsClientHello's
+     *  `nameLen` sizing `serverName = bytes(ref nameLen)` INSIDE the SNI arm,
+     *  ocspRequest's `hashAlgLength` sizing `hashAlgData`) to the inner bounded
+     *  budget field that must hold it (`extLen` / `certIdLength`). When the user
+     *  raises (or an imported packet carries) this length above its `value`
+     *  seed, the value grows past the inner scope's statically-seeded budget and
+     *  core's normalize throws `bounded scope over-consumed` → the diagram
+     *  FREEZES. PacketViewer grows `env[derivesBudgetKey]` by the live overage
+     *  (`(env[key] - value) * bytesPerUnit`) so the inner budget always fits its
+     *  own value, keeping every length in range crash-free and round-trippable. */
+    innerScopeSeeds?: {
+      key: string;
+      value: number;
+      bytesPerUnit?: number;
+      derivesBudgetKey?: string;
+    }[];
     /** A representative OUTER-budget byte count to seed `env[lengthKey]` with on
      *  load, so one representative record renders immediately and any
      *  refSwitch/peek picker gated on this repeat is LIVE from the start.

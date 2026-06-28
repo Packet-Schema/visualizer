@@ -4639,12 +4639,22 @@ function boundedBudgetSiblingLengths(
  * suppression.
  */
 function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
-  innerSeeds: { key: string; value: number }[];
+  innerSeeds: {
+    key: string;
+    value: number;
+    bytesPerUnit?: number;
+    derivesBudgetKey?: string;
+  }[];
   perRecordBytes: number;
 } | null {
   const siblingIds = new Set<string>();
   collectRecordFieldIds(element.fields, siblingIds);
-  const innerSeeds: { key: string; value: number }[] = [];
+  const innerSeeds: {
+    key: string;
+    value: number;
+    bytesPerUnit?: number;
+    derivesBudgetKey?: string;
+  }[] = [];
   // Bytes of the record EXCLUDING the inner bounded scopes (the type/length
   // prefix), accumulated as we walk; each qualifying inner scope adds its
   // seeded representative-arm bytes.
@@ -4714,10 +4724,42 @@ function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
       // over-consuming it.
       switchBytes = Math.max(switchBytes, armMinFixedBytes(sw.cases[k].fields));
     }
+    // A numeric arm may carry a VARIABLE value sized by a sibling length field of
+    // THIS record (tlsClientHello SNI: `serverName = bytes(ref nameLen)`). With
+    // nameLen at its 0 default the value is empty, so `armMinFixedBytes` (fixed
+    // fields only) is the right STATIC seed — but the instant the user raises (or
+    // an imported packet carries) nameLen, the value grows past the inner scope's
+    // statically-seeded `extLen` budget and core throws `bounded over-consumed` →
+    // the diagram FREEZES. Seed each such length to a representative width so the
+    // value renders, charge that width into `switchBytes`/`extLen` so the default
+    // record holds it, and link the length to the inner budget via
+    // `derivesBudgetKey` so PacketViewer grows `env[extLen]` with the live length
+    // (every value in range stays crash-free and round-trips losslessly).
+    const armValueLengths: {
+      key: string;
+      seed: number;
+      bytesPerUnit: number;
+    }[] = [];
+    let armValueExtraBytes = 0;
+    for (const k of numericKeys) {
+      const armSiblingRefs = collectArmSiblingRefValueLengths(
+        sw.cases[k].fields,
+        siblingIds,
+      );
+      let armExtra = 0;
+      for (const v of armSiblingRefs) {
+        if (!armValueLengths.some((e) => e.key === v.key)) {
+          armValueLengths.push(v);
+        }
+        armExtra += v.width;
+      }
+      // Charge the LARGEST arm's value bytes — one arm renders per record.
+      armValueExtraBytes = Math.max(armValueExtraBytes, armExtra);
+    }
     let innerBytes = 0;
     for (const f of c.fields) {
       if (f === sw) {
-        innerBytes += switchBytes;
+        innerBytes += switchBytes + armValueExtraBytes;
       } else {
         innerBytes += estimateElementBytes({ fields: [f] });
       }
@@ -4729,6 +4771,16 @@ function tlvExtensionInnerSeeds(element: { fields: Container[] }): {
     // of how many length keys nominally size it.
     for (const key of budgetLengthKeys) {
       innerSeeds.push({ key, value: innerBytes });
+      // Link each per-arm value length to THIS inner budget so PacketViewer grows
+      // the budget when the length is raised above its seed.
+      for (const v of armValueLengths) {
+        innerSeeds.push({
+          key: v.key,
+          value: v.seed,
+          ...(v.bytesPerUnit !== 1 ? { bytesPerUnit: v.bytesPerUnit } : {}),
+          derivesBudgetKey: key,
+        });
+      }
     }
     perRecordBytes += innerBytes;
   }
@@ -4777,7 +4829,12 @@ function nestedGroupBoundedSeeds(
   repeat: Extract<Container, { kind: "repeat" }>,
   bounded: { key: string; prefix: number; bytes: Expr },
 ): {
-  innerSeeds: { key: string; value: number }[];
+  innerSeeds: {
+    key: string;
+    value: number;
+    bytesPerUnit?: number;
+    derivesBudgetKey?: string;
+  }[];
   perRecordBytes: number;
   prefixBytes: number;
   defaultLength: number;
@@ -4877,8 +4934,29 @@ function nestedGroupBoundedSeeds(
     if (!b2 || b2 <= b1) continue;
     const recordBytes = b2 - b1;
     const prefixBytes = Math.max(0, b1 - recordBytes);
+    // The inner scope holds per-record VALUE fields sized by their own sibling
+    // length (ocspRequest CertID: `hashAlgData = bytes(ref hashAlgLength)`,
+    // `serialNumberValue = bytes(ref serialNumberLength)`, …). The probe above
+    // sized the budget with every such length at its 0 default (values empty),
+    // so the instant an imported / shared / round-tripped packet carries a real
+    // hash or serial, the value overruns `requestContentScope` and core throws
+    // `bounded over-consumed` → the diagram FREEZES. Link each value length to
+    // the inner budget (`requestSeqLength`) via `derivesBudgetKey` so PacketViewer
+    // grows the budget with the live length, keeping every value crash-free and
+    // round-trippable. (These berLength lengths aren't surfaced as controllers;
+    // this purely hardens the import / share-URL path against the freeze.)
+    const valueLengths = collectArmSiblingRefValueLengths(
+      inner.fields,
+      siblingIds,
+    ).filter((v) => v.key !== innerKey);
+    const valueLengthSeeds = valueLengths.map((v) => ({
+      key: v.key,
+      value: 0,
+      ...(v.bytesPerUnit !== 1 ? { bytesPerUnit: v.bytesPerUnit } : {}),
+      derivesBudgetKey: innerKey,
+    }));
     return {
-      innerSeeds: [{ key: innerKey, value: innerSeed }],
+      innerSeeds: [{ key: innerKey, value: innerSeed }, ...valueLengthSeeds],
       perRecordBytes: recordBytes,
       prefixBytes,
       defaultLength: b1,
@@ -4912,6 +4990,74 @@ const FLAT_TLV_TARGET_VALUE_BYTES = 4;
 /** Upper bound on the length-field seed we will search for, so a pathological
  *  budget expr (e.g. `X / 1000`) can't run the seed away unbounded. */
 const FLAT_TLV_MAX_LEN_SEED = 64;
+
+/**
+ * Solve the length seed for a single `bytes(<expr over ONE sibling X>)` value so
+ * the value resolves to ~`FLAT_TLV_TARGET_VALUE_BYTES`. The smallest seed
+ * yielding a positive width wins (covers `ref X` → 4, `X - 4` → 8, `X * 4` → 1).
+ * `bytesPerUnit` is the value's byte slope per +1 unit of X (`bytes(X)` → 1,
+ * `bytes(X*4)` → 4) so a consumer can charge the EXACT extra bytes as X grows.
+ * Returns null for a delimited / multi-ref / non-sibling-sized value, or when no
+ * positive-width seed exists in range. Shared by `flatTlvInnerSeeds` (flat
+ * triplet records) and the TLV-extension inner-arm scan (a value inside a nested
+ * bounded's switch arm, e.g. tlsClientHello SNI `serverName = bytes(ref nameLen)`).
+ */
+function solveSiblingRefValueSeed(
+  field: Container,
+  siblingIds: Set<string>,
+): { key: string; seed: number; bytesPerUnit: number; width: number } | null {
+  if (!isField(field) || !isRefToSiblingBytes(field, siblingIds)) return null;
+  const rawN = (field.type as Extract<typeof field.type, { kind: "bytes" }>).n;
+  if (isBytesDelimited(rawN)) return null;
+  const lenRefs = [...new Set(exprRefs(rawN))];
+  if (lenRefs.length !== 1) return null; // multi-ref handled only by the flat path
+  const key = lenRefs[0];
+  let chosen: { seed: number; width: number } | null = null;
+  for (let seed = 1; seed <= FLAT_TLV_MAX_LEN_SEED; seed++) {
+    const width = evalExprOr(rawN, new Map([[key, seed]]), 0);
+    if (width >= 1) {
+      chosen = { seed, width };
+      if (width >= FLAT_TLV_TARGET_VALUE_BYTES) break;
+    }
+  }
+  if (!chosen) return null;
+  const widthAt = (seed: number): number =>
+    evalExprOr(rawN, new Map([[key, seed]]), 0);
+  const bytesPerUnit = Math.max(
+    1,
+    widthAt(chosen.seed + 1) - widthAt(chosen.seed),
+  );
+  return { key, seed: chosen.seed, bytesPerUnit, width: chosen.width };
+}
+
+/**
+ * Walk a switch arm's fields (descending plain groups, NOT nested bounded — those
+ * own their own budget) and return each `bytes(ref X)` value sized by a sibling
+ * length field X of the enclosing record, with the seed/slope/width that makes it
+ * render. Used to grow a TLV-extension inner bounded budget to fit its own value.
+ */
+function collectArmSiblingRefValueLengths(
+  containers: Container[],
+  siblingIds: Set<string>,
+): { key: string; seed: number; bytesPerUnit: number; width: number }[] {
+  const out: {
+    key: string;
+    seed: number;
+    bytesPerUnit: number;
+    width: number;
+  }[] = [];
+  for (const c of containers) {
+    if (isField(c)) {
+      const v = solveSiblingRefValueSeed(c, siblingIds);
+      if (v) out.push(v);
+    } else if (c.kind === "group") {
+      out.push(...collectArmSiblingRefValueLengths(c.children, siblingIds));
+    }
+    // bounded owns its own budget; switch/repeat/optional/encrypted are not the
+    // simple per-arm value shape we grow the inner budget for.
+  }
+  return out;
+}
 
 /**
  * Detect a FLAT TLV-shaped record: a repeat element whose top-level fields are a
@@ -4950,84 +5096,115 @@ function flatTlvInnerSeeds(element: { fields: Container[] }): {
   const innerSeeds: { key: string; value: number; bytesPerUnit?: number }[] =
     [];
   const seededKeys = new Set<string>();
-  // Bytes a value resolves to once its length field(s) are seeded — summed so
-  // perRecordBytes charges the seeded (not ~0-byte) size of each value.
-  let resolvedValueBytes = 0;
-  // Count of VALUE fields whose width we resolved (each was charged the ~0-byte
-  // REF_SIZED allowance by estimateElementBytes, which we now replace).
-  let resolvedValueFields = 0;
+  // Resolve a single sibling-ref `bytes` value field: push its length seed(s)
+  // (deduped via `seededKeys`) and return the bytes the value resolves to once
+  // seeded, or null when the field is not a sibling-ref bytes value or no
+  // positive-width seed exists in range.
+  const processField = (c: Container): number | null => {
+    if (!isField(c) || !isRefToSiblingBytes(c, siblingIds)) return null;
+    const rawN = (c.type as Extract<typeof c.type, { kind: "bytes" }>).n;
+    // isRefToSiblingBytes already excluded the delimited form; narrow here.
+    if (isBytesDelimited(rawN)) return null;
+    const n = rawN;
+    // Dedup — a `cond(test: ref X, t: X - 4, …)` length names X several times.
+    const lenRefs = [...new Set(exprRefs(n))];
+    // Solve the SINGLE length ref for a seed that makes the value resolve to
+    // ~FLAT_TLV_TARGET_VALUE_BYTES. The smallest seed yielding a positive
+    // width wins (covers `ref X` → 4, `X - 4` → 8, `X * 4` → 1). A value
+    // referencing several length fields (none in the affected presets) is
+    // seeded best-effort with the target on each ref.
+    if (lenRefs.length === 1) {
+      const key = lenRefs[0];
+      let chosen: { seed: number; width: number } | null = null;
+      for (let seed = 1; seed <= FLAT_TLV_MAX_LEN_SEED; seed++) {
+        const width = evalExprOr(n, new Map([[key, seed]]), 0);
+        if (width >= 1) {
+          chosen = { seed, width };
+          if (width >= FLAT_TLV_TARGET_VALUE_BYTES) break;
+        }
+      }
+      if (!chosen) return null; // no positive-width seed in range — skip
+      if (!seededKeys.has(key)) {
+        seededKeys.add(key);
+        // Byte slope of the value per +1 unit of the length field, so a
+        // consumer (PacketViewer's bounded derive) can charge the EXACT extra
+        // bytes when the field is raised above its seed — `bytes(X)` → 1,
+        // `bytes(X * 4)` (gist `gistObjLen`) → 4. Without this a scaled value
+        // over-consumes the bounded scope as the field grows.
+        const widthAt = (seed: number): number =>
+          evalExprOr(n, new Map([[key, seed]]), 0);
+        const bytesPerUnit = Math.max(
+          1,
+          widthAt(chosen.seed + 1) - widthAt(chosen.seed),
+        );
+        innerSeeds.push(
+          bytesPerUnit !== 1
+            ? { key, value: chosen.seed, bytesPerUnit }
+            : { key, value: chosen.seed },
+        );
+      }
+      return chosen.width;
+    }
+    const env = new Map(lenRefs.map((r) => [r, FLAT_TLV_TARGET_VALUE_BYTES]));
+    const width = evalExprOr(n, env, 0);
+    if (width < 1) return null;
+    for (const r of lenRefs) {
+      if (seededKeys.has(r)) continue;
+      seededKeys.add(r);
+      innerSeeds.push({ key: r, value: FLAT_TLV_TARGET_VALUE_BYTES });
+    }
+    return width;
+  };
   // Walk the record's flat top level (descending through plain groups, which
   // some presets use to wrap the type/length prefix) to find a value field whose
-  // length references ONLY a sibling field in the same record.
-  const scan = (containers: Container[]): void => {
+  // length references ONLY a sibling field in the same record. Returns the
+  // resolved value bytes / value-field count contributed by `containers`.
+  const scan = (containers: Container[]): { bytes: number; fields: number } => {
+    let bytes = 0;
+    let fields = 0;
     for (const c of containers) {
       if (isField(c)) {
-        if (!isRefToSiblingBytes(c, siblingIds)) continue;
-        const rawN = (c.type as Extract<typeof c.type, { kind: "bytes" }>).n;
-        // isRefToSiblingBytes already excluded the delimited form; narrow here.
-        if (isBytesDelimited(rawN)) continue;
-        const n = rawN;
-        // Dedup — a `cond(test: ref X, t: X - 4, …)` length names X several times.
-        const lenRefs = [...new Set(exprRefs(n))];
-        // Solve the SINGLE length ref for a seed that makes the value resolve to
-        // ~FLAT_TLV_TARGET_VALUE_BYTES. The smallest seed yielding a positive
-        // width wins (covers `ref X` → 4, `X - 4` → 8, `X * 4` → 1). A value
-        // referencing several length fields (none in the affected presets) is
-        // seeded best-effort with the target on each ref.
-        if (lenRefs.length === 1) {
-          const key = lenRefs[0];
-          let chosen: { seed: number; width: number } | null = null;
-          for (let seed = 1; seed <= FLAT_TLV_MAX_LEN_SEED; seed++) {
-            const width = evalExprOr(n, new Map([[key, seed]]), 0);
-            if (width >= 1) {
-              chosen = { seed, width };
-              if (width >= FLAT_TLV_TARGET_VALUE_BYTES) break;
-            }
-          }
-          if (!chosen) continue; // no positive-width seed in range — skip
-          resolvedValueBytes += chosen.width;
-          resolvedValueFields += 1;
-          if (!seededKeys.has(key)) {
-            seededKeys.add(key);
-            // Byte slope of the value per +1 unit of the length field, so a
-            // consumer (PacketViewer's bounded derive) can charge the EXACT extra
-            // bytes when the field is raised above its seed — `bytes(X)` → 1,
-            // `bytes(X * 4)` (gist `gistObjLen`) → 4. Without this a scaled value
-            // over-consumes the bounded scope as the field grows.
-            const widthAt = (seed: number): number =>
-              evalExprOr(n, new Map([[key, seed]]), 0);
-            const bytesPerUnit = Math.max(
-              1,
-              widthAt(chosen.seed + 1) - widthAt(chosen.seed),
-            );
-            innerSeeds.push(
-              bytesPerUnit !== 1
-                ? { key, value: chosen.seed, bytesPerUnit }
-                : { key, value: chosen.seed },
-            );
-          }
-        } else {
-          const env = new Map(
-            lenRefs.map((r) => [r, FLAT_TLV_TARGET_VALUE_BYTES]),
-          );
-          const width = evalExprOr(n, env, 0);
-          if (width < 1) continue;
-          resolvedValueBytes += width;
-          resolvedValueFields += 1;
-          for (const r of lenRefs) {
-            if (seededKeys.has(r)) continue;
-            seededKeys.add(r);
-            innerSeeds.push({ key: r, value: FLAT_TLV_TARGET_VALUE_BYTES });
-          }
+        const width = processField(c);
+        if (width != null) {
+          bytes += width;
+          fields += 1;
         }
       } else if (c.kind === "group") {
-        scan(c.children);
+        const inner = scan(c.children);
+        bytes += inner.bytes;
+        fields += inner.fields;
+      } else if (c.kind === "switch") {
+        // A switch arm value sized by a sibling length (isisLsp tlvLength,
+        // tlsClientHello nameLen, ocspRequest *Length) lives INSIDE the arm, not
+        // as a flat record sibling. `collectRecordFieldIds` already counts arm
+        // fields as siblings, so `processField` resolves them — but only one arm
+        // renders per record, so charge perRecordBytes the LARGEST arm (union of
+        // all arms' seeded keys via the shared `seededKeys`/`innerSeeds`).
+        let maxBytes = 0;
+        let maxFields = 0;
+        for (const s of Object.values(c.cases)) {
+          const arm = scan(s.fields);
+          if (arm.bytes > maxBytes) {
+            maxBytes = arm.bytes;
+            maxFields = arm.fields;
+          }
+        }
+        bytes += maxBytes;
+        fields += maxFields;
       }
-      // bounded is excluded above; switch/repeat/optional/encrypted are not the
-      // flat shape and contribute no flat sibling-sized seed.
+      // bounded is excluded above (containsBounded short-circuits the whole
+      // record); repeat/optional/encrypted are not the flat shape and contribute
+      // no flat sibling-sized seed.
     }
+    return { bytes, fields };
   };
-  scan(element.fields);
+  const scanned = scan(element.fields);
+  // Bytes the seeded value(s) resolve to, and the count of VALUE fields whose
+  // width we resolved (each was charged the ~0-byte REF_SIZED allowance by
+  // estimateElementBytes, which perRecordBytes below replaces). A switch arm's
+  // value counts the LARGEST arm only — one arm renders per record.
+  const resolvedValueBytes = scanned.bytes;
+  const resolvedValueFields = scanned.fields;
   if (innerSeeds.length === 0) return null;
   // Per-record estimate charging each seeded value its RESOLVED size: start from
   // the conservative estimate (which charges each ref-sized VALUE field only the

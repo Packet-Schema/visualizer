@@ -53,9 +53,42 @@ function appCellIdsSeeded(
   for (const r of collectPsdlRefs(psdl)) if (!env.has(r)) env.set(r, 0);
   seedDynamicWidthDefaults(psdl, env);
   for (const br of mirror.boundedRepeats ?? []) {
+    // Mirror PacketViewer.buildLayoutEnv: seed each per-record inner-scope length
+    // so the representative record fits its own value (a switch-arm value sized by
+    // a sibling length, e.g. bgpFlowSpec prefixValue / isisLsp tlvValue).
+    for (const seed of br.innerScopeSeeds ?? []) {
+      if (!env.get(seed.key)) env.set(seed.key, seed.value);
+    }
+    const budgetSeedOf = (key: string): number =>
+      (br.innerScopeSeeds ?? []).find(
+        (s) => s.key === key && !s.derivesBudgetKey,
+      )?.value ?? 0;
+    for (const seed of br.innerScopeSeeds ?? []) {
+      if (!seed.derivesBudgetKey) continue;
+      const overage =
+        Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+        (seed.bytesPerUnit ?? 1);
+      if (overage <= 0) continue;
+      const required = budgetSeedOf(seed.derivesBudgetKey) + overage;
+      if (required > Number(env.get(seed.derivesBudgetKey) ?? 0)) {
+        env.set(seed.derivesBudgetKey, required);
+      }
+    }
     const budget = evalExprOr(br.bytesExpr, env, 0);
     const forRecords = Math.max(0, budget - br.prefixBytes);
-    env.set(br.countKey, Math.floor(forRecords / br.perRecordBytes));
+    const innerOverage = (br.innerScopeSeeds ?? []).reduce(
+      (sum, seed) =>
+        seed.derivesBudgetKey
+          ? sum
+          : sum +
+            Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+              (seed.bytesPerUnit ?? 1),
+      0,
+    );
+    env.set(
+      br.countKey,
+      Math.floor(forRecords / (br.perRecordBytes + innerOverage)),
+    );
   }
   return resolveLayout(psdl, { env, viewMode: "semantic" }).cells.flatMap(
     (c) => [c.field.id, ...(c.subCells ?? []).map((s) => s.subfield.id)],
@@ -175,12 +208,16 @@ describe("collectRefSwitches", () => {
     // prefix arm shows prefixLength, the operator-list arm does not (proving the
     // picker is not inert and the `_` arm is genuinely reachable).
     const src = PRESETS.bgpFlowSpec!;
+    // Ample budget so a record renders in either arm (the prefix arm's value
+    // `prefixValue = bytes(ref prefixLength)` is now seeded to a representative
+    // width, so perRecordBytes — and thus the budget one record needs — is larger
+    // than the old empty-value estimate).
     const prefix = appCellIdsSeeded(src, {
-      flowSpecLength: 6,
+      flowSpecLength: 40,
       flowSpecCompType: 1,
     });
     const opList = appCellIdsSeeded(src, {
-      flowSpecLength: 6,
+      flowSpecLength: 40,
       flowSpecCompType: otherValue!,
     });
     expect(prefix).toContain("prefixLength#0");
