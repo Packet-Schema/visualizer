@@ -1826,6 +1826,37 @@ function defaultArmSyntheticCase(
   };
 }
 
+/**
+ * True when a switch's `_` default arm is the canonical TLV-style
+ * "opaque / unknown record" shape: a SINGLE field carrying a `bytes(ref …)`
+ * value (the raw, ref-length-sized payload of a record whose type code is not
+ * individually modelled — dnsResponse `dnsRdataBytes` = `bytes(ref dnsRdLength)`,
+ * isisLsp `tlvValue` = `bytes(ref tlvLength)`, pimHelloOptions `unknownOptData` =
+ * `bytes(ref pimHelloOptLen)`).
+ *
+ * Such a `_` arm is a real, RFC-defined REACHABLE state — any discriminator
+ * value not in the listed case set decodes the record opaquely — yet its
+ * structural fingerprint is byte-identical to any listed arm that is also a lone
+ * `bytes(ref …)` value (every isisLsp arm; dnsResponse's NS/CNAME/PTR/TXT). The
+ * `differs`-from-all-listed gate that drives the synthetic-default option for
+ * structurally-distinct arms (babel/bgpFlowSpec) therefore wrongly suppresses
+ * it, so an unknown record type is unrepresentable and an imported packet
+ * carrying one cannot round-trip-select. Detecting this shape lets the caller
+ * surface a sentinel "unknown / other" option EVEN WHEN the `_` shape collides
+ * with a listed arm — the selection lands on an unlisted code, which is a
+ * genuinely distinct, RFC-valid state. (A nested-container or fixed-width `_`
+ * arm is not "opaque/unknown" and stays governed by the `differs` gate.)
+ */
+function isOpaqueUnknownRecordArm(arm: { fields: Container[] }): boolean {
+  if (arm.fields.length !== 1) return false;
+  const only = arm.fields[0];
+  if (!isField(only)) return false;
+  if (only.type.kind !== "bytes") return false;
+  const n = only.type.n;
+  if (isBytesDelimited(n)) return false;
+  return exprRefs(n).length > 0;
+}
+
 /** Collect (in declaration order) the ids of every Field declared anywhere
  *  inside an arm's container list. Used to canonicalize intra-arm references so
  *  arms that differ ONLY in their field ids fingerprint identically. */
@@ -2291,9 +2322,28 @@ function collectRefSwitches(
               const defaultShape = JSON.stringify(
                 defaultArm.fields.map(structuralShape),
               );
+              // Surface the synthetic option when the `_` arm renders a DISTINCT
+              // skeleton from every listed case OR when it is the canonical
+              // opaque / unknown-record arm (a lone `bytes(ref …)` value) whose
+              // fingerprint COLLIDES with a listed arm. The collision case is a
+              // real RFC-defined reachable state (any unlisted discriminator
+              // decodes the record opaquely) that the plain `differs` test
+              // wrongly suppresses because the `_` shape equals a listed
+              // `bytes(ref …)` arm (dnsResponse `dnsRdataBytes`, isisLsp
+              // `tlvValue`, pimHelloOptions `unknownOptData`); without it an
+              // unknown record type is unrepresentable and an imported packet
+              // carrying one cannot round-trip-select. The picked value is always
+              // an UNLISTED code (`representativeDefaultArmValue`), so it
+              // genuinely lands on `_`. (When the `_` shape already differs — e.g.
+              // lwm2mRegister's short-length `tlvValueShort` form, a DEFINED arm
+              // with a distinct 1-field skeleton — the normal path handles it and
+              // this is NOT treated as an "unknown" arm.)
+              const shapeCollides = explicitShapes.includes(defaultShape);
+              const isUnknownRecordArm =
+                shapeCollides && isOpaqueUnknownRecordArm(defaultArm);
               const differs =
                 explicitShapes.length > 0 &&
-                !explicitShapes.includes(defaultShape);
+                (!shapeCollides || isUnknownRecordArm);
               const defaultValue = differs
                 ? representativeDefaultArmValue(
                     c.cases,
@@ -2304,12 +2354,20 @@ function collectRefSwitches(
                 defaultValue !== null &&
                 !cases.some((cc) => cc.value === defaultValue)
               ) {
+                const armLabel =
+                  defaultArm.name ??
+                  prettifyId(defaultArm.id) ??
+                  "Other / default";
+                // For an opaque unknown-record `_` arm whose own name reads like a
+                // concrete field (RDATA / Value / Option Data), annotate the option
+                // so the picker reads as the "unknown / other type" state it is —
+                // the only place an unlisted (unmodelled) record type can be
+                // selected — rather than masquerading as one more modelled variant.
                 cases.push({
                   value: defaultValue,
-                  label:
-                    defaultArm.name ??
-                    prettifyId(defaultArm.id) ??
-                    "Other / default",
+                  label: isUnknownRecordArm
+                    ? `${armLabel} (unknown / other type)`
+                    : armLabel,
                 });
               }
             }
