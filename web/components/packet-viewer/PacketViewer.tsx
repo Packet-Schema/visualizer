@@ -1536,39 +1536,70 @@ export default function PacketViewer({
   // controllers, and this re-runs only when the layout inputs change.
   const inertLengthControllers = useMemo(() => {
     const inert = new Set<string>();
-    const keys = new Set<string>();
+    // The largest value each controller can take (mirrors the OverrideSlider
+    // clamp: 2**bits-1, falling back to a generous default) so the probe never
+    // samples beyond what the user could actually pick.
+    const keyMax = new Map<string, number>();
+    const note = (key: string | undefined, bits: number | undefined) => {
+      if (!key) return;
+      const cap = typeof bits === "number" && bits > 0 ? 2 ** bits - 1 : 65535;
+      keyMax.set(key, Math.max(keyMax.get(key) ?? 0, cap));
+    };
     for (const lc of packet.lengthControllers ?? []) {
-      if (lc.controlsLength) keys.add(lc.controlsLength);
+      note(lc.controlsLength, lc.bits);
     }
     for (const f of packet.fields) {
-      if (f.controlsLength) keys.add(f.controlsLength);
+      note(f.controlsLength, f.bits);
     }
-    if (keys.size === 0) return inert;
+    if (keyMax.size === 0) return inert;
     const baseBits = layout.totalBits;
-    for (const key of keys) {
+    for (const [key, cap] of keyMax) {
       // Only meaningful when the controlled field is actually in the diagram —
       // an absent field is gated by the separate `fieldRendered` check, and a
       // bumped value there can legitimately materialise a cell (NOT inert).
       if (!fieldRendered(layout.cells, key)) continue;
       const current = Number(controllers[key] ?? 0);
-      // Bump by a representative amount (and toward 0 when already high) so the
-      // probe perturbs the value regardless of where the slider currently sits.
-      const probeValue = current === 0 ? 8 : Math.max(0, current - 1);
-      if (probeValue === current) continue;
-      const probedEnv = buildLayoutEnv({
-        ...controllers,
-        [key]: probeValue,
-      });
-      try {
-        const probed = resolveLayout(targetPsdl, {
-          env: probedEnv,
-          viewMode,
+      // AFFINE-OFFSET FIX: a length field that sizes a payload through `value - K`
+      // (sctp data_userData = bytes(chunkLength - 16), pcep bytes(len - 4), …)
+      // stays width-0 until the slider clears K, so a SINGLE small probe below K
+      // looks inert even though larger values clearly grow the diagram. Sweep a
+      // handful of UPWARD samples and call the controller inert only when NONE of
+      // them change the layout — this keeps genuinely fixed-width arms (diameter
+      // avpLength, lwm2mRegister tlvLength16/24, ipinip innerIhl) disabled while
+      // re-enabling the affine-offset sliders.
+      const probeValues = [
+        current + 1,
+        current + 8,
+        current + 32,
+        current + 64,
+        current + 128,
+      ]
+        .map((v) => Math.min(v, cap))
+        .filter((v) => v > current);
+      if (probeValues.length === 0) continue;
+      let changed = false;
+      for (const probeValue of probeValues) {
+        const probedEnv = buildLayoutEnv({
+          ...controllers,
+          [key]: probeValue,
         });
-        if (probed.totalBits === baseBits) inert.add(key);
-      } catch {
-        // A throw means the perturbation DID change the structure (e.g. an
-        // over-consumed bounded scope) — treat as live, not inert.
+        try {
+          const probed = resolveLayout(targetPsdl, {
+            env: probedEnv,
+            viewMode,
+          });
+          if (probed.totalBits !== baseBits) {
+            changed = true;
+            break;
+          }
+        } catch {
+          // A throw means the perturbation DID change the structure (e.g. an
+          // over-consumed bounded scope) — treat as live, not inert.
+          changed = true;
+          break;
+        }
       }
+      if (!changed) inert.add(key);
     }
     return inert;
   }, [
