@@ -32,6 +32,10 @@ export type SubField = {
   /** True when this subfield's PSDL type is a delimiter-terminated `bytes`.
    *  Its width env value is a BYTE count (not bits), keyed by id. */
   isDelimited?: boolean;
+  /** True when this subfield's PSDL type is `bytes(remaining)`. Width override
+   *  is a BYTE count on the visualizer-only `__remainingBytes__<id>` key (see
+   *  `Field.isRemaining`). */
+  isRemaining?: boolean;
   optionalGateFor?: string[];
   enumVariants?: Record<number, string>;
   defaultValue?: number;
@@ -216,6 +220,14 @@ export type Field = {
    *  The width override is a BYTE count keyed by this field's id (bridged
    *  to `__bytesDelimLen__<id>` in layout.ts). */
   isDelimited?: boolean;
+  /** True when this field's PSDL type is `bytes(remaining)` — the variable tail
+   *  of the packet (or active switch arm). It has no wire-width env key in core
+   *  (its size is the leftover scope budget), so the OverridePanel WidthPicker
+   *  drives a BYTE count on the visualizer-only `__remainingBytes__<id>` key,
+   *  which `resolveLayout` honors by sizing the packet budget. Only set for
+   *  top-level / switch-arm remaining leaves (not those inside a repeat, whose
+   *  per-iteration size is governed by their repeat / bounded budget). */
+  isRemaining?: boolean;
   /**
    * List of Optional containers whose `when` expression is
    * `ref(<this field id>)`. Each entry is the inner field's name so the
@@ -426,7 +438,7 @@ export type Packet = {
    *  `initialState`, so it stays out of the share URL). */
   dynamicWidthLeaves?: {
     id: string;
-    kind: "delimited" | "varint" | "berLength";
+    kind: "delimited" | "varint" | "berLength" | "remaining";
   }[];
   /** berLength leaf ids whose width PICKER is suppressed because every non-default
    *  width freezes the diagram. A berLength octet nested inside a `bounded` scope

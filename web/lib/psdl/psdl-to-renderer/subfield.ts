@@ -11,6 +11,18 @@ import type { Field as RendererField, SubField } from "../renderer";
 
 import { typeBits } from "./shared";
 
+/** True when a PSDL leaf's type is `bytes(remaining)` — the variable tail of
+ *  the packet / switch arm. Tagged onto the renderer field so OverridePanel
+ *  surfaces a byte-count WidthPicker (driving the `__remainingBytes__<id>`
+ *  budget key). See `Field.isRemaining`. */
+function isBytesRemaining(type: PsdlField["type"]): boolean {
+  return (
+    type.kind === "bytes" &&
+    typeof type.n === "object" &&
+    (type.n as { kind?: string }).kind === "remaining"
+  );
+}
+
 /**
  * Flatten 0.5 enum variants (`string | { label; … }`) down to the renderer's
  * `Record<number, string>` label map. The renderer only paints the label;
@@ -66,6 +78,7 @@ function leafToSubField(child: PsdlField): SubField {
   if (child.type.kind === "berLength") sf.isBerLength = true;
   if (child.type.kind === "bytes" && isBytesDelimited(child.type.n))
     sf.isDelimited = true;
+  if (isBytesRemaining(child.type)) sf.isRemaining = true;
   if (child.type.kind === "enum")
     sf.enumVariants = enumLabels(child.type.variants);
   return sf;
@@ -131,6 +144,7 @@ export function plainFieldToRenderer(f: PsdlField): RendererField {
   if (f.type.kind === "berLength") out.isBerLength = true;
   if (f.type.kind === "bytes" && isBytesDelimited(f.type.n))
     out.isDelimited = true;
+  if (isBytesRemaining(f.type)) out.isRemaining = true;
   if (f.type.kind === "enum") out.enumVariants = enumLabels(f.type.variants);
   if (f.byteOrder) out.byteOrder = f.byteOrder;
   return out;

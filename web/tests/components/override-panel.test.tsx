@@ -19,6 +19,8 @@ import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import {
   seedDynamicWidthDefaults,
   DELIMITED_DEFAULT_BYTES,
+  REMAINING_DEFAULT_BYTES,
+  remainingBytesEnvKey,
 } from "@/lib/psdl/dynamic-width-defaults";
 import { evalExprOr } from "@/lib/psdl/expr";
 import { initialState } from "@/lib/psdl/renderer-helpers";
@@ -576,6 +578,98 @@ describe("OverridePanel widgets", () => {
     // pickerWidths[0] fallback the unseeded controllers used to produce.
     expect(active?.textContent).toBe(`${cell!.bitsTotal / 8}B`);
     expect(active?.textContent).toBe("4B");
+  });
+
+  // A top-level `bytes(remaining)` payload (syslog's `msg`) renders a real cell
+  // but used to fall through every widget branch to the "Read-only display"
+  // EmptyState — see-but-cannot-edit. It now surfaces a byte-count WidthPicker
+  // keyed on the visualizer-only `__remainingBytes__<id>` budget key, whose
+  // active option matches the seeded diagram tail and which the layout honors.
+  it("surfaces a remaining-payload width picker for a top-level bytes(remaining) (syslog msg)", async () => {
+    const src = PRESETS.syslog!;
+    const packet = psdlToRenderer(src);
+    expect(packet.fields.find((f) => f.id === "msg")?.isRemaining).toBe(true);
+
+    const controllers = initialState(packet);
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="msg"
+        controllers={controllers}
+        onControllerChange={onChange}
+      />,
+    );
+    // Must NOT show the read-only empty state.
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(
+      group,
+      "bytes(remaining) must surface a width radiogroup",
+    ).not.toBeNull();
+    expect(container.textContent ?? "").toMatch(/Payload bytes \(remaining\)/i);
+    const buttons = Array.from(
+      group!.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    // Byte-count ladder; the seeded default (4B) is the active option, matching
+    // the diagram cell the layout paints on load.
+    const active = buttons.find(
+      (b) => b.getAttribute("aria-checked") === "true",
+    );
+    expect(active?.textContent).toBe(`${REMAINING_DEFAULT_BYTES}B`);
+
+    // Picking 16B writes the byte count under the dedicated budget key, and the
+    // layout sizes the cell to that many bytes.
+    const sixteen = buttons.find((b) => b.textContent === "16B")!;
+    await act(async () => {
+      sixteen.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith(remainingBytesEnvKey("msg"), 16);
+    const env = packetViewerEnv(src);
+    env.set(remainingBytesEnvKey("msg"), 16);
+    const cell = resolveLayout(src, { env }).cells.find(
+      (c) => c.field.id === "msg",
+    );
+    expect(cell?.field.bits).toBe(16 * 8);
+  });
+
+  // A switch-arm `bytes(remaining)` (mobilityHeader's mh6MessageBytes in the `_`
+  // arm) never becomes a mirror field; the click resolves through the diagram
+  // cells, and layout.ts stamps `isRemaining` onto the synthetic cell field so
+  // the WidthPicker still surfaces (and drives the budget key).
+  it("surfaces a remaining-payload width picker for a switch-arm bytes(remaining) (mobilityHeader mh6MessageBytes)", async () => {
+    const src = PRESETS.mobilityHeader!;
+    const packet = psdlToRenderer(src);
+    expect(packet.fields.some((f) => f.id === "mh6MessageBytes")).toBe(false);
+    const env = packetViewerEnv(src);
+    const { cells } = resolveLayout(src, { env });
+    const cell = cells.find((c) => c.field.id === "mh6MessageBytes");
+    expect(cell?.field.isRemaining).toBe(true);
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="mh6MessageBytes"
+        controllers={initialState(packet)}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(group, "switch-arm remaining must surface a picker").not.toBeNull();
+    const buttons = Array.from(
+      group!.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    const eight = buttons.find((b) => b.textContent === "8B")!;
+    await act(async () => {
+      eight.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith(
+      remainingBytesEnvKey("mh6MessageBytes"),
+      8,
+    );
   });
 
   // A varint / berLength leaf that lives INSIDE a switch case / optional /

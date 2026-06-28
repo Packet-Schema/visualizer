@@ -26,7 +26,11 @@ import {
   varintBitsEnvKey,
 } from "./normalize";
 import { isField } from "./utils";
-import { collectSwitchOnRefIds } from "./dynamic-width-defaults";
+import {
+  collectRemainingFieldIds,
+  collectSwitchOnRefIds,
+  remainingBytesEnvKey,
+} from "./dynamic-width-defaults";
 import type {
   Cell,
   Field as RendererField,
@@ -83,7 +87,21 @@ export function resolveLayout(
   // id; this is the single boundary where they become core's env contract.
   bridgeDynamicWidthKeys(packet, env);
   const viewMode: ViewMode = options.viewMode ?? "wire";
-  let norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
+  // A top-level / switch-arm `bytes(remaining)` payload has no wire-width env key
+  // in core (its size is the leftover budget), so the user-chosen byte count
+  // rides on the visualizer-only `__remainingBytes__<id>` key. Read the largest
+  // requested width (only one such tail renders per layout — they live in
+  // mutually-exclusive switch arms — and any spare budget is absorbed by that one
+  // tail) and hand it to `normalizeWithBudget`, which sizes the packet budget to
+  // `fixedPrefix + bytes*8`. The key is never forwarded to core's normalize.
+  const remainingBytesOverride = readRemainingBytesOverride(packet, env);
+  let norm = normalizeWithBudget(
+    packet,
+    env,
+    viewMode,
+    options.totalBits,
+    remainingBytesOverride,
+  );
   // A delimiter-terminated `bytes` field expanded inside a repeat / ref is read
   // by core's emit() under the FULLY-QUALIFIED instance key
   // `__bytesDelimLen__<prefix>.<id>#<n>` — not the bare `__bytesDelimLen__<id>`
@@ -93,7 +111,13 @@ export function resolveLayout(
   // renders and its WidthPicker drives every cell. Re-normalize once if it added
   // any keys (the new widths shift the layout).
   if (qualifyDelimitedWidthKeys(packet, env, norm)) {
-    norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
+    norm = normalizeWithBudget(
+      packet,
+      env,
+      viewMode,
+      options.totalBits,
+      remainingBytesOverride,
+    );
   }
   const cells: Cell[] = [];
   let bitPos = 0;
@@ -235,6 +259,7 @@ function normalizeWithBudget(
   env: PacketEnv,
   viewMode: ViewMode,
   totalBits?: number,
+  variableRegionBytes?: number,
 ): Normalized {
   if (totalBits !== undefined) {
     return normalize(packet, env, { viewMode, totalBits });
@@ -249,12 +274,51 @@ function normalizeWithBudget(
       throw e;
     }
     const fixed = normalize(packet, new Map(env), { viewMode, totalBits: 0 });
-    const budget =
-      fixed.totalBits +
-      Math.max(packet.rowBits, DEFAULT_VARIABLE_REGION_BITS_FALLBACK);
+    // The variable tail gets the user-chosen byte count when one rode in on a
+    // `__remainingBytes__<id>` key (the OverridePanel WidthPicker / share-URL),
+    // else one default row so it paints a representative cell. `remaining` then
+    // resolves to exactly `variableRegionBits` because core derives it from this
+    // budget minus the fixed prefix.
+    const variableRegionBits =
+      typeof variableRegionBytes === "number"
+        ? variableRegionBytes * 8
+        : Math.max(packet.rowBits, DEFAULT_VARIABLE_REGION_BITS_FALLBACK);
+    const budget = fixed.totalBits + variableRegionBits;
     return normalize(packet, env, { viewMode, totalBits: budget });
   }
 }
+
+/**
+ * Largest `bytes(remaining)` byte-count override present in `env` for a rendered
+ * (top-level / switch-arm, non-repeat) remaining payload, or `undefined` when
+ * none is set. Only one such tail renders per layout (they live in
+ * mutually-exclusive switch arms), and any spare budget is absorbed by it, so
+ * taking the max keeps the active arm's tail at least its requested width.
+ */
+function readRemainingBytesOverride(
+  packet: PsdlPacket,
+  env: PacketEnv,
+): number | undefined {
+  let best: number | undefined;
+  for (const id of collectRemainingFieldIds(packet)) {
+    const v = env.get(remainingBytesEnvKey(id));
+    if (typeof v === "number" && v >= 0 && (best === undefined || v > best)) {
+      best = v;
+    }
+  }
+  // Clamp the budget byte count so an oversized value (a hand-edited share URL /
+  // imported env) can't size the variable tail into millions of cells and freeze
+  // the un-virtualized diagram. resolveLayout emits ~1 cell per payload byte, so
+  // this mirrors the direct length-controller cap (MAX_LENGTH_CONTROLLER_BYTES in
+  // PacketViewer). The picker's own ladder tops out well under this.
+  return best === undefined ? undefined : Math.min(best, MAX_REMAINING_BYTES);
+}
+
+/** Renderable byte ceiling for a `bytes(remaining)` payload sized via the
+ *  `__remainingBytes__<id>` override. Mirrors PacketViewer's
+ *  `MAX_LENGTH_CONTROLLER_BYTES` (= MAX_DERIVED_RECORDS) so a maxed / hostile
+ *  value can't explode the un-virtualized diagram. */
+const MAX_REMAINING_BYTES = 1024;
 
 /**
  * Copy field-id-keyed dynamic-width overrides into the synthetic env keys
@@ -448,6 +512,7 @@ type DynamicWidthFlags = {
   varintEncoding?: VarintEncoding;
   isBerLength?: boolean;
   isDelimited?: boolean;
+  isRemaining?: boolean;
 };
 
 /**
@@ -472,7 +537,13 @@ function collectDynamicWidthFlags(
   packet: PsdlPacket,
 ): Map<string, DynamicWidthFlags> {
   const map = new Map<string, DynamicWidthFlags>();
-  const visit = (containers: Container[]): void => {
+  // `insideRepeat` gates the `bytes(remaining)` tag: a top-level / switch-arm
+  // remaining payload's size is the leftover packet budget (driven by the
+  // `__remainingBytes__<id>` width override), but a remaining leaf INSIDE a
+  // repeat is sized by its repeat / bounded budget, so it is NOT tagged here
+  // (its WidthPicker would drive a key the layout doesn't read for it). Matches
+  // `collectRemainingFieldIds`.
+  const visit = (containers: Container[], insideRepeat: boolean): void => {
     for (const c of containers) {
       if (isField(c)) {
         let flags: DynamicWidthFlags | null = null;
@@ -481,33 +552,40 @@ function collectDynamicWidthFlags(
         else if (c.type.kind === "berLength") flags = { isBerLength: true };
         else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
           flags = { isDelimited: true };
+        else if (
+          c.type.kind === "bytes" &&
+          typeof c.type.n === "object" &&
+          (c.type.n as { kind?: string }).kind === "remaining" &&
+          !insideRepeat
+        )
+          flags = { isRemaining: true };
         if (flags) map.set(c.id, flags);
         continue;
       }
       switch (c.kind) {
         case "group":
-          visit(c.children);
+          visit(c.children, insideRepeat);
           break;
         case "repeat":
-          visit(c.element.fields);
+          visit(c.element.fields, true);
           break;
         case "switch":
-          for (const s of Object.values(c.cases)) visit(s.fields);
+          for (const s of Object.values(c.cases)) visit(s.fields, insideRepeat);
           break;
         case "encrypted":
-          visit(c.plaintext.fields);
+          visit(c.plaintext.fields, insideRepeat);
           break;
         case "optional":
-          visit([c.container]);
+          visit([c.container], insideRepeat);
           break;
         case "bounded":
-          visit(c.fields);
+          visit(c.fields, insideRepeat);
           break;
         // virtual / align / ref expose no dynamic-width leaf to flag.
       }
     }
   };
-  visit(packet.body);
+  visit(packet.body, false);
   return map;
 }
 

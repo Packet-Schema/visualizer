@@ -21,6 +21,8 @@ import type {
 import {
   BER_LENGTH_DEFAULT_BITS,
   DELIMITED_DEFAULT_BYTES,
+  REMAINING_DEFAULT_BYTES,
+  remainingBytesEnvKey,
   VARINT_DEFAULT_BITS,
 } from "./dynamic-width-defaults";
 import { berLenEnvKey } from "./normalize";
@@ -224,6 +226,14 @@ export function initialState(packet: Packet): ControllerState {
       if (state[key] === undefined) state[key] = BER_LENGTH_DEFAULT_BITS;
       return;
     }
+    // A `bytes(remaining)` payload's width rides on the dedicated
+    // `__remainingBytes__<id>` budget key (the WidthPicker drives the same key);
+    // seed there so the picker's active option matches the seeded diagram tail.
+    if (f.isRemaining) {
+      const key = remainingBytesEnvKey(f.id);
+      if (state[key] === undefined) state[key] = REMAINING_DEFAULT_BYTES;
+      return;
+    }
     if (state[f.id] !== undefined) return;
     if (f.isDelimited) state[f.id] = DELIMITED_DEFAULT_BYTES;
     else if (f.varintEncoding) state[f.id] = VARINT_DEFAULT_BITS;
@@ -242,16 +252,25 @@ export function initialState(packet: Packet): ControllerState {
   // unset key, so a user / saved-env width still wins and it stays out of the
   // share URL (via `nonDefaultControllerEnv`).
   for (const leaf of packet.dynamicWidthLeaves ?? []) {
-    // berLength seeds its DEDICATED width key (see seedDynamicWidth above);
-    // varint/delimited seed their bare value key (bridged in layout.ts).
-    const key = leaf.kind === "berLength" ? berLenEnvKey(leaf.id) : leaf.id;
+    // berLength seeds its DEDICATED `__berLen__<id>` width key; `remaining`
+    // seeds its DEDICATED `__remainingBytes__<id>` budget key (both also driven
+    // by the WidthPicker); varint/delimited seed their bare value key (bridged
+    // in layout.ts).
+    const key =
+      leaf.kind === "berLength"
+        ? berLenEnvKey(leaf.id)
+        : leaf.kind === "remaining"
+          ? remainingBytesEnvKey(leaf.id)
+          : leaf.id;
     if (state[key] !== undefined) continue;
     state[key] =
       leaf.kind === "berLength"
         ? BER_LENGTH_DEFAULT_BITS
-        : leaf.kind === "delimited"
-          ? DELIMITED_DEFAULT_BYTES
-          : VARINT_DEFAULT_BITS;
+        : leaf.kind === "remaining"
+          ? REMAINING_DEFAULT_BYTES
+          : leaf.kind === "delimited"
+            ? DELIMITED_DEFAULT_BYTES
+            : VARINT_DEFAULT_BITS;
   }
   // Packet-level length controllers (bounded scopes whose length field is
   // group-nested) seed the same way as top-level controlsLength fields.

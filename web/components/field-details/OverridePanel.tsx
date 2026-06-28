@@ -20,6 +20,8 @@ import { parseChainCellId } from "@/lib/psdl/psdl-to-renderer";
 import {
   BER_LENGTH_DEFAULT_BITS,
   DELIMITED_DEFAULT_BYTES,
+  REMAINING_DEFAULT_BYTES,
+  remainingBytesEnvKey,
   VARINT_DEFAULT_BITS,
 } from "@/lib/psdl/dynamic-width-defaults";
 import { berLenEnvKey } from "@/lib/psdl/normalize";
@@ -555,7 +557,8 @@ export default function OverridePanel({
   if (
     (field.varintEncoding ||
       (field.isBerLength && !berLengthWidthLocked) ||
-      field.isDelimited) &&
+      field.isDelimited ||
+      field.isRemaining) &&
     onControllerChange
   ) {
     widgets.push(
@@ -658,6 +661,7 @@ function subfieldWidgets(
     varintEncoding: sub.varintEncoding,
     isBerLength: sub.isBerLength,
     isDelimited: sub.isDelimited,
+    isRemaining: sub.isRemaining,
     optionalGateFor: sub.optionalGateFor,
     enumVariants: sub.enumVariants,
   };
@@ -672,7 +676,12 @@ function subfieldWidgets(
       />,
     );
   }
-  if (sub.varintEncoding || sub.isBerLength || sub.isDelimited) {
+  if (
+    sub.varintEncoding ||
+    sub.isBerLength ||
+    sub.isDelimited ||
+    sub.isRemaining
+  ) {
     out.push(
       <WidthPicker
         key="width"
@@ -720,6 +729,7 @@ type WidgetTarget = {
   varintEncoding?: Field["varintEncoding"];
   isBerLength?: Field["isBerLength"];
   isDelimited?: Field["isDelimited"];
+  isRemaining?: Field["isRemaining"];
   optionalGateFor?: Field["optionalGateFor"];
   enumVariants?: Field["enumVariants"];
 };
@@ -743,6 +753,7 @@ function fieldAsTarget(f: Field): WidgetTarget {
     varintEncoding: f.varintEncoding,
     isBerLength: f.isBerLength,
     isDelimited: f.isDelimited,
+    isRemaining: f.isRemaining,
     optionalGateFor: f.optionalGateFor,
     enumVariants: f.enumVariants,
   };
@@ -952,21 +963,29 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
   // options and stored value are in bytes and shown as `{value}B`.
   const widths = pickerWidths(target);
   const delimited = !!target.isDelimited;
+  // A `bytes(remaining)` payload's width is a BYTE count too (like delimited),
+  // but on a dedicated visualizer-only key the layout sizes the packet budget
+  // from. Treat it as a byte-count picker (`{w}B`, not `{w/8}B`).
+  const remaining = !!target.isRemaining;
+  const byteCount = delimited || remaining;
   // Match the width the diagram layout seeds when the env key is unset
   // (`seedDynamicWidthDefaults`): a delimited `bytes` field renders at
-  // DELIMITED_DEFAULT_BYTES and a varint at VARINT_DEFAULT_BITS, NOT at
-  // `widths[0]` (1 byte for delimited). Falling back to `widths[0]` highlighted
-  // the wrong option on load for any leaf `initialState` hadn't primed (e.g. a
+  // DELIMITED_DEFAULT_BYTES, a `remaining` payload at REMAINING_DEFAULT_BYTES,
+  // and a varint at VARINT_DEFAULT_BITS, NOT at `widths[0]` (1 byte for
+  // delimited / remaining). Falling back to `widths[0]` highlighted the wrong
+  // option on load for any leaf `initialState` hadn't primed (e.g. a
   // switch-case-nested delimited leaf before its mirror seed) — a
   // panel-vs-diagram contradiction. berLength already defaults to 8 bits, which
   // equals `widths[0]`, so its fallback is unchanged.
-  const seededDefault = delimited
-    ? DELIMITED_DEFAULT_BYTES
-    : target.varintEncoding
-      ? VARINT_DEFAULT_BITS
-      : target.isBerLength
-        ? BER_LENGTH_DEFAULT_BITS
-        : widths[0];
+  const seededDefault = remaining
+    ? REMAINING_DEFAULT_BYTES
+    : delimited
+      ? DELIMITED_DEFAULT_BYTES
+      : target.varintEncoding
+        ? VARINT_DEFAULT_BITS
+        : target.isBerLength
+          ? BER_LENGTH_DEFAULT_BITS
+          : widths[0];
   // A berLength octet's wire width lives on the DEDICATED `__berLen__<id>` key,
   // NOT `env[id]`: the bare key can double as the length VALUE that sizes a
   // sibling `bytes(ref id)` (snmpV2c `versionValue = bytes(ref versionLength)`),
@@ -976,13 +995,19 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
   // than collapsing it to 0 bits). varint/delimited keep using the bare id
   // (bridged in layout.ts). `seedDynamicWidthDefaults`/`initialState` seed the
   // matching key, so the active option agrees with the diagram on load.
-  const widthEnvKey = target.isBerLength ? berLenEnvKey(target.id) : target.id;
+  const widthEnvKey = target.isBerLength
+    ? berLenEnvKey(target.id)
+    : remaining
+      ? remainingBytesEnvKey(target.id)
+      : target.id;
   const current = controllers[widthEnvKey] ?? seededDefault;
-  const label = delimited
-    ? "Delimited length"
-    : target.varintEncoding
-      ? `Varint width (${target.varintEncoding})`
-      : "BER length width";
+  const label = remaining
+    ? "Payload bytes (remaining)"
+    : delimited
+      ? "Delimited length"
+      : target.varintEncoding
+        ? `Varint width (${target.varintEncoding})`
+        : "BER length width";
   return (
     <div>
       <WidgetLabel>
@@ -1006,7 +1031,7 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
                 color: active ? "var(--accent-fg)" : "var(--fg)",
               }}
             >
-              {delimited ? w : w / 8}B
+              {byteCount ? w : w / 8}B
             </button>
           );
         })}
@@ -1016,6 +1041,11 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
 }
 
 function pickerWidths(target: WidgetTarget): number[] {
+  // `bytes(remaining)` payload: the value is a byte count sizing the variable
+  // tail. Offer a representative ladder around the seeded 4-byte default, up to
+  // a generous-but-bounded size (the layout caps the derived cell count so a
+  // large pick can't freeze the un-virtualized diagram).
+  if (target.isRemaining) return [0, 4, 8, 16, 32, 64, 128];
   // Delimited bytes: the value is a byte count, not a bit width. Offer a
   // representative ladder around the seeded 4-byte default.
   if (target.isDelimited) return [1, 2, 4, 8, 16, 32];

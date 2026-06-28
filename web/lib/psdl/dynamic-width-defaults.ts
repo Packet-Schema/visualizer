@@ -35,6 +35,77 @@ export const DELIMITED_DEFAULT_BYTES = 4;
  *  AND get 0-stomped by PacketViewer's `psdlRef` 0-seed before the bridge could
  *  read it. The WidthPicker drives the same dedicated key. */
 export const BER_LENGTH_DEFAULT_BITS = 8;
+/** A `bytes(remaining)` payload (the variable tail of a packet / switch arm) has
+ *  NO wire-width env key in core — its size is the leftover of the enclosing
+ *  scope's budget. The layout's `normalizeWithBudget` fallback gives such a
+ *  region one default row (`max(rowBits, 32)` bits = 4 bytes at the common
+ *  32-bit rowBits) so it paints a representative cell; this constant mirrors that
+ *  default for the OverridePanel WidthPicker / `initialState` seed so the
+ *  picker's active option agrees with the seeded diagram. The user-chosen width
+ *  rides on the dedicated `__remainingBytes__<id>` key (a visualizer-only key the
+ *  layout honors by sizing the packet budget to `fixedPrefix + bytes*8`); it is
+ *  never handed to core, which keeps deriving `remaining` from that budget. */
+export const REMAINING_DEFAULT_BYTES = 4;
+
+/** Env key carrying the user-chosen BYTE count of a `bytes(remaining)` payload
+ *  field. Visualizer-only (see `REMAINING_DEFAULT_BYTES`): `resolveLayout` reads
+ *  it to size the packet budget, never forwarding it to core's normalize. */
+export function remainingBytesEnvKey(id: string): string {
+  return `__remainingBytes__${id}`;
+}
+
+/**
+ * Collect the authored ids of every `bytes(remaining)` leaf that is reachable
+ * OUTSIDE a repeat (top-level, or nested only in switch cases / optionals /
+ * groups / bounded scopes). These render as the variable tail of the packet (or
+ * the active switch arm) and their size is the leftover budget of the enclosing
+ * scope — the single budget `resolveLayout` controls — so a per-field
+ * `__remainingBytes__<id>` override can drive their width.
+ *
+ * Remaining leaves INSIDE a repeat are excluded: there the per-iteration size is
+ * governed by the repeat / bounded budget (its count or length controller), not
+ * a packet-level budget knob, so a single byte-count override would not map
+ * cleanly onto one cell.
+ */
+export function collectRemainingFieldIds(psdl: PsdlPacket): Set<string> {
+  const ids = new Set<string>();
+  const isRemaining = (c: Container): boolean =>
+    isField(c) &&
+    c.type.kind === "bytes" &&
+    typeof c.type.n === "object" &&
+    (c.type.n as { kind?: string }).kind === "remaining";
+  const visit = (containers: Container[], insideRepeat: boolean): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (!insideRepeat && isRemaining(c)) ids.add(c.id);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children, insideRepeat);
+          break;
+        case "repeat":
+          visit(c.element.fields, true);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields, insideRepeat);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields, insideRepeat);
+          break;
+        case "optional":
+          visit([c.container], insideRepeat);
+          break;
+        case "bounded":
+          visit(c.fields, insideRepeat);
+          break;
+        // virtual / align / ref host no top-level `remaining` tail to size.
+      }
+    }
+  };
+  visit(psdl.body, false);
+  return ids;
+}
 
 /**
  * Collect the ids of every field that is a `switch ... on: ref(field)`

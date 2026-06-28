@@ -1580,46 +1580,59 @@ function collectNestedDynamicWidthLeaves(
   const seenRefs = new Set<string>();
   const add = (
     id: string,
-    kind: "delimited" | "varint" | "berLength",
+    kind: "delimited" | "varint" | "berLength" | "remaining",
   ): void => {
     if (discriminators.has(id) || seen.has(id)) return;
     seen.add(id);
     out.push({ id, kind });
   };
-  const visit = (containers: Container[]): void => {
+  // `insideRepeat` gates the `bytes(remaining)` seed exactly as
+  // `collectRemainingFieldIds` / `collectDynamicWidthFlags` do: a top-level /
+  // switch-arm remaining tail is sized from the packet budget (its
+  // `__remainingBytes__<id>` width override), but a remaining leaf inside a
+  // repeat is governed by the repeat / bounded budget, so it carries no
+  // budget-key width to seed.
+  const visit = (containers: Container[], insideRepeat: boolean): void => {
     for (const c of containers) {
       if (isField(c)) {
         if (c.type.kind === "varint") add(c.id, "varint");
         else if (c.type.kind === "berLength") add(c.id, "berLength");
         else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n)) {
           add(c.id, "delimited");
+        } else if (
+          c.type.kind === "bytes" &&
+          typeof c.type.n === "object" &&
+          (c.type.n as { kind?: string }).kind === "remaining" &&
+          !insideRepeat
+        ) {
+          add(c.id, "remaining");
         }
         continue;
       }
       switch (c.kind) {
         case "group":
-          visit(c.children);
+          visit(c.children, insideRepeat);
           break;
         case "repeat":
-          visit(c.element.fields);
+          visit(c.element.fields, true);
           break;
         case "switch":
-          for (const s of Object.values(c.cases)) visit(s.fields);
+          for (const s of Object.values(c.cases)) visit(s.fields, insideRepeat);
           break;
         case "encrypted":
-          visit(c.plaintext.fields);
+          visit(c.plaintext.fields, insideRepeat);
           break;
         case "optional":
-          visit([c.container]);
+          visit([c.container], insideRepeat);
           break;
         case "bounded":
-          visit(c.fields);
+          visit(c.fields, insideRepeat);
           break;
         case "ref": {
           const def = defs[c.ref];
           if (def && !seenRefs.has(c.ref)) {
             seenRefs.add(c.ref);
-            visit(def.fields);
+            visit(def.fields, insideRepeat);
             seenRefs.delete(c.ref);
           }
           break;
@@ -1627,7 +1640,7 @@ function collectNestedDynamicWidthLeaves(
       }
     }
   };
-  visit(packet.body);
+  visit(packet.body, false);
   return out;
 }
 
