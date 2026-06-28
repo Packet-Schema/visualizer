@@ -1053,7 +1053,15 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       continue;
     }
     if (c.kind === "group") {
-      const flat = groupToSubfieldField(c);
+      // A top-level Group whose children are all leaf fields collapses to a
+      // single subfield-bearing renderer field. When it NESTS a further Group
+      // (pppoe's `pppoeHeader` nests `verType`), `groupToSubfieldField` bails
+      // and returns null — which would drop the entire group, and with it any
+      // bounded-length controller subfield (pppoe's `payloadLength`, the sole
+      // control over the `pppoeTagList` payload). Fall back to the deep collapse
+      // so nested-group leaves stay reachable as flat subfields; the lift path
+      // is unaffected because merge-based lift walks the SOURCE tree.
+      const flat = groupToSubfieldField(c) ?? groupToSubfieldFieldDeep(c);
       if (flat) fields.push(flat);
       continue;
     }
