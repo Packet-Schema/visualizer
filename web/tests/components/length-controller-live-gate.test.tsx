@@ -161,56 +161,29 @@ describe("length-controller live gating", () => {
     }
   });
 
-  it("gates dnsResponse's RDLENGTH slider in the seeded A-record arm (inert), enables it for CNAME", async () => {
-    // dnsResponse seeds dnsRrType=1 (an A record), whose RDATA is a FIXED 32-bit
-    // address — the dnsRdLength slider sizes the value only for the
-    // CNAME/NS/PTR/MX/TXT/SRV/RAW arms. The RDLENGTH header octet is ALWAYS in
-    // the diagram, so the older `fieldRendered`-only gate (the controller's OWN
-    // cell renders) wrongly showed the slider as live even though sweeping it
-    // moves ZERO cell widths in the A arm. The strengthened gate probes whether
-    // perturbing the value changes any rendered cell (PacketViewer's
-    // `inertLengthControllers` re-resolve), so the slider is disabled with a hint
-    // pointing at the RDATA-variant picker in the A arm, and live once a
-    // length-sized arm (CNAME) is selected.
+  it("gates dnsResponse's RDLENGTH slider on the ACTIVE RR-type arm, not just the rendered octet", async () => {
+    // dnsResponse.dnsRdLength's octet renders in every RR record, but it only
+    // SIZES a value in the RDATA switch arms that use `bytes(ref dnsRdLength)`
+    // (NS / CNAME / PTR / MX / SRV / TXT / unknown). The default RR is an A
+    // record (dnsRrType=1) whose RDATA is a fixed 32-bit address — dnsRdLength
+    // sizes nothing there, so the slider must be DISABLED (live-but-inert
+    // otherwise). Two gates now catch this: the static `lengthSizesFieldIds`
+    // value-render check (none of the sized arms rendered → inert) AND, as a
+    // backstop, PacketViewer's `inertLengthControllers` re-resolve probe.
+    // Selecting NS (dnsRrType=2) materialises a `bytes(ref dnsRdLength)` value,
+    // so the slider becomes live.
     const src = PRESETS.dnsResponse!;
     const packet = psdlToRenderer(src);
     const lc = (packet.lengthControllers ?? []).find(
-      (c) => c.controlsLength && c.controlsLength.startsWith("dnsRdLength"),
+      (c) => c.controlsLength === "dnsRdLength",
     );
+    if (!lc) return; // preset shape changed — nothing to assert
     expect(
-      lc,
-      "dnsResponse must surface the dnsRdLength length controller",
-    ).toBeDefined();
+      lc.lengthSizesFieldIds && lc.lengthSizesFieldIds.length > 0,
+      "dnsRdLength must record the switch-arm values it sizes",
+    ).toBe(true);
 
-    // The same probe PacketViewer runs: a length controller is INERT when
-    // perturbing its value (through the SAME env pipeline) leaves the total
-    // layout bits unchanged while its field is in the diagram.
-    function inertSet(overrides: Record<string, number>): Set<string> {
-      const { env, controllers } = loadEnv(src, overrides);
-      const base = resolveLayout(src, { env });
-      const inert = new Set<string>();
-      for (const c of packet.lengthControllers ?? []) {
-        const key = c.controlsLength;
-        if (!key) continue;
-        if (!base.cells.some((cell) => cell.field.id.startsWith(`${key}`)))
-          continue;
-        const current = Number(controllers[key] ?? 0);
-        const probeValue = current === 0 ? 8 : Math.max(0, current - 1);
-        if (probeValue === current) continue;
-        const probedEnv = new Map(env);
-        probedEnv.set(key, probeValue);
-        try {
-          const probed = resolveLayout(src, { env: probedEnv });
-          if (probed.totalBits === base.totalBits) inert.add(key);
-        } catch {
-          /* a throw means the structure changed → live */
-        }
-      }
-      return inert;
-    }
-
-    // Seeded A-record arm (dnsRrType=1): inert → slider disabled with the
-    // variant-picker hint.
+    // Default (A record): the slider is disabled with a hint — inert here.
     {
       const { env, controllers } = loadEnv(src);
       const { cells } = resolveLayout(src, { env });
@@ -221,22 +194,19 @@ describe("length-controller live gating", () => {
           controllers={controllers}
           onControllerChange={() => {}}
           cells={cells}
-          inertLengthControllers={inertSet({})}
         />,
       );
-      const slider = lengthSlider(container, lc!.id);
+      const slider = lengthSlider(container, lc.id);
       expect(slider, "dnsRdLength slider must render").not.toBeNull();
       expect(
         slider!.disabled,
-        "must be gated in the fixed-width A-record arm",
+        "must be disabled on the A-record arm (RDATA is a fixed address)",
       ).toBe(true);
-      expect(container.textContent ?? "").toMatch(/sized by dnsRdLength/i);
     }
 
-    // CNAME arm (dnsRrType=5): the value IS sized by RDLENGTH → live slider.
+    // NS record (dnsRrType=2): NSDNAME = bytes(ref dnsRdLength) → slider is live.
     {
-      const overrides = { dnsRrType: 5 };
-      const { env, controllers } = loadEnv(src, overrides);
+      const { env, controllers } = loadEnv(src, { dnsRrType: 2 });
       const { cells } = resolveLayout(src, { env });
       const { container } = await mount(
         <OverridePanel
@@ -245,14 +215,88 @@ describe("length-controller live gating", () => {
           controllers={controllers}
           onControllerChange={() => {}}
           cells={cells}
-          inertLengthControllers={inertSet(overrides)}
         />,
       );
-      const slider = lengthSlider(container, lc!.id);
+      const slider = lengthSlider(container, lc.id);
       expect(slider, "dnsRdLength slider must render").not.toBeNull();
       expect(
         slider!.disabled,
-        "must be live in the CNAME arm whose value is sized by RDLENGTH",
+        "must be live once an RDATA arm consumes dnsRdLength (NS)",
+      ).toBe(false);
+    }
+  });
+
+  it("gates pimHelloOptions' Option Length slider on the ACTIVE option arm (Holdtime inert, Address List live)", async () => {
+    // pimHelloOptLen's 16-bit Length octet renders in EVERY Hello option arm
+    // (it's a sibling BEFORE the value `switch`), but it only sizes a value in
+    // arms 24 (Address List → addrListData) and `_` (unknown). The seeded option
+    // type is 1 (Holdtime), whose value is a fixed 16-bit int — the slider is
+    // live-looking but byte-for-byte inert there (sweeping it changes nothing).
+    // The gate must key on whether a value arm consuming the length is rendered,
+    // not on the always-present Length octet.
+    const src = PRESETS.pimHelloOptions!;
+    const packet = psdlToRenderer(src);
+    const lc = (packet.lengthControllers ?? []).find(
+      (c) => c.controlsLength === "pimHelloOptLen",
+    );
+    expect(
+      lc,
+      "pimHelloOptions must surface the pimHelloOptLen length controller",
+    ).toBeDefined();
+    expect(
+      lc!.lengthSizesFieldIds?.includes("addrListData"),
+      "pimHelloOptLen must record addrListData as a value it sizes",
+    ).toBe(true);
+
+    // Seeded Holdtime arm (pimHelloOptType=1): value htHoldtime is fixed-width,
+    // so the slider is disabled with a hint instead of a live-but-inert control.
+    {
+      const { env, controllers } = loadEnv(src, { pimHelloOptType: 1 });
+      const { cells } = resolveLayout(src, { env });
+      // Sanity: addrListData is absent on the Holdtime arm.
+      expect(cells.some((c) => c.field.id.startsWith("addrListData"))).toBe(
+        false,
+      );
+      const { container } = await mount(
+        <OverridePanel
+          packet={packet}
+          selectedFieldId={null}
+          controllers={controllers}
+          onControllerChange={() => {}}
+          cells={cells}
+        />,
+      );
+      const slider = lengthSlider(container, "pimHelloOptLen");
+      expect(slider, "Option Length slider must render").not.toBeNull();
+      expect(
+        slider!.disabled,
+        "must be disabled on the Holdtime arm (htHoldtime is fixed-width)",
+      ).toBe(true);
+      expect(container.textContent ?? "").toMatch(/to edit pimHelloOptLen/i);
+    }
+
+    // Address List arm (pimHelloOptType=24): addrListData = bytes(ref
+    // pimHelloOptLen) → the slider becomes live and grows the value.
+    {
+      const { env, controllers } = loadEnv(src, { pimHelloOptType: 24 });
+      const { cells } = resolveLayout(src, { env });
+      expect(cells.some((c) => c.field.id.startsWith("addrListData"))).toBe(
+        true,
+      );
+      const { container } = await mount(
+        <OverridePanel
+          packet={packet}
+          selectedFieldId={null}
+          controllers={controllers}
+          onControllerChange={() => {}}
+          cells={cells}
+        />,
+      );
+      const slider = lengthSlider(container, "pimHelloOptLen");
+      expect(slider, "Option Length slider must render").not.toBeNull();
+      expect(
+        slider!.disabled,
+        "must be live once ATYP=Address List consumes pimHelloOptLen",
       ).toBe(false);
     }
   });

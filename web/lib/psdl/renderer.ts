@@ -124,6 +124,14 @@ export type Field = {
   description?: string;
   /** Marks this field as a length controller; the named key is written into state. */
   controlsLength?: string;
+  /** Ids of the VALUE fields whose width this length controller sizes
+   *  (`bytes(ref <controlsLength>)`). When a length octet renders in the diagram
+   *  in arms that DON'T consume it (pimHelloOptLen's cell shows in every PIM Hello
+   *  option arm, but only arms 24/`_` size a value with it), OverridePanel uses
+   *  this to keep the slider live only while one of these values is rendered — a
+   *  live-but-inert slider otherwise. Absent ⇒ fall back to the length cell's own
+   *  render state. Set by the sibling-length adapter path. */
+  lengthSizesFieldIds?: string[];
   defaultValue?: number;
   min?: number;
   max?: number;

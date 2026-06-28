@@ -383,6 +383,13 @@ function collectSiblingLengthControllers(
   // scope (isisLsp `tlvLength` inside the `pduLength`-budgeted `tlvs`). Suppress
   // the sibling-length surface there — the length slider IS the bounded budget.
   insideBounded = false,
+  // Out-param: maps each collected length-field id to the set of VALUE field ids
+  // whose width it sizes (`bytes(ref <lenId>)`). OverridePanel uses this to gate
+  // the length-controller slider on whether a value it actually drives is in the
+  // CURRENT diagram — a Length octet that always renders (pimHelloOptLen's cell
+  // is in every option arm) but only sizes a value in some switch arms (24/`_`)
+  // would otherwise read as a live-but-inert slider in the fixed-width arms.
+  sizesByLenId: Map<string, Set<string>> = new Map(),
 ): void {
   if (!ownedByRecordEditor && !insideBounded) {
     // Within this sibling list, gather the ids referenced as a byte sizer by a
@@ -393,12 +400,35 @@ function collectSiblingLengthControllers(
     // descend into a nested `repeat`: its records are a separate length scope.
     const sizedBy = new Set<string>();
     const lengthFields = new Map<string, PsdlField>();
-    const gatherSizers = (cs: Container[]): void => {
+    // Reverse of `sizedBy`: length ref id → value field ids whose width it sizes
+    // in THIS sibling scope. Recorded into the out-param so the live gate can ask
+    // "is a value this length actually drives in the current diagram?".
+    const valuesByRef = new Map<string, Set<string>>();
+    // Length refs whose sized VALUE lives BEHIND a `switch` relative to the
+    // length field's own sibling scope. pimHelloOptLen sizes addrListData INSIDE
+    // a `switch on pimHelloOptType` arm, so its Length octet renders in every arm
+    // but only some arms consume it → the slider must gate on the value, not the
+    // octet. socks5's socksDomainLen sizes dstAddrDomain as a DIRECT sibling
+    // (same arm), so it is NOT behind a switch and keeps the octet-render gate
+    // (the value starts width-0 and the slider is what grows it).
+    const valueBehindSwitch = new Set<string>();
+    const noteRef = (
+      ref: string,
+      valueId: string,
+      behindSwitch: boolean,
+    ): void => {
+      sizedBy.add(ref);
+      let set = valuesByRef.get(ref);
+      if (!set) valuesByRef.set(ref, (set = new Set()));
+      set.add(valueId);
+      if (behindSwitch) valueBehindSwitch.add(ref);
+    };
+    const gatherSizers = (cs: Container[], behindSwitch: boolean): void => {
       for (const c of cs) {
         if (isField(c)) {
           const t = c.type;
           if (t.kind === "bytes" && !isBytesDelimited(t.n)) {
-            for (const r of exprRefs(t.n)) sizedBy.add(r);
+            for (const r of exprRefs(t.n)) noteRef(r, c.id, behindSwitch);
           }
           continue;
         }
@@ -409,19 +439,19 @@ function collectSiblingLengthControllers(
           const ref = singleRefController(c.bytes);
           if (ref) sizedBy.add(ref);
         } else if (c.kind === "group") {
-          gatherSizers(c.children);
+          gatherSizers(c.children, behindSwitch);
         } else if (c.kind === "optional") {
-          gatherSizers([c.container]);
+          gatherSizers([c.container], behindSwitch);
         } else if (c.kind === "switch") {
           for (const struct of Object.values(c.cases))
-            gatherSizers(struct.fields);
+            gatherSizers(struct.fields, true);
         } else if (c.kind === "encrypted") {
-          gatherSizers(c.plaintext.fields);
+          gatherSizers(c.plaintext.fields, behindSwitch);
         }
       }
     };
     for (const c of containers) {
-      gatherSizers([c]);
+      gatherSizers([c], false);
       // A plain `length`-category int/bits cell is a controller candidate. So is
       // a dynamic-width `length` field (a `varint` / `berLength`): when one sizes
       // a sibling `bytes(ref X)` value but is neither a top-level renderer cell
@@ -470,7 +500,22 @@ function collectSiblingLengthControllers(
       }
     }
     for (const [id, field] of lengthFields) {
-      if (sizedBy.has(id) && !acc.has(id)) acc.set(id, field);
+      if (sizedBy.has(id) && !acc.has(id)) {
+        acc.set(id, field);
+        // Only record the sized values when at least one of them is BEHIND a
+        // switch from the length field's scope (pimHelloOptLen → addrListData).
+        // For a direct-sibling length→value (socks5 socksDomainLen →
+        // dstAddrDomain) we leave `sizesByLenId` empty so OverridePanel keeps the
+        // length-octet render gate: the value is width-0 at the seeded length, so
+        // the slider IS the control that materialises it and must stay live as
+        // soon as the octet's arm is selected.
+        const values = valuesByRef.get(id);
+        if (valueBehindSwitch.has(id) && values && values.size > 0) {
+          const out = sizesByLenId.get(id) ?? new Set<string>();
+          for (const v of values) out.add(v);
+          sizesByLenId.set(id, out);
+        }
+      }
     }
   }
   // Recurse into every child scope; each gets its own sibling analysis. A
@@ -490,6 +535,7 @@ function collectSiblingLengthControllers(
         acc,
         ownedByRecordEditor,
         true,
+        sizesByLenId,
       );
     } else if (c.kind === "ref") {
       const def = defs?.[c.ref];
@@ -500,6 +546,7 @@ function collectSiblingLengthControllers(
           acc,
           ownedByRecordEditor,
           insideBounded,
+          sizesByLenId,
         );
     } else if (c.kind === "group") {
       collectSiblingLengthControllers(
@@ -508,6 +555,7 @@ function collectSiblingLengthControllers(
         acc,
         ownedByRecordEditor,
         insideBounded,
+        sizesByLenId,
       );
     } else if (c.kind === "optional") {
       collectSiblingLengthControllers(
@@ -516,6 +564,7 @@ function collectSiblingLengthControllers(
         acc,
         ownedByRecordEditor,
         insideBounded,
+        sizesByLenId,
       );
     } else if (c.kind === "repeat") {
       const ownedHere =
@@ -526,6 +575,7 @@ function collectSiblingLengthControllers(
         acc,
         ownedHere,
         insideBounded,
+        sizesByLenId,
       );
     } else if (c.kind === "switch") {
       for (const struct of Object.values(c.cases)) {
@@ -535,6 +585,7 @@ function collectSiblingLengthControllers(
           acc,
           ownedByRecordEditor,
           insideBounded,
+          sizesByLenId,
         );
       }
     } else if (c.kind === "encrypted") {
@@ -544,6 +595,7 @@ function collectSiblingLengthControllers(
         acc,
         ownedByRecordEditor,
         insideBounded,
+        sizesByLenId,
       );
     }
   }
@@ -1135,13 +1187,25 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // `verfLength` → `credBody`/`verfBody`). Surface each as a packet-level length
   // controller keyed on `env[thisId]` so the user gets the same slider as IHL.
   const siblingLengthFields = new Map<string, PsdlField>();
+  // length-field id → value field ids it sizes (`bytes(ref <lenId>)`). Used to
+  // tag each sibling length controller with the values whose width it drives, so
+  // OverridePanel can keep the slider live ONLY while one of those values is in
+  // the diagram (pimHelloOptLen sizes addrListData/optUnknown — both inside a
+  // switch arm — but its Length octet renders in EVERY option arm).
+  const siblingSizesByLenId = new Map<string, Set<string>>();
   collectSiblingLengthControllers(
     packet.body,
     packet.defs,
     siblingLengthFields,
+    false,
+    false,
+    siblingSizesByLenId,
   );
   const controllerIds = new Set<string>(lengthControllers.map((lc) => lc.id));
   for (const [id, field] of siblingLengthFields) {
+    const sizedValueIds = siblingSizesByLenId.get(id);
+    const lengthSizesFieldIds =
+      sizedValueIds && sizedValueIds.size > 0 ? [...sizedValueIds] : undefined;
     // When the length field IS an existing top-level mirror cell (quicLong
     // dcidLength/scidLength, mqttConnect protocolNameLength/clientIdLength, arp
     // hlen/plen, ...) it surfaces as a plain length cell with NO widget — the
@@ -1163,6 +1227,9 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
         if (target.bits != null) {
           target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
         }
+        if (lengthSizesFieldIds) {
+          target.lengthSizesFieldIds = lengthSizesFieldIds;
+        }
       }
       continue;
     }
@@ -1181,6 +1248,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       controlsLength: id,
       max: bits > 0 ? 2 ** bits - 1 : undefined,
       defaultValue: field.defaultValue,
+      ...(lengthSizesFieldIds ? { lengthSizesFieldIds } : {}),
     });
   }
   // A Group-nested `length` field that sizes a VISIBLE `bytes(ref X)` cell in a

@@ -75,6 +75,30 @@ export function fieldRendered(
   return false;
 }
 
+/** Whether a length-controller slider's FIELD is present-and-consuming in the
+ *  current diagram (stage 1 of the live gate; stage 2 — inert-but-rendered — is
+ *  the PacketViewer `inertLengthControllers` probe).
+ *
+ *  The naive signal (is the Length octet rendered?) is WRONG when the octet
+ *  renders in arms that don't consume it: pimHelloOptLen's Length cell is in
+ *  every PIM Hello option arm, but only arms 24 (Address List) / `_` (unknown)
+ *  size a value (`bytes(ref pimHelloOptLen)`) with it; the seeded Holdtime arm's
+ *  value is a fixed 16-bit int, so dragging the slider is inert. When the
+ *  controller carries `lengthSizesFieldIds` (the value fields it actually sizes),
+ *  gate on whether ANY of those is a rendered cell. Otherwise fall back to the
+ *  Length cell's own render state (length controllers whose sized value isn't
+ *  tracked — e.g. bounded-budget lengths — keep their prior behaviour). */
+function lengthControllerLive(
+  lc: Field,
+  cells: readonly Cell[] | undefined,
+): boolean {
+  const sized = lc.lengthSizesFieldIds;
+  if (sized && sized.length > 0) {
+    return sized.some((id) => fieldRendered(cells, id));
+  }
+  return lc.controlsLength ? fieldRendered(cells, lc.controlsLength) : true;
+}
+
 function EmptyState({
   message,
   packet,
@@ -211,22 +235,23 @@ function EmptyState({
           <WidgetLabel>Length controllers</WidgetLabel>
           <div className="space-y-2">
             {lengthCtrls.map((lc) => {
-              // Two-stage live-gate. (1) ABSENT field: a length controller's
-              // field is only in the diagram once its switch arm is selected /
+              // Two-stage live-gate. (1) ABSENT/NON-CONSUMING field: a length
+              // controller can only move bits once its switch arm is selected /
               // its record is instantiated (socks5's socksDomainLen only sizes a
-              // payload when socksAtyp=domain). (2) INERT field: the field IS
-              // drawn, but the ACTIVE refSwitch arm sizes its value FIXED so
+              // payload when socksAtyp=domain). `lengthControllerLive` keys on the
+              // VALUE field it sizes when known (`lengthSizesFieldIds` —
+              // pimHelloOptLen's Length octet renders in EVERY PIM Hello option
+              // arm, but only arms 24/`_` consume it; the seeded Holdtime arm's
+              // value is a fixed 16-bit int), else the Length octet's own render
+              // state. (2) INERT field: the field IS drawn AND nominally
+              // consuming, but the ACTIVE refSwitch arm sizes its value FIXED so
               // moving the slider changes zero cell widths (dnsResponse's
-              // dnsRdLength at the seeded A-record arm — RDATA is a fixed 32-bit
-              // address; only the CNAME/NS/PTR/MX/TXT/SRV/RAW arms are sized by
-              // RDLENGTH). `fieldRendered` catches (1); PacketViewer's
-              // re-resolve probe (`inertLengthControllers`) catches (2). Either
-              // way disable with a hint pointing at the variant to select first,
-              // instead of a live-looking but inert control. `cells` IS the live
-              // diagram, so this is layout-faithful.
-              const fieldThere = lc.controlsLength
-                ? fieldRendered(cells, lc.controlsLength)
-                : true;
+              // dnsRdLength at the seeded A-record arm). PacketViewer's re-resolve
+              // probe (`inertLengthControllers`) catches (2). Either way disable
+              // with a hint pointing at the variant to select first, instead of a
+              // live-looking but inert control. `cells` IS the live diagram, so
+              // this is layout-faithful.
+              const fieldThere = lengthControllerLive(lc, cells);
               const inert =
                 !!lc.controlsLength &&
                 !!inertLengthControllers?.has(lc.controlsLength);
