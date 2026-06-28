@@ -17,6 +17,10 @@ import { tlvTotalBits } from "@/lib/psdl/renderer-helpers";
 import { resolveSelection } from "./selection-resolver";
 import { parseTlvCellId } from "./tlv-cell-id";
 import { parseChainCellId } from "@/lib/psdl/psdl-to-renderer";
+import {
+  DELIMITED_DEFAULT_BYTES,
+  VARINT_DEFAULT_BITS,
+} from "@/lib/psdl/dynamic-width-defaults";
 
 // `OverridePanel` is the editing surface for a selected diagram cell. It
 // dispatches one of six widgets based on what the cell's logical parent
@@ -935,8 +939,21 @@ function WidthPicker({ target, controllers, onChange }: WidgetProps) {
   // reads a BYTE count instead (`__bytesDelimLen__`, normalize.ts), so its
   // options and stored value are in bytes and shown as `{value}B`.
   const widths = pickerWidths(target);
-  const current = controllers[target.id] ?? widths[0];
   const delimited = !!target.isDelimited;
+  // Match the width the diagram layout seeds when the env key is unset
+  // (`seedDynamicWidthDefaults`): a delimited `bytes` field renders at
+  // DELIMITED_DEFAULT_BYTES and a varint at VARINT_DEFAULT_BITS, NOT at
+  // `widths[0]` (1 byte for delimited). Falling back to `widths[0]` highlighted
+  // the wrong option on load for any leaf `initialState` hadn't primed (e.g. a
+  // switch-case-nested delimited leaf before its mirror seed) — a
+  // panel-vs-diagram contradiction. berLength already defaults to 8 bits, which
+  // equals `widths[0]`, so its fallback is unchanged.
+  const seededDefault = delimited
+    ? DELIMITED_DEFAULT_BYTES
+    : target.varintEncoding
+      ? VARINT_DEFAULT_BITS
+      : widths[0];
+  const current = controllers[target.id] ?? seededDefault;
   const label = delimited
     ? "Delimited length"
     : target.varintEncoding

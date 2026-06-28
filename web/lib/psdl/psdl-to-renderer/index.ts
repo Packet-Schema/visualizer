@@ -19,6 +19,7 @@
 import { isField } from "../utils";
 import { evalExprOr, exprRefs, peekEnvKey } from "../expr";
 import { isBytesDelimited } from "../normalize";
+import { collectSwitchOnRefIds } from "../dynamic-width-defaults";
 import type {
   Bounded,
   Constraint,
@@ -1256,6 +1257,81 @@ function collectOptionalGateLengthControllers(
 }
 
 /**
+ * Collect dynamic-width (`varint` / delimiter-terminated `bytes`) leaf ids that
+ * live inside a Switch case / Repeat element / Group / etc. and therefore never
+ * surface as a top-level mirror `field`. `seedDynamicWidthDefaults` already
+ * seeds the SAME default into the layout env so the cell renders at its
+ * representative width, but `initialState` only walks `packet.fields` (+ their
+ * subfields) and so never primes `controllers[leafId]` for these nested leaves.
+ * The WidthPicker then falls back to `pickerWidths(target)[0]` (1 byte for
+ * delimited) and lies about the live width on load. Surfacing the ids here lets
+ * `initialState` seed `controllers[id]` to the same default the diagram uses, so
+ * the picker's active option agrees with the rendered cell.
+ *
+ * Mirrors `seedDynamicWidthDefaults`' carve-outs: a leaf that is ALSO a
+ * switch-`on:ref` discriminator overloads its env key for the case value (not a
+ * width), so it is excluded. Ids already present as a mirror field / subfield
+ * (top-level leaves, which `initialState`'s field loop already seeds) are
+ * excluded by the caller.
+ */
+function collectNestedDynamicWidthLeaves(
+  packet: PsdlPacket,
+): NonNullable<RendererPacket["dynamicWidthLeaves"]> {
+  const out: NonNullable<RendererPacket["dynamicWidthLeaves"]> = [];
+  const seen = new Set<string>();
+  const discriminators = collectSwitchOnRefIds(packet);
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>();
+  const add = (id: string, kind: "delimited" | "varint"): void => {
+    if (discriminators.has(id) || seen.has(id)) return;
+    seen.add(id);
+    out.push({ id, kind });
+  };
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "varint") add(c.id, "varint");
+        else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n)) {
+          add(c.id, "delimited");
+        }
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        case "ref": {
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+      }
+    }
+  };
+  visit(packet.body);
+  return out;
+}
+
+/**
  * Walk the PSDL body and produce a renderer-shaped Packet. Top-level
  * Repeat<Switch> nodes that look like TLV catalogs / chain catalogs are
  * promoted to renderer fields with `tlv` / `chainCatalog` populated so
@@ -1583,6 +1659,18 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     controlledIds,
     packet.defs,
   );
+  // Dynamic-width leaves nested inside switch cases / repeats / groups, minus
+  // any already surfaced as a mirror field or subfield (those are seeded by
+  // `initialState`'s field loop). The remainder need their own `initialState`
+  // seed so the WidthPicker's active option matches the seeded diagram cell.
+  const mirrorLeafIds = new Set<string>();
+  for (const f of fields) {
+    mirrorLeafIds.add(f.id);
+    for (const sf of f.subfields ?? []) mirrorLeafIds.add(sf.id);
+  }
+  const dynamicWidthLeaves = collectNestedDynamicWidthLeaves(packet).filter(
+    (leaf) => !mirrorLeafIds.has(leaf.id),
+  );
   return {
     name: packet.name,
     rowBits: packet.rowBits,
@@ -1594,6 +1682,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     ...(refSwitches.length > 0 ? { refSwitches } : {}),
     ...(lengthControllers.length > 0 ? { lengthControllers } : {}),
     ...(boundedRepeats.length > 0 ? { boundedRepeats } : {}),
+    ...(dynamicWidthLeaves.length > 0 ? { dynamicWidthLeaves } : {}),
   };
 }
 

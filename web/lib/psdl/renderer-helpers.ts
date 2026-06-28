@@ -204,6 +204,20 @@ export function initialState(packet: Packet): ControllerState {
     seedDynamicWidth(field);
     for (const sub of field.subfields ?? []) seedDynamicWidth(sub);
   }
+  // Dynamic-width leaves nested inside a Switch case / Repeat element / Group
+  // never reach `packet.fields`, so the loop above can't seed them. The diagram
+  // layout DOES seed them (`seedDynamicWidthDefaults`), so without this the
+  // WidthPicker's active option (`controllers[id] ?? widths[0]` -> 1B for
+  // delimited) would contradict the seeded ~4-byte diagram cell on load (tftp's
+  // rrqFilename/rrqMode/wrqFilename/wrqMode/errMsg). `psdlToRenderer` collected
+  // these ids (switch-`on:ref` discriminators already carved out). Only fills an
+  // unset key, so a user / saved-env width still wins and it stays out of the
+  // share URL (via `nonDefaultControllerEnv`).
+  for (const leaf of packet.dynamicWidthLeaves ?? []) {
+    if (state[leaf.id] !== undefined) continue;
+    state[leaf.id] =
+      leaf.kind === "delimited" ? DELIMITED_DEFAULT_BYTES : VARINT_DEFAULT_BITS;
+  }
   // Packet-level length controllers (bounded scopes whose length field is
   // group-nested) seed the same way as top-level controlsLength fields.
   for (const lc of packet.lengthControllers ?? []) {

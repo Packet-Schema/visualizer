@@ -729,6 +729,67 @@ describe("OverridePanel widgets", () => {
     }
   });
 
+  // Regression: the bootstrap `controllers` (`initialState`) must seed the SAME
+  // delimited default the diagram layout seeds, for switch-case-nested delimited
+  // leaves that are NOT mirror fields (tftp's rrqFilename/rrqMode/wrqFilename/
+  // wrqMode/errMsg). Without it the WidthPicker's `current = controllers[id] ??
+  // widths[0]` falls to 1 byte and highlights "1B" while the diagram already
+  // shows the seeded ~4-byte cell -- a panel-vs-diagram contradiction on load.
+  // Drive the panel from the REAL `initialState` (NOT a hand-injected
+  // controller) so the production bootstrap path is what's under test.
+  it("bootstrap controllers seed the delimited default for switch-case-nested leaves so the WidthPicker matches the diagram on load (tftp rrqFilename) (#3/#11)", async () => {
+    const src = PRESETS.tftp!;
+    const packet = psdlToRenderer(src);
+    // These leaves live inside the `opcode` switch cases, so they are NOT mirror
+    // fields nor length controllers (the prior test asserts that).
+    const state = initialState(packet);
+    for (const id of [
+      "rrqFilename",
+      "rrqMode",
+      "wrqFilename",
+      "wrqMode",
+      "errMsg",
+    ]) {
+      expect(
+        state[id],
+        `initialState must seed controllers[${id}] to the delimited default`,
+      ).toBe(DELIMITED_DEFAULT_BYTES);
+    }
+
+    // The diagram seeds the SAME width: rrqFilename renders at 4 bytes at load.
+    const env = packetViewerEnv(src);
+    env.set("opcode", 1);
+    const { cells } = resolveLayout(src, { env });
+    const cell = cells.find((c) => c.field.id === "rrqFilename");
+    expect(cell, "rrqFilename cell must be present at opcode=1").toBeTruthy();
+    expect(cell!.bitsTotal / 8).toBe(DELIMITED_DEFAULT_BYTES);
+
+    // Drive the WidthPicker from the bootstrap controllers -- the "4B" option
+    // must be the ACTIVE one, matching the diagram (no manual controller seed).
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="rrqFilename"
+        controllers={state}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(group, "rrqFilename must surface a width radiogroup").not.toBeNull();
+    const buttons = Array.from(
+      group!.querySelectorAll('[role="radio"]'),
+    ) as HTMLButtonElement[];
+    const active = buttons.find(
+      (b) => b.getAttribute("aria-checked") === "true",
+    );
+    expect(
+      active?.textContent,
+      "active option must be the seeded 4B, not the widths[0] 1B fallback",
+    ).toBe(`${DELIMITED_DEFAULT_BYTES}B`);
+  });
+
   it("surfaces an EnumDropdown for a repeat-nested enum leaf (dnsResponse dnsQType) (#enum)", async () => {
     // see-but-cannot-edit: a plain enum leaf inside a repeat record never
     // becomes a renderer mirror field, so a click resolves through

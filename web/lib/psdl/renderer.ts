@@ -338,6 +338,23 @@ export type Packet = {
      *  of the share URL. */
     defaultLength?: number;
   }[];
+  /** Dynamic-width (`varint` / delimiter-terminated `bytes`) leaf ids that live
+   *  inside a Switch case / Repeat element / Group and so never reach `fields`.
+   *  `seedDynamicWidthDefaults` already seeds the SAME default into the diagram
+   *  layout env (so the cell renders at its representative width), but because
+   *  these leaves are absent from the mirror, `initialState`'s top-level seed
+   *  loop never primes `controllers[leafId]`. The OverridePanel WidthPicker then
+   *  falls back to `pickerWidths(target)[0]` (1 byte for delimited) and highlights
+   *  the wrong option while the diagram already shows the ~4-byte seeded cell -- a
+   *  panel-vs-diagram contradiction on load (tftp's rrqFilename/rrqMode/... all
+   *  delimiter-terminated bytes inside the `tftpBody` switch arms). `initialState`
+   *  seeds `controllers[id]` for each of these so the picker's active option
+   *  matches the diagram. Switch-`on:ref` discriminators are excluded here (their
+   *  env key carries the case value, not a width -- same carve-out as
+   *  `seedDynamicWidthDefaults`). `kind` selects which default to seed.
+   *  Populated by `psdlToRenderer`; share-url-default-safe (seeded via
+   *  `initialState`, so it stays out of the share URL). */
+  dynamicWidthLeaves?: { id: string; kind: "delimited" | "varint" }[];
   /** Per-field byteOrder flips applied via the diagram, keyed by field id.
    *  A top-level field carries its byteOrder on the matching `fields` entry,
    *  but a field nested inside a Switch case / Repeat element / Group never
