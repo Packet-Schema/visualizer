@@ -713,4 +713,77 @@ describe("eos/until repeat nested under a budget-derived bounded scope", () => {
       ).not.toThrow();
     }
   });
+
+  it("seeds flowSpecOps so picking the Op-List arm renders a representative pair", () => {
+    // override-design-audit (high): the `_` Op-List arm of flowSpecCompValue
+    // (Component Types 3–12) is a `repeat flowSpecOps until {…}` over
+    // operator/value pairs. It is deliberately NOT surfaced as a free stepper
+    // (it would over-consume the budget-derived scope — the test above), and it
+    // 0-fills to 0, so picking Type 3 used to collapse each component to its bare
+    // 1-byte Type field with NO control to make the pairs appear
+    // (see-but-cannot-edit). The boundedRepeat now seeds `flowSpecOps=1` via
+    // `innerScopeSeeds`, so the diagram materialises one representative
+    // operator/value pair per component the instant the arm is picked.
+    const m = psdlToRenderer(PRESETS.bgpFlowSpec!);
+    const br = (m.boundedRepeats ?? []).find(
+      (b) => b.countKey === "flowSpecComponents",
+    );
+    expect(br?.innerScopeSeeds).toEqual(
+      expect.arrayContaining([{ key: "flowSpecOps", value: 1 }]),
+    );
+    // initialState (which PacketViewer layers under live overrides) writes the
+    // seed into env so the until-repeat reads it as its count.
+    expect(initialState(m).flowSpecOps).toBe(1);
+
+    // The seed must NOT be mistaken for a length controller (flowSpecOps is a
+    // repeat id, not a length field): selecting it would otherwise add a bogus
+    // slider that no-ops.
+    expect((m.lengthControllers ?? []).map((c) => c.id)).not.toContain(
+      "flowSpecOps",
+    );
+
+    // At Type 3 the layout contains at least one flowSpecOp / flowSpecOpValue
+    // cell — the pairs the user can now SEE (and edit via the operator byte).
+    const type3 = appCellIdsSeeded(PRESETS.bgpFlowSpec!, {
+      flowSpecLength: 20,
+      flowSpecCompType: 3,
+    });
+    expect(type3.some((id) => id.startsWith("flowSpecOp#"))).toBe(true);
+    expect(type3.some((id) => id.startsWith("flowSpecOpValue#"))).toBe(true);
+    // The prefix arm (Types 1–2) is untouched — still renders prefix cells.
+    const type1 = appCellIdsSeeded(PRESETS.bgpFlowSpec!, {
+      flowSpecLength: 20,
+      flowSpecCompType: 1,
+    });
+    expect(type1.some((id) => id.startsWith("prefixBytes#"))).toBe(true);
+    expect(type1.some((id) => id.startsWith("flowSpecOp#"))).toBe(false);
+  });
+
+  it("seeded flowSpecOps does not over-consume across the length range (Op-List arm)", () => {
+    // With the inner pair seeded, the budget-derived OUTER count must still fit
+    // the scope for the Op-List arm across the whole length range — the seed
+    // must not push the diagram into a "bounded scope … over-consumed" freeze.
+    const psdl = PRESETS.bgpFlowSpec!;
+    const m = psdlToRenderer(psdl);
+    const base = new Map<string, number>();
+    const state = initialState(m);
+    for (const [k, v] of Object.entries(state)) base.set(k, Number(v));
+    for (const [k, v] of initialEnv(psdl)) if (!base.has(k)) base.set(k, v);
+    for (const r of collectPsdlRefs(psdl)) if (!base.has(r)) base.set(r, 0);
+
+    for (const len of [0, 4, 8, 12, 16, 20, 30, 60]) {
+      const env = new Map(base);
+      env.set("flowSpecLength", len);
+      env.set("flowSpecCompType", 3); // Op-List arm
+      for (const b of m.boundedRepeats ?? []) {
+        const budget = evalExprOr(b.bytesExpr, env, 0) as number;
+        const cnt = Math.floor((budget - b.prefixBytes) / b.perRecordBytes);
+        env.set(b.countKey, Math.max(0, cnt));
+      }
+      expect(
+        () => resolveLayout(psdl, { env }),
+        `Op-List flowSpecLength=${len} must not over-consume`,
+      ).not.toThrow();
+    }
+  });
 });

@@ -4557,15 +4557,36 @@ function collectFreeRepeats(
                 flatDefaultLength ??
                 flatAffineDefaultLength ??
                 recordSwitchDefaultLength;
+              // A RECORD-BEARING element whose variant switch has an arm that is
+              // purely a scope-terminated (eos/until) repeat — bgpFlowSpec's `_`
+              // Op-List arm of `flowSpecCompValue`, holding the `flowSpecOps`
+              // operator/value-pair list. That inner repeat is deliberately NOT
+              // surfaced as a free stepper (it lives insideRepeat + insideBounded,
+              // so a naked stepper would over-consume this budget-derived scope —
+              // ref-switch.test.ts:679) and 0-fills to 0, so picking that arm
+              // collapses the component to its bare 1-byte discriminator and every
+              // pair is invisible with no control to add it (see-but-cannot-edit).
+              // Seed each such repeat id to 1 via `innerScopeSeeds` (the same
+              // mechanism `prefixLength`/`extLen` use): `initialState` writes it to
+              // `env[id]`, which the until-repeat reads as its count, materialising
+              // ONE representative pair the instant the arm is picked. The seed is
+              // NOT a surfaced control, so the no-free-stepper guard stays intact;
+              // `perRecordBytes` (the conservative prefix-arm estimate) already
+              // covers the smaller op-list record, so the count never over-consumes.
+              const innerScopeRepeatSeeds = recordSwitchInnerScopeRepeatIds(
+                c.element.fields,
+              ).map((id) => ({ key: id, value: 1 }));
+              const innerScopeSeeds = [
+                ...(flat ? flat.innerSeeds : []),
+                ...innerScopeRepeatSeeds,
+              ];
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: bounded.key,
                 bytesExpr: bounded.bytes,
                 perRecordBytes: perRecordBytesFlat,
                 prefixBytes: bounded.prefix,
-                ...(flat && flat.innerSeeds.length > 0
-                  ? { innerScopeSeeds: flat.innerSeeds }
-                  : {}),
+                ...(innerScopeSeeds.length > 0 ? { innerScopeSeeds } : {}),
                 ...(seedLength !== undefined
                   ? { defaultLength: seedLength }
                   : {}),
@@ -5242,6 +5263,61 @@ function elementHasRecordSwitch(containers: Container[]): boolean {
       return true;
   }
   return false;
+}
+
+/**
+ * Within a RECORD-BEARING repeat element (one whose `switch` is discriminated by
+ * a `ref`/`peek`), find the ids of `eos`/`until` repeats that live INSIDE a
+ * switch CASE and whose own element does NOT wrap a nested `bounded`. These are
+ * the inner operator/value-pair lists (bgpFlowSpec's `flowSpecOps` in the `_`
+ * Op-List arm of `flowSpecCompValue`): an arm whose content is purely a
+ * scope-terminated repeat.
+ *
+ * Such an inner repeat is deliberately NOT given a free count stepper — it lives
+ * `insideRepeat + insideBounded`, so a naked stepper would over-consume the
+ * budget-derived outer scope (ref-switch.test.ts:679). But because it is
+ * scope-terminated and NOT seeded, picking that arm collapses the component to
+ * its bare discriminator byte — every operator/value pair is invisible with NO
+ * control to make it appear (see-but-cannot-edit). Seeding the repeat id to a
+ * representative count (1) via the OUTER boundedRepeat's `innerScopeSeeds` —
+ * which `initialState` writes into `env[id]` and the until-repeat reads as its
+ * count — materialises one representative pair the instant the arm is picked,
+ * exactly as `prefixLength`/`extLen` seeds do for their arms. The no-free-stepper
+ * guard stays intact: this is a seed, not a surfaced control.
+ *
+ * Only a switch-CASE-nested, non-nested-bounded eos/until repeat qualifies, so
+ * the surfaced TLV-extension / nested-group idioms (whose inner repeats wrap
+ * their own per-record bounded) are untouched and no other preset is affected.
+ */
+function recordSwitchInnerScopeRepeatIds(containers: Container[]): string[] {
+  const out: string[] = [];
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "switch" && (c.on.kind === "ref" || c.on.kind === "peek")) {
+      for (const arm of Object.values(c.cases)) {
+        for (const inner of arm.fields) {
+          if (isField(inner)) continue;
+          if (
+            inner.kind === "repeat" &&
+            (inner.count === "eos" ||
+              (typeof inner.count === "object" && "until" in inner.count)) &&
+            !containsBounded(inner.element.fields)
+          ) {
+            out.push(inner.id);
+          }
+        }
+      }
+    }
+    if (c.kind === "group")
+      out.push(...recordSwitchInnerScopeRepeatIds(c.children));
+    else if (c.kind === "optional")
+      out.push(...recordSwitchInnerScopeRepeatIds([c.container]));
+    else if (c.kind === "bounded")
+      out.push(...recordSwitchInnerScopeRepeatIds(c.fields));
+    else if (c.kind === "encrypted")
+      out.push(...recordSwitchInnerScopeRepeatIds(c.plaintext.fields));
+  }
+  return out;
 }
 
 /**
