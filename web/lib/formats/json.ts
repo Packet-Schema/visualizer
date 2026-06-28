@@ -12,6 +12,8 @@
 //     "name": string,
 //     "rowBits": integer,
 //     "abbrev"?: string,
+//     "packetVersion"?: string,        // the PSDL packet's own version metadata
+//                                      // (distinct from the wire "version" tag)
 //     "byteOrder"?: string,
 //     "description"?: string,
 //     "rendererHints"?: { rowBits?, sections? },  // render-affecting; see core layout
@@ -87,6 +89,14 @@ export type JsonPsdlPacket = {
   rendererHints?: Packet["rendererHints"];
   meta?: Packet["meta"];
   imports?: Packet["imports"];
+  /** The PSDL packet's OWN `version` metadata (e.g. all runtime presets carry
+   *  `"0.5"`). This is distinct from the wire-envelope `version` above (which
+   *  always tags the JSON FORMAT_VERSION). Emitted under the non-colliding
+   *  `packetVersion` key so the two never overwrite each other; dropping it
+   *  makes arbitrary PSDL non-lossless on the JSON / share-URL path (bar #2).
+   *  Mirrors `source-format.ts`, which already keeps packet `version` as
+   *  metadata. */
+  packetVersion?: string;
 };
 
 /** Convert a PacketEnv (Map) to a plain JSON object. */
@@ -122,6 +132,7 @@ export function toJson(packet: Packet, env?: PacketEnv): string {
     ...(packet.rendererHints ? { rendererHints: packet.rendererHints } : {}),
     ...(packet.meta ? { meta: packet.meta } : {}),
     ...(packet.imports ? { imports: packet.imports } : {}),
+    ...(packet.version ? { packetVersion: packet.version } : {}),
     body: packet.body,
     ...(packet.defs && Object.keys(packet.defs).length > 0
       ? { defs: packet.defs }
@@ -189,6 +200,9 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
       : {}),
     ...(Array.isArray(r.imports)
       ? { imports: r.imports as Packet["imports"] }
+      : {}),
+    ...(typeof r.packetVersion === "string"
+      ? { version: r.packetVersion }
       : {}),
     ...(r.defs && typeof r.defs === "object" && !Array.isArray(r.defs)
       ? { defs: r.defs as Packet["defs"] }

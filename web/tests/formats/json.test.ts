@@ -168,6 +168,54 @@ describe("toJson / fromJson — top-level meta / rendererHints / abbrev / import
   });
 });
 
+describe("toJson / fromJson — packet `version` metadata", () => {
+  // Bar #2: the PSDL packet's OWN `version` (all 184 runtime presets carry
+  // `"0.5"`) is distinct from the wire-envelope `version` tag (the FORMAT_VERSION
+  // "0.2"). It must round-trip through import → export/share → re-import; it was
+  // silently dropped before, since toJson emitted only the envelope tag.
+  it("emits packetVersion under a non-colliding key (envelope `version` stays the format tag)", () => {
+    const p: Packet = {
+      name: "Versioned",
+      rowBits: 8,
+      version: "0.5",
+      body: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
+    };
+    const obj = JSON.parse(toJson(p, new Map()));
+    expect(obj.version).toBe("0.2");
+    expect(obj.packetVersion).toBe("0.5");
+  });
+
+  it("restores packet.version field-by-field across fromJson(toJson(p))", () => {
+    const p: Packet = {
+      name: "Versioned",
+      rowBits: 8,
+      version: "0.5",
+      body: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
+    };
+    expect(fromJson(toJson(p, new Map())).packet.version).toBe(p.version);
+  });
+
+  it("omits packetVersion entirely when the packet carries no version", () => {
+    const bare: Packet = {
+      name: "Bare",
+      rowBits: 8,
+      body: [{ id: "a", name: "A", type: { kind: "bits", n: 8 } }],
+    };
+    const obj = JSON.parse(toJson(bare, new Map()));
+    expect(obj.packetVersion).toBeUndefined();
+    expect(fromJson(toJson(bare, new Map())).packet.version).toBeUndefined();
+  });
+
+  it("preserves `version` for every preset that carries it", () => {
+    const lost: string[] = [];
+    for (const [key, pkt] of Object.entries(ALL_PRESETS)) {
+      const { packet: re } = fromJson(toJson(pkt, new Map()));
+      if (re.version !== pkt.version) lost.push(`${key}: ${re.version}`);
+    }
+    expect(lost).toEqual([]);
+  });
+});
+
 describe("toJson / fromJson — IHL=7 controller value", () => {
   it("non-default IHL flows back through", () => {
     const env: PacketEnv = new Map([
