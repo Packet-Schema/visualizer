@@ -82,7 +82,19 @@ describe("oncRpc nested switch discriminators", () => {
     // own switchCases widget — it must NOT be duplicated as a refSwitch.
     expect(refKeys).not.toContain("rpcMsgType");
     const rpcMsgType = mirror.fields.find((f) => f.id === "rpcMsgType");
-    expect(rpcMsgType?.switchCases?.length).toBe(2);
+    // Listed cases 0 (CALL) / 1 (REPLY) PLUS a synthetic default-arm option for
+    // the structurally-distinct `_` arm `rpcBodyRaw` (an opaque raw body the
+    // listed CALL/REPLY arms don't have). Without it the `_` arm — reached by
+    // any rpcMsgType outside {0,1} — would be see-but-cannot-edit here.
+    expect(rpcMsgType?.switchCases?.length).toBe(3);
+    const ids = rpcMsgType?.switchCases?.map((c) => c.value) ?? [];
+    expect(ids).toContain(0);
+    expect(ids).toContain(1);
+    const sentinel = ids.find((v) => v !== 0 && v !== 1);
+    expect(sentinel, "default-arm option").toBeDefined();
+    expect(cellIds(PRESETS.oncRpc!, { rpcMsgType: sentinel! })).toContain(
+      "rpcBodyRaw",
+    );
   });
 
   it("the surfaced pickers actually change resolveLayout cells", () => {

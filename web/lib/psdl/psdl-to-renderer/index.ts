@@ -4275,17 +4275,32 @@ function attachOverrideMetadata(
         // tlsHandshake's 10-arm `handshakeType` (each arm a single
         // `bytes(ref tlsHandshakeBodyLen)`).
         if (switchArmsAllIdentical(c.cases)) continue;
-        // A field-level `switchCases` dropdown only ever offers the LISTED case
-        // values — it has no `defaultArmSyntheticCase`, so it can never select
-        // the `_` arm. So even when the `_` arm differs, a picker whose listed
-        // arms are all mutually identical is inert (no offered value changes the
-        // diagram). eap's `eapCode` is the sole such field: listed arms 1 / 2
-        // are byte-identical, the diverging `_` (empty) arm is reached only by
-        // codes 3 / 4 which are absent from the case list, and `eapCode` is ALSO
-        // an enum whose EnumDropdown — on the same env key — already drives every
-        // meaningful state. Surfacing the switch picker would only add an inert,
-        // raw-labelled control colliding with the enum for one key; suppress it.
+        // Suppress a field-level `switchCases` picker whose LISTED arms are all
+        // mutually identical: every offered listed value yields a byte-identical
+        // layout. The diverging `_` arm IS reachable below (we append a
+        // defaultArmSyntheticCase, mirroring the peek path), but eap's `eapCode`
+        // — the sole preset this catches — is ALSO an `enum(8)` discriminator
+        // covering 1–4, and its EnumDropdown (on the same env key) already drives
+        // every meaningful state including the empty `_` body at 3 / 4. Surfacing
+        // a second, raw-labelled switch picker on the same key would only add an
+        // inert (listed arms identical), enum-colliding control; suppress it.
         if (listedArmsAllIdentical(c.cases)) continue;
+        // Reach a structurally-distinct `_` default arm through a field-level
+        // `switchCases` dropdown, exactly as the peek-switch path does
+        // (defaultArmSyntheticCase + unshift, above). Without this the dropdown
+        // offers only the LISTED case values, so a Switch whose `_` arm differs
+        // from every listed arm is see-but-cannot-edit: the `_`-arm layout
+        // renders on the diagram (e.g. http3Frame `payload` at an unlisted
+        // http3FrameType, icmpv6Ndp `ndpOpaque` at an unlisted type) but no
+        // offered value selects it, and an imported packet whose discriminator
+        // falls in `_` cannot round-trip-select. The sentinel value is unlisted,
+        // so core's `selectArm` falls through to `_`. `unshift` keeps the
+        // default option first. Presets whose discriminator ALSO carries an
+        // EnumDropdown on the same env key (ipv6Routing, mobilityHeader, …) were
+        // only coincidentally rescued by the enum; this makes the picker itself
+        // complete.
+        const defaultCase = defaultArmSyntheticCase(c.cases);
+        if (defaultCase) cases.unshift(defaultCase);
         if (c.on.kind === "ref") {
           const t = findTarget(c.on.field);
           if (t) {
