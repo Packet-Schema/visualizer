@@ -981,6 +981,156 @@ function collectPlainRepeatLengthControllers(
   return out;
 }
 
+/** Collect every leaf `field` declared anywhere inside the body (recursing
+ *  through every container kind, including nested repeats / switch arms) keyed by
+ *  id, so a per-record length field stranded inside a bounded repeat's element
+ *  can be looked up to build its packet-level controller. */
+function collectAllFieldsById(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  acc: Map<string, PsdlField>,
+): void {
+  for (const c of containers) {
+    if (isField(c)) {
+      if (!acc.has(c.id)) acc.set(c.id, c);
+      continue;
+    }
+    switch (c.kind) {
+      case "group":
+        collectAllFieldsById(c.children, defs, acc);
+        break;
+      case "bounded":
+        collectAllFieldsById(c.fields, defs, acc);
+        break;
+      case "optional":
+        collectAllFieldsById([c.container], defs, acc);
+        break;
+      case "repeat":
+        collectAllFieldsById(c.element.fields, defs, acc);
+        break;
+      case "encrypted":
+        collectAllFieldsById(c.plaintext.fields, defs, acc);
+        break;
+      case "switch":
+        for (const s of Object.values(c.cases))
+          collectAllFieldsById(s.fields, defs, acc);
+        break;
+      case "ref": {
+        const def = defs?.[c.ref];
+        if (def) collectAllFieldsById(def.fields, defs, acc);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+/**
+ * Surface the PER-RECORD length field of a FLAT-TLV bounded repeat as a
+ * packet-level length controller.
+ *
+ * A flat-TLV bounded-eos repeat — a record shaped `[type, length X, value =
+ * bytes(<expr over X>)]` inside a single-ref byte budget (stun `stunAttrLen`→
+ * `stunAttrValue`, bgpOpen `parmLen`→`parmValue`, pppoe `tagLength`→`tagValue`,
+ * tlsCertificate `tlsCertDataLen`→cert data, cops `copsObjLength`/dnssecRecords
+ * `…LabelLen`, …) — lowers to a boundedRepeat that exposes only the COUNT key and
+ * the OUTER budget length key. `flatTlvInnerSeeds` already records each per-record
+ * length field X on the boundedRepeat's `innerScopeSeeds`, SOLVED so the record's
+ * value renders at a representative width on load. But X itself gets NO control:
+ * `collectPlainRepeatLengthControllers` skips any repeat inside a bounded scope
+ * (the `!insideBounded` guard), `collectSiblingLengthControllers` likewise stops
+ * at a bounded scope, and X is not the budget key — so the user SEES a ~4-byte
+ * value cell but can never change its size (see-but-cannot-edit), and clicking
+ * either the length OR the value cell hits OverridePanel's read-only EmptyState.
+ *
+ * Surface each `innerScopeSeeds` key as a `controlsLength` controller keyed on
+ * `env[X]` — exactly the slider dnsResponse `dnsRdLength` / ocspRequest
+ * `hashAlgLength` get via the PLAIN-repeat path. The seed VALUE becomes the
+ * controller's `defaultValue` so its initial slider position matches the seeded
+ * (visible) value, and because the value is `bytes(<expr over X>)` raising X grows
+ * it. Driven straight off `innerScopeSeeds`, this handles the offset/scaled length
+ * exprs (cops' `copsObjLength - 4`, gist's `gistObjLen * 4`) that `collectBytesSizers`
+ * (bare-ref only) would miss. The deliberately-suppressed isisLsp-style case
+ * (whose value collapses to width 0 and carries NO innerScopeSeeds) is untouched.
+ *
+ * Restricted to the FLAT-TLV bounded shape — a record whose element holds NO
+ * nested bounded. The tlvExtension (tlsClientHello) / nested-group (ocspRequest)
+ * bounded repeats ALSO carry innerScopeSeeds, but theirs seed a PER-RECORD INNER
+ * BUDGET (not an independent value-length knob): surfacing those as a length
+ * controller would let the user drive that inner budget below its fixed children
+ * and over-consume the nested scope. `containsBounded` on the owning repeat's
+ * element separates the two — flat-TLV records never wrap their own bounded.
+ */
+function collectFlatTlvInnerLengthControllers(
+  body: PsdlPacket["body"],
+  fields: RendererField[],
+  boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>,
+  defs: Record<string, NamedStruct> | undefined,
+): RendererField[] {
+  const out: RendererField[] = [];
+  const seen = new Set<string>();
+  let allFields: Map<string, PsdlField> | null = null;
+  // Repeat ids whose element wraps a nested bounded (tlvExtension / nested-group
+  // idioms) — their innerScopeSeeds seed an inner budget, NOT a flat value
+  // length, so they are excluded.
+  const nestedBoundedRepeatIds = new Set<string>();
+  const findNestedBounded = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "repeat") {
+        if (containsBounded(c.element.fields)) nestedBoundedRepeatIds.add(c.id);
+        findNestedBounded(c.element.fields);
+        continue;
+      }
+      if (c.kind === "group") findNestedBounded(c.children);
+      else if (c.kind === "bounded") findNestedBounded(c.fields);
+      else if (c.kind === "optional") findNestedBounded([c.container]);
+      else if (c.kind === "encrypted") findNestedBounded(c.plaintext.fields);
+      else if (c.kind === "switch") {
+        for (const s of Object.values(c.cases)) findNestedBounded(s.fields);
+      } else if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def) findNestedBounded(def.fields);
+      }
+    }
+  };
+  findNestedBounded(body);
+  for (const br of boundedRepeats) {
+    // Skip the tlvExtension / nested-group bounded repeats: their innerScopeSeeds
+    // are inner-budget seeds, not flat per-record value lengths.
+    if (nestedBoundedRepeatIds.has(br.countKey)) continue;
+    for (const seed of br.innerScopeSeeds ?? []) {
+      const id = seed.key;
+      if (seen.has(id)) continue;
+      // Don't shadow a top-level cell or an already-surfaced control — those
+      // host their own widget.
+      if (fields.some((f) => f.id === id)) continue;
+      if (allFields === null) {
+        allFields = new Map<string, PsdlField>();
+        collectAllFieldsById(body, defs, allFields);
+      }
+      const field = allFields.get(id);
+      if (!field) continue;
+      seen.add(id);
+      const bits = typeBits(field.type);
+      out.push({
+        id,
+        name: field.name ?? id,
+        bits,
+        controlsLength: id,
+        max: bits > 0 ? 2 ** bits - 1 : undefined,
+        // Seed the slider to the representative value the diagram renders at load
+        // (the solved inner-scope seed), not the field's 0 default — so the
+        // control's position matches the visible value.
+        defaultValue: seed.value,
+        ...(field.doc ? { description: field.doc } : {}),
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Surface a Group-nested `length` field that sizes a VISIBLE `bytes` cell living
  * in a DIFFERENT scope as a packet-level length controller.
@@ -1638,6 +1788,22 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     packet.body,
     fields,
     instantiableRepeatIds,
+    packet.defs,
+  )) {
+    if (!lengthControllers.some((existing) => existing.id === lc.id)) {
+      lengthControllers.push(lc);
+    }
+  }
+  // The per-record length field of a flat-TLV bounded repeat (stun `stunAttrLen`,
+  // bgpOpen `parmLen`, …) is stranded inside the bounded scope so every collector
+  // above skips it — yet its value cell renders at a seeded width and is a
+  // genuine independent knob. Surface each as a packet-level length controller so
+  // the user can change the size of the value they see. Driven off the bounded
+  // repeats' `innerScopeSeeds`, computed just above.
+  for (const lc of collectFlatTlvInnerLengthControllers(
+    packet.body,
+    fields,
+    boundedRepeats,
     packet.defs,
   )) {
     if (!lengthControllers.some((existing) => existing.id === lc.id)) {

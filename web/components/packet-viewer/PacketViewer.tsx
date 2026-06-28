@@ -1431,6 +1431,23 @@ export default function PacketViewer({
         // against the live env — not the raw slider value.
         const budget = evalExprOr(br.bytesExpr, env, 0);
         const forRecords = Math.max(0, budget - br.prefixBytes);
+        // A flat-TLV bounded repeat's per-record VALUE is sized by a per-record
+        // length field surfaced as its OWN length controller (stun stunAttrLen,
+        // bgpOpen parmLen, …). `perRecordBytes` was estimated with that length at
+        // its seeded value, so raising the controller makes each record consume
+        // MORE than `perRecordBytes` and the static count below would over-consume
+        // the scope (normalize throws → diagram freezes on the last good layout).
+        // Charge the live overage of each inner length above its seed so the
+        // derived count SHRINKS to fit: raising a record's value-length trims how
+        // many records the budget holds, the natural budget behaviour. Exact for
+        // the dominant `bytes(ref X)` shape (+1 byte/unit); a scaled length is
+        // approximated, with the graceful over-consume fallback as a backstop.
+        const innerOverage = (br.innerScopeSeeds ?? []).reduce(
+          (sum, seed) =>
+            sum + Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value),
+          0,
+        );
+        const livePerRecordBytes = br.perRecordBytes + innerOverage;
         // Clamp to MAX_DERIVED_RECORDS AND the shared product budget: a maxed
         // length slider would otherwise derive tens of thousands of records, and
         // even a capped count can multiply with an inner repeat/length below. The
@@ -1438,7 +1455,7 @@ export default function PacketViewer({
         env.set(
           br.countKey,
           factor(
-            Math.floor(forRecords / br.perRecordBytes),
+            Math.floor(forRecords / livePerRecordBytes),
             MAX_DERIVED_RECORDS,
           ),
         );

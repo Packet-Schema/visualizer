@@ -84,11 +84,22 @@ function cellCount(
   for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
   for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
   for (const br of mirror.boundedRepeats ?? []) {
+    for (const seed of br.innerScopeSeeds ?? []) {
+      if (!env.get(seed.key)) env.set(seed.key, seed.value);
+    }
     const budget = evalExprOr(br.bytesExpr, env, 0);
     const forRecords = Math.max(0, budget - br.prefixBytes);
+    // Charge the live overage of each surfaced per-record length above its seed
+    // (mirrors PacketViewer.buildLayoutEnv) so a maxed flat-TLV inner-length
+    // controller shrinks the derived count instead of over-consuming the scope.
+    const overage = (br.innerScopeSeeds ?? []).reduce(
+      (sum, seed) =>
+        sum + Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value),
+      0,
+    );
     env.set(
       br.countKey,
-      Math.min(1024, Math.floor(forRecords / br.perRecordBytes)),
+      Math.min(1024, Math.floor(forRecords / (br.perRecordBytes + overage))),
     );
   }
   if (clamp) {
