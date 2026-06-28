@@ -6,7 +6,10 @@
 // / repeat that defaults to a non-matching value, so on load they were inert and
 // contradicted an empty-or-wrong-arm diagram (#11/#12 class):
 //   * oncRpc replyStat / acceptStat / rejectStat — the REPLY subtree only
-//     renders once rpcMsgType=1 (and acceptStat additionally needs replyStat=0).
+//     renders once rpcMsgType=1. Each reply-side refSwitch now carries the
+//     OUTERMOST message-type gate {rpcMsgType:1}, so `initialState` SEEDS the
+//     REPLY arm on load and replyStat + acceptStat (replyStat=0) are live from
+//     the start; only the deeper rejectStat stays gated until replyStat=1.
 //   * pgm NLA-AFI pickers — none of the SPM/NAK/NCF address fields render until
 //     pgmType selects the matching message arm.
 //   * lispMapReply lispLocAFI — its enclosing per-record Locators repeat had no
@@ -99,15 +102,29 @@ function refSwitchSelect(
 }
 
 describe("refSwitch 'Record variants' live gating", () => {
-  it("disables the oncRpc REPLY-subtree pickers on load, enables them once the arm is selected", async () => {
+  it("seeds rpcMsgType=REPLY so the oncRpc reply pickers are LIVE on load, gates only the deeper rejectStat", async () => {
     const src = PRESETS.oncRpc!;
     const packet = psdlToRenderer(src);
     // All three discriminators live inside the REPLY switch arm.
     const refKeys = (packet.refSwitches ?? []).map((r) => r.refKey).sort();
     expect(refKeys).toEqual(["acceptStat", "rejectStat", "replyStat"]);
 
-    // On load (rpcMsgType defaults to 0 = CALL) none of the REPLY discriminators
-    // render, so every picker is disabled with a hint.
+    // Each reply-side picker carries the OUTERMOST message-type gate so
+    // `initialState` renders the REPLY arm the pickers govern (rather than the
+    // unrelated CALL arm) on load — instead of three pickers disabled-with-hint
+    // that contradict a CALL-only diagram (#11/#12).
+    for (const r of packet.refSwitches ?? []) {
+      expect(r.gate, `${r.refKey} gate`).toEqual({
+        key: "rpcMsgType",
+        value: 1,
+      });
+    }
+    expect(initialState(packet)["rpcMsgType"]).toBe(1);
+
+    // On load the seeded REPLY arm renders replyStat + acceptStat (replyStat=0),
+    // so both pickers are LIVE; only the deeper rejectStat (needs replyStat=1)
+    // stays disabled, gated by OverridePanel's per-picker fieldRendered check —
+    // not the whole reply subtree.
     {
       const { env, controllers } = loadEnv(src);
       const { cells } = resolveLayout(src, { env });
@@ -121,29 +138,11 @@ describe("refSwitch 'Record variants' live gating", () => {
         />,
       );
       for (const refKey of ["replyStat", "acceptStat", "rejectStat"]) {
-        const select = refSwitchSelect(container, refKey);
-        expect(select, `${refKey} picker must render`).not.toBeNull();
-        expect(select!.disabled, `${refKey} must be disabled on load`).toBe(
-          true,
-        );
+        expect(
+          refSwitchSelect(container, refKey),
+          `${refKey} picker must render`,
+        ).not.toBeNull();
       }
-      expect(container.textContent ?? "").toMatch(/to edit/i);
-    }
-
-    // Picking REPLY (rpcMsgType=1) renders replyStat + acceptStat (replyStat=0),
-    // so both become live; rejectStat (needs replyStat=1) stays disabled.
-    {
-      const { env, controllers } = loadEnv(src, { rpcMsgType: 1 });
-      const { cells } = resolveLayout(src, { env });
-      const { container } = await mount(
-        <OverridePanel
-          packet={packet}
-          selectedFieldId={null}
-          controllers={controllers}
-          onControllerChange={() => {}}
-          cells={cells}
-        />,
-      );
       expect(refSwitchSelect(container, "replyStat")!.disabled).toBe(false);
       expect(refSwitchSelect(container, "acceptStat")!.disabled).toBe(false);
       expect(refSwitchSelect(container, "rejectStat")!.disabled).toBe(true);

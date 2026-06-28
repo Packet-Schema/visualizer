@@ -2819,6 +2819,17 @@ function collectRefSwitches(
     // is null inside chain/TLV repeats by design — so we track repeat nesting
     // separately.
     insideRepeat: boolean,
+    // Structured discriminator gate of the OUTERMOST enclosing top-level
+    // message-type `switch` case (or null at top level / `_` default / non-ref
+    // discriminator). Set ONCE on entry to the first such case and threaded
+    // unchanged through any DEEPER nested switches, so a case-nested refSwitch
+    // discriminator declared several arms down (oncRpc's acceptStat/rejectStat
+    // under rpcMsgType's REPLY case) is gated on the TOP-LEVEL message type the
+    // diagram must render — not on its nearer arm, which `initialState`'s
+    // refKey seed already covers and which would otherwise conflict (rejectStat
+    // wants replyStat=1, the refKey seed sets replyStat=0). Used only for
+    // SEEDING; OverridePanel keeps the per-picker `fieldRendered` live gate.
+    enclosingCaseGate: { key: string; value: number } | null,
   ): void => {
     for (const c of flattenForMirror(containers, defs)) {
       // A `bytes(lookup(ref X, table))` value whose discriminator X is a plain
@@ -2888,7 +2899,12 @@ function collectRefSwitches(
       }
       if (c.kind === "repeat") {
         const plain = !isLikelyChainRepeat(c) && !isTlvRepeat(c);
-        visit(c.element.fields, plain ? c : enclosingPlainRepeat, true);
+        visit(
+          c.element.fields,
+          plain ? c : enclosingPlainRepeat,
+          true,
+          enclosingCaseGate,
+        );
         continue;
       }
       if (c.kind === "switch") {
@@ -3156,35 +3172,80 @@ function collectRefSwitches(
                     value: REF_SIZED_FIELD_BYTE_ALLOWANCE,
                   }))
                 : undefined;
+              // A case-nested refSwitch (oncRpc's reply-side pickers) lives in
+              // an arm of a top-level message-type switch the diagram only
+              // renders at one discriminator value. Carry that OUTERMOST gate so
+              // `initialState` seeds the discriminator (rpcMsgType=1) and the
+              // arm — hence the pickers' real cells — renders on load instead of
+              // the unrelated CALL arm (#11/#12). The plain-repeat A2 path has no
+              // top-level case (enclosingCaseGate is null) so it stays ungated.
               out.push({
                 id: c.id,
                 name: c.name ?? refKey,
                 cases,
                 refKey,
                 ...(lengthSeeds ? { lengthSeeds } : {}),
+                ...(enclosingCaseGate ? { gate: enclosingCaseGate } : {}),
               });
             }
           }
         }
-        for (const struct of Object.values(c.cases))
-          visit(struct.fields, enclosingPlainRepeat, insideRepeat);
+        for (const [key, struct] of Object.entries(c.cases)) {
+          // Establish the OUTERMOST message-type case gate exactly once, then
+          // thread it unchanged through deeper nested switches. Only a top-level
+          // (not repeat-nested) ref-discriminated case with a single integer key
+          // qualifies — the same gate-derivation shape collectFreeRepeats uses
+          // for icmpv6Ndp's `type`. Deeper arms keep the outer gate so a refSwitch
+          // surfaced several levels down (acceptStat/rejectStat) is gated on the
+          // top-level discriminator the diagram must render, not its nearer arm.
+          const caseValue = firstCaseKeyValue(key);
+          const nextCaseGate =
+            enclosingCaseGate ??
+            (!enclosingPlainRepeat &&
+            !insideRepeat &&
+            c.on.kind === "ref" &&
+            caseValue !== null
+              ? { key: c.on.field, value: caseValue }
+              : null);
+          visit(
+            struct.fields,
+            enclosingPlainRepeat,
+            insideRepeat,
+            nextCaseGate,
+          );
+        }
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, enclosingPlainRepeat, insideRepeat);
+        visit(
+          c.children,
+          enclosingPlainRepeat,
+          insideRepeat,
+          enclosingCaseGate,
+        );
         continue;
       }
       if (c.kind === "optional") {
-        visit([c.container], enclosingPlainRepeat, insideRepeat);
+        visit(
+          [c.container],
+          enclosingPlainRepeat,
+          insideRepeat,
+          enclosingCaseGate,
+        );
         continue;
       }
       if (c.kind === "encrypted") {
-        visit(c.plaintext.fields, enclosingPlainRepeat, insideRepeat);
+        visit(
+          c.plaintext.fields,
+          enclosingPlainRepeat,
+          insideRepeat,
+          enclosingCaseGate,
+        );
         continue;
       }
     }
   };
-  visit(body, null, false);
+  visit(body, null, false, null);
   return out;
 }
 

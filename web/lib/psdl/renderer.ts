@@ -323,6 +323,21 @@ export type Packet = {
      *  length CELL stays user-editable. Share-url-safe (same default-set
      *  reasoning as the discriminator / freeRepeat / boundedRepeat seeds). */
     lengthSeeds?: { key: string; value: number }[];
+    /** Discriminator gate of the OUTERMOST top-level message-type `switch` case
+     *  this refSwitch's discriminator is declared inside (oncRpc's reply-side
+     *  replyStat/acceptStat/rejectStat all live under `rpcMsgType`'s REPLY case →
+     *  `{ key: "rpcMsgType", value: 1 }`). The discriminator the picker drives is
+     *  a real cell ONLY when the diagram is rendering that arm, so `initialState`
+     *  seeds `gate.key` to `gate.value` on load — otherwise the discriminator
+     *  0-fills (rpcMsgType=0=CALL), the diagram shows only the CALL header, and
+     *  all three reply pickers are disabled-with-hint and contradict the diagram
+     *  (#11/#12, same class as the freeRepeat switch-case gate seed). The
+     *  per-picker live gate (OverridePanel's `fieldRendered(cells, refKey)`) still
+     *  hides a deeper picker whose nearer arm isn't selected (rejectStat until
+     *  replyStat=1), so the seed only ensures the OUTER reply arm renders. The
+     *  FIRST gated refSwitch for a given key wins; only fills an unset key, so a
+     *  user / saved-env value still wins and it stays out of the share URL. */
+    gate?: { key: string; value: number };
   }[];
   /** Length-controller sliders for `bounded.bytes` scopes whose driving field
    *  is NOT a top-level cell (e.g. nested in a Group, like babel's

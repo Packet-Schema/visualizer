@@ -130,11 +130,19 @@ describe("direct length-controller slider cell-count cap", () => {
     // Audit probes: a maxed direct length slider explodes the diagram.
     //   oncRpc credLength / verfLength (32-bit), diameter avpLength (24-bit),
     //   sflow sflowSampleLen (32-bit), dnsResponse dnsRdLength (16-bit).
-    const probes: { key: string; id: string }[] = [
-      { key: "oncRpc", id: "credLength" },
+    // `extra` selects the message arm the probed length field lives in: oncRpc's
+    // `credLength` sizes the CALL credential, but `initialState` now seeds the
+    // REPLY arm (rpcMsgType=1) so the surfaced reply pickers render on load — so
+    // the probe pins rpcMsgType=0 to render the CALL arm where credLength is live.
+    const probes: {
+      key: string;
+      id: string;
+      extra?: Record<string, number>;
+    }[] = [
+      { key: "oncRpc", id: "credLength", extra: { rpcMsgType: 0 } },
       { key: "diameter", id: "avpLength" },
     ];
-    for (const { key, id } of probes) {
+    for (const { key, id, extra } of probes) {
       const src = PRESETS[key];
       expect(src, `preset ${key} should exist`).toBeTruthy();
       const mirror = psdlToRenderer(src!);
@@ -148,7 +156,13 @@ describe("direct length-controller slider cell-count cap", () => {
       const ids = controllers.map((c) => c.id);
       // A modest length (50000) already over-explodes; the full slider max would
       // OOM the worker, so probe at 50000 for the unclamped path.
-      const unclamped = cellCount(src!, mirror, ids, { [id]: 50000 }, false);
+      const unclamped = cellCount(
+        src!,
+        mirror,
+        ids,
+        { ...extra, [id]: 50000 },
+        false,
+      );
       expect(
         unclamped,
         `${key}/${id} unclamped should explode`,
@@ -159,7 +173,7 @@ describe("direct length-controller slider cell-count cap", () => {
         src!,
         mirror,
         ids,
-        { [id]: sliderMax(match!.field) },
+        { ...extra, [id]: sliderMax(match!.field) },
         true,
       );
       expect(

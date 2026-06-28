@@ -277,6 +277,23 @@ export function initialState(packet: Packet): ControllerState {
       state[ps.peekKey] = ps.cases[0].value;
     }
   }
+  // Seed the top-level message-type discriminator a case-nested refSwitch is
+  // gated on (oncRpc's `rpcMsgType`) to its owning case value, so the diagram
+  // renders the REPLY arm the surfaced reply pickers (replyStat/acceptStat/
+  // rejectStat) govern. Without this `rpcMsgType` 0-fills to 0=CALL, the diagram
+  // shows only the CALL header, and all three reply pickers sit disabled-with-
+  // hint contradicting the diagram on load (#11/#12, the same discoverability
+  // class as the freeRepeat switch-case gate seed below). Runs AFTER the
+  // refSwitch refKey loop so a refKey seed (replyStat=0) wins over a deeper
+  // arm's gate value — but the gates here always name the TOP-LEVEL message type
+  // (never a sibling refKey), so they only ever fill rpcMsgType. The FIRST gated
+  // refSwitch for a given key wins. Only fills an unset key (a user / saved-env
+  // value still wins) and is share-url-safe (same default-set reasoning).
+  for (const rs of packet.refSwitches ?? []) {
+    if (rs.gate && state[rs.gate.key] === undefined) {
+      state[rs.gate.key] = rs.gate.value;
+    }
+  }
   // Seed the message-type discriminator a switch-case-nested freeRepeat is gated
   // on (icmpv6Ndp's `type`) to its owning case value, so the chosen arm — and
   // ONLY that arm — is rendered and its surfaced "Type=N → Options" stepper

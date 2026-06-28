@@ -24,6 +24,7 @@ import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { initialState } from "@/lib/psdl/renderer-helpers";
 import { isField } from "@/lib/psdl/utils";
 import type { Container, Packet as PsdlPacket } from "@/lib/psdl/types";
 
@@ -125,6 +126,51 @@ describe("oncRpc nested switch discriminators", () => {
     expect(reject).toContain("rejectStat");
     expect(reject).toContain("rejectMismatchLow");
     expect(reject).toContain("rejectMismatchHigh");
+  });
+
+  it("gates each reply picker on rpcMsgType=REPLY and seeds it so the REPLY arm renders on load", () => {
+    // The three reply-side pickers live inside `rpcMsgType`'s REPLY (=1) arm. If
+    // `rpcMsgType` stayed at its 0-fill default (0 = CALL), the diagram would
+    // render only the CALL header while all three pickers showed disabled — an
+    // inert, diagram-contradicting surface (#11/#12). Each picker now carries the
+    // OUTERMOST message-type gate {rpcMsgType:1} (not its nearer arm), and
+    // `initialState` seeds that key so the REPLY arm — the pickers' real cells —
+    // renders on load.
+    const mirror = psdlToRenderer(PRESETS.oncRpc!);
+
+    for (const r of mirror.refSwitches ?? []) {
+      expect(
+        r.gate,
+        `${r.refKey} carries the top-level message-type gate`,
+      ).toEqual({ key: "rpcMsgType", value: 1 });
+    }
+
+    const seed = initialState(mirror);
+    // The gate seeds rpcMsgType=1; the refKey seed keeps replyStat at its first
+    // case (0 = MSG_ACCEPTED), so the gate never clobbers a sibling refKey.
+    expect(seed["rpcMsgType"]).toBe(1);
+    expect(seed["replyStat"]).toBe(0);
+
+    // The diagram resolved at the seeded env renders the REPLY arm: both
+    // replyStat and the (replyStat=0) acceptStat cells are present, so their
+    // pickers are live, not gated, on load.
+    const seededIds = cellIds(
+      PRESETS.oncRpc!,
+      Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, Number(v)])),
+    );
+    expect(seededIds).toContain("replyStat");
+    expect(seededIds).toContain("acceptStat");
+    // The diagram does NOT fall back to the CALL header (rpcMsgType=0).
+    expect(seededIds).not.toContain("rpcvers");
+  });
+
+  it("the rpcMsgType seed stays a default — a user CALL override still wins", () => {
+    // The gate seed only fills an UNSET key, so it is share-url-safe: an explicit
+    // rpcMsgType=0 (CALL) override still renders the CALL arm, never re-forced to
+    // REPLY by the seed.
+    const call = cellIds(PRESETS.oncRpc!, { rpcMsgType: 0 });
+    expect(call).toContain("rpcvers");
+    expect(call).not.toContain("replyStat");
   });
 
   it("oncRpc is the only preset with switch-in-switch-case discriminators", () => {
