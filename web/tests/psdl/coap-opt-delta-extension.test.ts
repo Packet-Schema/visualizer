@@ -116,13 +116,19 @@ describe("coap: option Delta extended-encoding (optDelta) is editable", () => {
     expect(literal).not.toContain("optDeltaExt2#0");
   });
 
-  it("keeps BGP attrExtLen (a bounded-scope length encoder) suppressed", () => {
-    // Guard: the relaxation is bounded by `lengthDriving`. bgpUpdateFull's
-    // `attrExtLen` flag drives a 1- vs 2-byte Attribute Length that sizes the
-    // bounded Attribute Value scope — driving it as a variant would desync the
-    // scope, so it must STAY an encoder (never a refSwitch).
+  it("does NOT surface coap optDelta via the BGP Extended-Length-flag path", () => {
+    // Guard the boundary between the two repeat-nested relaxations: coap's
+    // `optDelta` is surfaced by the sub-byte delta-extension relaxation (it is a
+    // 4-bit `length`-category nibble), NOT by the BGP Extended-Length-FLAG path
+    // (which requires a 1-bit `flags` discriminator). bgpUpdateFull's `attrExtLen`
+    // IS surfaced by that flag path (case 1 → 16-bit length, default → 8-bit) —
+    // see bgp-attr-ext-len-editable.test.ts — so the two relaxations stay
+    // disjoint and each preset surfaces exactly its own discriminator.
+    const coap = psdlToRenderer(PRESETS.coap!);
+    expect((coap.refSwitches ?? []).map((r) => r.refKey)).toContain("optDelta");
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
-    const bgpRefKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
-    expect(bgpRefKeys).not.toContain("attrExtLen");
+    expect((bgp.refSwitches ?? []).map((r) => r.refKey)).toContain(
+      "attrExtLen",
+    );
   });
 });

@@ -144,10 +144,14 @@ describe("collectRefSwitches", () => {
     const coap = psdlToRenderer(PRESETS.coap!);
     const coapKeys = (coap.refSwitches ?? []).map((r) => r.refKey);
     expect(coapKeys).not.toContain("optLength");
-    // BGP's extended-length flag (`attrExtLen`) is likewise a length encoder.
+    // BGP's Extended-Length flag (`attrExtLen`) is a 1-bit `flags` discriminator
+    // whose arms are all length ints at distinct widths (case 1 → 16-bit, default
+    // → 8-bit) inside the instantiable bgpPathAttributes repeat — the same
+    // Extended-Length class as the top-level coap/websocket nibbles, so it IS
+    // surfaced (see bgp-attr-ext-len-editable.test.ts).
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
     const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
-    expect(bgpKeys).not.toContain("attrExtLen");
+    expect(bgpKeys).toContain("attrExtLen");
   });
 
   it("lwm2mRegister tlvIdLen picker flips tlvIdentifier8 <-> tlvIdentifier16", () => {
@@ -228,12 +232,16 @@ describe("collectRefSwitches", () => {
   });
 
   it("excludes length/format-encoder switches, keeping only record-type codes", () => {
-    // review HIGH: driving a length encoder that re-encodes a BOUNDED value-scope
-    // length (BGP Extended-Length flag) over-consumes a scope / explodes the
-    // render instead of choosing a record variant — it must NOT be surfaced.
+    // BGP's Extended-Length flag (`attrExtLen`) IS surfaced: it is a 1-bit
+    // `flags` discriminator whose arms are all length ints at distinct widths
+    // (case 1 → 16-bit, default → 8-bit) inside the instantiable
+    // bgpPathAttributes repeat — the same Extended-Length class as the top-level
+    // coap/websocket nibbles. Toggling it cleanly swaps the rendered Attribute
+    // Length cell (8-bit ⇄ 16-bit) rather than over-consuming a scope, so it must
+    // be editable (see bgp-attr-ext-len-editable.test.ts).
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
     const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
-    expect(bgpKeys).not.toContain("attrExtLen"); // 1-bit flag — dropped
+    expect(bgpKeys).toContain("attrExtLen");
 
     // CoAP's optDelta/optLength are 4-bit extended-encoding nibbles. `optLength`
     // sizes `optValue` and is editable via its surfaced length controller, so it

@@ -2290,6 +2290,75 @@ function collectFieldDefaults(body: PsdlPacket["body"]): Map<string, number> {
   return out;
 }
 
+/** Map each field id to its declared `category` (descending through every
+ *  structural container). Used to classify a switch discriminator: an
+ *  Extended-Length FLAG (`category: "flags"`, e.g. BGP `attrExtLen`) whose arms
+ *  are all length ints at distinct widths is surfaced as a refSwitch even when
+ *  repeat-nested, where the blanket sub-byte length-encoder heuristic would
+ *  otherwise suppress it. (The `PsdlPacket`-shaped `collectFieldCategories` walks
+ *  ref-defs too; this body-only variant is what `collectRefSwitches` consults.) */
+function collectFieldCategoriesByBody(
+  body: PsdlPacket["body"],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.category) out.set(c.id, c.category);
+        continue;
+      }
+      if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+    }
+  };
+  visit(body);
+  return out;
+}
+
+/**
+ * True for a repeat-nested Extended-Length FLAG switch — the BGP `attrExtLen`
+ * idiom: a 1-bit discriminator of `category: "flags"` whose every arm (the listed
+ * cases AND the `_` default) is a SINGLE `length` int, and whose arms render at
+ * ≥ 2 DISTINCT widths (case `1` → 16-bit `bgpAttrLength16`, `_` → 8-bit
+ * `bgpAttrLength8`). This is the same Extended-Length discriminator class as the
+ * already-surfaced top-level coap/websocket nibbles, but expressed as a flags BIT
+ * inside a per-record repeat. Driving it visibly swaps the rendered Attribute
+ * Length cell (8-bit ⇄ 16-bit) and the diagram resolves cleanly at either value —
+ * yet the blanket sub-byte length-encoder heuristic suppressed it, leaving the
+ * visible flag bit and length cell see-but-cannot-edit. Surfacing it is therefore
+ * safe and required. Narrower than the sub-byte heuristic it relaxes: it demands a
+ * 1-bit `flags` discriminator with ALL-length arms at distinct widths, so it never
+ * catches a record-type code (≥ 8 bits) or a variant-selecting nibble.
+ */
+function isExtendedLengthFlagSwitch(
+  cases: Record<string, { fields: Container[] }>,
+  discBits: number | undefined,
+  discCategory: string | undefined,
+): boolean {
+  if (discBits !== 1 || discCategory !== "flags") return false;
+  const widths = new Set<number>();
+  for (const struct of Object.values(cases)) {
+    if (struct.fields.length !== 1) return false;
+    const f = struct.fields[0]!;
+    if (!isField(f) || f.category !== "length") return false;
+    const t = f.type as { bits?: number; n?: unknown };
+    const w =
+      typeof t.bits === "number"
+        ? t.bits
+        : typeof t.n === "number"
+          ? t.n
+          : undefined;
+    if (w === undefined) return false;
+    widths.add(w);
+  }
+  return widths.size >= 2;
+}
+
 /** Map each `enum` field id to its `value → label` table. Used to render a
  *  switch discriminator value (msdpType=3) as a human-readable case label
  *  ("SA-Response") when disambiguating colliding switch-case-nested freeRepeat
@@ -3399,6 +3468,7 @@ function collectRefSwitches(
   const lengthDriving = collectLengthDrivingRefs(body);
   const fieldBits = collectFieldBits(body);
   const fieldNames = collectFieldNames(body);
+  const fieldCategories = collectFieldCategoriesByBody(body);
   const enumVariants = collectEnumVariants(body);
   // Field ids declared inside a switch case — a switch discriminated on one of
   // these has no top-level cell to host a `switchCases` widget, so it needs a
@@ -3695,9 +3765,33 @@ function collectRefSwitches(
             // …with arms of STRUCTURALLY DISTINCT fixed width (13 → 8-bit ext1,
             // 14 → 16-bit ext2), so each value genuinely changes the geometry.
             lengthExtensionArmsHaveDistinctWidths(c.cases, c.cases["_"]);
+          // EXCEPTION #4 (bgpUpdateFull `bgpAttrLengthByExt`): a REPEAT-NESTED
+          // Extended-Length FLAG switch — `attrExtLen` is a 1-bit `flags` bit, case
+          // `1` → 16-bit `bgpAttrLength16`, `_` → 8-bit `bgpAttrLength8`. It is the
+          // SAME Extended-Length discriminator class as the now-surfaced top-level
+          // coap/websocket nibbles, but a flags BIT inside the per-record
+          // `bgpPathAttributes` repeat. With that repeat instantiable, toggling the
+          // flag visibly swaps the rendered Attribute Length cell (8-bit ⇄ 16-bit)
+          // and the diagram resolves cleanly at either value — yet the blanket
+          // sub-byte length-encoder heuristic (AND `lengthDriving`: the flag reads
+          // into the bounded Attribute Value scope) suppressed it, leaving the
+          // visible flag bit and length cell see-but-cannot-edit. Surface it. This
+          // is narrower than the sub-byte heuristic it relaxes — a 1-bit `flags`
+          // discriminator with ALL-length arms at ≥ 2 distinct widths — so it never
+          // catches a record-type code or a value-selecting nibble (CoAP `optDelta`
+          // is `category` "length", `optLength` is a surfaced length controller).
+          const repeatNestedExtLenFlag =
+            !!enclosingPlainRepeat &&
+            instantiableRepeatIds.has(enclosingPlainRepeat.id) &&
+            isExtendedLengthFlagSwitch(
+              c.cases,
+              discBits,
+              fieldCategories.get(refKey),
+            );
           const isEncoder =
             !topLevelLengthExtensionVariant &&
             !repeatNestedDeltaExtensionVariant &&
+            !repeatNestedExtLenFlag &&
             (lengthDriving.has(refKey) ||
               (discBits !== undefined &&
                 discBits < 8 &&
@@ -3894,6 +3988,19 @@ function collectRefSwitches(
                   const [hit] = cases.splice(i, 1);
                   cases.unshift(hit);
                 }
+              }
+            }
+            // For a repeat-nested Extended-Length FLAG (BGP `attrExtLen`), the
+            // diagram loads at the cleared flag (env[attrExtLen]=0 → the 8-bit
+            // length, the `_` default arm). `initialState` seeds env[refKey] to
+            // cases[0].value, so order the value-0 case FIRST — otherwise the load
+            // diagram would silently default to the set flag (case 1, the 16-bit
+            // length) and contradict the cleared-flag default the packet renders.
+            if (repeatNestedExtLenFlag) {
+              const i = cases.findIndex((cc) => cc.value === 0);
+              if (i > 0) {
+                const [hit] = cases.splice(i, 1);
+                cases.unshift(hit);
               }
             }
             if (cases.length > 0) {
