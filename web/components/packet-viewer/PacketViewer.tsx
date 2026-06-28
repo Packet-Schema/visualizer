@@ -30,6 +30,7 @@ import {
   syncTlvControllers,
 } from "@/lib/psdl/renderer-helpers";
 import {
+  applyByteOrderOverrides,
   applyChainInstances,
   applyTlvInstances,
   mergeInstancesIntoPsdl,
@@ -661,10 +662,26 @@ export default function PacketViewer({
 
   const handleByteOrderChange = useCallback(
     (fieldId: string, next: "BE" | "LE") => {
-      const nextPacket = updatePacketField(packet, fieldId, (f) => ({
+      // Record the flip on a mirror-level, id-keyed map regardless of whether
+      // the field is top-level. A field nested in a Switch case / Repeat
+      // element / Group is never in `mirror.fields` (it is only a diagram
+      // Cell), so `updatePacketField`'s top-level-only walk would no-op and the
+      // flip would be lost for both the diagram (`applyByteOrderOverrides`) and
+      // export (`mergeInstancesIntoPsdl`). The map is the single source of
+      // truth those two read from. We ALSO keep `mirror.fields[fieldId]` in
+      // sync for top-level fields so the rest of the mirror (DetailPanel etc.)
+      // stays consistent — `updatePacketField` no-ops harmlessly for nested ids.
+      const withField = updatePacketField(packet, fieldId, (f) => ({
         ...f,
         byteOrder: next,
       }));
+      const nextPacket: Packet = {
+        ...withField,
+        byteOrderOverrides: {
+          ...withField.byteOrderOverrides,
+          [fieldId]: next,
+        },
+      };
       replaceActivePacket(nextPacket);
     },
     [packet, replaceActivePacket],
@@ -1278,9 +1295,16 @@ export default function PacketViewer({
     // are attached yet) or a trailing "remaining" placeholder after the
     // instance Groups.
     // Materialise TLV slots, then the IPv6 ext-header chain (the chain's eos
-    // repeat renders nothing on its own — see applyChainInstances).
-    return applyChainInstances(
-      applyTlvInstances(base, packet, tlvSlotBytes),
+    // repeat renders nothing on its own — see applyChainInstances), then stamp
+    // any diagram-driven byteOrder flips (`mirror.byteOrderOverrides`) onto the
+    // PSDL fields so a flip on a Switch-case-/Repeat-nested cell actually moves
+    // the diagram's `[LE]`/`[BE]` marker — those fields never reach
+    // `mirror.fields`, so the base PSDL is the only place the flip can land.
+    return applyByteOrderOverrides(
+      applyChainInstances(
+        applyTlvInstances(base, packet, tlvSlotBytes),
+        packet,
+      ),
       packet,
     );
   }, [

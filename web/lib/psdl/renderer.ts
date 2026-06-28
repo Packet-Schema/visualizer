@@ -35,6 +35,10 @@ export type SubField = {
   optionalGateFor?: string[];
   enumVariants?: Record<number, string>;
   defaultValue?: number;
+  /** Per-child byte order, mirrored from `SubCell.byteOrder` by the selection
+   *  resolver so OverridePanel can surface a BE/LE toggle for a Group-nested
+   *  multi-byte field (same hook as `Field.byteOrder`). */
+  byteOrder?: "BE" | "LE";
 };
 
 /** A single field inside a TLV catalog entry's positional layout. */
@@ -314,6 +318,16 @@ export type Packet = {
      *  of the share URL. */
     defaultLength?: number;
   }[];
+  /** Per-field byteOrder flips applied via the diagram, keyed by field id.
+   *  A top-level field carries its byteOrder on the matching `fields` entry,
+   *  but a field nested inside a Switch case / Repeat element / Group never
+   *  reaches `fields` (it is only a `Cell` on the diagram), so a flip on such
+   *  a cell has nowhere on the mirror to land. Recording it here gives both
+   *  the diagram (`applyByteOrderOverrides` re-stamps the PSDL field that
+   *  `resolveLayout` reads) and the export merge (`mergeInstancesIntoPsdl`
+   *  sources nested overrides from here) a single, id-keyed source of truth.
+   *  Absent ⇒ no diagram byteOrder edits. */
+  byteOrderOverrides?: Record<string, "BE" | "LE">;
 };
 
 /** A laid-out cell within a row. May span multiple rows via segmentation. */

@@ -55,10 +55,33 @@ function resolveFromCells(
   id: string,
 ): Resolution | null {
   for (const cell of cells) {
-    if (cell.field.id === id) return { kind: "field", field: cell.field };
+    if (cell.field.id === id) {
+      // core stamps a per-field byteOrder onto `Cell.byteOrder` (the source of
+      // the diagram's `[LE]`/`[BE]` marker) but NEVER copies it onto
+      // `cell.field.byteOrder`. A nested field reaches the panel only through
+      // this cell path, so surface the cell's effective byteOrder on the
+      // resolved field — otherwise OverridePanel's `field.byteOrder` gate is
+      // always false and the user can see a byte-swapped cell they cannot flip.
+      return {
+        kind: "field",
+        field:
+          cell.byteOrder && cell.byteOrder !== cell.field.byteOrder
+            ? { ...cell.field, byteOrder: cell.byteOrder }
+            : cell.field,
+      };
+    }
     for (const sc of cell.subCells ?? []) {
       if (sc.id === id) {
-        return { kind: "subfield", parent: sc.parentField, sub: sc.subfield };
+        return {
+          kind: "subfield",
+          parent: sc.parentField,
+          // Same fix for a Group-nested sub-cell: `SubCell.byteOrder` carries
+          // the per-child marker, but `sc.subfield.byteOrder` does not.
+          sub:
+            sc.byteOrder && sc.byteOrder !== sc.subfield.byteOrder
+              ? { ...sc.subfield, byteOrder: sc.byteOrder }
+              : sc.subfield,
+        };
       }
     }
   }

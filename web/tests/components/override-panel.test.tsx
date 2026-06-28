@@ -9,7 +9,10 @@ import { createRoot, type Root } from "react-dom/client";
 
 import OverridePanel from "@/components/field-details/OverridePanel";
 import { PRESETS } from "@/lib/psdl/presets.server";
-import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
+import {
+  psdlToRenderer,
+  applyByteOrderOverrides,
+} from "@/lib/psdl/psdl-to-renderer";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
@@ -796,5 +799,90 @@ describe("OverridePanel widgets", () => {
     const text = container.textContent ?? "";
     expect(text).toMatch(/Type=135/);
     expect(text).not.toMatch(/Type=133/);
+  });
+
+  // see-but-cannot-edit: a Field with an explicit `byteOrder` that lives inside
+  // a Switch case / plain Repeat never becomes a renderer mirror field (it is
+  // only a diagram Cell carrying `cell.byteOrder`). core stamps the marker onto
+  // the cell but NOT onto `cell.field.byteOrder`, so the old
+  // `if (field.byteOrder && onByteOrderChange)` gate was always false and the
+  // BE/LE toggle never rendered. rtmp's `messageStreamId` (inside the `fmt`
+  // switch, byteOrder LE) is the canonical case: the diagram shows
+  // `messageStreamId[LE]` but it was uneditable.
+  it("surfaces a BE/LE toggle for a switch-case-nested explicit-byteOrder field (rtmp messageStreamId) (#byteOrder)", async () => {
+    const src = PRESETS.rtmp!;
+    const packet = psdlToRenderer(src);
+    // No mirror field exists for the switch-nested LE leaf...
+    expect(packet.fields.some((f) => f.id === "messageStreamId")).toBe(false);
+    // ...but it IS a visible diagram cell carrying the LE marker.
+    const { cells } = resolveLayout(src, {});
+    const cell = cells.find((c) => c.field.id === "messageStreamId");
+    expect(cell, "messageStreamId cell must be present").toBeTruthy();
+    expect(cell!.byteOrder, "cell must carry the LE marker").toBe("LE");
+    expect(
+      cell!.field.byteOrder,
+      "core never copies byteOrder onto cell.field",
+    ).toBeUndefined();
+
+    let flipped: { id: string; order: "BE" | "LE" } | null = null;
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="messageStreamId"
+        controllers={{}}
+        onControllerChange={() => {}}
+        onByteOrderChange={(id, order) => {
+          flipped = { id, order };
+        }}
+        cells={cells}
+      />,
+    );
+    // The panel must NOT fall through to the read-only empty state...
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+    // ...and must render a BE/LE radiogroup with LE currently active.
+    const radios = Array.from(
+      container.querySelectorAll('button[role="radio"]'),
+    ) as HTMLButtonElement[];
+    const labels = radios.map((r) => r.textContent);
+    expect(labels).toContain("BE");
+    expect(labels).toContain("LE");
+    const activeLe = radios.find(
+      (r) =>
+        r.textContent === "LE" && r.getAttribute("aria-checked") === "true",
+    );
+    expect(activeLe, "LE must be the active byte order").toBeTruthy();
+
+    // Clicking BE must fire onByteOrderChange with the field's BARE id.
+    const beButton = radios.find((r) => r.textContent === "BE")!;
+    await act(async () => {
+      beButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(flipped).toEqual({ id: "messageStreamId", order: "BE" });
+  });
+
+  // The flip must actually move the diagram: recording it on the mirror's
+  // `byteOrderOverrides` map and re-stamping the PSDL via
+  // `applyByteOrderOverrides` flips the resolved cell's byteOrder.
+  it("a recorded byteOrder override re-stamps the diagram cell (rtmp messageStreamId LE→BE)", () => {
+    const src = PRESETS.rtmp!;
+    const mirror = psdlToRenderer(src);
+    const before = resolveLayout(applyByteOrderOverrides(src, mirror), {});
+    expect(
+      before.cells.find((c) => c.field.id === "messageStreamId")?.byteOrder,
+    ).toBe("LE");
+
+    const flipped = {
+      ...mirror,
+      byteOrderOverrides: { messageStreamId: "BE" },
+    };
+    const after = resolveLayout(
+      applyByteOrderOverrides(src, flipped as typeof mirror),
+      {},
+    );
+    expect(
+      after.cells.find((c) => c.field.id === "messageStreamId")?.byteOrder,
+    ).toBe("BE");
+    // A mirror with no overrides returns the same PSDL reference (cheap no-op).
+    expect(applyByteOrderOverrides(src, mirror)).toBe(src);
   });
 });

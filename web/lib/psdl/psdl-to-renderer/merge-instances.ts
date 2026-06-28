@@ -145,14 +145,23 @@ function mergeRepeat(c: Repeat, ctx: MergeCtx): Repeat {
 function overlayFieldEdits(c: Container, ctx: MergeCtx): Container {
   const { mirror } = ctx;
   if (isField(c)) {
+    // A field nested in a Switch case / Repeat element / Group never reaches
+    // `mirror.fields`, so its diagram-driven byteOrder flip is recorded on
+    // `mirror.byteOrderOverrides` (keyed by id) instead. Prefer that map; fall
+    // back to the top-level `mirror.fields[c.id].byteOrder` for fields that DO
+    // round-trip through the mirror (the override map also carries those, so
+    // the map alone would suffice — the fields path is kept for mirrors built
+    // without going through `handleByteOrderChange`).
+    const overridden = mirror.byteOrderOverrides?.[c.id];
     const mirrorField = findRendererField(mirror, c.id);
-    if (mirrorField?.byteOrder && mirrorField.byteOrder !== c.byteOrder) {
-      return { ...c, byteOrder: mirrorField.byteOrder };
+    const effective = overridden ?? mirrorField?.byteOrder;
+    if (effective && effective !== c.byteOrder) {
+      return { ...c, byteOrder: effective };
     }
     if (
       // mirror explicitly cleared a previous override
-      mirrorField &&
-      mirrorField.byteOrder === undefined &&
+      effective === undefined &&
+      (overridden !== undefined || mirrorField !== undefined) &&
       c.byteOrder !== undefined
     ) {
       return omitKey(c, "byteOrder");

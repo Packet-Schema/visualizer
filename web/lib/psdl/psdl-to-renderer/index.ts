@@ -91,6 +91,7 @@ import { collectPsdlRefs } from "../collect-refs";
 export { rendererToPsdl } from "./to-psdl";
 export { applyTlvInstances } from "./apply-tlv";
 export { applyChainInstances, parseChainCellId } from "./apply-chain";
+export { applyByteOrderOverrides } from "./apply-byte-order";
 export { mergeInstancesIntoPsdl } from "./merge-instances";
 
 /**

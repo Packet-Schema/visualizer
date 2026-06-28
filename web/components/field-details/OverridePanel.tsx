@@ -454,6 +454,7 @@ export default function OverridePanel({
       r.parent,
       controllers,
       onControllerChange,
+      onByteOrderChange,
     );
     if (widgets.length === 0) {
       return (
@@ -592,8 +593,22 @@ function subfieldWidgets(
   parent: Field,
   controllers: ControllerState,
   onControllerChange: ((key: string, value: number) => void) | undefined,
+  onByteOrderChange?: (fieldId: string, byteOrder: "BE" | "LE") => void,
 ): React.ReactNode[] {
-  if (!onControllerChange) return [];
+  // A Group-nested multi-byte field with an explicit byteOrder carries no env
+  // override but DOES need a BE/LE toggle (it renders a `[LE]`/`[BE]` marker on
+  // the diagram). Surface it even when the subfield has no controller widgets,
+  // so the toggle isn't gated behind `onControllerChange`.
+  const byteOrderWidget =
+    sub.byteOrder && onByteOrderChange ? (
+      <ByteOrderToggle
+        key="byteOrder"
+        fieldId={sub.id}
+        current={sub.byteOrder}
+        onChange={onByteOrderChange}
+      />
+    ) : null;
+  if (!onControllerChange) return byteOrderWidget ? [byteOrderWidget] : [];
   const target: WidgetTarget = {
     id: sub.id,
     name: `${sub.name} (in ${parent.name})`,
@@ -646,6 +661,7 @@ function subfieldWidgets(
       />,
     );
   }
+  if (byteOrderWidget) out.push(byteOrderWidget);
   return out;
 }
 
