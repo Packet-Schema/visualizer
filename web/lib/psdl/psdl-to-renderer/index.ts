@@ -651,6 +651,49 @@ function collectPlainRepeatLengthControllers(
       gather(element.fields);
     } else {
       collectBytesSizers(element.fields, defs, sizers);
+      // A per-record value can be sized INDIRECTLY through a `virtual`: coap's
+      // `optValue = bytes(ref optValueBytes)` where `optValueBytes` is a virtual
+      // `cond(optLength==13 ? optLengthExt1+13 : optLength==14 ? … : optLength)`.
+      // `collectBytesSizers` records the bare ref `optValueBytes` (the virtual),
+      // never the underlying `optLength` the user actually drives (the virtual is
+      // recomputed by `resolveLayout` from `env[optLength]`, so overriding
+      // `optValueBytes` is inert). Expand any sizer naming an element-local
+      // virtual into that virtual's expr refs — transitively, in case a virtual
+      // references another — so the real length cell (`optLength`) is nominated.
+      const virtualRefs = new Map<string, string[]>();
+      const collectVirtuals = (containers: Container[]): void => {
+        for (const c of containers) {
+          if (isField(c)) continue;
+          if (c.kind === "virtual") {
+            virtualRefs.set(c.id, exprRefs(c.expr));
+          } else if (c.kind === "group") collectVirtuals(c.children);
+          else if (c.kind === "bounded") collectVirtuals(c.fields);
+          else if (c.kind === "optional") collectVirtuals([c.container]);
+          else if (c.kind === "encrypted") collectVirtuals(c.plaintext.fields);
+          else if (c.kind === "switch") {
+            for (const struct of Object.values(c.cases))
+              collectVirtuals(struct.fields);
+          } else if (c.kind === "ref") {
+            const def = defs?.[c.ref];
+            if (def) collectVirtuals(def.fields);
+          }
+          // A nested Repeat is a deeper length scope — do not descend.
+        }
+      };
+      collectVirtuals(element.fields);
+      const pending = [...sizers];
+      const expanded = new Set<string>();
+      while (pending.length > 0) {
+        const ref = pending.pop()!;
+        if (expanded.has(ref)) continue;
+        expanded.add(ref);
+        const refs = virtualRefs.get(ref);
+        if (!refs) continue;
+        for (const r of refs) {
+          sizers.add(r);
+          pending.push(r);
+        }
+      }
     }
     for (const [id, field] of lengthFields) {
       if (!sizers.has(id) || seen.has(id)) continue;
