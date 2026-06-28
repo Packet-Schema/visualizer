@@ -83,7 +83,18 @@ export function resolveLayout(
   // id; this is the single boundary where they become core's env contract.
   bridgeDynamicWidthKeys(packet, env);
   const viewMode: ViewMode = options.viewMode ?? "wire";
-  const norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
+  let norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
+  // A delimiter-terminated `bytes` field expanded inside a repeat / ref is read
+  // by core's emit() under the FULLY-QUALIFIED instance key
+  // `__bytesDelimLen__<prefix>.<id>#<n>` — not the bare `__bytesDelimLen__<id>`
+  // that bridgeDynamicWidthKeys / seedDynamicWidthDefaults write (varint/ber are
+  // read via the bare field.id in typeBits, hence work nested; delimited bytes
+  // do not). Fan the bare value out onto every emitted instance key so the field
+  // renders and its WidthPicker drives every cell. Re-normalize once if it added
+  // any keys (the new widths shift the layout).
+  if (qualifyDelimitedWidthKeys(packet, env, norm)) {
+    norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
+  }
   const cells: Cell[] = [];
   let bitPos = 0;
   // Renderer interpretation pass (see PSDL design principles —
@@ -300,6 +311,114 @@ function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
     }
   };
   visit(packet.body);
+}
+
+/**
+ * Collect the authored ids of every delimiter-terminated `bytes` field anywhere
+ * in the packet body (including inside repeats / refs / switches / optionals).
+ * These are the fields whose wire width core reads under a per-instance
+ * qualified key, so the bridge has to fan the bare value onto every instance.
+ */
+function collectDelimitedFieldIds(packet: PsdlPacket): Set<string> {
+  const ids = new Set<string>();
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>(); // guard recursive defs.
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
+          ids.add(c.id);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        case "ref": {
+          // A `ref` expands a named struct; delimited leaves inside it get the
+          // ref id as an env-key prefix (`__bytesDelimLen__<refId>.<leaf>#<n>`),
+          // so they must be collected too. Their authored id is the BARE leaf id.
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+        // virtual / align expose no delimited leaf to collect.
+      }
+    }
+  };
+  visit(packet.body);
+  return ids;
+}
+
+/**
+ * Map a normalized field id back to its authored PSDL id: strip the
+ * `#a(_b)*` repeat-iteration tag, then drop any `ref` id prefix (`outer.inner.id`
+ * → `id`). Field ids never contain `.` (PSDL grammar), so the last dotted
+ * segment is the authored leaf id.
+ */
+function authoredIdOf(normalizedId: string): string {
+  const noTag = stripRepeatTag(normalizedId);
+  const lastDot = noTag.lastIndexOf(".");
+  return lastDot >= 0 ? noTag.slice(lastDot + 1) : noTag;
+}
+
+/**
+ * Bridge the bare `__bytesDelimLen__<id>` width (written by the WidthPicker /
+ * seedDynamicWidthDefaults / share-URL under the authored id) onto every
+ * per-instance qualified key core's emit() actually reads
+ * (`__bytesDelimLen__<prefix>.<id>#<n>`). For a top-level delimited field the
+ * qualified key equals the bare key, so this is a no-op there — it only matters
+ * for delimited bytes expanded inside a repeat / ref.
+ *
+ * Runs after a first normalize pass so the emitted instance ids (which depend on
+ * the resolved repeat counts) are known. Returns true if it set any new key, in
+ * which case the caller re-normalizes to pick up the widened cells.
+ */
+function qualifyDelimitedWidthKeys(
+  packet: PsdlPacket,
+  env: PacketEnv,
+  norm: Normalized,
+): boolean {
+  const delimitedIds = collectDelimitedFieldIds(packet);
+  if (delimitedIds.size === 0) return false;
+  // A delimited field that is ALSO a switch discriminator overloads `env[id]`
+  // with the discriminator VALUE, so its width lives ONLY on the bare delim key
+  // (seeded by seedDynamicWidthDefaults); never read its value slot as a width.
+  const discriminators = collectSwitchOnRefIds(packet);
+  let changed = false;
+  for (const nf of norm.fields) {
+    const authored = authoredIdOf(nf.id);
+    if (!delimitedIds.has(authored)) continue;
+    const qualifiedKey = bytesDelimLenEnvKey(nf.id);
+    if (env.has(qualifiedKey)) continue; // explicit per-instance width wins.
+    const bareKey = bytesDelimLenEnvKey(authored);
+    const bareValue = discriminators.has(authored)
+      ? env.get(bareKey)
+      : (env.get(bareKey) ?? env.get(authored));
+    if (bareValue === undefined) continue;
+    env.set(qualifiedKey, bareValue);
+    changed = true;
+  }
+  return changed;
 }
 
 /**
