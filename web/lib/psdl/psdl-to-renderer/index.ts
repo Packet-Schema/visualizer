@@ -1620,25 +1620,23 @@ function structuralShape(c: Container): unknown {
  * True when EVERY selectable case arm of a `ref`-discriminated Switch is
  * STRUCTURALLY IDENTICAL (same ordered field shapes, ignoring ids/names) — so
  * choosing any value of the discriminator yields a byte-identical layout and
- * the case picker is inert. Catches both:
- *   - tlsHandshake `handshakeType` (10 arms, each a single
- *     `bytes(ref tlsHandshakeBodyLen)` opaque body), and
- *   - eap `eapCode` (2 arms, each `enum(8)` + `bytes(eapLength - 5)`),
- * which `attachOverrideMetadata` would otherwise stamp as a multi-option
- * `switchCases` dropdown that can never change the diagram. Requires ≥ 2
- * selectable arms: a single-arm switch is a degenerate (non-multi-option)
- * picker left untouched.
+ * the case picker is inert. Catches tlsHandshake `handshakeType` (10 arms, each
+ * a single `bytes(ref tlsHandshakeBodyLen)` opaque body), which
+ * `attachOverrideMetadata` would otherwise stamp as a multi-option `switchCases`
+ * dropdown that can never change the diagram. Requires ≥ 2 selectable arms: a
+ * single-arm switch is a degenerate (non-multi-option) picker left untouched.
  *
  * The default (`_`) arm IS folded into the comparison: while it is not itself a
- * user-selectable value, an unlisted discriminator value (or, on a `ref`
- * discriminator, a listed-but-absent value such as eap's `eapCode` 3 / 4) falls
- * into it, so a structurally-DIFFERENT `_` arm means the diagram visibly
- * gains/loses fields as the discriminator changes — the picker is NOT inert and
- * must be surfaced. We therefore suppress only when the `_` arm's shape ALSO
+ * user-selectable value, an unlisted discriminator value falls into it, so a
+ * structurally-DIFFERENT `_` arm means the diagram visibly gains/loses fields as
+ * the discriminator changes. We suppress here only when the `_` arm's shape ALSO
  * equals the selectable arms' shape. tlsHandshake / snmpV2c stay suppressed
- * (their `_` arm is the same opaque `bytes(ref …)` body); eap is restored (its
- * `_` arm `eapNoBody` is EMPTY, differing from the `enum + bytes` request /
- * response arms, so the whole EAP body appears / disappears with `eapCode`).
+ * (their `_` arm is the same opaque `bytes(ref …)` body).
+ *
+ * NOTE: for a FIELD-LEVEL `switchCases` picker (no synthetic `_`-reaching
+ * option), an all-identical LISTED-arm set is inert even when the `_` arm
+ * differs, because the dropdown can never offer a `_`-reaching value — that
+ * stronger gate is `listedArmsAllIdentical` (eap's `eapCode`), applied below.
  */
 function switchArmsAllIdentical(
   cases: Record<string, { fields: Container[] }>,
@@ -1660,6 +1658,43 @@ function switchArmsAllIdentical(
     if (defaultShape !== shapes[0]) return false;
   }
   return true;
+}
+
+/**
+ * Like `switchArmsAllIdentical`, but considers ONLY the LISTED (user-selectable)
+ * arms — it does NOT fold the `_` default arm into the comparison. Returns true
+ * when every selectable arm is mutually structurally identical, regardless of
+ * whether a present `_` arm differs.
+ *
+ * This is the inert-ness test for a FIELD-LEVEL `switchCases` picker. Unlike a
+ * surfaced ref/peek Switch — for which `defaultArmSyntheticCase` can synthesise
+ * an extra option that reaches a structurally-distinct `_` arm — a field-level
+ * `switchCases` dropdown only ever offers the LISTED case values; it can never
+ * select the `_` arm. So if those listed arms are all identical, the dropdown is
+ * inert (no listed value changes the diagram) even when the `_` arm differs, and
+ * surfacing it is a see-but-cannot-edit / surface-collision control.
+ *
+ * eap's `eapCode` is the sole preset field this catches: its listed arms 1
+ * (Request) / 2 (Response) are byte-identical (`eapType` + `eapTypeData`), while
+ * its `_` arm `eapNoBody` is EMPTY. Codes 3 / 4 (Success / Failure) fall into
+ * `_` and drop the body — but those values are NOT in the switch's case list, so
+ * the switch dropdown (offering only 1 / 2) can never reach them. `eapCode` is
+ * ALSO an `enum(8)` discriminator covering 1–4, and that EnumDropdown — writing
+ * the same `env[eapCode]` key — already drives every meaningful state (including
+ * the empty `_` body at 3 / 4). The switch picker therefore adds nothing but an
+ * inert, raw-labelled control fighting the enum for one key; suppress it.
+ */
+function listedArmsAllIdentical(
+  cases: Record<string, { fields: Container[] }>,
+): boolean {
+  const selectable = Object.entries(cases).filter(
+    ([key]) => firstCaseKeyValue(key) !== null,
+  );
+  if (selectable.length < 2) return false;
+  const shapes = selectable.map(([, struct]) =>
+    JSON.stringify(struct.fields.map(structuralShape)),
+  );
+  return shapes.every((s) => s === shapes[0]);
 }
 
 /**
@@ -4129,9 +4164,19 @@ function attachOverrideMetadata(
         // zero-width gate for repeat-nested discriminators; this covers the
         // top-level / plain-field discriminators it never reaches — e.g.
         // tlsHandshake's 10-arm `handshakeType` (each arm a single
-        // `bytes(ref tlsHandshakeBodyLen)`) and eap's 2-arm `eapCode` (each
-        // arm `enum(8)` + `bytes(eapLength - 5)`).
+        // `bytes(ref tlsHandshakeBodyLen)`).
         if (switchArmsAllIdentical(c.cases)) continue;
+        // A field-level `switchCases` dropdown only ever offers the LISTED case
+        // values — it has no `defaultArmSyntheticCase`, so it can never select
+        // the `_` arm. So even when the `_` arm differs, a picker whose listed
+        // arms are all mutually identical is inert (no offered value changes the
+        // diagram). eap's `eapCode` is the sole such field: listed arms 1 / 2
+        // are byte-identical, the diverging `_` (empty) arm is reached only by
+        // codes 3 / 4 which are absent from the case list, and `eapCode` is ALSO
+        // an enum whose EnumDropdown — on the same env key — already drives every
+        // meaningful state. Surfacing the switch picker would only add an inert,
+        // raw-labelled control colliding with the enum for one key; suppress it.
+        if (listedArmsAllIdentical(c.cases)) continue;
         if (c.on.kind === "ref") {
           const t = findTarget(c.on.field);
           if (t) {

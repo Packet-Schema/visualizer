@@ -9,11 +9,18 @@
 // multi-option case picker whose every selectable arm is structurally identical
 // AND whose `_` default arm (if present) matches that shape.
 //
-// eap's `eapCode` is the COUNTER-example: its selectable arms 1 / 2 are
-// identical (`enum(8)` + `bytes(eapLength - 5)`), but its `_` default arm
-// (`eapNoBody`) is EMPTY, so codes 3 / 4 (Success / Failure, which fall into
-// `_`) drop the entire EAP body. The diagram visibly gains / loses the body as
-// `eapCode` changes, so the picker is NOT inert and MUST be surfaced.
+// eap's `eapCode` is a sharper case. Its listed arms 1 / 2 are identical
+// (`eapType` + `eapTypeData`) and its `_` default arm (`eapNoBody`) is EMPTY, so
+// codes 3 / 4 (Success / Failure) DO drop the body — but those values are NOT in
+// the switch's case list, and a FIELD-LEVEL `switchCases` dropdown has no
+// synthetic `_`-reaching option, so it can only ever offer 1 / 2 (identical) and
+// can never reach the empty arm. The switch picker is therefore inert. `eapCode`
+// is ALSO an `enum(8)` discriminator (1=Request 2=Response 3=Success 4=Failure)
+// whose EnumDropdown writes the SAME `env[eapCode]` key and already drives every
+// meaningful state, including the empty `_` body at 3 / 4. So the switch picker
+// must be SUPPRESSED (no `switchCases`); the enum is the canonical single
+// control. This is `listedArmsAllIdentical`: inert listed arms despite a
+// differing `_` arm.
 
 import { describe, it, expect } from "vitest";
 
@@ -85,16 +92,28 @@ describe("inert multi-option switchCases pickers are suppressed", () => {
     );
   });
 
-  it("DOES stamp switchCases on eap's eapCode (its `_` arm differs)", () => {
-    // The selectable arms 1 / 2 are identical, but the `_` default arm
-    // (eapNoBody) is empty — codes 3 / 4 drop the whole EAP body. The picker is
-    // meaningful and must be surfaced, not suppressed.
+  it("does NOT stamp switchCases on eap's eapCode (listed arms identical; enum is canonical)", () => {
+    // Listed arms 1 / 2 are byte-identical and the field-level dropdown cannot
+    // reach the diverging empty `_` arm (codes 3 / 4 are absent from the case
+    // list), so the switch picker is inert. eapCode is ALSO an enum on the same
+    // env key, which already reaches every meaningful state. The inert,
+    // key-colliding switch picker must be suppressed; only the enum remains.
     const eap = psdlToRenderer(PRESETS.eap!);
     const code = findField(eap.fields, "eapCode");
     expect(code, "eapCode field must exist").toBeTruthy();
-    const values = (code!.switchCases ?? []).map((c) => c.value);
-    expect(values).toContain(1);
-    expect(values).toContain(2);
+    expect(code!.switchCases).toBeUndefined();
+    // The enum (the canonical single control for the key) is still present.
+    expect(code!.enumVariants).toBeTruthy();
+    expect(Object.keys(code!.enumVariants!)).toEqual(
+      expect.arrayContaining(["1", "2", "3", "4"]),
+    );
+    // And it didn't leak into refSwitches / freeRepeats instead.
+    expect((eap.refSwitches ?? []).map((r) => r.refKey)).not.toContain(
+      "eapCode",
+    );
+    expect((eap.freeRepeats ?? []).map((r) => r.countKey)).not.toContain(
+      "eapCode",
+    );
   });
 
   it("the suppressed handshakeType picker is genuinely inert across all arms", () => {
@@ -124,19 +143,41 @@ describe("inert multi-option switchCases pickers are suppressed", () => {
     }
   });
 
-  it("the surfaced eapCode picker meaningfully drives the diagram", () => {
-    // Justify surfacing it: the two selectable arms 1 / 2 share a layout, but a
-    // value that falls into the empty `_` default arm (3 = Success / 4 =
-    // Failure) drops the entire EAP body, so the diagram shrinks. The picker is
-    // NOT inert — driving eapCode changes the cell geometry.
+  it("the suppressed eapCode switch picker is genuinely inert across its listed arms", () => {
+    // Justify the suppression: the two LISTED arms 1 / 2 — the only values the
+    // dropdown could ever offer — yield an identical layout, so the switch
+    // picker could never change the diagram. (The diagram-changing distinction
+    // lives at codes 3 / 4, which the switch list omits; the enum reaches them.)
+    const src = PRESETS.eap!;
+    const request = appGeometry(src, { eapCode: 1, eapLength: 16 });
+    const response = appGeometry(src, { eapCode: 2, eapLength: 16 });
+    expect(JSON.stringify(response)).toBe(JSON.stringify(request));
+  });
+
+  it("the eapCode enum (the surviving control) still drives the diagram", () => {
+    // The enum reaches the empty `_` arm the switch picker could not: code 1
+    // shows the EAP body (eapType present), code 3 (Success → `_`) drops it.
     const src = PRESETS.eap!;
     const withBody = appGeometry(src, { eapCode: 1, eapLength: 16 });
-    const responseBody = appGeometry(src, { eapCode: 2, eapLength: 16 });
     const noBody = appGeometry(src, { eapCode: 3, eapLength: 16 });
-    // Request and Response arms are identical shape.
-    expect(JSON.stringify(responseBody)).toBe(JSON.stringify(withBody));
-    // The `_` (Success / Failure) arm yields a strictly smaller layout.
+    // Driving the single enum control adds / removes the body — a live diagram.
     expect(noBody.length).toBeLessThan(withBody.length);
+    // Concretely: eapType is present at 1, absent at 3.
+    const ids = (overrides: Record<string, number>): string[] => {
+      const mirror = psdlToRenderer(src);
+      const env = new Map<string, number>(Object.entries(overrides));
+      const state = initialState(mirror);
+      for (const [k, v] of Object.entries(state))
+        if (!env.has(k)) env.set(k, Number(v));
+      for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+      for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+      seedDynamicWidthDefaults(src, env);
+      return resolveLayout(src, { env, viewMode: "semantic" }).cells.map(
+        (c) => c.field.id,
+      );
+    };
+    expect(ids({ eapCode: 1, eapLength: 16 })).toContain("eapType");
+    expect(ids({ eapCode: 3, eapLength: 16 })).not.toContain("eapType");
   });
 
   it("keeps a multi-option picker whose arms differ (tftp opcode)", () => {
