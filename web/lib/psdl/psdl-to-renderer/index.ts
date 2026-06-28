@@ -53,14 +53,20 @@ import type {
 function flattenForMirror(
   containers: Container[],
   defs?: Record<string, NamedStruct>,
+  seen: Set<string> = new Set(),
 ): Container[] {
   const out: Container[] = [];
   for (const c of containers) {
     if (!isField(c) && c.kind === "bounded") {
-      out.push(...flattenForMirror(c.fields, defs));
+      out.push(...flattenForMirror(c.fields, defs, seen));
     } else if (!isField(c) && c.kind === "ref") {
+      if (seen.has(c.ref)) continue;
       const def = defs?.[c.ref];
-      if (def) out.push(...flattenForMirror(def.fields, defs));
+      if (def) {
+        seen.add(c.ref);
+        out.push(...flattenForMirror(def.fields, defs, seen));
+        seen.delete(c.ref);
+      }
     } else if (!isField(c) && (c.kind === "align" || c.kind === "virtual")) {
       // no renderer-mirror representation
     } else {
@@ -68,6 +74,43 @@ function flattenForMirror(
     }
   }
   return out;
+}
+
+/**
+ * Path-guarded {@link flattenForMirror} for the recursive `visit`/`walk`
+ * collectors that flatten a scope and then descend INTO the flattened output
+ * (into an `optional` container, switch case, repeat element, …). Those
+ * descents re-flatten — and thus re-resolve — a `ref` on every recursion, so a
+ * self/mutually recursive `defs` reference (DNS name-compression, ASN.1
+ * nesting, LISP — the standard `optional{ref self}` idiom) recurses forever
+ * (RangeError). `refPath` records the ref-def names resolved on the CURRENT
+ * descent path; a `ref` already on it is dropped before flattening, and the
+ * names this call newly resolved are returned so the caller releases them once
+ * its recursion unwinds. Mirrors `mergeRefDef`'s `outDefs` cycle guard. A def
+ * referenced twice as SIBLINGS (a legitimate diamond) is unaffected — it is
+ * released between the two visits, never simultaneously on the path.
+ */
+function flattenForMirrorGuarded(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  refPath: Set<string>,
+): { items: Container[]; release: () => void } {
+  const added: string[] = [];
+  const filtered = containers.filter((c) => {
+    if (isField(c) || c.kind !== "ref") return true;
+    if (refPath.has(c.ref)) return false;
+    if (defs?.[c.ref]) {
+      refPath.add(c.ref);
+      added.push(c.ref);
+    }
+    return true;
+  });
+  return {
+    items: flattenForMirror(filtered, defs),
+    release: () => {
+      for (const r of added) refPath.delete(r);
+    },
+  };
 }
 
 import { isLikelyChainRepeat, repeatToChainField } from "./chain";
@@ -173,40 +216,46 @@ function collectBoundedControllers(
   containers: Container[],
   defs: Record<string, NamedStruct> | undefined,
   acc: Set<string>,
+  seen: Set<string> = new Set(),
 ): void {
   for (const c of containers) {
     if (isField(c)) continue;
     if (c.kind === "bounded") {
       const controller = singleRefController(c.bytes);
       if (controller) acc.add(controller);
-      collectBoundedControllers(c.fields, defs, acc);
+      collectBoundedControllers(c.fields, defs, acc, seen);
       continue;
     }
     if (c.kind === "ref") {
+      if (seen.has(c.ref)) continue;
       const def = defs?.[c.ref];
-      if (def) collectBoundedControllers(def.fields, defs, acc);
+      if (def) {
+        seen.add(c.ref);
+        collectBoundedControllers(def.fields, defs, acc, seen);
+        seen.delete(c.ref);
+      }
       continue;
     }
     if (c.kind === "group") {
-      collectBoundedControllers(c.children, defs, acc);
+      collectBoundedControllers(c.children, defs, acc, seen);
       continue;
     }
     if (c.kind === "optional") {
-      collectBoundedControllers([c.container], defs, acc);
+      collectBoundedControllers([c.container], defs, acc, seen);
       continue;
     }
     if (c.kind === "repeat") {
-      collectBoundedControllers(c.element.fields, defs, acc);
+      collectBoundedControllers(c.element.fields, defs, acc, seen);
       continue;
     }
     if (c.kind === "switch") {
       for (const struct of Object.values(c.cases)) {
-        collectBoundedControllers(struct.fields, defs, acc);
+        collectBoundedControllers(struct.fields, defs, acc, seen);
       }
       continue;
     }
     if (c.kind === "encrypted") {
-      collectBoundedControllers(c.plaintext.fields, defs, acc);
+      collectBoundedControllers(c.plaintext.fields, defs, acc, seen);
       continue;
     }
   }
@@ -243,40 +292,46 @@ function collectTlvOwnedBoundedControllers(
   containers: Container[],
   defs: Record<string, NamedStruct> | undefined,
   acc: Set<string>,
+  seen: Set<string> = new Set(),
 ): void {
   for (const c of containers) {
     if (isField(c)) continue;
     if (c.kind === "bounded") {
       const controller = singleRefController(c.bytes);
       if (controller && isTlvOwnedBounded(c, defs)) acc.add(controller);
-      collectTlvOwnedBoundedControllers(c.fields, defs, acc);
+      collectTlvOwnedBoundedControllers(c.fields, defs, acc, seen);
       continue;
     }
     if (c.kind === "ref") {
+      if (seen.has(c.ref)) continue;
       const def = defs?.[c.ref];
-      if (def) collectTlvOwnedBoundedControllers(def.fields, defs, acc);
+      if (def) {
+        seen.add(c.ref);
+        collectTlvOwnedBoundedControllers(def.fields, defs, acc, seen);
+        seen.delete(c.ref);
+      }
       continue;
     }
     if (c.kind === "group") {
-      collectTlvOwnedBoundedControllers(c.children, defs, acc);
+      collectTlvOwnedBoundedControllers(c.children, defs, acc, seen);
       continue;
     }
     if (c.kind === "optional") {
-      collectTlvOwnedBoundedControllers([c.container], defs, acc);
+      collectTlvOwnedBoundedControllers([c.container], defs, acc, seen);
       continue;
     }
     if (c.kind === "repeat") {
-      collectTlvOwnedBoundedControllers(c.element.fields, defs, acc);
+      collectTlvOwnedBoundedControllers(c.element.fields, defs, acc, seen);
       continue;
     }
     if (c.kind === "switch") {
       for (const struct of Object.values(c.cases)) {
-        collectTlvOwnedBoundedControllers(struct.fields, defs, acc);
+        collectTlvOwnedBoundedControllers(struct.fields, defs, acc, seen);
       }
       continue;
     }
     if (c.kind === "encrypted") {
-      collectTlvOwnedBoundedControllers(c.plaintext.fields, defs, acc);
+      collectTlvOwnedBoundedControllers(c.plaintext.fields, defs, acc, seen);
       continue;
     }
   }
@@ -293,6 +348,7 @@ function collectBytesSizers(
   containers: Container[],
   defs: Record<string, NamedStruct> | undefined,
   acc: Set<string>,
+  seen: Set<string> = new Set(),
 ): void {
   for (const c of containers) {
     if (isField(c)) {
@@ -304,28 +360,33 @@ function collectBytesSizers(
     }
     switch (c.kind) {
       case "group":
-        collectBytesSizers(c.children, defs, acc);
+        collectBytesSizers(c.children, defs, acc, seen);
         break;
       case "repeat":
-        collectBytesSizers(c.element.fields, defs, acc);
+        collectBytesSizers(c.element.fields, defs, acc, seen);
         break;
       case "optional":
-        collectBytesSizers([c.container], defs, acc);
+        collectBytesSizers([c.container], defs, acc, seen);
         break;
       case "bounded":
-        collectBytesSizers(c.fields, defs, acc);
+        collectBytesSizers(c.fields, defs, acc, seen);
         break;
       case "encrypted":
-        collectBytesSizers(c.plaintext.fields, defs, acc);
+        collectBytesSizers(c.plaintext.fields, defs, acc, seen);
         break;
       case "switch":
         for (const struct of Object.values(c.cases)) {
-          collectBytesSizers(struct.fields, defs, acc);
+          collectBytesSizers(struct.fields, defs, acc, seen);
         }
         break;
       case "ref": {
+        if (seen.has(c.ref)) break;
         const def = defs?.[c.ref];
-        if (def) collectBytesSizers(def.fields, defs, acc);
+        if (def) {
+          seen.add(c.ref);
+          collectBytesSizers(def.fields, defs, acc, seen);
+          seen.delete(c.ref);
+        }
         break;
       }
       default:
@@ -360,8 +421,15 @@ function collectOptionalLengthGates(
   collectBytesSizers(body, defs, sizers);
   const out: RendererField[] = [];
   const seen = new Set<string>();
+  // Path-guard against recursive `defs` refs (see flattenForMirrorGuarded).
+  const refPath = new Set<string>();
   const walk = (containers: Container[]): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (isField(c)) continue;
       if (c.kind === "optional") {
         const inner = c.container;
@@ -406,6 +474,7 @@ function collectOptionalLengthGates(
         continue;
       }
     }
+    release();
   };
   walk(body);
   return out;
@@ -467,6 +536,10 @@ function collectSiblingLengthControllers(
   // is in every option arm) but only sizes a value in some switch arms (24/`_`)
   // would otherwise read as a live-but-inert slider in the fixed-width arms.
   sizesByLenId: Map<string, Set<string>> = new Map(),
+  // Visited ref-def names on the current descent path; a self/mutually
+  // recursive `defs` reference (DNS name-compression idiom, ASN.1 nesting)
+  // would otherwise recurse forever (RangeError).
+  seen: Set<string> = new Set(),
 ): void {
   if (!ownedByRecordEditor && !insideBounded) {
     // Within this sibling list, gather the ids referenced as a byte sizer by a
@@ -622,10 +695,13 @@ function collectSiblingLengthControllers(
         ownedByRecordEditor,
         true,
         sizesByLenId,
+        seen,
       );
     } else if (c.kind === "ref") {
+      if (seen.has(c.ref)) continue;
       const def = defs?.[c.ref];
-      if (def)
+      if (def) {
+        seen.add(c.ref);
         collectSiblingLengthControllers(
           def.fields,
           defs,
@@ -633,7 +709,10 @@ function collectSiblingLengthControllers(
           ownedByRecordEditor,
           insideBounded,
           sizesByLenId,
+          seen,
         );
+        seen.delete(c.ref);
+      }
     } else if (c.kind === "group") {
       collectSiblingLengthControllers(
         c.children,
@@ -642,6 +721,7 @@ function collectSiblingLengthControllers(
         ownedByRecordEditor,
         insideBounded,
         sizesByLenId,
+        seen,
       );
     } else if (c.kind === "optional") {
       collectSiblingLengthControllers(
@@ -651,6 +731,7 @@ function collectSiblingLengthControllers(
         ownedByRecordEditor,
         insideBounded,
         sizesByLenId,
+        seen,
       );
     } else if (c.kind === "repeat") {
       const ownedHere =
@@ -662,6 +743,7 @@ function collectSiblingLengthControllers(
         ownedHere,
         insideBounded,
         sizesByLenId,
+        seen,
       );
     } else if (c.kind === "switch") {
       for (const struct of Object.values(c.cases)) {
@@ -672,6 +754,7 @@ function collectSiblingLengthControllers(
           ownedByRecordEditor,
           insideBounded,
           sizesByLenId,
+          seen,
         );
       }
     } else if (c.kind === "encrypted") {
@@ -682,6 +765,7 @@ function collectSiblingLengthControllers(
         ownedByRecordEditor,
         insideBounded,
         sizesByLenId,
+        seen,
       );
     }
   }
@@ -737,6 +821,7 @@ function collectPlainRepeatLengthControllers(
     descendSwitch: boolean,
   ): void => {
     const lengthFields = new Map<string, PsdlField>();
+    const lengthFieldsSeen = new Set<string>();
     const collectLengthFields = (containers: Container[]): void => {
       for (const c of containers) {
         if (isField(c)) {
@@ -767,8 +852,13 @@ function collectPlainRepeatLengthControllers(
         else if (c.kind === "encrypted")
           collectLengthFields(c.plaintext.fields);
         else if (c.kind === "ref") {
+          if (lengthFieldsSeen.has(c.ref)) continue;
           const def = defs?.[c.ref];
-          if (def) collectLengthFields(def.fields);
+          if (def) {
+            lengthFieldsSeen.add(c.ref);
+            collectLengthFields(def.fields);
+            lengthFieldsSeen.delete(c.ref);
+          }
         } else if (c.kind === "switch" && descendSwitch) {
           // Switch-nested TLV repeat only: descend the inner peek-Switch arms to
           // reach the per-option `ndpOptLength`. Stays one Switch deep — does NOT
@@ -791,6 +881,7 @@ function collectPlainRepeatLengthControllers(
       // bare-ref sizers and would not descend a Switch case the same way, so use
       // `exprRefs` over every non-delimited `bytes` type reachable through the
       // single inner Switch to nominate `ndpOptLength`.
+      const gatherSeen = new Set<string>();
       const gather = (containers: Container[]): void => {
         for (const c of containers) {
           if (isField(c)) {
@@ -807,8 +898,13 @@ function collectPlainRepeatLengthControllers(
           else if (c.kind === "optional") gather([c.container]);
           else if (c.kind === "encrypted") gather(c.plaintext.fields);
           else if (c.kind === "ref") {
+            if (gatherSeen.has(c.ref)) continue;
             const def = defs?.[c.ref];
-            if (def) gather(def.fields);
+            if (def) {
+              gatherSeen.add(c.ref);
+              gather(def.fields);
+              gatherSeen.delete(c.ref);
+            }
           }
         }
       };
@@ -825,6 +921,7 @@ function collectPlainRepeatLengthControllers(
       // virtual into that virtual's expr refs — transitively, in case a virtual
       // references another — so the real length cell (`optLength`) is nominated.
       const virtualRefs = new Map<string, string[]>();
+      const collectVirtualsSeen = new Set<string>();
       const collectVirtuals = (containers: Container[]): void => {
         for (const c of containers) {
           if (isField(c)) continue;
@@ -838,8 +935,13 @@ function collectPlainRepeatLengthControllers(
             for (const struct of Object.values(c.cases))
               collectVirtuals(struct.fields);
           } else if (c.kind === "ref") {
+            if (collectVirtualsSeen.has(c.ref)) continue;
             const def = defs?.[c.ref];
-            if (def) collectVirtuals(def.fields);
+            if (def) {
+              collectVirtualsSeen.add(c.ref);
+              collectVirtuals(def.fields);
+              collectVirtualsSeen.delete(c.ref);
+            }
           }
           // A nested Repeat is a deeper length scope — do not descend.
         }
@@ -888,6 +990,7 @@ function collectPlainRepeatLengthControllers(
   // any bounded budget qualify (dnsResponse `dnsAnswers`, pimHelloOptions).
   // Recurse manually (NOT via flattenForMirror, which erases bounded
   // boundaries) so the `insideBounded` flag is preserved.
+  const refSeen = new Set<string>();
   const visit = (
     containers: Container[],
     insideBounded: boolean,
@@ -964,8 +1067,10 @@ function collectPlainRepeatLengthControllers(
         continue;
       }
       if (c.kind === "ref") {
+        if (refSeen.has(c.ref)) continue;
         const def = defs?.[c.ref];
-        if (def)
+        if (def) {
+          refSeen.add(c.ref);
           visit(
             def.fields,
             insideBounded,
@@ -973,6 +1078,8 @@ function collectPlainRepeatLengthControllers(
             insideOptional,
             insideRepeat,
           );
+          refSeen.delete(c.ref);
+        }
         continue;
       }
     }
@@ -989,6 +1096,7 @@ function collectAllFieldsById(
   containers: Container[],
   defs: Record<string, NamedStruct> | undefined,
   acc: Map<string, PsdlField>,
+  seen: Set<string> = new Set(),
 ): void {
   for (const c of containers) {
     if (isField(c)) {
@@ -997,27 +1105,32 @@ function collectAllFieldsById(
     }
     switch (c.kind) {
       case "group":
-        collectAllFieldsById(c.children, defs, acc);
+        collectAllFieldsById(c.children, defs, acc, seen);
         break;
       case "bounded":
-        collectAllFieldsById(c.fields, defs, acc);
+        collectAllFieldsById(c.fields, defs, acc, seen);
         break;
       case "optional":
-        collectAllFieldsById([c.container], defs, acc);
+        collectAllFieldsById([c.container], defs, acc, seen);
         break;
       case "repeat":
-        collectAllFieldsById(c.element.fields, defs, acc);
+        collectAllFieldsById(c.element.fields, defs, acc, seen);
         break;
       case "encrypted":
-        collectAllFieldsById(c.plaintext.fields, defs, acc);
+        collectAllFieldsById(c.plaintext.fields, defs, acc, seen);
         break;
       case "switch":
         for (const s of Object.values(c.cases))
-          collectAllFieldsById(s.fields, defs, acc);
+          collectAllFieldsById(s.fields, defs, acc, seen);
         break;
       case "ref": {
+        if (seen.has(c.ref)) break;
         const def = defs?.[c.ref];
-        if (def) collectAllFieldsById(def.fields, defs, acc);
+        if (def) {
+          seen.add(c.ref);
+          collectAllFieldsById(def.fields, defs, acc, seen);
+          seen.delete(c.ref);
+        }
         break;
       }
       default:
@@ -1075,6 +1188,7 @@ function collectFlatTlvInnerLengthControllers(
   // idioms) — their innerScopeSeeds seed an inner budget, NOT a flat value
   // length, so they are excluded.
   const nestedBoundedRepeatIds = new Set<string>();
+  const findNestedBoundedRefSeen = new Set<string>();
   const findNestedBounded = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -1090,8 +1204,13 @@ function collectFlatTlvInnerLengthControllers(
       else if (c.kind === "switch") {
         for (const s of Object.values(c.cases)) findNestedBounded(s.fields);
       } else if (c.kind === "ref") {
+        if (findNestedBoundedRefSeen.has(c.ref)) continue;
         const def = defs?.[c.ref];
-        if (def) findNestedBounded(def.fields);
+        if (def) {
+          findNestedBoundedRefSeen.add(c.ref);
+          findNestedBounded(def.fields);
+          findNestedBoundedRefSeen.delete(c.ref);
+        }
       }
     }
   };
@@ -1179,6 +1298,7 @@ function collectGroupNestedLengthControllers(
   // length/escape selector is excluded below.
   const sizers = new Set<string>();
   const switchOn = new Set<string>();
+  const gatherSizersRefSeen = new Set<string>();
   const gatherSizers = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) {
@@ -1210,8 +1330,13 @@ function collectGroupNestedLengthControllers(
             gatherSizers(struct.fields);
           break;
         case "ref": {
+          if (gatherSizersRefSeen.has(c.ref)) break;
           const def = defs?.[c.ref];
-          if (def) gatherSizers(def.fields);
+          if (def) {
+            gatherSizersRefSeen.add(c.ref);
+            gatherSizers(def.fields);
+            gatherSizersRefSeen.delete(c.ref);
+          }
           break;
         }
         default:
@@ -1226,6 +1351,7 @@ function collectGroupNestedLengthControllers(
   // exactly for fields that collapse to a subfield. Other nesting kinds are
   // length scopes owned by a different controller path, so we do not descend
   // into them here.
+  const walkRefSeen = new Set<string>();
   const walk = (containers: Container[], insideGroup: boolean): void => {
     for (const c of containers) {
       if (isField(c)) {
@@ -1260,8 +1386,13 @@ function collectGroupNestedLengthControllers(
       if (c.kind === "group") {
         walk(c.children, true);
       } else if (c.kind === "ref") {
+        if (walkRefSeen.has(c.ref)) continue;
         const def = defs?.[c.ref];
-        if (def) walk(def.fields, insideGroup);
+        if (def) {
+          walkRefSeen.add(c.ref);
+          walk(def.fields, insideGroup);
+          walkRefSeen.delete(c.ref);
+        }
       }
       // Repeat / Switch / Optional / Bounded / Encrypted are deliberately NOT
       // descended: their internal length fields belong to other paths.
@@ -1284,6 +1415,7 @@ function collectRepeatCountRefs(
   containers: Container[],
   defs: Record<string, NamedStruct> | undefined,
   acc: Set<string>,
+  seen: Set<string> = new Set(),
 ): void {
   for (const c of containers) {
     if (isField(c)) continue;
@@ -1295,28 +1427,33 @@ function collectRepeatCountRefs(
             typeof count === "object" && "until" in count ? count.until : count;
           for (const r of exprRefs(expr)) acc.add(r);
         }
-        collectRepeatCountRefs(c.element.fields, defs, acc);
+        collectRepeatCountRefs(c.element.fields, defs, acc, seen);
         break;
       }
       case "group":
-        collectRepeatCountRefs(c.children, defs, acc);
+        collectRepeatCountRefs(c.children, defs, acc, seen);
         break;
       case "optional":
-        collectRepeatCountRefs([c.container], defs, acc);
+        collectRepeatCountRefs([c.container], defs, acc, seen);
         break;
       case "bounded":
-        collectRepeatCountRefs(c.fields, defs, acc);
+        collectRepeatCountRefs(c.fields, defs, acc, seen);
         break;
       case "encrypted":
-        collectRepeatCountRefs(c.plaintext.fields, defs, acc);
+        collectRepeatCountRefs(c.plaintext.fields, defs, acc, seen);
         break;
       case "switch":
         for (const struct of Object.values(c.cases))
-          collectRepeatCountRefs(struct.fields, defs, acc);
+          collectRepeatCountRefs(struct.fields, defs, acc, seen);
         break;
       case "ref": {
+        if (seen.has(c.ref)) break;
         const def = defs?.[c.ref];
-        if (def) collectRepeatCountRefs(def.fields, defs, acc);
+        if (def) {
+          seen.add(c.ref);
+          collectRepeatCountRefs(def.fields, defs, acc, seen);
+          seen.delete(c.ref);
+        }
         break;
       }
       default:
@@ -1363,6 +1500,7 @@ function collectOptionalGateLengthControllers(
   const countRefs = new Set<string>();
   collectRepeatCountRefs(body, defs, countRefs);
   const stamped: string[] = [];
+  const walkRefSeen = new Set<string>();
   const walk = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -1400,8 +1538,13 @@ function collectOptionalGateLengthControllers(
       } else if (c.kind === "switch") {
         for (const struct of Object.values(c.cases)) walk(struct.fields);
       } else if (c.kind === "ref") {
+        if (walkRefSeen.has(c.ref)) continue;
         const def = defs?.[c.ref];
-        if (def) walk(def.fields);
+        if (def) {
+          walkRefSeen.add(c.ref);
+          walk(def.fields);
+          walkRefSeen.delete(c.ref);
+        }
       }
     }
   };
@@ -2702,10 +2845,16 @@ function collectSwitchCaseFieldIds(
   defs: Record<string, NamedStruct> | undefined,
 ): Set<string> {
   const acc = new Set<string>();
+  const refPath = new Set<string>();
   // Walk normally; once we step through a switch case, everything below is
   // "inside a case" — collect every field id seen there.
   const visit = (containers: Container[], insideCase: boolean): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (isField(c)) {
         if (insideCase) acc.add(c.id);
         continue;
@@ -2731,6 +2880,7 @@ function collectSwitchCaseFieldIds(
         continue;
       }
     }
+    release();
   };
   visit(body, false);
   return acc;
@@ -2758,12 +2908,18 @@ function collectGroupNestedFieldIds(
   // `insideGroup` flips true once we step into a group; `blocked` flips true
   // once we enter a repeat or a switch case, which permanently disqualifies
   // everything below (those scopes have their own override surfaces).
+  const refPath = new Set<string>();
   const visit = (
     containers: Container[],
     insideGroup: boolean,
     blocked: boolean,
   ): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (isField(c)) {
         if (insideGroup && !blocked) acc.add(c.id);
         continue;
@@ -2790,6 +2946,7 @@ function collectGroupNestedFieldIds(
         continue;
       }
     }
+    release();
   };
   visit(body, false, false);
   return acc;
@@ -2833,12 +2990,18 @@ function collectEncryptedNestedFieldIds(
   // plaintext; `blocked` flips true once we enter a repeat, a switch case, or an
   // OPAQUE (`wireBits`-bounded) encrypted node, which permanently disqualifies
   // everything below (those scopes own their surfaces or render as ciphertext).
+  const refPath = new Set<string>();
   const visit = (
     containers: Container[],
     insideEncrypted: boolean,
     blocked: boolean,
   ): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (isField(c)) {
         if (insideEncrypted && !blocked) acc.add(c.id);
         continue;
@@ -2869,6 +3032,7 @@ function collectEncryptedNestedFieldIds(
         continue;
       }
     }
+    release();
   };
   visit(body, false, false);
   return acc;
@@ -2897,8 +3061,14 @@ function collectTopLevelDynamicWidthFieldIds(
   // or an encrypted plaintext — those scopes already own their override surfaces
   // (count steppers / case pickers / chain editors / the nested-field collectors
   // above), so a dynamic-width field there is NOT a bare top-level discriminator.
+  const refPath = new Set<string>();
   const visit = (containers: Container[], blocked: boolean): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (isField(c)) {
         if (
           !blocked &&
@@ -2931,6 +3101,7 @@ function collectTopLevelDynamicWidthFieldIds(
         continue;
       }
     }
+    release();
   };
   visit(body, false);
   return acc;
@@ -3057,6 +3228,7 @@ function collectRefSwitches(
   // cases so `initialState`'s `cases[0]` seed agrees with the author's default.
   const fieldDefaults = collectFieldDefaults(body);
   const seen = new Set<string>();
+  const refPath = new Set<string>();
   const visit = (
     containers: PsdlPacket["body"],
     // The nearest enclosing PLAIN (non-TLV/non-chain) repeat, or null. We track
@@ -3086,7 +3258,12 @@ function collectRefSwitches(
     // SEEDING; OverridePanel keeps the per-picker `fieldRendered` live gate.
     enclosingCaseGate: { key: string; value: number } | null,
   ): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       // A `bytes(lookup(ref X, table))` value whose discriminator X is a plain
       // INT (not an enum / not a Switch `on`) gets no cell-level enum widget and
       // no Switch picker, so the user can SEE X and the address region but cannot
@@ -3522,6 +3699,7 @@ function collectRefSwitches(
         continue;
       }
     }
+    release();
   };
   visit(body, null, false, null);
   return out;
@@ -3670,6 +3848,9 @@ function collectFreeRepeats(
   // Repeat ids whose count IS user-drivable via a surfaced control (populated
   // alongside `out` / `boundedOut` below).
   const instantiableRepeatIds = new Set<string>();
+  // Visited ref-def names on the current descent path; guards a self/mutually
+  // recursive `defs` reference from recursing forever.
+  const visitRefSeen = new Set<string>();
   // Enum variant labels + field display names per discriminator — used to
   // qualify a switch-case-nested freeRepeat's name with its enclosing case so
   // colliding labels (icmpv6Ndp's five `Options`, msdp's two `SA Entries`) stay
@@ -3821,8 +4002,10 @@ function collectFreeRepeats(
         // through unchanged. Without this an arbitrary user PSDL whose def
         // contains a repeat-of-switch renders records but exposes ZERO override
         // surface (see-but-cannot-edit).
+        if (visitRefSeen.has(c.ref)) continue;
         const def = defs?.[c.ref];
-        if (def)
+        if (def) {
+          visitRefSeen.add(c.ref);
           visit(
             def.fields,
             bounded,
@@ -3835,6 +4018,8 @@ function collectFreeRepeats(
             insideBounded,
             caseNestedBudget,
           );
+          visitRefSeen.delete(c.ref);
+        }
         continue;
       }
       if (c.kind === "repeat") {
@@ -5467,6 +5652,7 @@ function collectPeekSwitches(
     string,
     { id: string; name: string; cases: { value: number; label: string }[] }
   >();
+  const refPath = new Set<string>();
   const visit = (
     containers: PsdlPacket["body"],
     insideSwitch: boolean,
@@ -5476,7 +5662,12 @@ function collectPeekSwitches(
     // count stepper comes from collectFreeRepeats).
     insideOptional: boolean,
   ): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (c.kind === "switch") {
         // Suppress an inert peek picker whose every selectable arm renders to
         // the same geometry: choosing any case can't change the diagram, so the
@@ -5632,6 +5823,7 @@ function collectPeekSwitches(
         continue;
       }
     }
+    release();
   };
   visit(body, false, false, false);
   // Surface each peek-gated Optional key as a synthetic picker, unless a real
@@ -5849,6 +6041,7 @@ function attachOverrideMetadata(
   };
   const virtualRefs = new Map<string, string[]>();
   const virtualIds = new Set<string>();
+  const collectVirtualsRefSeen = new Set<string>();
   const collectVirtuals = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -5864,8 +6057,13 @@ function attachOverrideMetadata(
         for (const struct of Object.values(c.cases))
           collectVirtuals(struct.fields);
       } else if (c.kind === "ref") {
+        if (collectVirtualsRefSeen.has(c.ref)) continue;
         const def = defs?.[c.ref];
-        if (def) collectVirtuals(def.fields);
+        if (def) {
+          collectVirtualsRefSeen.add(c.ref);
+          collectVirtuals(def.fields);
+          collectVirtualsRefSeen.delete(c.ref);
+        }
       }
     }
   };
@@ -5898,8 +6096,14 @@ function attachOverrideMetadata(
     return out;
   };
 
+  const refPath = new Set<string>();
   const visit = (containers: PsdlPacket["body"]): void => {
-    for (const c of flattenForMirror(containers, defs)) {
+    const { items, release } = flattenForMirrorGuarded(
+      containers,
+      defs,
+      refPath,
+    );
+    for (const c of items) {
       if (c.kind === "switch") {
         const cases: { value: number; label: string }[] = [];
         for (const [key, struct] of Object.entries(c.cases)) {
@@ -6039,6 +6243,7 @@ function attachOverrideMetadata(
         continue;
       }
     }
+    release();
   };
 
   visit(body);
