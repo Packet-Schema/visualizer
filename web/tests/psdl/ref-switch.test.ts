@@ -135,12 +135,14 @@ describe("collectRefSwitches", () => {
     expect(refKeys).toContain("tlvIdLen");
     expect(refKeys).toContain("tlvTypeOfLength");
 
-    // A TRUE sub-byte length-extension encoder (CoAP's `optDelta`/`optLength`
-    // 13/14 sentinels, whose arms only add a length byte) must STAY suppressed —
-    // driving it would desync the encoded option length.
+    // A TRUE sub-byte length-extension encoder whose nibble SIZES a value scope
+    // (CoAP's `optLength` 13/14 sentinels re-encode the option-value byte count)
+    // must STAY suppressed — driving it would desync the encoded option length
+    // (`optLength` is reachable instead via its length controller). `optDelta`,
+    // the sibling nibble whose 13/14 sentinels only toggle a distinct-width Delta
+    // extension cell and size NOTHING, is surfaced (coap-opt-delta-extension.test.ts).
     const coap = psdlToRenderer(PRESETS.coap!);
     const coapKeys = (coap.refSwitches ?? []).map((r) => r.refKey);
-    expect(coapKeys).not.toContain("optDelta");
     expect(coapKeys).not.toContain("optLength");
     // BGP's extended-length flag (`attrExtLen`) is likewise a length encoder.
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
@@ -226,17 +228,22 @@ describe("collectRefSwitches", () => {
   });
 
   it("excludes length/format-encoder switches, keeping only record-type codes", () => {
-    // review HIGH: driving a length encoder (BGP Extended-Length flag,
-    // CoAP option nibbles) over-consumes a scope / explodes the render instead
-    // of choosing a record variant — they must NOT be surfaced.
+    // review HIGH: driving a length encoder that re-encodes a BOUNDED value-scope
+    // length (BGP Extended-Length flag) over-consumes a scope / explodes the
+    // render instead of choosing a record variant — it must NOT be surfaced.
     const bgp = psdlToRenderer(PRESETS.bgpUpdateFull!);
     const bgpKeys = (bgp.refSwitches ?? []).map((r) => r.refKey);
     expect(bgpKeys).not.toContain("attrExtLen"); // 1-bit flag — dropped
 
-    // CoAP's optDelta/optLength are 4-bit nibbles whose cases add
-    // length-extension fields — both dropped (no record-variant switch left).
+    // CoAP's optDelta/optLength are 4-bit extended-encoding nibbles. `optLength`
+    // sizes `optValue` and is editable via its surfaced length controller, so it
+    // is NOT also offered as a refSwitch (a redundant, length-desyncing control).
+    // `optDelta` sizes nothing — its nibble only toggles a distinct-width Delta
+    // extension cell (13 → 8-bit, 14 → 16-bit) — so it IS surfaced (see the
+    // dedicated coap-opt-delta-extension.test.ts).
     const coap = psdlToRenderer(PRESETS.coap!);
-    expect(coap.refSwitches ?? []).toHaveLength(0);
+    const coapKeys = (coap.refSwitches ?? []).map((r) => r.refKey);
+    expect(coapKeys).not.toContain("optLength");
 
     // dnsResponse's dnsRrType is an 8-bit record-type code whose dnsAnswers
     // repeat IS instantiable (count: ref(dnsAnCount)) — it stays surfaced.
@@ -280,12 +287,13 @@ describe("collectRefSwitches", () => {
       expect.arrayContaining([126, 127]),
     );
 
-    // The relaxation is gated on `!insideRepeat`: CoAP's repeat-nested
-    // optDelta/optLength length-extension encoders (same arm shape) MUST stay
-    // suppressed — driving them over-consumes the TLV option scope.
+    // This top-level (`!insideRepeat`) relaxation does not surface CoAP's
+    // repeat-nested `optLength` — it sizes `optValue` (a length controller already
+    // covers it), so a refSwitch would be a redundant, length-desyncing control.
+    // (`optDelta`, which sizes nothing, IS surfaced by a separate, narrower
+    // repeat-nested relaxation — see coap-opt-delta-extension.test.ts.)
     const coap = psdlToRenderer(PRESETS.coap!);
     const coapKeys = (coap.refSwitches ?? []).map((r) => r.refKey);
-    expect(coapKeys).not.toContain("optDelta");
     expect(coapKeys).not.toContain("optLength");
   });
 

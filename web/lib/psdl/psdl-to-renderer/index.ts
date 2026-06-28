@@ -3522,8 +3522,48 @@ function collectRefSwitches(
             !enclosingPlainRepeat &&
             !insideRepeat &&
             lengthExtensionArmsHaveDistinctWidths(c.cases, c.cases["_"]);
+          // EXCEPTION #3 (coap `byOptDelta`): a REPEAT-NESTED extended-nibble
+          // switch whose discriminator is a 4-bit nibble (`optDelta`) selecting a
+          // DISTINCT-width extension cell per arm (13 → 8-bit `optDeltaExt1`,
+          // 14 → 16-bit `optDeltaExt2`) — the same extended-nibble class as the
+          // now-surfaced top-level `coapSigLen`/`payloadLength7`, but living inside
+          // the `options` plain repeat. With `options` instantiated (defaultCount 1)
+          // the option record and the `optDelta` cell render, and driving the
+          // nibble to 13/14 visibly GAINS the extension byte(s) on the diagram — yet
+          // the blanket sub-byte length-encoder heuristic suppressed it, leaving the
+          // option-delta cell and its extension bytes see-but-cannot-edit. Relax ONLY
+          // the sub-byte heuristic for such a switch — NEVER `lengthDriving`, which
+          // still pins a discriminator that re-encodes a bounded value-scope length
+          // (BGP `attrExtLen` reads into a bounded Attribute Value scope) as an
+          // encoder. The discriminator must ALSO not already be a surfaced length
+          // controller (`controlledIds`): coap's sibling `optLength` sizes `optValue`
+          // and is editable via its length-controller widget, so it stays suppressed
+          // here (no redundant, length-desyncing picker) while `optDelta` — which
+          // sizes nothing — is surfaced. Gated on an INSTANTIABLE enclosing plain
+          // repeat, so a never-rendered record's nibble is not offered.
+          const repeatNestedDeltaExtensionVariant =
+            !!enclosingPlainRepeat &&
+            instantiableRepeatIds.has(enclosingPlainRepeat.id) &&
+            // Exactly the switch the sub-byte length-encoder heuristic suppresses:
+            // a sub-byte (< 8-bit) nibble whose arms are length-extension cells
+            // (`subByteDiscriminatorSelectsVariant` is false). An ≥ 8-bit
+            // record-type code (the ref-def `rtype` variant selector) is NOT this
+            // class — it is already surfaced by the normal path and must not gain a
+            // spurious literal option.
+            discBits !== undefined &&
+            discBits < 8 &&
+            !subByteDiscriminatorSelectsVariant(c.cases) &&
+            // …and the nibble must size NOTHING (so toggling it cannot desync a
+            // bounded value scope): not a width-driving ref (BGP `attrExtLen`) and
+            // not an already-surfaced length controller (CoAP `optLength`).
+            !lengthDriving.has(refKey) &&
+            !controlledIds.has(refKey) &&
+            // …with arms of STRUCTURALLY DISTINCT fixed width (13 → 8-bit ext1,
+            // 14 → 16-bit ext2), so each value genuinely changes the geometry.
+            lengthExtensionArmsHaveDistinctWidths(c.cases, c.cases["_"]);
           const isEncoder =
             !topLevelLengthExtensionVariant &&
+            !repeatNestedDeltaExtensionVariant &&
             (lengthDriving.has(refKey) ||
               (discBits !== undefined &&
                 discBits < 8 &&
@@ -3620,6 +3660,20 @@ function collectRefSwitches(
                 value: v,
                 label: struct.name ?? prettifyId(struct.id) ?? `case ${key}`,
               });
+            }
+            // A repeat-nested delta-extension switch (coap `byOptDelta`: cases
+            // 13/14 only, no `_` arm) lists ONLY the extension-bearing values, so
+            // the picker could reach the ext1/ext2 states but never RETURN to the
+            // literal "no extension" state the diagram loads at (`env[optDelta]=0`).
+            // Prepend a synthetic value-0 "literal (no extension)" option so the
+            // control is reversible and its first option AGREES with the load
+            // diagram, instead of contradicting it by defaulting to case 13.
+            if (
+              repeatNestedDeltaExtensionVariant &&
+              !c.cases["_"] &&
+              !cases.some((cc) => cc.value === 0)
+            ) {
+              cases.unshift({ value: 0, label: "Literal (no extension)" });
             }
             // Reach the structurally-distinct `_` default arm: when the listed
             // case(s) render a different skeleton than the default arm (babel:
