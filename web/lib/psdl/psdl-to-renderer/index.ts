@@ -2062,7 +2062,11 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   }
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
     collectFreeRepeats(packet, fields);
-  const peekSwitches = collectPeekSwitches(packet.body, packet.defs);
+  const peekSwitches = collectPeekSwitches(
+    packet.body,
+    packet.defs,
+    instantiableRepeatIds,
+  );
   // A per-record `length` field stranded inside a PLAIN instantiable repeat
   // (dnsResponse `dnsRdLength`, pimHelloOptions `pimHelloOptLen`) has no editor
   // to own it — the constraint / bounded / switch-case / sibling paths all miss
@@ -4211,6 +4215,34 @@ function repeatIsRecordBearing(repeat: Repeat): boolean {
 }
 
 /**
+ * A Repeat whose count is a compile-time literal >= 1 ALWAYS materialises its
+ * records — there is no control that adds/removes them, but the diagram renders
+ * the fixed number of iterations unconditionally. Such a repeat is therefore
+ * "instantiable" for the purpose of surfacing controls on cells INSIDE its
+ * records: an inner record-variant switch / nested option-list repeat lives in
+ * a region the user can SEE on every load, so its variant picker / count stepper
+ * is a live control (the discriminator / count drives every rendered instance
+ * uniformly — the documented A7 per-record tradeoff). Without treating a
+ * literal-count repeat as instantiable, an inner refSwitch / nested-TLV repeat
+ * one level down is suppressed as "never-rendered" even though the records are
+ * always on screen — a see-but-cannot-edit gap for arbitrary PSDL (no built-in
+ * preset nests a record-variant switch under a literal-count repeat). Returns
+ * the literal count, or null when the count is dynamic (eos/until/ref/op/cond).
+ */
+function repeatLiteralCount(repeat: Repeat): number | null {
+  const count = repeat.count;
+  if (
+    typeof count === "object" &&
+    "kind" in count &&
+    count.kind === "lit" &&
+    count.value >= 1
+  ) {
+    return count.value;
+  }
+  return null;
+}
+
+/**
  * Find Repeats whose count isn't already covered by an existing override:
  *   * Not a TLV / chain Repeat (those get list editors).
  *   * Their `count: ref(X)` doesn't land on a field with `controlsLength`
@@ -4434,8 +4466,28 @@ function collectFreeRepeats(
         // it and it lands here with isTlvRepeat()===true. Relax the guard for it
         // too (insideOptional) so its eos count stepper + peek/ref picker are
         // surfaced, exactly as for the switch-nested case.
+        //
+        // ONE LEVEL DEEPER (arbitrary PSDL): the same TLV-shaped repeat can live
+        // inside a switch case (or optional) that is ITSELF inside another repeat
+        // — e.g. `repeat lit N { switch on kind { case: repeat eos { switch on
+        // peek } } }`. The `!insideRepeat` guard suppressed it there, so the inner
+        // option cells render per outer instance (`#i_j`) but get NO count stepper
+        // or peek picker (see-but-cannot-edit). Relax the guard to also allow the
+        // insideRepeat case, but ONLY when the enclosing repeat is itself
+        // instantiable (`enclosingInstantiable` — its records actually render, so
+        // the inner repeat's records are on screen). The surfaced stepper is keyed
+        // on the repeat's bare id (`env[repeat.id]`), which core's eos-count
+        // injection reads for EVERY outer instance — so it drives all instances
+        // uniformly (the documented A7 per-record tradeoff), exactly like the
+        // existing in-repeat ref-count steppers. Per-instance switch/peek
+        // discrimination is NOT representable (core reads the switch `on` from the
+        // bare discriminator key, never a `#i`-qualified one), so a single shared
+        // control is the correct, non-inert surface. No built-in preset nests this
+        // deep, so only the arbitrary-PSDL gap is newly filled.
         const surfacedNestedTlv =
-          isTlvRepeat(c) && (insideSwitch || insideOptional) && !insideRepeat;
+          isTlvRepeat(c) &&
+          (insideSwitch || insideOptional) &&
+          (!insideRepeat || enclosingInstantiable);
         if (!isLikelyChainRepeat(c) && (!isTlvRepeat(c) || surfacedNestedTlv)) {
           let countKey: string | null = null;
           let label = c.name ?? c.id;
@@ -4897,6 +4949,17 @@ function collectFreeRepeats(
             instantiableRepeatIds.add(c.id);
           }
         }
+        // A LITERAL-count repeat (count: lit N>=1) has no surfaced count control
+        // — its records are fixed — but it ALWAYS renders those records, so cells
+        // inside them are genuinely on screen and any inner record-variant switch
+        // / nested option-list repeat is a live, editable surface. Mark it
+        // instantiable so the descent below sets `enclosingInstantiable` and the
+        // inner refSwitch / TLV-repeat is surfaced instead of suppressed as
+        // never-rendered (see-but-cannot-edit for arbitrary PSDL; no preset nests
+        // this deep). Done here, AFTER the control branches, so a repeat that
+        // already earned a surfaced control keeps it and a literal-count one still
+        // counts as instantiable for its children.
+        if (repeatLiteralCount(c) !== null) instantiableRepeatIds.add(c.id);
         // A repeat element is its own scope: the bounded budget does not pass
         // into nested repeats' own counts (they get their own keys). A repeat
         // element is not a switch case, so insideSwitch resets to false. The new
@@ -6109,6 +6172,10 @@ function optionalInnerName(inner: Container): string {
 function collectPeekSwitches(
   body: PsdlPacket["body"],
   defs: Record<string, NamedStruct> | undefined,
+  // Repeat ids whose records actually render (a surfaced count control OR a
+  // literal count). Used to relax the in-repeat nested-TLV peek picker only when
+  // the enclosing repeat is instantiable, mirroring collectFreeRepeats.
+  instantiableRepeatIds: Set<string>,
 ): NonNullable<RendererPacket["peekSwitches"]> {
   const out: NonNullable<RendererPacket["peekSwitches"]> = [];
   // Peek keys already surfaced by a real Switch dispatch — don't shadow them
@@ -6130,6 +6197,11 @@ function collectPeekSwitches(
     // a TLV-shaped repeat directly inside it surfaces its peek picker (the eos
     // count stepper comes from collectFreeRepeats).
     insideOptional: boolean,
+    // True when the NEAREST enclosing repeat is instantiable (its records render
+    // — a surfaced count control or a literal count). Lets a switch/optional-
+    // nested TLV repeat that is itself inside an instantiable repeat surface its
+    // peek picker, matching collectFreeRepeats' enclosingInstantiable relaxation.
+    enclosingInstantiable: boolean,
   ): void => {
     const { items, release } = flattenForMirrorGuarded(
       containers,
@@ -6232,11 +6304,23 @@ function collectPeekSwitches(
           }
         }
         for (const struct of Object.values(c.cases))
-          visit(struct.fields, true, insideRepeat, false);
+          visit(
+            struct.fields,
+            true,
+            insideRepeat,
+            false,
+            enclosingInstantiable,
+          );
         continue;
       }
       if (c.kind === "group") {
-        visit(c.children, insideSwitch, insideRepeat, insideOptional);
+        visit(
+          c.children,
+          insideSwitch,
+          insideRepeat,
+          insideOptional,
+          enclosingInstantiable,
+        );
         continue;
       }
       if (c.kind === "repeat") {
@@ -6246,16 +6330,30 @@ function collectPeekSwitches(
         // applyTlvInstances materialises the records (the peek key is no longer
         // read). So don't collect peek switches from inside such a repeat.
         //
-        // EXCEPTION: a switch-nested, non-insideRepeat TLV repeat (icmpv6Ndp
-        // rsOptions/raOptions/…) is NOT lifted to a tlv field, so its peek
-        // type-picker is the ONLY surface for choosing the option type — descend
-        // into it (paired with the eos count stepper from collectFreeRepeats).
-        // The optional-wrapped TLV repeat (`optional(flag){ repeat eos { switch
-        // on peek } }`) is the same gap reached via `insideOptional`.
+        // EXCEPTION: a switch-nested TLV repeat (icmpv6Ndp rsOptions/raOptions/…)
+        // is NOT lifted to a tlv field, so its peek type-picker is the ONLY
+        // surface for choosing the option type — descend into it (paired with the
+        // eos count stepper from collectFreeRepeats). The optional-wrapped TLV
+        // repeat (`optional(flag){ repeat eos { switch on peek } }`) is the same
+        // gap reached via `insideOptional`. When such a TLV repeat is itself
+        // INSIDE another repeat, descend only if that enclosing repeat is
+        // instantiable (its records render), mirroring collectFreeRepeats'
+        // enclosingInstantiable relaxation so the peek picker pairs with the
+        // surfaced count stepper one level deeper.
         const surfacedNestedTlv =
-          isTlvRepeat(c) && (insideSwitch || insideOptional) && !insideRepeat;
+          isTlvRepeat(c) &&
+          (insideSwitch || insideOptional) &&
+          (!insideRepeat || enclosingInstantiable);
         if ((!isTlvRepeat(c) && !isLikelyChainRepeat(c)) || surfacedNestedTlv)
-          visit(c.element.fields, false, true, false);
+          visit(
+            c.element.fields,
+            false,
+            true,
+            false,
+            // The repeat element's records render iff THIS repeat is instantiable
+            // (a surfaced count control populated it, or a literal count).
+            instantiableRepeatIds.has(c.id),
+          );
         continue;
       }
       if (c.kind === "optional") {
@@ -6277,7 +6375,13 @@ function collectPeekSwitches(
             });
           }
         }
-        visit([c.container], insideSwitch, insideRepeat, true);
+        visit(
+          [c.container],
+          insideSwitch,
+          insideRepeat,
+          true,
+          enclosingInstantiable,
+        );
         continue;
       }
       if (c.kind === "encrypted") {
@@ -6288,13 +6392,21 @@ function collectPeekSwitches(
         // switch). Don't descend into opaque plaintext (matches
         // `collectEncryptedNestedFieldIds`).
         if (c.wireBits === undefined)
-          visit(c.plaintext.fields, insideSwitch, insideRepeat, insideOptional);
+          visit(
+            c.plaintext.fields,
+            insideSwitch,
+            insideRepeat,
+            insideOptional,
+            enclosingInstantiable,
+          );
         continue;
       }
     }
     release();
   };
-  visit(body, false, false, false);
+  // The packet body is the top-level scope: no enclosing repeat, so its records
+  // (the top-level fields) always render — enclosingInstantiable starts true.
+  visit(body, false, false, false, true);
   // Surface each peek-gated Optional key as a synthetic picker, unless a real
   // Switch already dispatches on that exact key. Each picker gets an
   // "(absent)" case — a value distinct from every gate value at the key — so
