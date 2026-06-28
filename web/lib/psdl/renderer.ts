@@ -58,6 +58,28 @@ export type TlvVariableCount = {
 };
 
 /**
+ * Hint for a single variable-LENGTH value field inside a TLV catalog entry —
+ * a `bytes(ref <length>)` / delimited / varint member whose static width is
+ * unknowable at design time (typeBits → 0). Each one carries a per-instance
+ * byte-count knob (keyed by `key`, stored in `TlvInstance.extras`) so the
+ * editor can give the value a width and `applyTlvInstances` can materialise a
+ * VISIBLE cell instead of a permanently zero-width, uneditable field
+ * (dhcpv4 Code=3 Router Addresses, tlsClientHelloFull / tlsExtensionsBlock
+ * extension data). `fieldId` is the catalog field whose `bits` the knob sizes;
+ * `lengthFieldId`, when present, is the sibling length octet inside the same
+ * record that declares the value's length on the wire (`bytes(ref L)`), so the
+ * editor / lift can keep the two in sync.
+ */
+export type TlvVariableBytes = {
+  key: string;
+  fieldId: string;
+  min: number;
+  max: number;
+  label?: string;
+  lengthFieldId?: string;
+};
+
+/**
  * A catalog entry describing one TLV record type (e.g. TCP option Kind=2 MSS,
  * or an IPv4 option Kind=7 Record Route). `fields` is the fixed positional
  * layout. If `variableCount` is set, the entry has a count-based extra that
@@ -75,6 +97,10 @@ export type TlvCatalogEntry = {
   defaultExtras?: Record<string, number>;
   /** Variable-count metadata (UI knob description). */
   variableCount?: TlvVariableCount;
+  /** Variable-LENGTH value knobs — one per `bytes(ref L)` / delimited / varint
+   *  member that has no static width. The editor renders a byte-count input per
+   *  entry and `applyTlvInstances` / `fieldsFor` size the value cell from it. */
+  variableBytes?: TlvVariableBytes[];
   /** Build-time formula token; resolved to a function via TLV_FIELDS_REGISTRY. */
   fieldsFormula?: string;
   /** In-memory equivalent of `fieldsFormula`; checked first when present. */

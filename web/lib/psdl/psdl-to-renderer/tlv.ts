@@ -4,7 +4,7 @@
 // is promoted to a renderer "TLV" field — a single variable-length
 // placeholder that carries a `tlv.catalog` for the editor.
 
-import type { Repeat, Struct, Switch } from "../types";
+import type { Field as PsdlField, Repeat, Struct, Switch } from "../types";
 import type {
   Field as RendererField,
   TlvCatalogEntry as RendererTlvCatalogEntry,
@@ -15,7 +15,7 @@ import {
   firstCaseKeyValue,
   getSwitchFromRepeat,
   prettifyId,
-  structFieldsToTlvFields,
+  structToTlvCatalogShape,
 } from "./shared";
 
 type TlvCatalogEntry = RendererTlvCatalogEntry;
@@ -33,7 +33,8 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
   for (const [key, struct] of Object.entries(sw.cases)) {
     const kindNum = firstCaseKeyValue(key);
     if (kindNum === null) continue;
-    const fields = structFieldsToTlvFields(struct);
+    const shape = structToTlvCatalogShape(struct);
+    const fields = shape.fields;
     const entry: TlvCatalogEntry = {
       kind: kindNum,
       // Pretty fallback: when the PSDL case struct doesn't declare a
@@ -51,6 +52,17 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
     // catalogs that need bits-only entries (EOL/NOP wire-marker
     // shapes) supply the catalog directly, not via a PSDL Switch.
     if (fields.length > 0) entry.fields = fields;
+    // A case arm with a variable-LENGTH value member (e.g. dhcpv4 Code=3
+    // `routerAddresses` = bytes(ref optionLength)) carries per-instance
+    // byte-count knobs + a `fieldsFor` closure that sizes the value from
+    // `extras`, plus the seeded `defaultExtras` so the value renders a
+    // VISIBLE cell the moment a record is added (instead of a permanently
+    // zero-width, uneditable field).
+    if (shape.variableBytes && shape.variableBytes.length > 0) {
+      entry.variableBytes = shape.variableBytes;
+      entry.defaultExtras = shape.defaultExtras;
+      entry.fieldsFor = shape.fieldsFor;
+    }
     out.push(entry);
   }
   return out;
@@ -116,23 +128,47 @@ export function tlvCatalogEntryToStruct(
     (entry.bits
       ? [{ id: "raw", name: entry.name, bits: entry.bits } as TlvCatalogField]
       : []);
+  // A catalog field with a `variableBytes` knob is a variable-LENGTH value
+  // member (`bytes(ref L)` / delimited / varint) the catalog collapsed to
+  // bits<=0. Re-emit it as `bytes(ref L)` (keyed to its sibling length field)
+  // so the round-trip through PSDL keeps the field AND its length linkage —
+  // re-import then rebuilds the variableBytes knob and the per-instance
+  // `extras` (which carry the user's byte count) drive its width again. This
+  // path is only reached for imported packets WITHOUT a source PSDL; presets
+  // round-trip through `mergeInstancesIntoPsdl` against their retained source.
+  const variableByFieldId = new Map(
+    (entry.variableBytes ?? []).map((vb) => [vb.fieldId, vb]),
+  );
+  const fields: PsdlField[] = [];
+  for (const f of baseFields) {
+    const vb = variableByFieldId.get(f.id);
+    if (vb) {
+      const type: PsdlField["type"] = vb.lengthFieldId
+        ? { kind: "bytes", n: { kind: "ref", field: vb.lengthFieldId } }
+        : { kind: "bytes", n: { kind: "lit", value: Math.max(1, vb.min) } };
+      fields.push({
+        id: f.id,
+        name: f.name,
+        type,
+        ...(f.description ? { doc: f.description } : {}),
+      });
+      continue;
+    }
+    // Drop any remaining bits<=0 field with no variable metadata: emitting
+    // {kind:"bits", n:0} produces PSDL the validator rejects ("bits must have
+    // positive n"). Mirrors the plain-field guard in to-psdl.ts.
+    if (f.bits <= 0) continue;
+    fields.push({
+      id: f.id,
+      name: f.name,
+      type: { kind: "bits", n: f.bits },
+      ...(f.description ? { doc: f.description } : {}),
+    });
+  }
   return {
     id: `${parentId}_kind_${entry.kind}`,
     name: entry.name,
-    // Drop variable-length catalog fields (bits<=0 — a `bytes:ref` / varint /
-    // berLength payload the catalog collapsed to width 0): emitting
-    // {kind:"bits", n:0} produces PSDL the validator rejects ("bits must have
-    // positive n"). Mirrors the plain-field guard in to-psdl.ts. The catalog
-    // doesn't retain the source variable type, so this lossy path (only reached
-    // for imported packets with no source PSDL) drops rather than mis-emits.
-    fields: baseFields
-      .filter((f) => f.bits > 0)
-      .map((f) => ({
-        id: f.id,
-        name: f.name,
-        type: { kind: "bits", n: f.bits } as const,
-        ...(f.description ? { doc: f.description } : {}),
-      })),
+    fields,
   };
 }
 

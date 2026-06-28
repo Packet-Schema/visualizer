@@ -119,6 +119,23 @@ export default function TlvEditor({
     });
   };
 
+  const handleVariableBytesChange = (
+    idx: number,
+    key: string,
+    min: number,
+    max: number,
+    raw: string,
+  ) => {
+    const v = Math.max(min, Math.min(max, Math.floor(Number(raw) || min)));
+    update((list) => {
+      list[idx] = {
+        ...list[idx],
+        extras: { ...(list[idx].extras || {}), [key]: v },
+      };
+      return list;
+    });
+  };
+
   const handleKindChange = (idx: number, raw: string) => {
     const newKind = Number(raw);
     if (!Number.isFinite(newKind)) return;
@@ -265,6 +282,42 @@ export default function TlvEditor({
                     </label>
                   </div>
                 ) : null}
+                {/* Per-record byte-count knob(s) for a variable-LENGTH value
+                    member (e.g. dhcpv4 Code=3 Router Addresses =
+                    bytes(ref optionLength)). Without this the value renders a
+                    permanently zero-width, uneditable cell (the "see-but-
+                    cannot-edit" bug). */}
+                {entry.variableBytes?.map((vb) => (
+                  <div
+                    key={vb.key}
+                    className="mt-1.5 text-xs flex items-center gap-2"
+                  >
+                    <label className="flex items-center gap-1.5 text-fg-muted">
+                      {vb.label || vb.fieldId}:
+                      <input
+                        type="number"
+                        min={vb.min}
+                        max={vb.max}
+                        value={Number(extras[vb.key] ?? vb.min)}
+                        onChange={(e) =>
+                          handleVariableBytesChange(
+                            i,
+                            vb.key,
+                            vb.min,
+                            vb.max,
+                            e.target.value,
+                          )
+                        }
+                        className="w-16 px-1.5 py-0.5 rounded border font-mono tabular-nums text-xs"
+                        style={{
+                          borderColor: "var(--border-strong)",
+                          background: "var(--bg-elevated)",
+                          color: "var(--fg)",
+                        }}
+                      />
+                    </label>
+                  </div>
+                ))}
                 {entry.description ? (
                   <p className="m-0 mt-1 text-3xs text-fg-faint">
                     {entry.description}

@@ -33,7 +33,9 @@ import type {
 import type {
   Field as RendererField,
   Packet as RendererPacket,
+  TlvCatalogField,
 } from "../renderer";
+import { resolveTlvFields } from "../renderer-helpers";
 
 export type TlvSlotBytes = Record<string, number>;
 
@@ -232,8 +234,16 @@ export function applyTlvInstances(
       for (let i = 0; i < tlv.instances.length; i++) {
         const inst = tlv.instances[i];
         const entry = tlv.catalog.find((e) => e.kind === inst.kind);
-        if (!entry?.fields || entry.fields.length === 0) continue;
-        const bits = entry.fields.reduce((a, f) => a + f.bits, 0);
+        if (!entry) continue;
+        // Resolve the effective field list — for an entry with a variable
+        // value member (`fieldsFor`/`variableBytes`), this sizes the
+        // `bytes(ref L)` / delimited / varint value from the instance's
+        // `extras` (seeded via `defaultExtras`) so it materialises as a
+        // VISIBLE, non-zero-width cell instead of a `{kind:'bits', n:0}`
+        // ghost. Fixed-shape entries fall through to `entry.fields`.
+        const fields: TlvCatalogField[] = resolveTlvFields(entry, inst);
+        if (fields.length === 0) continue;
+        const bits = fields.reduce((a, f) => a + f.bits, 0);
         if (bits % 8 !== 0) {
           // The slot accounting (and the trailing "remaining" placeholder)
           // assumes byte-aligned variants. Real-world TLV catalogs all are,
@@ -251,7 +261,7 @@ export function applyTlvInstances(
           kind: "group",
           id: groupId,
           name: entry.name,
-          children: entry.fields.map<PsdlField>((f) => ({
+          children: fields.map<PsdlField>((f) => ({
             // Prefix the child id with the instance group's id so two
             // copies of the same variant (e.g. NOP × 8) produce
             // distinct NormalizedField ids. Without this, normalize
