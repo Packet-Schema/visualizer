@@ -181,7 +181,23 @@ export function initialState(packet: Packet): ControllerState {
   const state: ControllerState = {};
   for (const field of packet.fields) {
     if (field.controlsLength) {
-      state[field.controlsLength] = field.defaultValue ?? 0;
+      // A field that controls ITS OWN length and is itself a DYNAMIC-WIDTH
+      // varint (http3Frame's `http3PayloadLength` — a QUIC varint Length whose
+      // single env key drives both the wire width AND the payload byte count)
+      // would otherwise seed to 0: the payload renders empty AND the OverridePanel
+      // length control would show 0 while `seedDynamicWidthDefaults` paints the
+      // diagram cell at the varint default. Seed it to the varint default so a
+      // representative non-empty payload shows on load and the panel agrees with
+      // the diagram. (A normal length controller for a SIBLING `bytes(ref X)`
+      // keeps its declared default — only the self-controlling varint case is
+      // promoted, since for it the same key is the cell's own seeded width.)
+      const selfVarint =
+        field.controlsLength === field.id &&
+        field.varintEncoding !== undefined &&
+        (field.defaultValue ?? 0) === 0;
+      state[field.controlsLength] = selfVarint
+        ? VARINT_DEFAULT_BITS
+        : (field.defaultValue ?? 0);
     }
   }
   // Seed the SAME dynamic-width default the diagram layout seeds

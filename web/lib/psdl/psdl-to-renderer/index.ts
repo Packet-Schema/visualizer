@@ -2874,6 +2874,68 @@ function collectEncryptedNestedFieldIds(
   return acc;
 }
 
+/** Collect the ids of TOP-LEVEL fields (declared directly in `body`, NOT inside
+ *  a repeat / switch case / group / encrypted scope) whose wire width is DYNAMIC
+ *  — a `varint` (or a delimiter-terminated `bytes`). Such a field's mirror has
+ *  its dynamic-width encoding STRIPPED and `bits` forced to 0 whenever it ALSO
+ *  carries `switchCases` (it is a switch `on:ref` discriminator), so it never
+ *  hosts a fixed-width, cell-anchored `switchCases` widget the way a normal
+ *  top-level int discriminator does. http3Frame's `http3FrameType` (a QUIC
+ *  varint that discriminates `http3FramePayload`) is the canonical case: the
+ *  diagram cell only renders via the bridged `__varintBits__` width, and the
+ *  field is matched by NONE of the case/group/encrypted-nested collectors above,
+ *  so `collectRefSwitches` never surfaces a packet-level picker — the whole
+ *  packet's frame Type is see-but-cannot-edit from the OverridePanel. Surfacing
+ *  these ids lets a TOP-LEVEL switch discriminated on one get a packet-level
+ *  refSwitch picker, exactly like the case/group/encrypted-nested paths. */
+function collectTopLevelDynamicWidthFieldIds(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): Set<string> {
+  const acc = new Set<string>();
+  // `blocked` flips true once we descend into a repeat, a switch case, a group,
+  // or an encrypted plaintext — those scopes already own their override surfaces
+  // (count steppers / case pickers / chain editors / the nested-field collectors
+  // above), so a dynamic-width field there is NOT a bare top-level discriminator.
+  const visit = (containers: Container[], blocked: boolean): void => {
+    for (const c of flattenForMirror(containers, defs)) {
+      if (isField(c)) {
+        if (
+          !blocked &&
+          (c.type.kind === "varint" ||
+            (c.type.kind === "bytes" && isBytesDelimited(c.type.n)))
+        )
+          acc.add(c.id);
+        continue;
+      }
+      if (c.kind === "switch") {
+        for (const struct of Object.values(c.cases)) visit(struct.fields, true);
+        continue;
+      }
+      if (c.kind === "repeat") {
+        visit(c.element.fields, true);
+        continue;
+      }
+      if (c.kind === "group") {
+        visit(c.children, true);
+        continue;
+      }
+      if (c.kind === "optional") {
+        // An optional wraps a single container inline at the top level; its
+        // condition does not introduce a repeat/case scope, so keep walking.
+        visit([c.container], blocked);
+        continue;
+      }
+      if (c.kind === "encrypted") {
+        visit(c.plaintext.fields, true);
+        continue;
+      }
+    }
+  };
+  visit(body, false);
+  return acc;
+}
+
 /**
  * Detect a `bytes` field whose length is a `lookup(ref X, table)` — the value's
  * width is selected from `table` by the run-time value of a sibling INT/BITS
@@ -2980,6 +3042,17 @@ function collectRefSwitches(
   // no top-level cell to host a widget, so a Switch discriminated on one needs a
   // packet-level refSwitch picker.
   const encryptedNestedFieldIds = collectEncryptedNestedFieldIds(body, defs);
+  // Top-level fields whose width is DYNAMIC (a varint / delimited bytes). When
+  // such a field is ALSO a switch discriminator the mirror strips its width and
+  // forces `bits:0`, so it never hosts a cell-anchored `switchCases` widget —
+  // http3Frame's `http3FrameType` (the frame Type / `http3FramePayload`
+  // discriminator). Like the case/group/encrypted-nested ids, a TOP-LEVEL switch
+  // discriminated on one needs a packet-level refSwitch picker, else the whole
+  // packet is see-but-cannot-edit.
+  const topLevelDynamicWidthFieldIds = collectTopLevelDynamicWidthFieldIds(
+    body,
+    defs,
+  );
   // Declared field defaults — used to order a field-nested (group/case) picker's
   // cases so `initialState`'s `cases[0]` seed agrees with the author's default.
   const fieldDefaults = collectFieldDefaults(body);
@@ -3120,20 +3193,43 @@ function collectRefSwitches(
         //       diagram. `collectEncryptedNestedFieldIds` deliberately EXCLUDES
         //       such opaque plaintext, so its discriminator is absent here and no
         //       permanently-inert picker (contradicting the opaque blob) leaks.
+        //   (5) it is a TOP-LEVEL switch discriminated on a TOP-LEVEL field
+        //       whose width is DYNAMIC (a varint / delimited bytes) and which is
+        //       ITSELF the discriminator (http3Frame `http3FramePayload` on the
+        //       `http3FrameType` varint). Because that field carries
+        //       `switchCases`, the mirror strips its varint width and forces
+        //       `bits:0` — it never hosts a fixed-width, cell-anchored
+        //       `switchCases` widget the way a normal int discriminator does, so
+        //       the user has no clickable top-level cell to change the frame
+        //       Type. Treated identically to the case/group/encrypted-nested
+        //       paths: surface a packet-level refSwitch picker.
         const fieldNestedNoWidget =
           !enclosingPlainRepeat &&
           !insideRepeat &&
           c.on.kind === "ref" &&
           (switchCaseFieldIds.has(c.on.field) ||
             groupNestedFieldIds.has(c.on.field) ||
-            encryptedNestedFieldIds.has(c.on.field));
+            encryptedNestedFieldIds.has(c.on.field) ||
+            topLevelDynamicWidthFieldIds.has(c.on.field));
         const caseNested = fieldNestedNoWidget;
         if ((enclosingPlainRepeat || caseNested) && c.on.kind === "ref") {
           const refKey = c.on.field;
+          // A TOP-LEVEL dynamic-width discriminator (http3Frame's varint
+          // `http3FrameType`) carries `switchCases` on its mirror field, but the
+          // mirror strips its width to `bits:0`, so that widget is NOT
+          // cell-anchored the way a fixed-width int discriminator's is — it does
+          // not "cover" the discriminator. Don't let bare `switchCases` veto the
+          // packet-level picker for these; `controlsLength`/`enumVariants` still
+          // count (they drive a real top-level cell). The other branches are
+          // unaffected — their discriminators are nested and never carry
+          // `switchCases` on a mirror field anyway.
+          const dynWidthDisc = topLevelDynamicWidthFieldIds.has(refKey);
           const covered = fields.find(
             (f) =>
               f.id === refKey &&
-              (f.controlsLength || f.switchCases || f.enumVariants),
+              (f.controlsLength ||
+                (f.switchCases && !dynWidthDisc) ||
+                f.enumVariants),
           );
           // Skip length/format-encoder switches (BGP Extended-Length flag,
           // CoAP option nibbles): driving their discriminator desyncs lengths
