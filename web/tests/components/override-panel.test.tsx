@@ -42,7 +42,27 @@ async function mount(ui: React.ReactNode) {
 }
 
 describe("OverridePanel widgets", () => {
-  it("renders an OverrideSlider for IHL on IPv4", async () => {
+  it("renders an OverrideSlider for a length controller (isisLsp pduLength)", async () => {
+    // isisLsp's `pduLength` budgets a NON-tlv bounded repeat, so it keeps its
+    // length slider. (IPv4 IHL no longer surfaces a slider — its options region
+    // is a TLV-shaped bounded scope owned by the `options` TLV editor; see the
+    // suppression test below.)
+    const packet = psdlToRenderer(PRESETS.isisLsp!);
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="pduLength"
+        controllers={{ pduLength: 27 }}
+        onControllerChange={() => {}}
+      />,
+    );
+    expect(
+      container.querySelector('input[type="range"]'),
+      "pduLength must surface a range slider",
+    ).not.toBeNull();
+  });
+
+  it("does NOT render an OverrideSlider for IHL on IPv4 (TLV editor owns options)", async () => {
     const packet = psdlToRenderer(PRESETS.ipv4!);
     const { container } = await mount(
       <OverridePanel
@@ -54,8 +74,8 @@ describe("OverridePanel widgets", () => {
     );
     expect(
       container.querySelector('input[type="range"]'),
-      "IHL must surface a range slider",
-    ).not.toBeNull();
+      "IHL must NOT surface a misleading length slider",
+    ).toBeNull();
   });
 
   it("renders a SwitchDropdown for longPacketType on quicLong", async () => {

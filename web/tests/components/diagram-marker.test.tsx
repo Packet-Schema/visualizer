@@ -41,9 +41,22 @@ async function mount(ui: React.ReactNode) {
 }
 
 describe("HybridDiagram override marker", () => {
-  it("marks the IHL cell as overridable on IPv4", async () => {
+  // IPv4's options region is a TLV-shaped repeat inside a single-ref `bounded`
+  // scope (`ihl*4 - 20`) lifted to the `options` tlv field. The TLV editor
+  // (add/remove records) owns that region; IHL must NOT also be a length-slider
+  // (dragging it would inflate the byte counter while ZERO new cells appear), so
+  // the IHL cell is NOT painted overridable. The override surface is `options`.
+  it("does NOT mark IHL overridable on IPv4 (the options TLV editor owns the region)", async () => {
     const ipv4 = PRESETS.ipv4!;
     const packet = psdlToRenderer(ipv4);
+
+    // The mirror's override surface for the options region is the lifted tlv
+    // field, not an IHL length slider.
+    expect(packet.fields.find((f) => f.id === "ihl")?.controlsLength).toBe(
+      undefined,
+    );
+    expect(packet.fields.some((f) => f.id === "options" && f.tlv)).toBe(true);
+
     const layout = resolveLayout(ipv4, {
       env: new Map<string, number>([
         ["ihl", 5],
@@ -65,6 +78,6 @@ describe("HybridDiagram override marker", () => {
 
     const ihlCell = container.querySelector('[data-field-id="ihl"]');
     expect(ihlCell, "ihl cell must be rendered").not.toBeNull();
-    expect(ihlCell?.getAttribute("data-overridable")).toBe("true");
+    expect(ihlCell?.getAttribute("data-overridable")).not.toBe("true");
   });
 });

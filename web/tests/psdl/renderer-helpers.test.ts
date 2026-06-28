@@ -67,16 +67,20 @@ describe("save-as-preset env round-trip (audit MEDIUM #1)", () => {
   });
 
   it("nonDefaultControllerEnv drops a controller left at its seeded default", () => {
-    // IPv4's `ihl` length controller seeds a concrete default (5); an unchanged
-    // value must not be baked (Share skips it the same way).
-    const rendered = psdlToRenderer(PRESETS.ipv4);
+    // isisLsp's `pduLength` length controller seeds a concrete default (31); an
+    // unchanged value must not be baked (Share skips it the same way). (IPv4's
+    // `ihl` is intentionally NOT a length controller anymore — its options
+    // region is a TLV-shaped bounded scope owned by the `options` TLV editor.)
+    const rendered = psdlToRenderer(PRESETS.isisLsp);
     const defaults = initialState(rendered);
-    expect(defaults.ihl).toBe(5);
+    expect(defaults.pduLength).toBe(31);
     // Unchanged → omitted.
     expect(nonDefaultControllerEnv(rendered, defaults)).toBeUndefined();
     // Edited → only the changed key is baked.
-    expect(nonDefaultControllerEnv(rendered, { ...defaults, ihl: 7 })).toEqual({
-      ihl: 7,
+    expect(
+      nonDefaultControllerEnv(rendered, { ...defaults, pduLength: 40 }),
+    ).toEqual({
+      pduLength: 40,
     });
   });
 

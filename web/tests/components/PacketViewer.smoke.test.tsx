@@ -66,29 +66,33 @@ describe("PacketViewer (smoke)", () => {
   });
 
   it("hydrates a built-in preset and controllers from the URL", async () => {
+    // Driven via isisLsp's `pduLength` length controller (a NON-tlv bounded
+    // budget that keeps its slider). TCP's `dataOffset` is no longer a length
+    // controller — its options region is a TLV-shaped bounded scope owned by
+    // the `options` TLV editor.
     const { container, cleanup } = await mountPacketViewer(
-      "/?preset=tcp&controllers.dataOffset=10",
+      "/?preset=isisLsp&controllers.pduLength=40",
     );
     try {
       const picker = container.querySelector("select");
-      expect(picker?.value).toBe("tcp");
+      expect(picker?.value).toBe("isisLsp");
       // The override slider lives in DetailPanel and is only mounted when
-      // the corresponding cell is selected. Click the Data Offset cell to
+      // the corresponding cell is selected. Click the PDU Length cell to
       // surface it, then verify the hydrated value.
-      const dataOffsetCell = container.querySelector<HTMLElement>(
-        '[data-field-id="dataOffset"]',
+      const pduLengthCell = container.querySelector<HTMLElement>(
+        '[data-field-id="pduLength"]',
       );
       await act(async () => {
-        dataOffsetCell?.dispatchEvent(
+        pduLengthCell?.dispatchEvent(
           new MouseEvent("click", { bubbles: true }),
         );
       });
-      const dataOffset = container.querySelector<HTMLInputElement>(
-        "#detail-ctrl-dataOffset-number",
+      const pduLength = container.querySelector<HTMLInputElement>(
+        "#detail-ctrl-pduLength-number",
       );
-      expect(dataOffset?.value).toBe("10");
-      expect(window.location.search).toContain("preset=tcp");
-      expect(window.location.search).toContain("controllers.dataOffset=10");
+      expect(pduLength?.value).toBe("40");
+      expect(window.location.search).toContain("preset=isisLsp");
+      expect(window.location.search).toContain("controllers.pduLength=40");
     } finally {
       await cleanup();
     }
@@ -175,31 +179,30 @@ describe("PacketViewer (smoke)", () => {
 
   it("rebuilds layout cleanly when switching presets after editing controllers", async () => {
     // Regression: an earlier revision deferred `controllers` via
-    // useDeferredValue, so when we changed `packetKey` from ipv4 to ipv6 the
-    // layout was still computed with the previous `controllers.ihl=8` for a
-    // frame. The IPv6 diagram briefly showed IPv4-shaped cells.
+    // useDeferredValue, so when we changed `packetKey` the layout was still
+    // computed with the previous packet's controller for a frame, briefly
+    // showing the old shape. We drive this with tlsClientHello's
+    // `extensionsLen` length controller (a NON-tlv bounded budget that keeps
+    // its slider; IPv4 IHL is no longer a length controller — its options
+    // region is a TLV-shaped bounded scope owned by the `options` TLV editor).
     const { container, cleanup } = await mountPacketViewer(
-      "/?preset=ipv4&controllers.ihl=8",
+      "/?preset=tlsClientHello&controllers.extensionsLen=20",
     );
     try {
-      // Sanity check: starts on ipv4 and the diagram has an IHL controller.
+      // Sanity check: starts on tlsClientHello with the extensionsLen controller.
       const picker = container.querySelector<HTMLSelectElement>("select");
-      expect(picker?.value).toBe("ipv4");
-      // Click IHL to surface the override slider in DetailPanel.
-      const ihlCell = container.querySelector<HTMLElement>(
-        '[data-field-id="ihl"]',
+      expect(picker?.value).toBe("tlsClientHello");
+      // Click extensionsLen to surface the override slider in DetailPanel.
+      const lenCell = container.querySelector<HTMLElement>(
+        '[data-field-id="extensionsLen"]',
       );
       await act(async () => {
-        ihlCell?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        lenCell?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
-      const ihlBefore = container.querySelector<HTMLInputElement>(
-        "#detail-ctrl-ihl-number",
+      const lenBefore = container.querySelector<HTMLInputElement>(
+        "#detail-ctrl-extensionsLen-number",
       );
-      expect(ihlBefore?.value).toBe("8");
-      const sourceCellBefore = container.querySelector(
-        '[data-field-id="srcAddr"]',
-      );
-      expect(sourceCellBefore).not.toBeNull();
+      expect(lenBefore?.value).toBe("20");
 
       // Switch the preset picker to ipv6.
       await act(async () => {
@@ -215,13 +218,13 @@ describe("PacketViewer (smoke)", () => {
       }
 
       // After the switch we should see IPv6's `srcAddr` field and *not* the
-      // IPv4 IHL controller — which would prove `controllers` was reset
-      // and the layout was rebuilt against the new packet shape.
+      // tlsClientHello extensionsLen controller — which would prove
+      // `controllers` was reset and the layout was rebuilt against the new shape.
       expect(picker?.value).toBe("ipv6");
       // Codex P1 regression: switching to a not-yet-loaded built-in must reset
-      // controllers once its body arrives, so the stale ipv4 `ihl` controller
+      // controllers once its body arrives, so the stale extensionsLen controller
       // is gone from the canonical share URL (not leaked onto ipv6).
-      expect(window.location.search).not.toContain("controllers.ihl");
+      expect(window.location.search).not.toContain("controllers.extensionsLen");
       // Codex P2 regression: a built-in (even mid-lazy-load) shares as a clean
       // `preset=<key>` URL, never a psdl-encoded copy of the fallback packet.
       expect(window.location.search).toContain("preset=ipv6");
@@ -230,15 +233,17 @@ describe("PacketViewer (smoke)", () => {
         container.querySelector('[data-field-id="srcAddr"]'),
       ).not.toBeNull();
       expect(
-        container.querySelector<HTMLInputElement>("#detail-ctrl-ihl-number"),
+        container.querySelector<HTMLInputElement>(
+          "#detail-ctrl-extensionsLen-number",
+        ),
       ).toBeNull();
-      // No IPv4 option-cell leftovers (Type=0 etc.) — those use the
+      // No tlsClientHello extension-cell leftovers — those use the
       // `${field.id}#${repeatIndex}` synthetic id from the Repeat expansion.
       const leftoverIds = Array.from(
         container.querySelectorAll<HTMLElement>("[data-field-id]"),
       )
         .map((el) => el.dataset.fieldId ?? "")
-        .filter((id) => id.startsWith("type#") || id.startsWith("type:"));
+        .filter((id) => id.startsWith("extType#") || id.startsWith("extType:"));
       expect(leftoverIds).toEqual([]);
     } finally {
       await cleanup();

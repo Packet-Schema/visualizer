@@ -20,6 +20,7 @@ import { isField } from "../utils";
 import { evalExprOr, exprRefs, peekEnvKey } from "../expr";
 import { isBytesDelimited } from "../normalize";
 import type {
+  Bounded,
   Constraint,
   Container,
   Expr,
@@ -200,6 +201,76 @@ function collectBoundedControllers(
     }
     if (c.kind === "encrypted") {
       collectBoundedControllers(c.plaintext.fields, defs, acc);
+      continue;
+    }
+  }
+}
+
+/**
+ * Collect the single-ref controller ids of every top-level `bounded` scope
+ * whose inner content (after `flattenForMirror`) is a TLV-shaped repeat that
+ * the top-level loop lifts to a `tlv` field (ipv4 `options` ← `ihl*4-20`, tcp
+ * `options` ← `dataOffset*4-20`, ipv6Destination `ipv6DstOptions` ← hdrExtLen,
+ * tlsClientHelloFull `extensions` ← extensionsLen).
+ *
+ * That region is already owned by the TLV editor (add/remove records grows the
+ * byte budget); stamping its length field ALSO as a `controlsLength` slider
+ * gives the user a control that inflates the diagram's byte counter without
+ * adding a single cell — the eos repeat renders through the TLV-instance
+ * mechanism, not the budget. So those controllers must be excluded from the
+ * length-controller pass below.
+ */
+function isTlvOwnedBounded(
+  b: Bounded,
+  defs: Record<string, NamedStruct> | undefined,
+): boolean {
+  return flattenForMirror(b.fields, defs).some(
+    (child) =>
+      !isField(child) &&
+      child.kind === "repeat" &&
+      !isLikelyChainRepeat(child) &&
+      isTlvRepeat(child),
+  );
+}
+
+function collectTlvOwnedBoundedControllers(
+  containers: Container[],
+  defs: Record<string, NamedStruct> | undefined,
+  acc: Set<string>,
+): void {
+  for (const c of containers) {
+    if (isField(c)) continue;
+    if (c.kind === "bounded") {
+      const controller = singleRefController(c.bytes);
+      if (controller && isTlvOwnedBounded(c, defs)) acc.add(controller);
+      collectTlvOwnedBoundedControllers(c.fields, defs, acc);
+      continue;
+    }
+    if (c.kind === "ref") {
+      const def = defs?.[c.ref];
+      if (def) collectTlvOwnedBoundedControllers(def.fields, defs, acc);
+      continue;
+    }
+    if (c.kind === "group") {
+      collectTlvOwnedBoundedControllers(c.children, defs, acc);
+      continue;
+    }
+    if (c.kind === "optional") {
+      collectTlvOwnedBoundedControllers([c.container], defs, acc);
+      continue;
+    }
+    if (c.kind === "repeat") {
+      collectTlvOwnedBoundedControllers(c.element.fields, defs, acc);
+      continue;
+    }
+    if (c.kind === "switch") {
+      for (const struct of Object.values(c.cases)) {
+        collectTlvOwnedBoundedControllers(struct.fields, defs, acc);
+      }
+      continue;
+    }
+    if (c.kind === "encrypted") {
+      collectTlvOwnedBoundedControllers(c.plaintext.fields, defs, acc);
       continue;
     }
   }
@@ -436,8 +507,17 @@ function collectSiblingLengthControllers(
           // A sibling bounded budget nominates its single length ref, but its
           // INNER fields are a deeper scope owned by the bounded-controller path
           // — do not descend (avoids surfacing budget-internal lengths twice).
-          const ref = singleRefController(c.bytes);
-          if (ref) sizedBy.add(ref);
+          // EXCEPT a bounded scope whose inner repeat is TLV-shaped: that region
+          // is already owned by the lifted `tlv` field's TlvEditor (add/remove
+          // records drives the budget). Nominating its length ref here would
+          // stamp a `controlsLength` slider (ipv4 `ihl`, tcp `dataOffset`,
+          // ipv6Destination `hdrExtLen`, tlsClientHelloFull `extensionsLen`)
+          // that inflates the byte counter while ZERO new cells appear — a
+          // misleading control fighting the TLV editor. Skip it.
+          if (!isTlvOwnedBounded(c, defs)) {
+            const ref = singleRefController(c.bytes);
+            if (ref) sizedBy.add(ref);
+          }
         } else if (c.kind === "group") {
           gatherSizers(c.children, behindSwitch);
         } else if (c.kind === "optional") {
@@ -1144,8 +1224,24 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // the constraint-driven path above, so IHL / Data Offset stay overridable.
   const boundedControllers = new Set<string>();
   collectBoundedControllers(packet.body, packet.defs, boundedControllers);
+  // A top-level `bounded` scope whose inner repeat is TLV-shaped has already
+  // been lifted to a `tlv` field above; the TLV editor (add/remove records) is
+  // the intended control for that region and the byte budget follows the
+  // instances. Surfacing the bounded's single-ref length field ALSO as a
+  // `controlsLength` slider would let the user inflate the diagram's byte
+  // counter by tens of bytes while ZERO new cells appear (ipv4 `ihl`, tcp
+  // `dataOffset`, ipv6Destination `hdrExtLen`, tlsClientHelloFull
+  // `extensionsLen`) — a misleading control fighting the TLV editor for the
+  // same region. Exclude those controllers.
+  const tlvOwnedControllers = new Set<string>();
+  collectTlvOwnedBoundedControllers(
+    packet.body,
+    packet.defs,
+    tlvOwnedControllers,
+  );
   const lengthControllers: RendererField[] = [];
   for (const fromId of boundedControllers) {
+    if (tlvOwnedControllers.has(fromId)) continue;
     const target = fields.find((f) => f.id === fromId);
     if (target && !target.controlsLength) {
       target.controlsLength = fromId;
