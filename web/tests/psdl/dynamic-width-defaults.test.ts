@@ -37,6 +37,68 @@ describe("seedDynamicWidthDefaults", () => {
     expect(cellIds(PRESETS.syslog!)).toContain("hostname");
   });
 
+  it("makes a delimited-bytes leaf inside a ref-expanded def visible & editable", () => {
+    // Arbitrary (non-preset) PSDL: a delimiter-terminated `bytes` leaf declared
+    // in a `defs` entry reached via {kind:ref}. Before the fix the ref container
+    // was skipped by both the seed and the bridge, so the leaf got 0 bits from
+    // core and rendered NO cell — see-but-cannot-edit (bar #2 violation).
+    const src: PsdlPacket = {
+      name: "t",
+      rowBits: 32,
+      defs: {
+        rec: {
+          fields: [
+            { id: "recName", type: { kind: "bytes", n: { delimiter: [0] } } },
+            { id: "recVal", type: { kind: "int", bits: 8 } },
+          ],
+        },
+      },
+      body: [
+        { id: "hdr", type: { kind: "int", bits: 8 } },
+        { kind: "ref", ref: "rec" },
+      ],
+    } as unknown as PsdlPacket;
+    // Default load paints the delimited leaf at the seeded width.
+    expect(cellIds(src)).toContain("recName");
+    // It is editable: a wider env value drives a wider cell.
+    const env = new Map<string, number>([["recName", 6]]);
+    for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+    for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+    seedDynamicWidthDefaults(src, env);
+    const cell = resolveLayout(src, { env }).cells.find((c) =>
+      c.field.id.endsWith("recName"),
+    );
+    expect(cell?.field.bits).toBe(6 * 8);
+  });
+
+  it("makes a varint leaf inside a ref-expanded def visible & editable", () => {
+    const src: PsdlPacket = {
+      name: "t",
+      rowBits: 32,
+      defs: {
+        rec: {
+          fields: [
+            { id: "vlen", type: { kind: "varint", encoding: "leb128" } },
+          ],
+        },
+      },
+      body: [
+        { id: "h", type: { kind: "int", bits: 8 } },
+        { kind: "ref", ref: "rec" },
+      ],
+    } as unknown as PsdlPacket;
+    expect(cellIds(src)).toContain("vlen");
+    // Editable: the bare-id override is bridged to `__varintBits__vlen`.
+    const env = new Map<string, number>([["vlen", 24]]);
+    for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+    for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+    seedDynamicWidthDefaults(src, env);
+    const cell = resolveLayout(src, { env }).cells.find((c) =>
+      c.field.id.endsWith("vlen"),
+    );
+    expect(cell?.field.bits).toBe(24);
+  });
+
   it("a user-set width still wins over the seed", () => {
     // `http3PayloadLength` is a plain (non-discriminator) varint whose env key
     // legitimately doubles as its wire width. Setting it to 2 bytes (16 bits)

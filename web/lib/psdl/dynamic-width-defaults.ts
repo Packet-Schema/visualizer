@@ -80,6 +80,8 @@ export function seedDynamicWidthDefaults(
   // key for the discriminator value; seed its wire width on the dedicated bits
   // key instead so the value key stays free to select a case.
   const discriminators = collectSwitchOnRefIds(psdl);
+  const defs = psdl.defs ?? {};
+  const seenRefs = new Set<string>(); // guard recursive defs.
   const widthKeyFor = (c: Container): string | null => {
     if (!isField(c)) return null;
     if (c.type.kind === "varint") return varintBitsEnvKey(c.id);
@@ -129,7 +131,22 @@ export function seedDynamicWidthDefaults(
         case "bounded":
           visit(c.fields);
           break;
-        // virtual / align / ref expose no dynamic-width leaf to seed.
+        case "ref": {
+          // A `ref` expands a named struct; a varint / delimited-bytes leaf
+          // inside it is a real, paintable cell whose width core reads under the
+          // bare leaf id (varint via typeBits(field.id); delimited via the bare
+          // value fanned onto per-instance keys by qualifyDelimitedWidthKeys), so
+          // it must be seeded too — without descending here it stays 0 bits and
+          // renders no cell (see-but-cannot-edit). Seed the bare authored leaf id.
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+        // virtual / align expose no dynamic-width leaf to seed.
       }
     }
   };

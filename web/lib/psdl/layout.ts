@@ -273,6 +273,8 @@ function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
   // misalign the cursor (http3Frame's `http3FrameType`). Its width lives on the
   // dedicated `__varintBits__<id>` key, seeded by `seedDynamicWidthDefaults`.
   const discriminators = collectSwitchOnRefIds(packet);
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>(); // guard recursive defs.
   const visit = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) {
@@ -306,7 +308,23 @@ function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
         case "bounded":
           visit(c.fields);
           break;
-        // virtual / align / ref expose no dynamic-width leaf to bridge.
+        case "ref": {
+          // A varint / berLength leaf inside a `ref`-expanded def is read by
+          // core's typeBits under the BARE leaf id (`__varintBits__<leaf>` /
+          // `__berLen__<leaf>`), so the field-id-keyed override the controller /
+          // seed wrote under `env[leaf]` has to be bridged here too — otherwise
+          // it stays 0 bits and renders no cell. (Delimited bytes inside a ref
+          // are bridged separately by qualifyDelimitedWidthKeys onto the
+          // per-instance qualified key.) Guard recursive defs.
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+        // virtual / align expose no dynamic-width leaf to bridge.
       }
     }
   };
