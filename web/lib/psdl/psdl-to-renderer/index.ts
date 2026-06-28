@@ -1240,7 +1240,18 @@ function collectLengthDrivingRefs(body: PsdlPacket["body"]): Set<string> {
         continue;
       }
       if (c.kind === "repeat") {
-        refsIn(c.count, acc);
+        // Only a NUMERIC repeat count drives a byte budget. A `{ until: Expr }`
+        // terminator is a record-terminator PREDICATE (e.g. rtcpSdes's
+        // `until: rtcpSdesItemType == 0`), not a length — its refs must NOT be
+        // treated as length/format encoders, or the switch discriminated on that
+        // same field (rtcpSdesItemBody on rtcpSdesItemType) would be wrongly
+        // dropped from refSwitches, leaving the SDES item body see-but-cannot-edit.
+        if (
+          c.count !== "eos" &&
+          !(typeof c.count === "object" && "until" in c.count)
+        ) {
+          refsIn(c.count, acc);
+        }
         visit(c.element.fields);
         continue;
       }
