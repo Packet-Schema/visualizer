@@ -578,6 +578,80 @@ describe("OverridePanel widgets", () => {
     expect(container.textContent ?? "").toMatch(/BER length width/i);
   });
 
+  // A delimiter-terminated (NUL-terminated) `bytes` leaf that lives INSIDE a
+  // switch case is the delimited counterpart of the varint/berLength cases
+  // above. tftp's RRQ/WRQ/ERROR arms declare rrqFilename / rrqMode / wrqFilename
+  // / wrqMode / errMsg, none of which become renderer mirror fields (they live
+  // in the `opcode` switch cases). seedDynamicWidthDefaults seeds them to a
+  // visible default and resolveLayout stamps `isDelimited` onto the synthetic
+  // cell, so a click must surface an editable byte-count width via the diagram
+  // cells — not the read-only empty state (#3, switch-case delimited bytes).
+  it("surfaces a delimited width picker for switch-case-nested bytes (tftp rrqFilename/rrqMode) (#3)", async () => {
+    const src = PRESETS.tftp!;
+    const packet = psdlToRenderer(src);
+    // The delimited Filename/Mode leaves live inside the `opcode` switch cases,
+    // so they are NOT top-level mirror fields and NOT length controllers.
+    expect(packet.fields.some((f) => f.id === "rrqFilename")).toBe(false);
+    expect(packet.fields.some((f) => f.id === "rrqMode")).toBe(false);
+    expect(
+      (packet.lengthControllers ?? []).some(
+        (f) => f.id === "rrqFilename" || f.id === "rrqMode",
+      ),
+    ).toBe(false);
+
+    // Selecting RRQ (opcode = 1) materialises the Filename + Mode cells, each
+    // seeded to a visible 4-byte default and flagged delimited by the layout.
+    const env = packetViewerEnv(src);
+    env.set("opcode", 1);
+    const { cells } = resolveLayout(src, { env });
+    for (const id of ["rrqFilename", "rrqMode"]) {
+      const cell = cells.find((c) => c.field.id === id);
+      expect(cell, `${id} cell must be present at opcode=1`).toBeTruthy();
+      expect(
+        cell!.field.isDelimited,
+        `layout must stamp isDelimited onto ${id}`,
+      ).toBe(true);
+    }
+
+    for (const id of ["rrqFilename", "rrqMode"]) {
+      const onChange = vi.fn();
+      const { container } = await mount(
+        <OverridePanel
+          packet={packet}
+          selectedFieldId={id}
+          controllers={{ [id]: 4 }}
+          onControllerChange={onChange}
+          cells={cells}
+        />,
+      );
+      // Must NOT fall through to the read-only empty state...
+      expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+      // ...and must render the delimited byte-count radiogroup.
+      const group = container.querySelector('[role="radiogroup"]');
+      expect(
+        group,
+        `${id} delimited bytes must surface a width radiogroup`,
+      ).not.toBeNull();
+      expect(container.textContent ?? "").toMatch(/Delimited length/i);
+      const buttons = Array.from(
+        group!.querySelectorAll('[role="radio"]'),
+      ) as HTMLButtonElement[];
+      // Delimited stores a byte count, so the seeded 4 shows as "4B" and is the
+      // active option.
+      const active = buttons.find(
+        (b) => b.getAttribute("aria-checked") === "true",
+      );
+      expect(active?.textContent).toBe("4B");
+      // Picking a different option writes a BYTE count under the bare field id
+      // (the env key the layout reads via __bytesDelimLen__).
+      const eight = buttons.find((b) => b.textContent === "8B")!;
+      await act(async () => {
+        eight.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(onChange).toHaveBeenCalledWith(id, 8);
+    }
+  });
+
   it("surfaces an EnumDropdown for a repeat-nested enum leaf (dnsResponse dnsQType) (#enum)", async () => {
     // see-but-cannot-edit: a plain enum leaf inside a repeat record never
     // becomes a renderer mirror field, so a click resolves through
