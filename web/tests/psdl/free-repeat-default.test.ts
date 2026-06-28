@@ -162,32 +162,45 @@ describe("free-repeat default count", () => {
     }
   });
 
-  it("does not surface an inert freeRepeat whose count ref points at a virtual field", () => {
-    // kerberosAsReq: padataList.count = ref(padataCount), but padataCount is a
-    // `virtual` field with expr lit(1). core normalize walkVirtual does
-    // `env.set(v.id, eval(expr))` BEFORE the repeat is walked, so it always
-    // CLOBBERS any seeded env value — the diagram is frozen at exactly one
-    // PA-DATA record for every stepper value. A stepper on padataCount can
-    // never move the diagram (see-but-cannot-edit / inert control), so the
-    // freeRepeat must NOT be surfaced.
+  it("surfaces a DRIVABLE freeRepeat for a self-ref-virtual count (kerberosAsReq padataCount)", () => {
+    // kerberosAsReq: padataList.count = ref(padataCount). Upstream `padataCount`
+    // is a `virtual` with expr lit(1), which core normalize recomputes to a
+    // fixed value every render (clobbering any override) — a see-but-cannot-edit
+    // gap. The visualizer preset adapter rewrites it to a SELF-ref
+    // (expr: ref(padataCount)); walkVirtual then evaluates `eval(ref(id))` =
+    // env[id] and writes it back unchanged, so a stepper write SURVIVES and the
+    // count IS drivable. collectFreeRepeats surfaces it (seeded to 1 so the
+    // illustrative record still shows on load).
     const krb = psdlToRenderer(PRESETS.kerberosAsReq!);
-    const keys = (krb.freeRepeats ?? []).map((r) => r.countKey);
-    expect(keys).not.toContain("padataCount");
+    const padata = (krb.freeRepeats ?? []).find(
+      (r) => r.countKey === "padataCount",
+    );
+    expect(padata, "padataCount freeRepeat must be surfaced").toBeDefined();
+    expect(padata?.defaultCount).toBe(1);
 
-    // Prove the inertness the suppression avoids: stepping padataCount over
-    // {0,1,2,3} leaves the diagram byte-identical (a single record set),
-    // confirming a surfaced stepper would have been dead.
+    // Prove it is NOT inert: stepping padataCount over {0,1,2,3} moves the
+    // rendered PA-DATA record count one-for-one, closing the see-but-cannot-edit
+    // gap. Count the per-record `padataRecTag#N` cells directly.
     const src = PRESETS.kerberosAsReq!;
+    const controllers = initialState(krb);
     const base = applyChainInstances(applyTlvInstances(src, krb, {}), krb);
-    const counts = new Set<number>();
+    const recordCounts: number[] = [];
     for (const value of [0, 1, 2, 3]) {
-      const env = new Map<string, number>();
-      for (const [k, v] of initialEnv(base)) env.set(k, v);
+      const env = new Map<string, number>(
+        Object.entries(controllers).map(([k, v]) => [k, Number(v)]),
+      );
+      for (const [k, v] of initialEnv(base)) if (!env.has(k)) env.set(k, v);
       for (const r of collectPsdlRefs(base)) if (!env.has(r)) env.set(r, 0);
+      // The optional padata block is present in this illustrative preset.
+      env.set("kerberosHasPadata", 1);
       env.set("padataCount", value);
-      counts.add(resolveLayout(base, { env }).cells.length);
+      recordCounts.push(
+        resolveLayout(base, { env }).cells.filter(
+          (c) => c.field.id.replace(/#\d+$/, "") === "padataRecTag",
+        ).length,
+      );
     }
-    expect(counts.size).toBe(1);
+    expect(recordCounts).toEqual([0, 1, 2, 3]);
   });
 
   it("keeps free eos/until steppers for children of an INSTANTIABLE parent repeat", () => {

@@ -1922,6 +1922,50 @@ function collectVirtualIds(
 }
 
 /**
+ * Subset of `collectVirtualIds`: virtual ids whose `expr` is a bare SELF-ref
+ * (`{ kind: "ref", field: <own id> }`). Unlike a literal-valued virtual (which
+ * normalize recomputes to a fixed value every render, clobbering any override),
+ * a self-ref virtual's value is `env[id]` itself: walkVirtual evaluates
+ * `eval(ref(id))` (via `evalExprOr`, fallback 0 when unset) and writes it back
+ * unchanged — so seeding `env[id]` from a surfaced count stepper SURVIVES the
+ * recompute and drives the diagram. These ids may therefore back a real
+ * (drivable) freeRepeat count, so the ref-count collector exempts them from the
+ * blanket virtual suppression. (kerberosAsReq's `padataCount`, rewritten to a
+ * self-ref seed by the preset adapter so its visible PA-DATA list gets an
+ * add/remove control.)
+ */
+function collectSelfRefVirtualIds(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): Set<string> {
+  const out = new Set<string>();
+  const seenDefs = new Set<string>();
+  const visit = (containers: PsdlPacket["body"]): void => {
+    for (const c of containers) {
+      if (isField(c)) continue;
+      if (c.kind === "virtual") {
+        if (c.expr.kind === "ref" && c.expr.field === c.id) out.add(c.id);
+      } else if (c.kind === "bounded") visit(c.fields);
+      else if (c.kind === "repeat") visit(c.element.fields);
+      else if (c.kind === "group") visit(c.children);
+      else if (c.kind === "switch")
+        for (const s of Object.values(c.cases)) visit(s.fields);
+      else if (c.kind === "optional") visit([c.container]);
+      else if (c.kind === "encrypted") visit(c.plaintext.fields);
+      else if (c.kind === "ref") {
+        const def = defs?.[c.ref];
+        if (def && !seenDefs.has(c.ref)) {
+          seenDefs.add(c.ref);
+          visit(def.fields);
+        }
+      }
+    }
+  };
+  visit(body);
+  return out;
+}
+
+/**
  * Build a human-readable label for a single Switch case, used to qualify the
  * name of a freeRepeat surfaced from INSIDE that case so colliding labels
  * (icmpv6Ndp's five `Options` repeats, one per Type case; msdp's two `SA
@@ -3264,6 +3308,10 @@ function collectFreeRepeats(
   // normalize recomputes env[virtualId] from its expr every render), so a
   // freeRepeat keyed on it would be inert/misleading — suppressed below.
   const virtualIds = collectVirtualIds(body, defs);
+  // EXCEPTION to the above: a virtual whose expr is a bare SELF-ref
+  // (`ref(self.id)`) is recomputed to env[id] itself, so an override DOES
+  // survive — it can back a real count stepper (kerberosAsReq `padataCount`).
+  const selfRefVirtualIds = collectSelfRefVirtualIds(body, defs);
   // `boundedKey` is the single-ref length field of the nearest enclosing
   // `bounded` byte-budget (or null). An eos/until repeat inside one must NOT get
   // a naked count stepper (bumping it over-consumes the budget — a destructive
@@ -3697,11 +3745,18 @@ function collectFreeRepeats(
             );
             // A count ref to a `virtual` field is recomputed by normalize every
             // render (walkVirtual `env.set(id, eval(expr))`), clobbering any
-            // stepper write — kerberosAsReq `padataList count={ref:padataCount}`
-            // with padataCount=virtual lit 1 always renders exactly 1 record.
-            // Surface no stepper (the only fix that keeps the count editable
-            // would be replacing the virtual with a real field in the PSDL).
-            if (!covered && !virtualIds.has(ref)) {
+            // stepper write — a virtual with a LITERAL expr always renders the
+            // same record count regardless of the stepper. EXCEPTION: a
+            // SELF-ref virtual (`expr: ref(self.id)`) recomputes to env[id]
+            // itself, so a stepper write survives and IS drivable — surface it
+            // (kerberosAsReq `padataList count={ref:padataCount}`, whose
+            // `padataCount` the preset adapter rewrites from `lit 1` to a
+            // self-ref seed so the visible PA-DATA list gets an add/remove
+            // control instead of being see-but-cannot-edit).
+            if (
+              !covered &&
+              (!virtualIds.has(ref) || selfRefVirtualIds.has(ref))
+            ) {
               countKey = ref;
               if (insideRepeat) {
                 // Inner per-record ref-count: the driver lives inside the
@@ -3735,6 +3790,18 @@ function collectFreeRepeats(
                 // lispReplyRecords). One representative record is a ref-count (NOT
                 // a budget) repeat, so seeding 1 never over-consumes a byte
                 // budget. Plain scalar-list ref-count repeats stay at 0.
+                defaultCount = 1;
+              } else if (selfRefVirtualIds.has(ref)) {
+                // Top-level repeat counted by a SELF-ref virtual that the PSDL
+                // seeds to a representative value (kerberosAsReq `padataCount`).
+                // A self-ref virtual evaluates to its env value (fallback 0 when
+                // unset), so without a seed the visible PA-DATA record would
+                // VANISH at load — a regression from the preset's intent to show
+                // one illustrative record. Seed 1 to preserve that representative
+                // record AND make the stepper land on a live value (the override
+                // survives the recompute; see selfRefVirtualIds). Not record-
+                // bearing here so the +1 above doesn't fire; this branch covers
+                // the plain-record case the self-ref enables.
                 defaultCount = 1;
               }
             }
