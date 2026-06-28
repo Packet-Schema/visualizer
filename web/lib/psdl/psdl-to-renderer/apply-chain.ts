@@ -20,6 +20,7 @@ import type {
   Container,
   Field as PsdlField,
   Group as PsdlGroup,
+  NamedStruct,
   Packet as PsdlPacket,
   Repeat as PsdlRepeat,
 } from "../types";
@@ -58,7 +59,12 @@ function expandChainRepeat(
   return out;
 }
 
-function expandContainer(c: Container, mirror: RendererPacket): Container[] {
+function expandContainer(
+  c: Container,
+  mirror: RendererPacket,
+  defs: Record<string, NamedStruct>,
+  seenRefs: Set<string>,
+): Container[] {
   if (isField(c)) return [c];
   if (c.kind === "repeat" && isLikelyChainRepeat(c)) {
     // The chain catalog merges onto the base field at import (id without the
@@ -75,13 +81,61 @@ function expandContainer(c: Container, mirror: RendererPacket): Container[] {
   // scope is still found (defensive; ipv6's chain is top-level).
   if (c.kind === "bounded") {
     return [
-      { ...c, fields: c.fields.flatMap((f) => expandContainer(f, mirror)) },
+      {
+        ...c,
+        fields: c.fields.flatMap((f) =>
+          expandContainer(f, mirror, defs, seenRefs),
+        ),
+      },
     ];
   }
   if (c.kind === "group") {
     return [
-      { ...c, children: c.children.flatMap((f) => expandContainer(f, mirror)) },
+      {
+        ...c,
+        children: c.children.flatMap((f) =>
+          expandContainer(f, mirror, defs, seenRefs),
+        ),
+      },
     ];
+  }
+  // A body-level `ref` def can reach a chain Repeat (collectFreeRepeats
+  // descends `ref`, so the chain catalog surfaces for this placement). Resolve
+  // the def and expand its fields inline — with a cycle guard, since defs may
+  // be recursive (§6). Expanding inline (rather than rewriting the def) keeps
+  // the per-instance Groups addressable by the same flat ids the diagram uses.
+  if (c.kind === "ref") {
+    const def = defs[c.ref];
+    if (!def || seenRefs.has(c.ref)) return [c];
+    seenRefs.add(c.ref);
+    const inner = def.fields.flatMap((f) =>
+      expandContainer(f, mirror, defs, seenRefs),
+    );
+    seenRefs.delete(c.ref);
+    return inner;
+  }
+  // `optional` (PSDL 0.5 §10.8) wraps exactly one container, which may be (or
+  // hold) a chain Repeat. Descend so the chain is expanded in place; otherwise
+  // the diagram shows the raw eos Repeat (inert). Expanding may yield multiple
+  // containers (the per-instance Groups) — collapse a multi-result into a
+  // Group so the Optional keeps wrapping exactly one container (mirrors
+  // applyTlvInstances).
+  if (c.kind === "optional") {
+    const inner = expandContainer(c.container, mirror, defs, seenRefs);
+    if (inner.length === 1 && inner[0] === c.container) return [c];
+    const wrapped: Container =
+      inner.length === 1
+        ? inner[0]
+        : {
+            kind: "group",
+            id: `${c.id ?? "optional"}__opt`,
+            name:
+              "name" in c.container
+                ? (c.container.name ?? "Extension Headers")
+                : "Extension Headers",
+            children: inner,
+          };
+    return [{ ...c, container: wrapped }];
   }
   return [c];
 }
@@ -109,8 +163,9 @@ export function applyChainInstances(
     (f) => f.chainCatalog && (f.chainInstances?.length ?? 0) > 0,
   );
   if (!hasChainEdit) return psdl;
+  const defs = psdl.defs ?? {};
   return {
     ...psdl,
-    body: psdl.body.flatMap((c) => expandContainer(c, mirror)),
+    body: psdl.body.flatMap((c) => expandContainer(c, mirror, defs, new Set())),
   };
 }
