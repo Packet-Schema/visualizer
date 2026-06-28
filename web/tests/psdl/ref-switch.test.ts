@@ -245,6 +245,69 @@ describe("collectRefSwitches", () => {
     expect(dnsKeys).toContain("dnsRrType");
   });
 
+  it("surfaces the coapSignaling Extended-Length nibble (coapSigLen) picker", () => {
+    // high (see-but-cannot-edit): coapSignaling's top-level `coapSigExtLen`
+    // switches on the 4-bit `coapSigLen` nibble (group-nested in `coapSigLenTkl`)
+    // and inserts a DISTINCT-width Extended Length cell per arm (13 → 8-bit,
+    // 14 → 16-bit, 15 → 32-bit). The blanket sub-byte length-encoder heuristic
+    // suppressed it, so an imported Len=13/14/15 message rendered an Extended
+    // Length field with NO control to reach it. A TOP-LEVEL (`!insideRepeat`)
+    // length-extension switch with distinct-width arms is now surfaced.
+    const coapSig = psdlToRenderer(PRESETS.coapSignaling!);
+    const rs = (coapSig.refSwitches ?? []).find(
+      (r) => r.refKey === "coapSigLen",
+    );
+    expect(
+      rs,
+      "coapSigLen Extended-Length picker must be surfaced",
+    ).toBeTruthy();
+    expect(rs!.cases.map((c) => c.value)).toEqual(
+      expect.arrayContaining([13, 14, 15]),
+    );
+
+    // websocketFrame shares the exact class: top-level `byPayloadLength7` on the
+    // 7-bit group-nested `payloadLength7` inserts a 16-bit (126) or 64-bit (127)
+    // Extended Payload Length cell. It is surfaced via the same code path.
+    const ws = psdlToRenderer(PRESETS.websocketFrame!);
+    const wsRs = (ws.refSwitches ?? []).find(
+      (r) => r.refKey === "payloadLength7",
+    );
+    expect(
+      wsRs,
+      "payloadLength7 Extended-Length picker must be surfaced",
+    ).toBeTruthy();
+    expect(wsRs!.cases.map((c) => c.value)).toEqual(
+      expect.arrayContaining([126, 127]),
+    );
+
+    // The relaxation is gated on `!insideRepeat`: CoAP's repeat-nested
+    // optDelta/optLength length-extension encoders (same arm shape) MUST stay
+    // suppressed — driving them over-consumes the TLV option scope.
+    const coap = psdlToRenderer(PRESETS.coap!);
+    const coapKeys = (coap.refSwitches ?? []).map((r) => r.refKey);
+    expect(coapKeys).not.toContain("optDelta");
+    expect(coapKeys).not.toContain("optLength");
+  });
+
+  it("coapSigLen picker makes the distinct-width Extended Length cell appear", () => {
+    // Selecting 13/14/15 must visibly change the diagram (the control is not
+    // inert): each value inserts a DIFFERENT Extended Length field. base = no
+    // extension; 13 → 8-bit byte; 14 → 16-bit word; 15 → 32-bit dword.
+    const src = PRESETS.coapSignaling!;
+    const base = appCellIdsSeeded(src, { coapSigLen: 0 });
+    const len13 = appCellIdsSeeded(src, { coapSigLen: 13 });
+    const len14 = appCellIdsSeeded(src, { coapSigLen: 14 });
+    const len15 = appCellIdsSeeded(src, { coapSigLen: 15 });
+    expect(base).not.toContain("coapSigExtLenByte");
+    expect(len13).toContain("coapSigExtLenByte");
+    expect(len14).toContain("coapSigExtLenWord");
+    expect(len15).toContain("coapSigExtLenDword");
+    // Distinct selections render distinct diagrams (not an inert dropdown).
+    expect(len13).not.toEqual(base);
+    expect(len14).not.toEqual(len13);
+    expect(len15).not.toEqual(len14);
+  });
+
   it("surfaces the bgpUpdateFull attrTypeCode picker on its budget-derived repeat", () => {
     // critical: bgpUpdateFull's `bgpPathAttributes` eos repeat lives inside
     // `bounded(bgpTotalPathAttributeLength)` and each record wraps a PER-RECORD
