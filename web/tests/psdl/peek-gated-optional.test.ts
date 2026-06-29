@@ -33,7 +33,14 @@ const allCellIds = (env: Record<string, number>): string[] =>
   );
 
 describe("psdlToRenderer — peek-gated Optional surfaces its gate", () => {
-  it("publishes a peek-switch for ROHC padding / feedback gates", () => {
+  it("does NOT surface a redundant peek picker for the count-driven Padding / Feedback gates", () => {
+    // ROHC Padding / Feedback are `optional(peek == lit){ group{ repeat until } }`.
+    // The `rohcPadding` / `rohcFeedback` until-repeats already own count steppers
+    // (freeRepeats), and `initialState` seeds the gate peek to its "present"
+    // value, so the stepper alone reveals (raise) or hides (0) the records. A
+    // peek picker that merely toggles the same region on/off is a misleading
+    // duplicate of the stepper — setting the peek alone, with count 0, does
+    // nothing. It must NOT be surfaced.
     const mirror = psdlToRenderer(rohc());
     const byKey = new Map(
       (mirror.peekSwitches ?? []).map((p) => [p.peekKey, p] as const),
@@ -41,16 +48,28 @@ describe("psdlToRenderer — peek-gated Optional surfaces its gate", () => {
 
     const padKey = peekEnvKey(0, 8);
     const fbKey = peekEnvKey(0, 5);
-    const pad = byKey.get(padKey);
-    const fb = byKey.get(fbKey);
 
-    expect(pad).toBeDefined();
-    expect(fb).toBeDefined();
-    // Each gate offers the "present" value plus an "(absent)" toggle-off case.
-    expect(pad!.cases.map((c) => c.value)).toContain(224);
-    expect(fb!.cases.map((c) => c.value)).toContain(30);
-    expect(pad!.cases.some((c) => c.label === "(absent)")).toBe(true);
-    expect(fb!.cases.some((c) => c.label === "(absent)")).toBe(true);
+    expect(byKey.get(padKey)).toBeUndefined();
+    expect(byKey.get(fbKey)).toBeUndefined();
+
+    // The count steppers ARE surfaced and ARE the live control.
+    const repeatKeys = (mirror.freeRepeats ?? []).map((r) => r.countKey);
+    expect(repeatKeys).toContain("rohcPadding");
+    expect(repeatKeys).toContain("rohcFeedback");
+  });
+
+  it("still surfaces the peek picker for an optional wrapping a plain field (Add-CID)", () => {
+    // The Add-CID octet is `optional(peek(4) == 14){ field }` — a directly
+    // renderable field with NO count stepper of its own, so the peek picker is
+    // the only control and must remain.
+    const mirror = psdlToRenderer(rohc());
+    const addCidKey = peekEnvKey(0, 4);
+    const picker = (mirror.peekSwitches ?? []).find(
+      (p) => p.peekKey === addCidKey,
+    );
+    expect(picker).toBeDefined();
+    expect(picker!.cases.map((c) => c.value)).toContain(14);
+    expect(picker!.cases.some((c) => c.label === "(absent)")).toBe(true);
   });
 
   it("does not shadow the real header Switch peek key", () => {

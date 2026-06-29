@@ -2136,10 +2136,18 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   }
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
     collectFreeRepeats(packet, fields);
+  // Repeat ids that own a surfaced count stepper (freeRepeat / boundedRepeat).
+  // A peek-gated optional wrapping such a repeat must NOT also surface a gate
+  // picker — the stepper is the live control (ROHC Padding / Feedback).
+  const surfacedRepeatCountKeys = new Set<string>([
+    ...freeRepeats.map((fr) => fr.countKey),
+    ...boundedRepeats.map((br) => br.countKey),
+  ]);
   const peekSwitches = collectPeekSwitches(
     packet.body,
     packet.defs,
     instantiableRepeatIds,
+    surfacedRepeatCountKeys,
   );
   // A per-record `length` field stranded inside a PLAIN instantiable repeat
   // (dnsResponse `dnsRdLength`, pimHelloOptions `pimHelloOptLen`) has no editor
@@ -6227,6 +6235,43 @@ function optionalInnerName(inner: Container): string {
 }
 
 /**
+ * True when `container` IS, or transitively wraps, a `repeat` whose id is in
+ * `surfacedCountKeys` (a repeat already given its own count stepper as a
+ * freeRepeat / boundedRepeat). Used by the optional peek-gate path to decide
+ * whether the gate picker would merely duplicate that stepper.
+ *
+ * Only descends the "skeleton" wrappers that keep the repeat on the SAME
+ * always-present spine as the optional itself — group / bounded / a lone
+ * optional / a single-armed switch. A repeat buried inside a multi-arm switch
+ * case or a sibling list isn't the thing the gate reveals, so we don't treat it
+ * as the live control. (For ROHC the optional wraps a `group` holding the
+ * `rohcPadding` / `rohcFeedback` until-repeats directly.)
+ */
+function optionalWrapsSurfacedRepeat(
+  container: Container,
+  surfacedCountKeys: Set<string>,
+): boolean {
+  const c = container;
+  if (c.kind === "repeat") {
+    if (typeof c.id === "string" && surfacedCountKeys.has(c.id)) return true;
+    // A repeat's element is its own scope; a nested surfaced repeat there is
+    // controlled independently and is not what THIS gate reveals.
+    return false;
+  }
+  if (c.kind === "group")
+    return c.children.some((child) =>
+      optionalWrapsSurfacedRepeat(child, surfacedCountKeys),
+    );
+  if (c.kind === "bounded")
+    return c.fields.some((child) =>
+      optionalWrapsSurfacedRepeat(child, surfacedCountKeys),
+    );
+  if (c.kind === "optional")
+    return optionalWrapsSurfacedRepeat(c.container, surfacedCountKeys);
+  return false;
+}
+
+/**
  * Find Switches whose `on` is a `peek` expression (TLS extension type
  * dispatch etc). The peek synthesizes an env key
  * `__peek__<offset>__<bits>` per the PSDL spec. We expose this so
@@ -6237,11 +6282,19 @@ function optionalInnerName(inner: Container): string {
  * peek(bits) == lit`): the region is hidden at the default env (peek
  * defaults to 0), and because the gate's `when` is a peek — not a `ref` —
  * `attachOverrideMetadata` produces no `optionalGateFor`. Without surfacing
- * the gating peek key the region (and any repeat-count stepper inside it,
- * e.g. ROHC's `rohcPadding` / `rohcFeedback` until-repeats) is permanently
- * unreachable: a see-but-cannot-edit dead end. We publish one synthetic
- * picker per distinct peek key, with a case per gate value plus an "(absent)"
- * case so the region can be toggled back off.
+ * the gating peek key the region is otherwise unreachable: a see-but-cannot-edit
+ * dead end. We publish one synthetic picker per distinct peek key, with a case
+ * per gate value plus an "(absent)" case so the region can be toggled back off.
+ *
+ * EXCEPTION: when the optional wraps a count-driven `repeat` that ALREADY has
+ * its own surfaced count stepper (ROHC's `rohcPadding` / `rohcFeedback`
+ * until-repeats), that stepper is the live, granular control — `initialState`
+ * seeds the gate peek to its "present" value, so raising the stepper reveals the
+ * records and lowering it to 0 hides them. A second peek picker that only
+ * toggles the same region off/on is a redundant, misleading duplicate (setting
+ * the peek alone, with count 0, does nothing). We suppress the gate picker in
+ * that case and only emit one when the optional wraps a directly-renderable
+ * field (ROHC's Add-CID octet) with no count stepper of its own.
  */
 function collectPeekSwitches(
   body: PsdlPacket["body"],
@@ -6250,6 +6303,10 @@ function collectPeekSwitches(
   // literal count). Used to relax the in-repeat nested-TLV peek picker only when
   // the enclosing repeat is instantiable, mirroring collectFreeRepeats.
   instantiableRepeatIds: Set<string>,
+  // Repeat ids that already own a surfaced count stepper (freeRepeat /
+  // boundedRepeat). A peek-gated optional wrapping one of these gets NO gate
+  // picker — the stepper is the live control (see EXCEPTION above).
+  surfacedRepeatCountKeys: Set<string>,
 ): NonNullable<RendererPacket["peekSwitches"]> {
   const out: NonNullable<RendererPacket["peekSwitches"]> = [];
   // Peek keys already surfaced by a real Switch dispatch — don't shadow them
@@ -6432,7 +6489,15 @@ function collectPeekSwitches(
       }
       if (c.kind === "optional") {
         const gate = matchPeekGate(c.when);
-        if (gate) {
+        // Suppress the gate picker when the optional wraps a count-driven repeat
+        // that already has its own surfaced count stepper — that stepper is the
+        // live control, so a peek picker only duplicates the region's on/off
+        // (ROHC Padding / Feedback). Still descend below for any genuinely
+        // distinct nested picker.
+        if (
+          gate &&
+          !optionalWrapsSurfacedRepeat(c.container, surfacedRepeatCountKeys)
+        ) {
           const label = optionalInnerName(c.container);
           const entry = gates.get(gate.peekKey);
           if (entry) {
