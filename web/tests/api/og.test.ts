@@ -108,16 +108,18 @@ describe("OG API endpoint", () => {
       defaultBuf = await res.arrayBuffer();
     });
 
-    // quicLong / quicShort / ipsecEsp are skipped pending
-    // Packet-Schema/presets#2 (encrypted scope over-consumed): their encrypted
-    // plaintext sums to more bits than the declared wireBits, so resolveLayout
-    // throws and the OG render falls back to the default image (making it
-    // pixel-identical to "/"). https://github.com/Packet-Schema/presets/issues/2
-    const ENCRYPTED_OVER_CONSUMED = new Set([
-      "ipsecEsp",
-      "quicLong",
-      "quicShort",
-    ]);
+    // quicLong / quicShort are skipped pending Packet-Schema/presets#2 (encrypted
+    // scope over-consumed): their encrypted plaintext sums to more bits than the
+    // declared wireBits, so resolveLayout throws and the OG render falls back to
+    // the default image (making it pixel-identical to "/").
+    // https://github.com/Packet-Schema/presets/issues/2
+    //
+    // ipsecEsp was previously skipped here too, but its encrypted scope sizes
+    // `wireBits` from packet-level `remaining` (not a literal); the visualizer's
+    // fixed-prefix budget measurement (normalizeWithBudget) now grows the trial
+    // budget until normalize accepts it, giving the packet a positive total and
+    // rendering a full, non-blank diagram — so it is no longer skipped.
+    const ENCRYPTED_OVER_CONSUMED = new Set(["quicLong", "quicShort"]);
     const presetKeys = Object.keys(PRESETS).filter(
       (k) => k !== "ipv4" && !ENCRYPTED_OVER_CONSUMED.has(k),
     );

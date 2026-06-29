@@ -159,3 +159,80 @@ describe("bytes(remaining - k) payload width is editable", () => {
     expect(leafBits(src, "retryToken", { ...arm, [key]: 64 })).toBe(64 * 8);
   });
 });
+
+// bar #1 (see-but-cannot-edit, CRITICAL): ipsecEsp rendered a fully BLANK,
+// uneditable diagram on first paint. Its encrypted scope `espEncrypted` declares
+// `wireBits = (remaining - icvLen) * 8`; at the app's default env (no packet-size
+// override) `remaining` resolves to 0, so the scope width collapses to 0 bits
+// while the plaintext minimum (padLength 8b + nextHeader 8b = 16b) still has to
+// fit. core's normalize then threw `encrypted scope over-consumed`, PacketViewer's
+// resolveLayout try/catch fell back to the last-good layout — but on FIRST paint
+// that is null, so the diagram came out EMPTY: every field (SPI, Sequence Number,
+// Encrypted Region, ICV) was invisible and uneditable. It is the only preset whose
+// encrypted scope wireBits depends on packet-level `remaining` (quicLong/quicShort
+// use literal scope wireBits and always rendered).
+//
+// Fix (visualizer-only, in `normalizeWithBudget`'s fixed-prefix measurement): the
+// fixed prefix used to be measured at `totalBits: 0`, which over-consumes for such
+// a scope. We now grow the trial budget until normalize accepts it, so the fixed
+// prefix is measured correctly and the variable region (the seeded default, or a
+// `__remainingBytes__<id>` override) is added on top. The diagram renders a full,
+// editable packet at default env, and the encrypted payload's byte-count picker is
+// movable like any other remaining-sized tail.
+// The encrypted payload only expands to an individual cell in SEMANTIC view
+// (wire view collapses the whole encrypted scope to one virtual field), so read
+// its width with the viewMode pinned rather than `leafBits`' wire default.
+function semanticLeafBits(
+  src: PsdlPacket,
+  leafId: string,
+  overrides: Record<string, number> = {},
+): number {
+  const { cells } = resolveLayout(src, {
+    env: loadEnv(src, overrides),
+    viewMode: "semantic",
+  });
+  for (const c of cells) {
+    if (c.field.id.replace(/#.*$/, "") === leafId) return c.field.bits ?? -1;
+    for (const s of c.subCells ?? []) {
+      if (s.subfield.id.replace(/#.*$/, "") === leafId)
+        return s.subfield.bits ?? -1;
+    }
+  }
+  return -1;
+}
+
+describe("ipsecEsp encrypted scope sized by remaining renders + is editable", () => {
+  it("yields a non-empty diagram at the app-default env (was blank)", () => {
+    const src = PRESETS.ipsecEsp!;
+    for (const viewMode of ["wire", "semantic"] as const) {
+      const { cells } = resolveLayout(src, { env: loadEnv(src), viewMode });
+      // Was 0 cells (over-consume throw → empty fallback on first paint).
+      expect(cells.length).toBeGreaterThan(0);
+      // Every visible header field must be present and uneditable no longer.
+      const ids = new Set(cells.map((c) => c.field.id.replace(/#.*$/, "")));
+      expect(ids.has("spi")).toBe(true);
+      expect(ids.has("sequenceNumber")).toBe(true);
+      expect(ids.has("icv")).toBe(true);
+    }
+  });
+
+  it("renders payloadData inside the encrypted scope as a representative cell", () => {
+    const src = PRESETS.ipsecEsp!;
+    // The encrypted payload is a `bytes(remaining - 2)` tail: tagged isRemaining
+    // and surfaced for the byte-count WidthPicker so it is editable, not just
+    // visible.
+    expect(collectRemainingFieldIds(src).has("payloadData")).toBe(true);
+    // Default env paints a non-zero representative payload cell.
+    expect(semanticLeafBits(src, "payloadData")).toBeGreaterThan(0);
+  });
+
+  it("makes the encrypted payload byte-count override movable", () => {
+    const src = PRESETS.ipsecEsp!;
+    const key = remainingBytesEnvKey("payloadData");
+    const small = semanticLeafBits(src, "payloadData", { [key]: 8 });
+    const large = semanticLeafBits(src, "payloadData", { [key]: 64 });
+    expect(small).toBe(8 * 8);
+    expect(large).toBe(64 * 8);
+    expect(large).toBeGreaterThan(small);
+  });
+});

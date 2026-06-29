@@ -300,7 +300,7 @@ function normalizeWithBudget(
     ) {
       throw e;
     }
-    const fixed = normalize(packet, new Map(env), { viewMode, totalBits: 0 });
+    const fixedBits = measureFixedPrefixBits(packet, env, viewMode);
     // The variable tail gets the user-chosen byte count when one rode in on a
     // `__remainingBytes__<id>` key (the OverridePanel WidthPicker / share-URL),
     // else one default row so it paints a representative cell. `remaining` then
@@ -310,8 +310,54 @@ function normalizeWithBudget(
       typeof variableRegionBytes === "number"
         ? variableRegionBytes * 8
         : Math.max(packet.rowBits, DEFAULT_VARIABLE_REGION_BITS_FALLBACK);
-    const budget = fixed.totalBits + variableRegionBits;
+    const budget = fixedBits + variableRegionBits;
     return normalize(packet, env, { viewMode, totalBits: budget });
+  }
+}
+
+/**
+ * Measure a packet's fixed-prefix bit count (everything outside its top-level
+ * `remaining`/`enclosingBits` variable region) by normalizing with the smallest
+ * total-size budget that core accepts. Normally that budget is 0 (`remaining`
+ * clamps to 0). But a packet whose ENCRYPTED scope declares `wireBits` in terms
+ * of `remaining` — ipsecEsp's `espEncrypted` = `(remaining - icvLen) * 8` — over-
+ * consumes at budget 0: the scope width collapses to 0 bits while the plaintext
+ * minimum (padLength + nextHeader = 16 bits) still has to fit, so core throws
+ * `encrypted scope over-consumed` and the whole layout used to fall back to an
+ * EMPTY diagram on first paint (every field invisible & uneditable). We grow the
+ * trial budget by one row at a time until normalize succeeds, then report that
+ * minimal budget's total bits as the fixed prefix; the caller adds the variable
+ * region on top. The growth is capped so a genuinely-broken packet still throws
+ * rather than looping. (Core is untouched — this is a visualizer-only fallback.)
+ */
+function measureFixedPrefixBits(
+  packet: PsdlPacket,
+  env: PacketEnv,
+  viewMode: ViewMode,
+): number {
+  let trial = 0;
+  // The scope only needs a few extra bytes to satisfy its plaintext minimum, so
+  // one row per step converges in a handful of iterations; the cap is a generous
+  // backstop (a full un-virtualized diagram is bounded well under this anyway).
+  const step = Math.max(packet.rowBits, 8);
+  const maxTrial = step * 4096;
+  for (;;) {
+    try {
+      return normalize(packet, new Map(env), { viewMode, totalBits: trial })
+        .totalBits;
+    } catch (e) {
+      // Only an over-consume (the scope width is briefly too small for its
+      // plaintext minimum) is recoverable by handing core more budget; anything
+      // else is a real schema error and must surface.
+      if (
+        !(e instanceof Error) ||
+        !e.message.includes("over-consumed") ||
+        trial >= maxTrial
+      ) {
+        throw e;
+      }
+      trial += step;
+    }
   }
 }
 
