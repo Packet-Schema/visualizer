@@ -288,6 +288,20 @@ export function initialState(packet: Packet): ControllerState {
     if (fr.defaultCount !== undefined && state[fr.countKey] === undefined) {
       state[fr.countKey] = fr.defaultCount;
     }
+    // Seed the present value of a count-driven repeat's enclosing PEEK-gated
+    // optional (rohcUncompressed's rohcPadding `__peek__0__8`=224 / rohcFeedback
+    // `__peek__0__5`=30) so the region is ENTERED on load. Without it the gate
+    // peek (a no-byte expr with no dedicated widget) 0-fills, the optional is
+    // never entered, the repeat's records are absent, and OverridePanel disables
+    // the stepper with a hint pointing at a field the user has no surfaced
+    // control to set — a permanently-inert see-but-cannot-edit gap. The entry
+    // peek picker is suppressed for this case (the stepper is the live control),
+    // so this seed is the only way to enter the region. Only fills an unset key
+    // (a user / saved-env value still wins) and is share-url-safe (same default-
+    // set reasoning as the gate / lengthSeed seeds above).
+    if (fr.peekGate && state[fr.peekGate.key] === undefined) {
+      state[fr.peekGate.key] = fr.peekGate.value;
+    }
   }
   // Seed the discriminator for record-variant / peek pickers to their first
   // case, so the picker label agrees with the diagram on load. Without this the

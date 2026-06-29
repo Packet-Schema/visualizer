@@ -4452,6 +4452,18 @@ function collectFreeRepeats(
     // value-branch length refs (seeded via the outer boundedRepeat's
     // innerScopeSeeds) so the count evaluates to a representative >=1 at load.
     caseNestedBudget: { bytes: Expr; lengthKeys: string[] } | null,
+    // Peek-gate `{ key: __peek__<off>__<bits>, value }` of the nearest enclosing
+    // `optional{when: peek(N)==lit}` whose region wraps a count-driven repeat
+    // (rohcUncompressed's rohcPadding / rohcFeedback: `optional(peek==224|30){
+    // group{ until-repeat } }`). The until-repeat surfaces as a freeRepeat with
+    // its own count stepper, so collectPeekSwitches DELIBERATELY suppresses the
+    // entry peek-gate picker (optionalWrapsSurfacedRepeat) — leaving NO surfaced
+    // control to enter the region. Carry the gate here so the freeRepeat records
+    // `peekGate` and `initialState` can seed `env[key]=value` on load: the region
+    // is entered, the stepper is live (gateFieldId renders), and lowering it to 0
+    // still hides the records. Null outside such an optional. Share-url-default-
+    // safe (same default-set pattern as the refSwitch / freeRepeat gate seeds).
+    optionalPeekGate: { key: string; value: number } | null,
   ): void => {
     for (const c of containers) {
       if (isField(c)) continue;
@@ -4489,6 +4501,9 @@ function collectFreeRepeats(
           // can't surface a destructive naked stepper (bgpFlowSpec flowSpecOps).
           insideBounded || key !== null,
           nextCaseNestedBudget,
+          // A bounded byte-budget is a transparent wrapper on the optional's
+          // always-present spine — keep the enclosing peek-gate.
+          optionalPeekGate,
         );
         continue;
       }
@@ -4520,6 +4535,8 @@ function collectFreeRepeats(
             caseGate,
             insideBounded,
             caseNestedBudget,
+            // A ref is a transparent wire scope — keep the enclosing peek-gate.
+            optionalPeekGate,
           );
           visitRefSeen.delete(c.ref);
         }
@@ -5016,6 +5033,20 @@ function collectFreeRepeats(
               insideOptional && !gate
                 ? (firstInnerFieldId(c.element.fields) ?? undefined)
                 : undefined;
+            // When the enclosing optional is peek-gated (rohcUncompressed's
+            // `optional(peek==224|30){ group{ until-repeat } }`), carry the gate's
+            // present value so `initialState` seeds env[key]=value and the region
+            // is ENTERED on load. Without it the gate peek (a no-byte expr with no
+            // dedicated widget) 0-fills, the optional is never entered, gateFieldId
+            // never renders, and OverridePanel disables this stepper with a hint
+            // pointing at a field the user has NO surfaced control to set — a
+            // permanently-inert see-but-cannot-edit gap. The peek picker is
+            // suppressed here (optionalWrapsSurfacedRepeat) precisely because this
+            // stepper is the live control, so the seed is the missing piece.
+            const peekGate =
+              insideOptional && !gate
+                ? (optionalPeekGate ?? undefined)
+                : undefined;
             out.push({
               name: qualifiedName,
               countKey,
@@ -5023,6 +5054,7 @@ function collectFreeRepeats(
               ...(transform !== undefined ? { transform } : {}),
               ...(gate !== undefined ? { gate } : {}),
               ...(gateFieldId !== undefined ? { gateFieldId } : {}),
+              ...(peekGate !== undefined ? { peekGate } : {}),
             });
             instantiableRepeatIds.add(c.id);
           }
@@ -5070,6 +5102,9 @@ function collectFreeRepeats(
           // repeat's own nested records — clear it so a deeper eos repeat doesn't
           // mis-derive from an ancestor attribute budget.
           null,
+          // A repeat element is its own scope (insideOptional cleared above) — the
+          // enclosing optional's peek-gate no longer applies to its records.
+          null,
         );
         continue;
       }
@@ -5085,6 +5120,11 @@ function collectFreeRepeats(
           caseGate,
           insideBounded,
           caseNestedBudget,
+          // A group is a transparent wrapper on the optional's always-present
+          // spine — keep the enclosing peek-gate so a repeat directly inside the
+          // group (rohcPadding / rohcFeedback under `optional{ group{ repeat }}`)
+          // carries it.
+          optionalPeekGate,
         );
         continue;
       }
@@ -5120,6 +5160,9 @@ function collectFreeRepeats(
             // budget so an eos repeat directly inside this case (AS_PATH /
             // COMMUNITIES) can derive its count from it.
             caseNestedBudget,
+            // A switch case is a flattened scope (insideOptional cleared above),
+            // not the optional's always-present spine — drop the peek-gate.
+            null,
           );
         }
         continue;
@@ -5127,6 +5170,17 @@ function collectFreeRepeats(
       if (c.kind === "optional") {
         // Mark the descent so a TLV-shaped repeat directly inside this optional
         // gets its count/variant controls surfaced (see the guard above).
+        //
+        // When the optional's `when` is `peek(N)==lit` (rohcUncompressed's
+        // `optional(peek==224|30){ group{ until-repeat }}`), carry the gate's
+        // present value down so the surfaced freeRepeat records `peekGate` and
+        // initialState seeds env[key]=value — entering the region on load so the
+        // stepper is live and its records render (the peek picker is suppressed
+        // for this case, so the seed is the ONLY way to enter the region). A
+        // nested optional's own gate REPLACES the outer one (the inner region is
+        // what its inner repeat's records belong to). A non-peek `when` (ref gate)
+        // yields null — those surface via gateFieldId / optionalGateFor instead.
+        const peekGate = matchPeekGate(c.when);
         visit(
           [c.container],
           bounded,
@@ -5138,6 +5192,9 @@ function collectFreeRepeats(
           caseGate,
           insideBounded,
           caseNestedBudget,
+          peekGate
+            ? { key: peekGate.peekKey, value: peekGate.value }
+            : optionalPeekGate,
         );
         continue;
       }
@@ -5153,12 +5210,14 @@ function collectFreeRepeats(
           caseGate,
           insideBounded,
           caseNestedBudget,
+          // Encrypted plaintext is a transparent wrapper — keep the peek-gate.
+          optionalPeekGate,
         );
         continue;
       }
     }
   };
-  visit(body, null, false, false, true, false, null, null, false, null);
+  visit(body, null, false, false, true, false, null, null, false, null, null);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,

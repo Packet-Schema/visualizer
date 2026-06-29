@@ -294,6 +294,20 @@ export type Packet = {
      *  is a rendered cell (`fieldRendered`), exactly as a refSwitch picker gates on
      *  its discriminator. Layout-faithful: `cells` IS the live diagram. */
     gateFieldId?: string;
+    /** Present value of the enclosing `optional{when: peek(N)==lit}` gate, set
+     *  ONLY for a count-driven repeat wrapped in a PEEK-gated optional whose entry
+     *  picker is suppressed because this stepper is the live control
+     *  (rohcUncompressed's rohcPadding / rohcFeedback: `optional(peek==224|30){
+     *  group{ until-repeat }}`). The gate reads `__peek__<offset>__<bits>`, a
+     *  no-byte expression with NO dedicated widget, so without seeding it the
+     *  optional is never entered: the records are absent, `gateFieldId` never
+     *  renders, and OverridePanel disables this stepper with a hint pointing at a
+     *  field the user has no surfaced control to set — a permanently-inert
+     *  see-but-cannot-edit gap. `initialState` seeds `env[key]=value` (only when
+     *  unset) so the region is ENTERED on load: the stepper is live and its
+     *  records render, while lowering it to 0 still hides them. Share-url-default-
+     *  safe (same default-set pattern as the gate / lengthSeed seeds). */
+    peekGate?: { key: string; value: number };
   }[];
   /** Switches whose `on` is a `peek` expression — discriminator can't be
    *  surfaced via a real cell, so OverridePanel offers a synthetic
