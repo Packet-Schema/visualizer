@@ -6,21 +6,20 @@
 
 import { isField } from "../utils";
 import { isBytesDelimited } from "../normalize";
+import { isRemainingSizedBytes } from "../dynamic-width-defaults";
 import type { EnumVariant, Field as PsdlField, Group } from "../types";
 import type { Field as RendererField, SubField } from "../renderer";
 
 import { typeBits } from "./shared";
 
-/** True when a PSDL leaf's type is `bytes(remaining)` — the variable tail of
- *  the packet / switch arm. Tagged onto the renderer field so OverridePanel
- *  surfaces a byte-count WidthPicker (driving the `__remainingBytes__<id>`
- *  budget key). See `Field.isRemaining`. */
+/** True when a PSDL leaf's type is sized off `remaining` — a bare
+ *  `bytes(remaining)` OR an op/cond wrapping it (`bytes(remaining - k)`, ppp
+ *  `information` / quicLong `retryToken`). The variable tail of the packet /
+ *  switch arm; tagged onto the renderer field so OverridePanel surfaces a
+ *  byte-count WidthPicker (driving the `__remainingBytes__<id>` budget key).
+ *  See `Field.isRemaining` / `isRemainingSizedBytes`. */
 function isBytesRemaining(type: PsdlField["type"]): boolean {
-  return (
-    type.kind === "bytes" &&
-    typeof type.n === "object" &&
-    (type.n as { kind?: string }).kind === "remaining"
-  );
+  return isRemainingSizedBytes(type);
 }
 
 /**

@@ -10,7 +10,9 @@
 // so seeding `env[fieldId]` is enough. The seed only fills an unset/0 value, so
 // a user-driven width (from the width picker, share URL, …) always wins.
 
-import type { Container, Expr, Packet as PsdlPacket } from "./types";
+import { exprContains } from "@packet-schema/core";
+
+import type { Container, Expr, Packet as PsdlPacket, Type } from "./types";
 import {
   berLenEnvKey,
   bytesDelimLenEnvKey,
@@ -55,6 +57,34 @@ export function remainingBytesEnvKey(id: string): string {
 }
 
 /**
+ * True when a `bytes` leaf is sized off the enclosing scope's leftover budget —
+ * either a BARE `bytes(remaining)` (`n.kind === "remaining"`) OR a `remaining`
+ * wrapped in an arithmetic / conditional expression, the most common being
+ * `bytes(remaining - k)` (ppp `information` = `remaining-2`, quicLong
+ * `retryToken` = `remaining-16`, ipsecEsp `payloadData` = `remaining-2`) or a
+ * `cond` that selects a `remaining`-bearing arm (amt `amtMqData`). Such a field
+ * has NO wire-width env key in core — its size derives from the packet budget —
+ * so the visualizer drives it through the dedicated `__remainingBytes__<id>`
+ * budget key (see `remainingBytesEnvKey` / `readRemainingBytesOverride`).
+ *
+ * Detecting only the bare form left every op/cond-wrapped remaining payload with
+ * no width control: it renders (core sizes it from the real budget) but the user
+ * cannot grow / shrink it — a see-but-cannot-edit gap that also breaks
+ * edit/round-trip for any PSDL using `remaining - k`.
+ */
+export function isRemainingSizedBytes(type: Type): boolean {
+  // `type.n` is either an `Expr` or a `BytesDelimited` (`{ delimiter }`, no
+  // `kind`). `exprContains` / `walkExpr` throw on a non-Expr node, so exclude the
+  // delimited descriptor (and any numeric literal count) before walking.
+  return (
+    type.kind === "bytes" &&
+    typeof type.n === "object" &&
+    !isBytesDelimited(type.n) &&
+    exprContains(type.n as Expr, (e) => e.kind === "remaining")
+  );
+}
+
+/**
  * Collect the authored ids of every `bytes(remaining)` leaf that is reachable
  * OUTSIDE a repeat (top-level, or nested only in switch cases / optionals /
  * groups / bounded scopes). These render as the variable tail of the packet (or
@@ -68,16 +98,25 @@ export function remainingBytesEnvKey(id: string): string {
  * cleanly onto one cell.
  */
 export function collectRemainingFieldIds(psdl: PsdlPacket): Set<string> {
-  const ids = new Set<string>();
-  const isRemaining = (c: Container): boolean =>
-    isField(c) &&
-    c.type.kind === "bytes" &&
-    typeof c.type.n === "object" &&
-    (c.type.n as { kind?: string }).kind === "remaining";
+  return new Set(collectRemainingFieldTypes(psdl).keys());
+}
+
+/**
+ * Like `collectRemainingFieldIds` but maps each rendered remaining-sized leaf id
+ * to its `bytes` type. Same `insideRepeat` gating as `collectRemainingFieldIds`.
+ * The layout uses the ids as budget-calibration targets so a `bytes(remaining -
+ * k)` payload (or one with a fixed trailing sibling) lands the user's chosen
+ * byte count on the FIELD rather than the raw leftover (see `resolveLayout`).
+ */
+export function collectRemainingFieldTypes(
+  psdl: PsdlPacket,
+): Map<string, Type> {
+  const out = new Map<string, Type>();
   const visit = (containers: Container[], insideRepeat: boolean): void => {
     for (const c of containers) {
       if (isField(c)) {
-        if (!insideRepeat && isRemaining(c)) ids.add(c.id);
+        if (!insideRepeat && isRemainingSizedBytes(c.type))
+          out.set(c.id, c.type);
         continue;
       }
       switch (c.kind) {
@@ -104,7 +143,7 @@ export function collectRemainingFieldIds(psdl: PsdlPacket): Set<string> {
     }
   };
   visit(psdl.body, false);
-  return ids;
+  return out;
 }
 
 /**

@@ -21,6 +21,7 @@ import { evalExprOr, exprRefs, peekEnvKey } from "../expr";
 import { isBytesDelimited } from "../normalize";
 import {
   collectSwitchOnRefIds,
+  isRemainingSizedBytes,
   seedDynamicWidthDefaults,
 } from "../dynamic-width-defaults";
 import type {
@@ -1660,12 +1661,7 @@ function collectNestedDynamicWidthLeaves(
         else if (c.type.kind === "berLength") add(c.id, "berLength");
         else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n)) {
           add(c.id, "delimited");
-        } else if (
-          c.type.kind === "bytes" &&
-          typeof c.type.n === "object" &&
-          (c.type.n as { kind?: string }).kind === "remaining" &&
-          !insideRepeat
-        ) {
+        } else if (!insideRepeat && isRemainingSizedBytes(c.type)) {
           add(c.id, "remaining");
         }
         continue;

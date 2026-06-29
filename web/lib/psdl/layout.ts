@@ -27,8 +27,9 @@ import {
 } from "./normalize";
 import { isField } from "./utils";
 import {
-  collectRemainingFieldIds,
+  collectRemainingFieldTypes,
   collectSwitchOnRefIds,
+  isRemainingSizedBytes,
   remainingBytesEnvKey,
 } from "./dynamic-width-defaults";
 import type {
@@ -95,12 +96,38 @@ export function resolveLayout(
   // tail) and hand it to `normalizeWithBudget`, which sizes the packet budget to
   // `fixedPrefix + bytes*8`. The key is never forwarded to core's normalize.
   const remainingBytesOverride = readRemainingBytesOverride(packet, env);
+  // Calibrate the variable-region byte count so the user's chosen width lands on
+  // the FIELD. A bare `bytes(remaining)` renders at exactly the region (offset
+  // 0), but a `bytes(remaining - k)` — or one with a fixed trailing sibling —
+  // renders a constant `C` bytes away from the raw region. The region→field map
+  // has slope 1, so one corrective pass (region := desired - C) is exact.
+  let regionBytes = remainingBytesOverride?.bytes;
+  if (remainingBytesOverride && options.totalBits === undefined) {
+    const probe = normalizeWithBudget(
+      packet,
+      env,
+      viewMode,
+      undefined,
+      remainingBytesOverride.bytes,
+    );
+    const renderedBits = renderedRemainingBits(
+      probe,
+      remainingBytesOverride.targetIds,
+    );
+    if (renderedBits !== undefined) {
+      const renderedBytes = Math.ceil(renderedBits / 8);
+      const correction = renderedBytes - remainingBytesOverride.bytes;
+      if (correction !== 0) {
+        regionBytes = Math.max(0, remainingBytesOverride.bytes - correction);
+      }
+    }
+  }
   let norm = normalizeWithBudget(
     packet,
     env,
     viewMode,
     options.totalBits,
-    remainingBytesOverride,
+    regionBytes,
   );
   // A delimiter-terminated `bytes` field expanded inside a repeat / ref is read
   // by core's emit() under the FULLY-QUALIFIED instance key
@@ -116,7 +143,7 @@ export function resolveLayout(
       env,
       viewMode,
       options.totalBits,
-      remainingBytesOverride,
+      regionBytes,
     );
   }
   const cells: Cell[] = [];
@@ -289,29 +316,51 @@ function normalizeWithBudget(
 }
 
 /**
- * Largest `bytes(remaining)` byte-count override present in `env` for a rendered
- * (top-level / switch-arm, non-repeat) remaining payload, or `undefined` when
- * none is set. Only one such tail renders per layout (they live in
+ * The active `bytes(remaining)` override: the largest requested byte count and
+ * the ids of every rendered (top-level / switch-arm, non-repeat) remaining-sized
+ * payload it could apply to. Only one such tail renders per layout (they live in
  * mutually-exclusive switch arms), and any spare budget is absorbed by it, so
- * taking the max keeps the active arm's tail at least its requested width.
+ * taking the max keeps the active arm's tail at least its requested width. The
+ * ids drive budget CALIBRATION: a `bytes(remaining - k)` (or a field with a
+ * fixed trailing sibling) renders some constant `C` bytes off the raw region, so
+ * the region is corrected by `C` to land the user's chosen byte count on the
+ * FIELD — see the calibration pass in `resolveLayout`.
  */
 function readRemainingBytesOverride(
   packet: PsdlPacket,
   env: PacketEnv,
-): number | undefined {
+): { bytes: number; targetIds: Set<string> } | undefined {
   let best: number | undefined;
-  for (const id of collectRemainingFieldIds(packet)) {
+  const targetIds = new Set<string>();
+  for (const id of collectRemainingFieldTypes(packet).keys()) {
     const v = env.get(remainingBytesEnvKey(id));
-    if (typeof v === "number" && v >= 0 && (best === undefined || v > best)) {
-      best = v;
-    }
+    if (typeof v !== "number" || v < 0) continue;
+    targetIds.add(id);
+    if (best === undefined || v > best) best = v;
   }
+  if (best === undefined) return undefined;
   // Clamp the budget byte count so an oversized value (a hand-edited share URL /
   // imported env) can't size the variable tail into millions of cells and freeze
   // the un-virtualized diagram. resolveLayout emits ~1 cell per payload byte, so
   // this mirrors the direct length-controller cap (MAX_LENGTH_CONTROLLER_BYTES in
   // PacketViewer). The picker's own ladder tops out well under this.
-  return best === undefined ? undefined : Math.min(best, MAX_REMAINING_BYTES);
+  return { bytes: Math.min(best, MAX_REMAINING_BYTES), targetIds };
+}
+
+/**
+ * Resolved wire bits of the active remaining-sized leaf in a normalized packet,
+ * or `undefined` when none of `targetIds` rendered (e.g. its switch arm isn't
+ * selected). A field wider than a row is emitted as several segment fields that
+ * all carry the SAME full `bits`, so the first match is the full width.
+ */
+function renderedRemainingBits(
+  norm: Normalized,
+  targetIds: Set<string>,
+): number | undefined {
+  for (const f of norm.fields) {
+    if (targetIds.has(stripRepeatTag(f.id))) return f.bits;
+  }
+  return undefined;
 }
 
 /** Renderable byte ceiling for a `bytes(remaining)` payload sized via the
@@ -552,12 +601,7 @@ function collectDynamicWidthFlags(
         else if (c.type.kind === "berLength") flags = { isBerLength: true };
         else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
           flags = { isDelimited: true };
-        else if (
-          c.type.kind === "bytes" &&
-          typeof c.type.n === "object" &&
-          (c.type.n as { kind?: string }).kind === "remaining" &&
-          !insideRepeat
-        )
+        else if (!insideRepeat && isRemainingSizedBytes(c.type))
           flags = { isRemaining: true };
         if (flags) map.set(c.id, flags);
         continue;
