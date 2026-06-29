@@ -6782,6 +6782,12 @@ function attachOverrideMetadata(
   // outside any repeat — so unrelated switch-case fields are not promoted.
   const switchCaseLeafGate = (id: string): PsdlField | null => {
     let found: PsdlField | null = null;
+    // Cycle guard: a user-authored def may reference itself (directly or via a
+    // chain), e.g. `optional{ container: ref(self) }`. Without tracking the refs
+    // already on the descent path, `scanStruct` would recurse forever and throw
+    // a RangeError, crashing the whole override mirror for a packet the diagram
+    // renders fine. Mirrors the `*RefSeen`/`seenDefs` pattern used elsewhere.
+    const scanRefSeen = new Set<string>();
     const scanStruct = (
       struct: Struct,
       insideCase: boolean,
@@ -6815,7 +6821,11 @@ function attachOverrideMetadata(
           scanStruct({ fields: child.fields } as Struct, insideCase, true);
         } else if (child.kind === "ref") {
           const def = defs?.[child.ref];
-          if (def) scanStruct(def, insideCase, insideRepeat);
+          if (def && !scanRefSeen.has(child.ref)) {
+            scanRefSeen.add(child.ref);
+            scanStruct(def, insideCase, insideRepeat);
+            scanRefSeen.delete(child.ref);
+          }
         }
       }
     };
