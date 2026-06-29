@@ -1470,6 +1470,209 @@ function collectGroupNestedLengthControllers(
   return out;
 }
 
+/** The set of literal values an `Expr` compares a given `ref` against with `==`
+ *  (`payloadLength7 == 126`, …). Used to find the MAGIC escape values that a
+ *  cond-width discriminator reserves, so the inline length slider for that same
+ *  field can be capped BELOW the smallest magic (it must never snap the diagram
+ *  into an extended-length arm — that is the refSwitch picker's job). */
+function condEqualityLiterals(expr: Expr, ref: string): number[] {
+  const out: number[] = [];
+  const walk = (e: Expr): void => {
+    switch (e.kind) {
+      case "op": {
+        if (
+          e.op === "==" &&
+          ((e.a.kind === "ref" && e.a.field === ref && e.b.kind === "lit") ||
+            (e.b.kind === "ref" && e.b.field === ref && e.a.kind === "lit"))
+        ) {
+          const lit = e.a.kind === "lit" ? e.a : (e.b as { value: number });
+          out.push(lit.value);
+        }
+        walk(e.a);
+        walk(e.b);
+        break;
+      }
+      case "cond":
+        walk(e.test);
+        walk(e.t);
+        walk(e.f);
+        break;
+      case "lookup":
+        walk(e.key);
+        break;
+      case "peek":
+        if (e.offset) walk(e.offset);
+        break;
+      default:
+        break;
+    }
+  };
+  walk(expr);
+  return out;
+}
+
+/**
+ * Surface a length controller for EVERY field referenced by a `bytes(cond …)`
+ * width expression — the payload whose byte count is selected between several
+ * length fields by a discriminator (websocketFrame's `payload` =
+ * `bytes(cond payloadLength7==126 ? extPayloadLength16 : cond payloadLength7==127
+ * ? extPayloadLength64 : payloadLength7)`).
+ *
+ * The other length-controller paths only recognise a length field that DIRECTLY
+ * sizes a sibling `bytes(ref X)` (a bare ref width). A `cond`-discriminated width
+ * is invisible to all of them: the cond's branch refs live INSIDE Switch arms
+ * (`extPayloadLength16`/`extPayloadLength64` in `byPayloadLength7`'s 126/127
+ * cases) so they are neither top-level cells, Group subfields, nor sibling-length
+ * candidates — they get ZERO mirror entry — and the discriminator itself
+ * (`payloadLength7`) is treated purely as a refSwitch key, so the inline 0..N
+ * payload-length branch has no slider. The user SEES the Payload Data cell and
+ * the Extended-Length cells but cannot drive the single most important quantity
+ * in the frame (override-audit: see-but-cannot-edit, bar #1).
+ *
+ * For each leaf `ref` in the cond test/branches, emit a packet-level length
+ * controller keyed on `env[ref]`:
+ *   - A BRANCH-only ref (extPayloadLength16/extPayloadLength64) sizes the payload
+ *     only while its arm is selected, and its own cell renders only then. Emit it
+ *     WITHOUT `lengthSizesFieldIds` so OverridePanel's live gate falls back to the
+ *     controller cell's own render state — the slider is live exactly when the
+ *     Extended-Length cell is on the diagram (126/127 selected) and disabled
+ *     otherwise.
+ *   - A DISCRIMINATOR ref that is ALSO an inline branch (payloadLength7: the `_`
+ *     branch returns it verbatim) keeps its refSwitch for the 126/127 magic but
+ *     ALSO earns an inline slider. Its slider is CAPPED below the smallest magic
+ *     literal (125 here) so dragging it stays in the inline range and can never
+ *     flip the diagram into an extended-length arm.
+ *
+ * Deduped by the caller against the controllers emitted above. Only TOP-LEVEL
+ * (non-repeat, non-bounded) cond-width payloads are walked: a per-record
+ * cond-width is owned by its repeat's editor.
+ */
+function collectCondWidthLengthControllers(
+  body: PsdlPacket["body"],
+  defs: Record<string, NamedStruct> | undefined,
+): RendererField[] {
+  // id → declaring PSDL field, gathered across the whole body so a branch ref
+  // buried in a Switch case can be resolved to its width/default/doc.
+  const fieldById = new Map<string, PsdlField>();
+  const indexSeen = new Set<string>();
+  const index = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (!fieldById.has(c.id)) fieldById.set(c.id, c);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          index(c.children);
+          break;
+        case "repeat":
+          index(c.element.fields);
+          break;
+        case "optional":
+          index([c.container]);
+          break;
+        case "bounded":
+          index(c.fields);
+          break;
+        case "encrypted":
+          index(c.plaintext.fields);
+          break;
+        case "switch":
+          for (const struct of Object.values(c.cases)) index(struct.fields);
+          break;
+        case "ref": {
+          if (indexSeen.has(c.ref)) break;
+          const def = defs?.[c.ref];
+          if (def) {
+            indexSeen.add(c.ref);
+            index(def.fields);
+            indexSeen.delete(c.ref);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  };
+  index(body);
+
+  const out: RendererField[] = [];
+  const emitted = new Set<string>();
+  // Walk ONLY the transparent top-level scopes (Group / resolved ref); a
+  // cond-width payload inside a Repeat / Bounded / Switch / Optional is a
+  // per-record / arm-local width owned by another editor.
+  const walkRefSeen = new Set<string>();
+  const walk = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        const t = c.type;
+        if (
+          t.kind !== "bytes" ||
+          isBytesDelimited(t.n) ||
+          t.n.kind !== "cond"
+        ) {
+          continue;
+        }
+        const refs = new Set(exprRefs(t.n));
+        // The discriminator(s) the cond tests against — those whose value is
+        // compared with a magic literal somewhere in the expression.
+        for (const ref of refs) {
+          if (emitted.has(ref)) continue;
+          const field = fieldById.get(ref);
+          if (!field) continue;
+          const bits = typeBits(field.type);
+          const magics = condEqualityLiterals(t.n, ref).filter((v) => v >= 0);
+          // A discriminator that ALSO appears as an inline branch value gets an
+          // inline slider capped just below its smallest magic escape value so
+          // the slider can never snap into an extended-length arm (the refSwitch
+          // owns those). A pure branch ref (no magic of its own) is gated on its
+          // own cell's render state via the controller live-gate fallback.
+          const inlineCap =
+            magics.length > 0
+              ? Math.max(0, Math.min(...magics) - 1)
+              : undefined;
+          const naturalMax = bits > 0 ? 2 ** bits - 1 : undefined;
+          const max =
+            inlineCap != null
+              ? naturalMax != null
+                ? Math.min(naturalMax, inlineCap)
+                : inlineCap
+              : naturalMax;
+          emitted.add(ref);
+          out.push({
+            id: ref,
+            name: field.name ?? ref,
+            bits,
+            controlsLength: ref,
+            ...(max != null ? { max } : {}),
+            ...(field.defaultValue != null
+              ? { defaultValue: field.defaultValue }
+              : {}),
+            ...(field.doc ? { description: field.doc } : {}),
+          });
+        }
+        continue;
+      }
+      if (c.kind === "group") {
+        walk(c.children);
+      } else if (c.kind === "ref") {
+        if (walkRefSeen.has(c.ref)) continue;
+        const def = defs?.[c.ref];
+        if (def) {
+          walkRefSeen.add(c.ref);
+          walk(def.fields);
+          walkRefSeen.delete(c.ref);
+        }
+      }
+      // Repeat / Switch / Optional / Bounded / Encrypted: their cond-width
+      // payloads belong to other paths, so they are not descended here.
+    }
+  };
+  walk(body);
+  return out;
+}
+
 /**
  * Collect every field id used as a `repeat.count` (or `until`) discriminator
  * anywhere in the body. These are the "other refs" subtracted from an
@@ -2283,6 +2486,25 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   for (const lc of collectGroupNestedLengthControllers(
     packet.body,
     fields,
+    packet.defs,
+  )) {
+    if (!controllerIds.has(lc.id)) {
+      controllerIds.add(lc.id);
+      lengthControllers.push(lc);
+    }
+  }
+  // A `bytes(cond …)` width selects the payload's byte count between several
+  // length fields by a discriminator (websocketFrame `payload` driven by
+  // `extPayloadLength16` / `extPayloadLength64` / inline `payloadLength7`). The
+  // branch refs live inside Switch arms and the discriminator is treated purely
+  // as a refSwitch key, so NONE of the paths above reaches them and the payload
+  // length — the most important editable quantity in the frame — is undrivable.
+  // Surface a length controller per leaf ref (the discriminator's inline slider
+  // is capped below its magic escape values so it never flips the diagram into an
+  // extended-length arm; the refSwitch still owns 126/127). Deduped against the
+  // controllers above.
+  for (const lc of collectCondWidthLengthControllers(
+    packet.body,
     packet.defs,
   )) {
     if (!controllerIds.has(lc.id)) {
