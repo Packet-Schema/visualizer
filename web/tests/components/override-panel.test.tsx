@@ -1162,4 +1162,82 @@ describe("OverridePanel widgets", () => {
     // A mirror with no overrides returns the same PSDL reference (cheap no-op).
     expect(applyByteOrderOverrides(src, mirror)).toBe(src);
   });
+
+  it("disables the merged NDP option picker when no option is drawn (icmpv6Ndp type=0)", async () => {
+    // dedupePeekSwitches collapses icmpv6Ndp's five aliasing per-message option
+    // pickers into ONE; it must carry forward the shared `gateFieldId`
+    // (ndpOptType). OverridePanel disables a peek picker when
+    // `gateFieldId && !fieldRendered(cells, gateFieldId)`. At type=0 the diagram
+    // routes to the `_` arm and NO option (ndpOptType) is rendered, so the merged
+    // 'ByOptType' dropdown must be DISABLED — otherwise it is an inert control
+    // that contradicts an empty diagram (moving it leaves the bytes unchanged).
+    const src = PRESETS.icmpv6Ndp!;
+    const packet = psdlToRenderer(src);
+
+    const env = new Map<string, number>([["type", 0]]);
+    for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+    for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+    const cells = resolveLayout(src, { env }).cells;
+    // Sanity: the gate field is genuinely absent at type=0.
+    expect(cells.some((c) => c.field.id.startsWith("ndpOptType"))).toBe(false);
+
+    // The peek pickers surface in the packet-level EmptyState (no cell-specific
+    // editor selected), so mount with selectedFieldId=null.
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{ type: 0 }}
+        cells={cells}
+        onControllerChange={() => {}}
+      />,
+    );
+
+    const optSelect = container.querySelector<HTMLSelectElement>(
+      "#detail-peek-__peek__0__8",
+    );
+    expect(optSelect, "merged NDP option picker must render").not.toBeNull();
+    expect(
+      optSelect!.disabled,
+      "the picker must be disabled when no option record is drawn",
+    ).toBe(true);
+  });
+
+  it("enables the merged NDP option picker when an option IS drawn (icmpv6Ndp type=133)", async () => {
+    // The gate must NOT over-suppress: once the live message arm draws an option
+    // record (Router Solicitation with one rsOptions record renders ndpOptType),
+    // the merged picker becomes the real control for the rendered option type.
+    const src = PRESETS.icmpv6Ndp!;
+    const packet = psdlToRenderer(src);
+
+    const env = new Map<string, number>([
+      ["type", 133],
+      ["rsOptions", 1],
+    ]);
+    for (const [k, v] of initialEnv(src)) if (!env.has(k)) env.set(k, v);
+    for (const r of collectPsdlRefs(src)) if (!env.has(r)) env.set(r, 0);
+    env.set("type", 133);
+    env.set("rsOptions", 1);
+    const cells = resolveLayout(src, { env }).cells;
+    expect(cells.some((c) => c.field.id.startsWith("ndpOptType"))).toBe(true);
+
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId={null}
+        controllers={{ type: 133, rsOptions: 1 }}
+        cells={cells}
+        onControllerChange={() => {}}
+      />,
+    );
+
+    const optSelect = container.querySelector<HTMLSelectElement>(
+      "#detail-peek-__peek__0__8",
+    );
+    expect(optSelect, "merged NDP option picker must render").not.toBeNull();
+    expect(
+      optSelect!.disabled,
+      "the picker must be enabled when an option record is drawn",
+    ).toBe(false);
+  });
 });

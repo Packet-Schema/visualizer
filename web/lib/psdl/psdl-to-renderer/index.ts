@@ -6542,11 +6542,23 @@ function dedupePeekSwitches(
     // merged names (e.g. `…ByOptType`) describes what every alias dispatches on
     // far better than an arbitrary per-message id like `rsByOptType`.
     const sharedName = longestCommonSuffix(group.map((g) => g.name));
+    // Preserve the `fieldRendered` gate when every aliasing picker shares the
+    // SAME gateFieldId — which they do for NDP's five option pickers, whose
+    // seeded arm's first inner field is `ndpOptType` in each case. Without this
+    // the merged picker drops its gate and reads ENABLED even when the live
+    // variant draws no option (e.g. icmpv6Ndp at type=0 routes to the `_` arm),
+    // making the dropdown inert and contradicting an empty diagram. A divergent
+    // gate (or any member missing one) can't safely gate the union, so we only
+    // carry a gate every member agrees on.
+    const commonGate = group.every((g) => g.gateFieldId === first.gateFieldId)
+      ? first.gateFieldId
+      : undefined;
     out.push({
       id: first.id,
       name: sharedName.length >= 3 ? sharedName : first.name,
       cases,
       peekKey: first.peekKey,
+      ...(commonGate !== undefined ? { gateFieldId: commonGate } : {}),
     });
   }
   return out;

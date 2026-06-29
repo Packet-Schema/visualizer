@@ -231,4 +231,28 @@ describe("nested-tlv: icmpv6Ndp switch-nested option repeats", () => {
     const nsPrefix = cellIds(src, { type: 135, nsOptions: 1, __peek__0__8: 3 });
     expect(nsPrefix).toContain("ndpPrefixLength#0");
   });
+
+  it("the merged NDP option picker keeps its fieldRendered gate (gateFieldId=ndpOptType)", () => {
+    // Each of the five aliasing per-message option pickers (rsByOptType / … )
+    // individually carried `gateFieldId: "ndpOptType"` — the first inner field of
+    // its seeded arm — so OverridePanel could disable the dropdown when no option
+    // record is drawn. dedupePeekSwitches collapses the five into ONE; it must
+    // CARRY that shared gate forward. Without it the merged picker reads ENABLED
+    // at every load (e.g. type=0 → the `_` arm, ndpOptType absent), so changing
+    // it across all five values produces a byte-identical diagram — an inert
+    // control contradicting an empty diagram.
+    const mirror = psdlToRenderer(PRESETS.icmpv6Ndp!);
+    const optPicker = (mirror.peekSwitches ?? []).find(
+      (p) => p.peekKey === "__peek__0__8",
+    );
+    expect(optPicker).toBeDefined();
+    expect(optPicker!.gateFieldId).toBe("ndpOptType");
+
+    // The gate field really is absent from the diagram whenever the live message
+    // arm draws no option (type=0 routes to the `_` default arm), so the gate
+    // genuinely suppresses the picker rather than always passing.
+    const noOption = cellIds(PRESETS.icmpv6Ndp!, { type: 0 });
+    expect(noOption).not.toContain("ndpOptType");
+    expect(noOption.some((id) => id.startsWith("ndpOptType#"))).toBe(false);
+  });
 });
