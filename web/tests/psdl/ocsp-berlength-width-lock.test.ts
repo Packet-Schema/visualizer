@@ -109,9 +109,20 @@ describe("ocspRequest berLength width picker is locked (no frozen diagram)", () 
     );
   });
 
-  it("locks NO berLength leaf in any other preset (working pickers untouched)", () => {
+  // The width-lock is also produced by a faithful resolveLayout probe (see
+  // snmp-berlength-width-lock.test.ts), which catches the SAME inert-picker
+  // defect in the TLV-style length-prefixed presets snmpV2c / snmpv3 /
+  // kerberosAsReq. Every OTHER preset must still lock nothing — a stray lock
+  // there would silently hide a working width picker.
+  const KNOWN_LOCKED_PRESETS = new Set([
+    "ocspRequest",
+    "snmpV2c",
+    "snmpv3",
+    "kerberosAsReq",
+  ]);
+  it("locks NO berLength leaf outside the known inert-picker presets", () => {
     for (const [name, src] of Object.entries(PRESETS)) {
-      if (!src || name === "ocspRequest") continue;
+      if (!src || KNOWN_LOCKED_PRESETS.has(name)) continue;
       const mirror = psdlToRenderer(src);
       expect(
         mirror.berLengthWidthLocked ?? [],
