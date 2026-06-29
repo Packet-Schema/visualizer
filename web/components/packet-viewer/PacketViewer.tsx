@@ -21,6 +21,7 @@ import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import { clampStaticLayoutCounts } from "@/lib/psdl/clamp-static-layout";
+import { boundedKeysWithDirectPayload } from "@/lib/psdl/bounded-direct-payload-keys";
 import { evalExprOr } from "@/lib/psdl/expr";
 import {
   controllersFromEnv,
@@ -1375,6 +1376,30 @@ export default function PacketViewer({
     return ids;
   }, [packet.lengthControllers, packet.fields, packet.boundedRepeats]);
 
+  // DUAL-ROLE length keys: a boundedRepeat `lengthKey` that ALSO directly sizes a
+  // `bytes(ref X)` payload OUTSIDE the bounded scope it budgets (http3Frame's
+  // `http3PayloadLength` → `bounded` in SETTINGS/PUSH_PROMISE arms AND
+  // `data = bytes(ref http3PayloadLength)` in the DATA arm; dnssecRecords'
+  // `rrRdLength` → the `_` raw-rdata arm). `directLengthControllerIds` EXCLUDES
+  // every boundedRepeat lengthKey, so the direct-payload arm of these keys
+  // escapes the cap: resolveLayout emits ~1 SVG cell per payload byte, and the
+  // 16-bit slider (max 65535) generates tens of thousands of un-virtualized cells
+  // → the page FREEZES (the very freeze MAX_LENGTH_CONTROLLER_BYTES prevents).
+  // Detect them from the source AST and clamp env[X] to MAX_LENGTH_CONTROLLER_BYTES
+  // BELOW (before the bounded-count derive, so the budget and the derived count
+  // stay consistent — clamping AFTER would leave a maxed-budget record count
+  // against a 1024-byte budget and core's normalize throws `bounded over-consumed`).
+  // A PURE bounded length (no direct payload arm) is NOT returned, so its slider
+  // keeps full range and the record-display UX is unaffected.
+  const boundedDirectPayloadKeys = useMemo(
+    () =>
+      boundedKeysWithDirectPayload(
+        targetPsdl,
+        (packet.boundedRepeats ?? []).map((br) => br.lengthKey),
+      ),
+    [targetPsdl, packet.boundedRepeats],
+  );
+
   // Last successfully-resolved layout, kept so a normalize throw can degrade to
   // the previous frame instead of white-screening (see the try/catch below).
   const lastGoodLayoutRef = useRef<ReturnType<typeof resolveLayout> | null>(
@@ -1416,6 +1441,20 @@ export default function PacketViewer({
       // Give varint / delimited-bytes fields a visible default width (a user width
       // still wins — seed only fills unset/0).
       seedDynamicWidthDefaults(targetPsdl, env);
+      // DUAL-ROLE direct-payload cap (BEFORE the bounded derive). A boundedRepeat
+      // lengthKey that also directly sizes a `bytes(ref X)` payload in another arm
+      // (http3Frame `http3PayloadLength`, dnssecRecords `rrRdLength`) escapes
+      // `directLengthControllerIds` (which excludes all bounded keys). Clamp it to
+      // MAX_LENGTH_CONTROLLER_BYTES HERE so the SAME value bounds BOTH the direct
+      // payload's cell count AND the bounded budget (and the count derived from it),
+      // keeping the two consistent — clamping after the derive would over-consume the
+      // scope. The length CELL stays user-editable; only the layout env is clamped.
+      for (const id of boundedDirectPayloadKeys) {
+        const v = env.get(id);
+        if (typeof v === "number" && v > MAX_LENGTH_CONTROLLER_BYTES) {
+          env.set(id, MAX_LENGTH_CONTROLLER_BYTES);
+        }
+      }
       // PRODUCT-AWARE freeze guard. Each control below (a bounded-derived count, a
       // freeRepeat count, a direct length byte-count) is bounded individually to
       // MAX_DERIVED_RECORDS, but the layout MULTIPLIES nested / sibling controls
@@ -1604,6 +1643,7 @@ export default function PacketViewer({
       packet.boundedRepeats,
       packet.freeRepeats,
       directLengthControllerIds,
+      boundedDirectPayloadKeys,
     ],
   );
 
@@ -1880,6 +1920,7 @@ export default function PacketViewer({
               tlvSlotBytes={tlvSlotBytes}
               cells={layout.cells}
               inertLengthControllers={inertLengthControllers}
+              boundedDirectPayloadKeys={boundedDirectPayloadKeys}
             />
           </section>
         </div>

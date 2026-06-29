@@ -58,6 +58,14 @@ type Props = {
    *  slider with a hint pointing at the variant picker instead of a live-looking
    *  but inert control (same class as the absent-field `fieldRendered` gate). */
   inertLengthControllers?: ReadonlySet<string>;
+  /** boundedRepeat `lengthKey`s that ALSO directly size a `bytes(ref X)` payload
+   *  in another switch arm (http3Frame `http3PayloadLength`, dnssecRecords
+   *  `rrRdLength`). Their slider is normally EXEMPT from the renderable byte cap
+   *  (a pure bounded length keeps full range so it can fill the scope), but the
+   *  direct-payload arm makes the value ALSO drive ~1 cell/byte — so the slider
+   *  max is lowered to MAX_LENGTH_CONTROLLER_BYTES for these keys, matching the
+   *  layout-env clamp PacketViewer applies, so no slider region is inert. */
+  boundedDirectPayloadKeys?: ReadonlySet<string>;
 };
 
 /** True when a field id is materialised as a cell (or sub-cell) in the current
@@ -143,6 +151,7 @@ function EmptyState({
   tlvSlotBytes,
   cells,
   inertLengthControllers,
+  boundedDirectPayloadKeys,
 }: {
   message: string;
   packet: Packet;
@@ -152,6 +161,7 @@ function EmptyState({
   tlvSlotBytes?: Record<string, number>;
   cells?: readonly Cell[];
   inertLengthControllers?: ReadonlySet<string>;
+  boundedDirectPayloadKeys?: ReadonlySet<string>;
 }) {
   // Packet-level extras (free Repeats, peek Switches) surface here so the
   // panel never reads as truly empty when the packet has stoppable knobs
@@ -329,7 +339,8 @@ function EmptyState({
                   drivenByTlv={false}
                   maxBytes={
                     lc.controlsLength &&
-                    !boundedLengthKeys.has(lc.controlsLength)
+                    (!boundedLengthKeys.has(lc.controlsLength) ||
+                      boundedDirectPayloadKeys?.has(lc.controlsLength))
                       ? MAX_LENGTH_CONTROLLER_BYTES
                       : undefined
                   }
@@ -399,6 +410,7 @@ export default function OverridePanel({
   tlvSlotBytes,
   cells,
   inertLengthControllers,
+  boundedDirectPayloadKeys,
 }: Props) {
   // TLV cells emitted by `applyTlvInstances` carry synthetic ids that
   // don't live in `packet.fields`. `parseTlvCellId` peels back the role
@@ -487,6 +499,7 @@ export default function OverridePanel({
     tlvSlotBytes,
     cells,
     inertLengthControllers,
+    boundedDirectPayloadKeys,
   };
 
   if (r.kind === "empty") {
@@ -646,10 +659,16 @@ export default function OverridePanel({
     // A direct `bytes(ref X)` length controller gets a renderable byte cap so
     // dragging the slider can't explode the un-virtualized diagram. A
     // boundedRepeat-driven length cell keeps the full int range (its derived
-    // record count is capped in PacketViewer instead).
-    const isBoundedLength = (packet.boundedRepeats ?? []).some(
-      (br) => br.lengthKey === field.controlsLength,
-    );
+    // record count is capped in PacketViewer instead) — UNLESS it is ALSO a
+    // direct-payload-bearing dual-role key (http3Frame `http3PayloadLength`,
+    // dnssecRecords `rrRdLength`), whose direct arm makes the value drive
+    // ~1 cell/byte, so it too gets the renderable byte cap.
+    const isBoundedLength =
+      !!field.controlsLength &&
+      (packet.boundedRepeats ?? []).some(
+        (br) => br.lengthKey === field.controlsLength,
+      ) &&
+      !boundedDirectPayloadKeys?.has(field.controlsLength);
     widgets.push(
       <OverrideSlider
         key="slider"
