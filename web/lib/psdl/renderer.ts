@@ -220,6 +220,12 @@ export type Field = {
    *  The width override is a BYTE count keyed by this field's id (bridged
    *  to `__bytesDelimLen__<id>` in layout.ts). */
   isDelimited?: boolean;
+  /** The delimiter byte sequence of a `isDelimited` field, carried verbatim
+   *  from the source `bytes({ delimiter: [...] })` so the source-less lift
+   *  (`rendererToPsdl`) can re-emit the same delimiter instead of dropping the
+   *  field. Absent for hand-built mirrors; the lift then falls back to a
+   *  single NUL delimiter, preserving the field's variable-length shape. */
+  delimiterBytes?: number[];
   /** True when this field's PSDL type is `bytes(remaining)` — the variable tail
    *  of the packet (or active switch arm). It has no wire-width env key in core
    *  (its size is the leftover scope budget), so the OverridePanel WidthPicker

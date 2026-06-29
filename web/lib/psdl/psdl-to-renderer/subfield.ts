@@ -141,8 +141,12 @@ export function plainFieldToRenderer(f: PsdlField): RendererField {
   // Data-dependent type widths get an env-override widget in OverridePanel.
   if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
   if (f.type.kind === "berLength") out.isBerLength = true;
-  if (f.type.kind === "bytes" && isBytesDelimited(f.type.n))
+  if (f.type.kind === "bytes" && isBytesDelimited(f.type.n)) {
     out.isDelimited = true;
+    // Carry the delimiter bytes so a source-less lift can re-emit the same
+    // `bytes({ delimiter })` shape rather than dropping the field.
+    out.delimiterBytes = [...f.type.n.delimiter];
+  }
   if (isBytesRemaining(f.type)) out.isRemaining = true;
   if (f.type.kind === "enum") out.enumVariants = enumLabels(f.type.variants);
   if (f.byteOrder) out.byteOrder = f.byteOrder;

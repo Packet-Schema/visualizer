@@ -103,9 +103,13 @@ describe("imported PSDL with variable-length fields renders a complete diagram",
         },
       ],
     };
-    const { fixed, lossy } = importedTargetPsdl(source);
+    const { fixed } = importedTargetPsdl(source);
 
-    expect(diagramFieldIds(lossy)).not.toContain("label");
+    // The import-aware lift keeps the delimited field, so the diagram is
+    // complete. (The source-less `rendererToPsdl` lift now also re-emits this
+    // intrinsic-shape field rather than dropping it — see
+    // sourceless-variable-roundtrip.test.ts — so we no longer assert the lossy
+    // path drops it; bytes(ref len) below still demonstrates the lossy drop.)
     expect(diagramFieldIds(fixed)).toContain("label");
   });
 
@@ -122,9 +126,13 @@ describe("imported PSDL with variable-length fields renders a complete diagram",
         },
       ],
     };
-    const { fixed, lossy } = importedTargetPsdl(source);
+    const { fixed } = importedTargetPsdl(source);
 
-    expect(diagramFieldIds(lossy)).not.toContain("rest");
+    // The import-aware lift keeps the remaining tail, so the diagram is
+    // complete. (The source-less `rendererToPsdl` lift now also re-emits this
+    // intrinsic-shape field rather than dropping it — see
+    // sourceless-variable-roundtrip.test.ts — so we no longer assert the lossy
+    // path drops it; bytes(ref len) above still demonstrates the lossy drop.)
     expect(diagramFieldIds(fixed)).toContain("rest");
   });
 });
