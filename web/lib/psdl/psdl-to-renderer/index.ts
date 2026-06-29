@@ -5314,12 +5314,40 @@ function collectFreeRepeats(
               // naked stepper is surfaced (it would over-consume the saturated
               // scope), matching every other bounded list: the budget is the
               // single control.
+              // An arm-nested segment record can itself carry a per-record
+              // ref-count repeat sized by a SIBLING length field
+              // (bgpUpdateFull AS_PATH segment = `[bgpAsSegType, bgpAsSegLength,
+              // bgpAsSegValue = repeat count:ref(bgpAsSegLength)]`): the inner
+              // repeat draws one AS-number cell per `bgpAsSegLength`, so the AS
+              // count IS editable in principle, but the ref-count stepper is
+              // suppressed (`!insideBounded`) because a naked stepper inside this
+              // saturated budget over-consumes the scope and freezes the diagram.
+              // The user then SEES AS-number cells they cannot add to or remove —
+              // a see-but-cannot-edit gap on AS_PATH, a defining BGP field.
+              //
+              // Surface that sibling length as an innerScopeSeed so (a)
+              // `collectFlatTlvInnerLengthControllers` gives it a length-style
+              // slider (this record wraps NO nested bounded, so it is eligible),
+              // and (b) PacketViewer charges its live overage into the per-record
+              // byte cost. Raising the AS count grows each segment, which SHRINKS
+              // the budget-derived segment count to stay within the fixed
+              // per-attribute budget — never over-consuming the scope (no freeze)
+              // — while the AS-number list under the rendered segment(s) grows
+              // with the slider. Deliberately NO `derivesBudgetKey`: the segment
+              // budget is itself the inner budget of the EARLIER-processed
+              // `bgpPathAttributes` repeat, so growing it here (after that
+              // repeat's count was already derived) would not enlarge the outer
+              // total in the same memo pass and could collapse the attribute
+              // record. The safe in-scope shrink keeps every selectable
+              // attrTypeCode / attrExtLen rendering.
+              const innerSeed = findInnerSiblingRefCountSeed(c.element);
               boundedOut.push({
                 countKey: c.id,
                 lengthKey: caseNestedBudget.lengthKeys[0],
                 bytesExpr: caseNestedBudget.bytes,
                 perRecordBytes: estimateElementBytes(c.element),
                 prefixBytes: 0,
+                ...(innerSeed ? { innerScopeSeeds: [innerSeed] } : {}),
               });
               instantiableRepeatIds.add(c.id);
             } else if (
@@ -6744,6 +6772,41 @@ function estimateElementBytes(struct: { fields: Container[] }): number {
     return total;
   };
   return Math.max(1, Math.ceil(bitsOf(struct.fields) / 8));
+}
+
+/**
+ * For an arm-nested budget record (bgpUpdateFull AS_PATH segment) find a DIRECT
+ * child `repeat` whose `count` is a `ref` to a SIBLING `length`-category field in
+ * the same record (`bgpAsSegValue = repeat count:ref(bgpAsSegLength)` inside the
+ * segment). Returns an innerScopeSeed for that length keyed on `env[<sibling>]`:
+ *   - `value` 0: the smallest legal record has an EMPTY list, matching the
+ *     load-time render (no AS numbers), so the seed never inflates the default.
+ *   - `bytesPerUnit`: the byte width of one inner element (a 2-octet ASN → 2), so
+ *     PacketViewer charges `(env[len] - 0) * bytesPerUnit` into the per-record
+ *     cost and the budget-derived segment count shrinks to stay in scope as the
+ *     AS list grows. Surfaced (via `collectFlatTlvInnerLengthControllers`) as a
+ *     length-style slider so the AS count is editable instead of inert.
+ * Returns null when the record has no such sibling-ref-count repeat (COMMUNITIES'
+ * `bgpCommunities` element is a flat 4-octet community, no inner repeat).
+ */
+function findInnerSiblingRefCountSeed(struct: {
+  fields: Container[];
+}): { key: string; value: number; bytesPerUnit: number } | null {
+  const siblingIds = new Set<string>();
+  collectRecordFieldIds(struct.fields, siblingIds);
+  for (const c of struct.fields) {
+    if (isField(c) || c.kind !== "repeat") continue;
+    const count = c.count;
+    if (typeof count !== "object" || !("kind" in count)) continue;
+    if (count.kind !== "ref") continue;
+    if (!siblingIds.has(count.field)) continue;
+    return {
+      key: count.field,
+      value: 0,
+      bytesPerUnit: estimateElementBytes(c.element),
+    };
+  }
+  return null;
 }
 
 /**
