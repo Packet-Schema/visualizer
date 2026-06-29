@@ -22,10 +22,10 @@ import { THEME_STORAGE_KEY } from "@/lib/constants";
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
 import { PRESET_INDEX, getLoadedPreset, loadPreset } from "@/lib/psdl/presets";
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { initialState } from "@/lib/psdl/renderer-helpers";
-import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
 import { parseShareParams } from "@/lib/share-url";
 import type {
   ControllerState,
@@ -113,7 +113,6 @@ export default function EmbedViewer() {
         ([k, v]) => [k, Number(v)] as const,
       ),
     );
-    setupDerivedCounts(env);
 
     const packetDefaults = initialEnv(embedState.psdl);
     for (const [k, v] of packetDefaults) {
@@ -123,8 +122,17 @@ export default function EmbedViewer() {
     for (const ref of refs) {
       if (!env.has(ref)) env.set(ref, 0);
     }
+    seedDynamicWidthDefaults(embedState.psdl, env);
 
-    return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
+    // A malformed shared link (controllers that over-consume a `bounded`
+    // scope, etc.) makes core normalize throw. The embed is read-only with no
+    // previous frame to fall back to, so degrade to the loading placeholder
+    // instead of white-screening the iframe (override-audit finding A8).
+    try {
+      return resolveLayout(embedState.psdl, { env, viewMode: "wire" });
+    } catch {
+      return null;
+    }
   }, [embedState, refs]);
 
   const handleFieldClick = useCallback((field: Field) => {

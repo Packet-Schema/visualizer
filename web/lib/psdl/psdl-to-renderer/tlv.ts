@@ -4,26 +4,20 @@
 // is promoted to a renderer "TLV" field — a single variable-length
 // placeholder that carries a `tlv.catalog` for the editor.
 
-import type { Repeat, Struct, Switch } from "../types";
+import type { Field as PsdlField, Repeat, Struct, Switch } from "../types";
 import type {
   Field as RendererField,
   TlvCatalogEntry as RendererTlvCatalogEntry,
   TlvCatalogField,
 } from "../renderer";
 
-import { getSwitchFromRepeat, structFieldsToTlvFields } from "./shared";
-
-/** Pretty-print a camelCase identifier as "Camel Case". Returns null for
- *  empty / non-string input so callers can chain a final fallback. */
-function prettifyId(id: string | undefined): string | null {
-  if (!id) return null;
-  const trimmed = id.trim();
-  if (!trimmed) return null;
-  return trimmed
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/_/g, " ")
-    .replace(/^./, (ch) => ch.toUpperCase());
-}
+import {
+  defaultArmSentinel,
+  firstCaseKeyValue,
+  getSwitchFromRepeat,
+  prettifyId,
+  structToTlvCatalogShape,
+} from "./shared";
 
 type TlvCatalogEntry = RendererTlvCatalogEntry;
 
@@ -35,30 +29,69 @@ export function isTlvRepeat(r: Repeat): boolean {
   return "kind" in first && first.kind === "switch";
 }
 
+/** Sentinel kind assigned to the synthetic `_`-default catalog entry. Set on
+ *  the TLV field so `repeatToTlvField` can fold any unlisted instance kind onto
+ *  it (and so callers can recognise the default entry). Computed by
+ *  `defaultArmSentinel` from the listed case keys: the smallest non-negative
+ *  integer NOT covered by any listed case, so on the wire it decodes through the
+ *  `_` arm exactly as the editor renders it. */
+function buildCatalogEntry(kind: number, struct: Struct): TlvCatalogEntry {
+  const shape = structToTlvCatalogShape(struct);
+  const fields = shape.fields;
+  const entry: TlvCatalogEntry = {
+    kind,
+    // Pretty fallback: when the PSDL case struct doesn't declare a
+    // `name`, prefer its id (e.g. `recordRoute` → "Record Route")
+    // over the bare `kind N` label that ends up on the diagram cell.
+    name: struct.name ?? prettifyId(struct.id) ?? `kind ${kind}`,
+  };
+  // `fields` is optional on the catalog type; omit it when empty so
+  // downstream helpers (which use fields-presence to decide whether
+  // to render a payload row) can take the empty-fields fast path.
+  // We don't synthesise a bits-only entry here — the previous code
+  // wrote `entry.bits = bitsTotal` in the empty branch, but
+  // `bitsTotal` is derived from `fields` and so was always 0; that
+  // branch only ever produced a useless `bits: 0`. Hand-crafted
+  // catalogs that need bits-only entries (EOL/NOP wire-marker
+  // shapes) supply the catalog directly, not via a PSDL Switch.
+  if (fields.length > 0) entry.fields = fields;
+  // A case arm with a variable-LENGTH value member (e.g. dhcpv4 Code=3
+  // `routerAddresses` = bytes(ref optionLength)) carries per-instance
+  // byte-count knobs + a `fieldsFor` closure that sizes the value from
+  // `extras`, plus the seeded `defaultExtras` so the value renders a
+  // VISIBLE cell the moment a record is added (instead of a permanently
+  // zero-width, uneditable field).
+  if (shape.variableBytes && shape.variableBytes.length > 0) {
+    entry.variableBytes = shape.variableBytes;
+    entry.defaultExtras = shape.defaultExtras;
+    entry.fieldsFor = shape.fieldsFor;
+  }
+  return entry;
+}
+
 export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
   const out: TlvCatalogEntry[] = [];
+  const listedKeys: string[] = [];
   for (const [key, struct] of Object.entries(sw.cases)) {
-    const kindNum = Number(key);
-    if (!Number.isFinite(kindNum)) continue;
-    const fields = structFieldsToTlvFields(struct);
-    const entry: TlvCatalogEntry = {
-      kind: kindNum,
-      // Pretty fallback: when the PSDL case struct doesn't declare a
-      // `name`, prefer its id (e.g. `recordRoute` → "Record Route")
-      // over the bare `kind N` label that ends up on the diagram cell.
-      name: struct.name ?? prettifyId(struct.id) ?? `kind ${kindNum}`,
-    };
-    // `fields` is optional on the catalog type; omit it when empty so
-    // downstream helpers (which use fields-presence to decide whether
-    // to render a payload row) can take the empty-fields fast path.
-    // We don't synthesise a bits-only entry here — the previous code
-    // wrote `entry.bits = bitsTotal` in the empty branch, but
-    // `bitsTotal` is derived from `fields` and so was always 0; that
-    // branch only ever produced a useless `bits: 0`. Hand-crafted
-    // catalogs that need bits-only entries (EOL/NOP wire-marker
-    // shapes) supply the catalog directly, not via a PSDL Switch.
-    if (fields.length > 0) entry.fields = fields;
-    out.push(entry);
+    const kindNum = firstCaseKeyValue(key);
+    // The `_` default arm has no numeric key — handle it after the loop so its
+    // sentinel kind can avoid colliding with any listed case value.
+    if (kindNum === null) continue;
+    listedKeys.push(key);
+    out.push(buildCatalogEntry(kindNum, struct));
+  }
+  // Surface the `_` default arm (tcp `optionGeneric`, dhcpv4 / icmpv6Ndp /
+  // ipv6Destination unknown-option arms) as a synthetic catalog entry keyed by
+  // a sentinel kind not covered by any listed case. Without it the user can SEE
+  // the generic/unlisted-Kind record the diagram renders for any out-of-list
+  // peek value but cannot add one (see-but-cannot-edit), AND `repeatToTlvField`
+  // silently DROPS any imported instance whose kind isn't listed — a lossless
+  // round-trip violation. The sentinel decodes through `_` on the wire exactly
+  // as it renders here, so editing and round-trip both stay faithful.
+  const defaultArm = sw.cases["_"];
+  if (defaultArm) {
+    const sentinel = defaultArmSentinel(listedKeys);
+    out.push(buildCatalogEntry(sentinel, defaultArm));
   }
   return out;
 }
@@ -66,25 +99,43 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
 export function repeatToTlvField(r: Repeat): RendererField {
   const sw = getSwitchFromRepeat(r);
   const catalog = sw ? switchToTlvCatalog(sw) : [];
+  // The synthetic `_`-default entry (when the Switch has a `_` arm) is keyed by
+  // the sentinel kind — any LISTED case value other than that decodes through
+  // the default arm on the wire, so we fold an imported instance carrying such
+  // an unlisted kind onto the default entry rather than dropping it.
+  const defaultSentinel =
+    sw && sw.cases["_"]
+      ? defaultArmSentinel(
+          Object.keys(sw.cases).filter((k) => firstCaseKeyValue(k) !== null),
+        )
+      : null;
   // Persisted instances on the PSDL side travel back into the renderer
   // mirror so a user's record selections survive JSON / share-URL /
-  // "Save as preset" round-trips. Filter out unknown-kind entries up
-  // front so a malformed / catalog-mismatched share URL doesn't ride
-  // the populated branch in `applyTlvInstances` and silently render an
-  // empty Repeat (Codex P2). The unknown entries are also unrecoverable
-  // — without a catalog match we can't reify the per-record fields.
+  // "Save as preset" round-trips. An instance whose kind isn't a listed
+  // catalog kind is mapped onto the `_`-default entry when one exists (the
+  // diagram already renders that arm for any out-of-list value, so a
+  // user/imported PSDL carrying a generic record round-trips losslessly).
+  // Only a truly unrecoverable kind — no catalog match AND no default arm —
+  // is dropped (a malformed / catalog-mismatched share URL we can't reify).
   const knownKinds = new Set(catalog.map((c) => c.kind));
   const instances = r.instances
     ? r.instances.flatMap((inst) => {
-        if (!knownKinds.has(inst.kind)) {
-          console.warn(
-            `[repeatToTlvField] dropping instance with unknown kind=${inst.kind} on Repeat "${r.id}" — not present in the catalog.`,
-          );
-          return [];
+        let kind = inst.kind;
+        if (!knownKinds.has(kind)) {
+          if (defaultSentinel !== null) {
+            // Re-key the unlisted instance onto the default-arm entry so it
+            // renders (and re-exports) as the generic/unknown record.
+            kind = defaultSentinel;
+          } else {
+            console.warn(
+              `[repeatToTlvField] dropping instance with unknown kind=${inst.kind} on Repeat "${r.id}" — not present in the catalog.`,
+            );
+            return [];
+          }
         }
         return [
           {
-            kind: inst.kind,
+            kind,
             ...(inst.extras ? { extras: { ...inst.extras } } : {}),
           },
         ];
@@ -123,15 +174,47 @@ export function tlvCatalogEntryToStruct(
     (entry.bits
       ? [{ id: "raw", name: entry.name, bits: entry.bits } as TlvCatalogField]
       : []);
-  return {
-    id: `${parentId}_kind_${entry.kind}`,
-    name: entry.name,
-    fields: baseFields.map((f) => ({
+  // A catalog field with a `variableBytes` knob is a variable-LENGTH value
+  // member (`bytes(ref L)` / delimited / varint) the catalog collapsed to
+  // bits<=0. Re-emit it as `bytes(ref L)` (keyed to its sibling length field)
+  // so the round-trip through PSDL keeps the field AND its length linkage —
+  // re-import then rebuilds the variableBytes knob and the per-instance
+  // `extras` (which carry the user's byte count) drive its width again. This
+  // path is only reached for imported packets WITHOUT a source PSDL; presets
+  // round-trip through `mergeInstancesIntoPsdl` against their retained source.
+  const variableByFieldId = new Map(
+    (entry.variableBytes ?? []).map((vb) => [vb.fieldId, vb]),
+  );
+  const fields: PsdlField[] = [];
+  for (const f of baseFields) {
+    const vb = variableByFieldId.get(f.id);
+    if (vb) {
+      const type: PsdlField["type"] = vb.lengthFieldId
+        ? { kind: "bytes", n: { kind: "ref", field: vb.lengthFieldId } }
+        : { kind: "bytes", n: { kind: "lit", value: Math.max(1, vb.min) } };
+      fields.push({
+        id: f.id,
+        name: f.name,
+        type,
+        ...(f.description ? { doc: f.description } : {}),
+      });
+      continue;
+    }
+    // Drop any remaining bits<=0 field with no variable metadata: emitting
+    // {kind:"bits", n:0} produces PSDL the validator rejects ("bits must have
+    // positive n"). Mirrors the plain-field guard in to-psdl.ts.
+    if (f.bits <= 0) continue;
+    fields.push({
       id: f.id,
       name: f.name,
       type: { kind: "bits", n: f.bits },
       ...(f.description ? { doc: f.description } : {}),
-    })),
+    });
+  }
+  return {
+    id: `${parentId}_kind_${entry.kind}`,
+    name: entry.name,
+    fields,
   };
 }
 

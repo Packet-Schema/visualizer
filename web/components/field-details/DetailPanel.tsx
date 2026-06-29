@@ -2,6 +2,7 @@ import { CATEGORY_LABELS } from "@/lib/constants";
 import { EnrichedText } from "@/components/common/EnrichedText";
 import type {
   CategoryToken,
+  Cell,
   ControllerState,
   Packet,
 } from "@/lib/psdl/renderer";
@@ -12,14 +13,16 @@ type Props = {
   packet: Packet;
   selectedFieldId: string | null;
   controllers: ControllerState;
+  cells?: readonly Cell[];
 };
 
 export default function DetailPanel({
   packet,
   selectedFieldId,
   controllers,
+  cells,
 }: Props) {
-  const r = resolveSelection(packet, selectedFieldId);
+  const r = resolveSelection(packet, selectedFieldId, cells);
 
   if (r.kind === "empty") {
     return (

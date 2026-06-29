@@ -2030,3 +2030,71 @@ describe("toKsy — peek expression with explicit offset stringifies fully", () 
     expect(out).toMatch(/peek\(8,\s*16\)/);
   });
 });
+
+describe("toKsy — env-driven repeat counts (audit MEDIUM #2)", () => {
+  const eosPacket = {
+    name: "T",
+    rowBits: 8,
+    body: [
+      {
+        kind: "repeat" as const,
+        id: "items",
+        element: {
+          id: "item",
+          fields: [
+            { id: "x", name: "X", type: { kind: "int" as const, bits: 8 } },
+          ],
+        },
+        count: "eos" as const,
+      },
+    ],
+  };
+
+  it("without env an eos repeat still collapses to `repeat: eos`", () => {
+    const obj = yamlParse(toKsy(eosPacket));
+    expect(obj.seq[0].repeat).toBe("eos");
+    expect(obj.seq[0]["repeat-expr"]).toBeUndefined();
+  });
+
+  it("env keyed by the repeat id materialises `repeat: expr` with the count", () => {
+    const obj = yamlParse(toKsy(eosPacket, new Map([["items", 3]])));
+    expect(obj.seq[0].repeat).toBe("expr");
+    expect(obj.seq[0]["repeat-expr"]).toBe("3");
+  });
+
+  it("a ref count resolves to a literal when env supplies the discriminator", () => {
+    const packet = {
+      name: "DnsLike",
+      rowBits: 8,
+      body: [
+        {
+          id: "anCount",
+          name: "AnCount",
+          type: { kind: "int" as const, bits: 16 },
+        },
+        {
+          kind: "repeat" as const,
+          id: "answers",
+          element: {
+            id: "answer",
+            fields: [
+              {
+                id: "rtype",
+                name: "RType",
+                type: { kind: "int" as const, bits: 16 },
+              },
+            ],
+          },
+          count: { kind: "ref" as const, field: "anCount" },
+        },
+      ],
+    };
+    // No env → symbolic ref name survives (valid Kaitai expression).
+    const bare = yamlParse(toKsy(packet));
+    expect(bare.seq[1]["repeat-expr"]).toBe("anCount");
+    // With env → resolved to a literal count.
+    const resolved = yamlParse(toKsy(packet, new Map([["anCount", 3]])));
+    expect(resolved.seq[1].repeat).toBe("expr");
+    expect(resolved.seq[1]["repeat-expr"]).toBe("3");
+  });
+});

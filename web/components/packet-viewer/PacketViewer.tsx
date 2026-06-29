@@ -19,14 +19,21 @@ import {
 import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
-import { setupDerivedCounts } from "@/lib/psdl/setup-derived-counts";
+import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
+import { clampStaticLayoutCounts } from "@/lib/psdl/clamp-static-layout";
+import { boundedKeysWithDirectPayload } from "@/lib/psdl/bounded-direct-payload-keys";
+import { evalExprOr } from "@/lib/psdl/expr";
 import {
+  controllersFromEnv,
   initialState,
+  nonDefaultControllerEnv,
   packetCategories,
   syncChainControllers,
   syncTlvControllers,
 } from "@/lib/psdl/renderer-helpers";
 import {
+  applyByteOrderOverrides,
+  applyChainInstances,
   applyTlvInstances,
   mergeInstancesIntoPsdl,
   psdlToRenderer,
@@ -66,7 +73,9 @@ import type {
 import type { PsdlPacket } from "@/lib/psdl/types";
 import { EnrichedText } from "@/components/common/EnrichedText";
 import DetailPanel from "@/components/field-details/DetailPanel";
-import OverridePanel from "@/components/field-details/OverridePanel";
+import OverridePanel, {
+  fieldRendered,
+} from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
@@ -95,6 +104,49 @@ const DEFAULT_PACKET_KEY = "ipv4";
 const BUILT_IN_PRESET_KEYS = Object.keys(PRESET_INDEX);
 const CUSTOM_PRESET_NAME_MAX = 80;
 const SHARED_CUSTOM_PRESET_FALLBACK_NAME = "Shared packet";
+
+// Upper ceiling on the record count DERIVED from a bounded eos/until repeat's
+// length budget. The length slider's max is the length field's full bit range
+// (OverrideSlider uses `2**field.bits - 1`), so a 16-bit length field maxed to
+// 65535 would otherwise derive tens of thousands of records — resolveLayout
+// emits one DOM/SVG cell per record and the un-virtualized main diagram freezes
+// (bgpLs → 39321 cells, bgpUpdateFull → 32776, babel → 21845). Clamp the
+// derived count to a sane ceiling (mirrors RepeatCountStepper's SOFT_MAX) so a
+// maxed length slider can never explode the cell count into a frozen diagram.
+const MAX_DERIVED_RECORDS = 1024;
+
+// SLIDER-FREEZE (direct length category): a `lengthController` / `controlsLength`
+// cell that sizes a DIRECT `bytes(ref X)` payload is surfaced as an OverrideSlider
+// whose max is the length field's full int range (16/24/32-bit → up to 2**32-1).
+// resolveLayout emits roughly one diagram cell per payload byte, so dragging that
+// slider toward its max produces millions-to-billions of cells in the
+// un-virtualized SVG diagram → the page freezes / V8 OOM-crashes. Unlike
+// boundedRepeats (whose DERIVED count is already capped above), these payloads are
+// driven straight by `env[X]`, so we cap the EFFECTIVE byte count used for layout
+// to this ceiling. The cap is LAYOUT-ONLY: the underlying length CELL value stays
+// user-editable in `controllers`; only the `env` value fed to resolveLayout (and
+// the slider/number max in OverridePanel) is clamped to a renderable ceiling.
+const MAX_LENGTH_CONTROLLER_BYTES = MAX_DERIVED_RECORDS;
+
+// MULTIPLICATIVE-FREEZE (product across nested / sibling controls): the per-key
+// caps above each bound ONE control (a freeRepeat count, a bounded-derived count,
+// a direct length byte-count) to MAX_DERIVED_RECORDS. They do NOT bound the
+// PRODUCT of several controls that the layout multiplies together — a repeat
+// nested in another repeat (dnsResponse: dnsQuestions{count=dnsQdCount} ⊃
+// dnsQNameLabels{until}, both surfaced as independent steppers), or a repeat
+// count times a per-record length controller (diameter: diameterAvps × avpLength;
+// dhcpv6/dhcpv6Relay: options × optionLen). With every control at its own 1024
+// cap, the product reaches 1024×1024 ≈ 1.05M cells; resolveLayout expands the
+// repeats INSIDE normalize (so a post-resolve cell truncation can't help — the
+// freeze is in the expansion), taking ~26s and OOM-ing the un-virtualized SVG
+// diagram. We therefore bound the PRODUCT of every layout-multiplying driver
+// (derived record counts AND direct length byte-counts) to this ceiling, walking
+// them in order against a shrinking running budget so the first drivers keep
+// their full per-key cap and later ones are lowered only as far as the remaining
+// budget requires. Set equal to MAX_DERIVED_RECORDS so the worst reachable
+// product matches the already-accepted single-maxed-control cell count (≈1024
+// records' worth, a few thousand cells) — never the million-cell freeze.
+const MAX_DERIVED_PRODUCT = MAX_DERIVED_RECORDS;
 
 // Mapping from a length-controller slider to its TLV Options *slot*: the
 // number of bytes the user has carved out by setting the controller.
@@ -187,6 +239,13 @@ export default function PacketViewer({
       [PSDL_INITIAL_KEY]: psdlToRenderer(initialPsdlPacket),
     } as PacketRegistry;
   });
+  // Lossless source PSDL for each drawer-imported packet (keyed `imported:`),
+  // so lifts merge instances onto the original instead of reconstructing from
+  // the lossy renderer mirror. The PSDL_INITIAL_KEY share already has its source
+  // in `customPresets`, so it isn't seeded here.
+  const [importedSources, setImportedSources] = useState<
+    Record<string, PsdlPacket>
+  >(() => ({}));
   // Lazy cache of lowered built-in presets. Seeded with just the initial
   // preset; other built-ins are fetched + lowered on demand by the effect that
   // watches `packetKey` (see below). TLV/Chain edits replace the relevant entry
@@ -380,17 +439,31 @@ export default function PacketViewer({
   // then a custom preset, then a lifted version of the imported renderer
   // packet (lossy but acceptable as a starting point for editing).
   const activePsdlPacket: PsdlPacket = useMemo(() => {
+    const importedMirror = importedPackets[packetKey];
+    const importedSource = importedSources[packetKey];
     return (
       getLoadedPreset(packetKey) ??
       customPresets[packetKey] ??
-      (importedPackets[packetKey]
-        ? rendererToPsdl(importedPackets[packetKey])
+      (importedMirror
+        ? // Lift the imported packet losslessly: merge the mirror's instance
+          // edits onto the retained source PSDL (preserves Switch/Encrypted/
+          // variable payloads). Only a source-less mirror falls back to the
+          // lossy reconstruction.
+          importedSource
+          ? mergeInstancesIntoPsdl(importedSource, importedMirror)
+          : rendererToPsdl(importedMirror)
         : seedPsdl)
     );
     // `renderedPresets` is included so this recomputes once a lazily-fetched
     // built-in body lands in the load cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packetKey, customPresets, importedPackets, renderedPresets]);
+  }, [
+    packetKey,
+    customPresets,
+    importedPackets,
+    importedSources,
+    renderedPresets,
+  ]);
 
   // Re-seed the studio reducer in-place when the active PSDL packet swaps
   // (preset change, custom preset selection, import). Detecting the change
@@ -443,7 +516,15 @@ export default function PacketViewer({
         importedPackets[nextKey] ??
         (customPreset ? psdlToRenderer(customPreset) : null);
       if (next) {
-        setControllers(initialState(next));
+        // A custom preset may carry a baked `env` block (the non-default
+        // controllers persisted by "Save as preset"); seed from it so the
+        // user's freeRepeat counts / variant picks / slider values come
+        // back instead of resetting to defaults (audit MEDIUM #1).
+        setControllers(
+          customPreset
+            ? controllersFromEnv(next, customPreset.env)
+            : initialState(next),
+        );
       } else if (nextKey in PRESET_INDEX) {
         // Built-in not lazily loaded yet: its body arrives via the load effect,
         // but controllers must also reset to the new preset's defaults (else
@@ -505,9 +586,16 @@ export default function PacketViewer({
   );
 
   const handleImport = useCallback(
-    (imported: Packet, importedControllers: ControllerState) => {
+    (
+      imported: Packet,
+      importedControllers: ControllerState,
+      sourcePsdl: PsdlPacket,
+    ) => {
       const key = `imported:${imported.name}`;
       setImportedPackets((prev) => ({ ...prev, [key]: imported }));
+      // Retain the parsed source PSDL so every lift (diagram / share / export)
+      // merges instances onto it rather than reconstructing lossily.
+      setImportedSources((prev) => ({ ...prev, [key]: sourcePsdl }));
       setPacketKey(key);
       setControllers({ ...initialState(imported), ...importedControllers });
       uiDispatch({ type: "clear-selection" });
@@ -576,10 +664,26 @@ export default function PacketViewer({
 
   const handleByteOrderChange = useCallback(
     (fieldId: string, next: "BE" | "LE") => {
-      const nextPacket = updatePacketField(packet, fieldId, (f) => ({
+      // Record the flip on a mirror-level, id-keyed map regardless of whether
+      // the field is top-level. A field nested in a Switch case / Repeat
+      // element / Group is never in `mirror.fields` (it is only a diagram
+      // Cell), so `updatePacketField`'s top-level-only walk would no-op and the
+      // flip would be lost for both the diagram (`applyByteOrderOverrides`) and
+      // export (`mergeInstancesIntoPsdl`). The map is the single source of
+      // truth those two read from. We ALSO keep `mirror.fields[fieldId]` in
+      // sync for top-level fields so the rest of the mirror (DetailPanel etc.)
+      // stays consistent — `updatePacketField` no-ops harmlessly for nested ids.
+      const withField = updatePacketField(packet, fieldId, (f) => ({
         ...f,
         byteOrder: next,
       }));
+      const nextPacket: Packet = {
+        ...withField,
+        byteOrderOverrides: {
+          ...withField.byteOrderOverrides,
+          [fieldId]: next,
+        },
+      };
       replaceActivePacket(nextPacket);
     },
     [packet, replaceActivePacket],
@@ -650,8 +754,9 @@ export default function PacketViewer({
         // Keys not in the preset's renderer (e.g. fields from a different
         // preset that the studio packet was edited from) are dropped so
         // they don't pollute the canonical URL. freeRepeats countKeys are
-        // included because initialState() does not seed them. Start from
-        // presetDefaults so new-preset-specific keys are always seeded.
+        // carried explicitly too (initialState seeds only those freeRepeats
+        // that declare a `defaultCount`). Start from presetDefaults so
+        // new-preset-specific keys are always seeded.
         setControllers((prev) => {
           const next = { ...presetDefaults } as typeof prev;
           for (const [k, v] of Object.entries(prev)) {
@@ -676,9 +781,21 @@ export default function PacketViewer({
       // the studio packet before persistence — without this, diagram-
       // driven edits (which only land on the mirror) silently drop on
       // save (sub-agent CRITICAL).
+      // Bake the non-default subset of the live controllers into the saved
+      // packet's `env` block, mirroring what Share preserves
+      // (controllersToEnv). Without this, freeRepeat counts, refSwitch/peek
+      // variant picks and length-slider values silently reset on reload
+      // (e.g. dnsResponse with dnsAnCount=3 came back at the default). The
+      // delta is computed against the merged packet's seeded defaults so only
+      // genuine edits persist. (audit MEDIUM #1)
+      const savedEnv = nonDefaultControllerEnv(
+        psdlToRenderer(mergedStudioPacket),
+        controllers,
+      );
       const packetToSave: PsdlPacket = {
         ...mergedStudioPacket,
         name: normalizedName,
+        ...(savedEnv ? { env: savedEnv } : {}),
       };
       saveCustomPreset(key, packetToSave);
       setCustomPresets(loadCustomPresets());
@@ -696,14 +813,16 @@ export default function PacketViewer({
         return next;
       });
       setPacketKey(key);
-      setControllers(initialState(psdlToRenderer(packetToSave)));
+      setControllers(
+        controllersFromEnv(psdlToRenderer(packetToSave), packetToSave.env),
+      );
       uiDispatch({ type: "clear-selection" });
       uiDispatch({ type: "close-save-dialog" });
       // set-edit-mode false で studioView が "form" にリセットされる
       // (ui-state-reducer 側で同時にハンドリング)。
       uiDispatch({ type: "set-edit-mode", editing: false });
     },
-    [mergedStudioPacket],
+    [mergedStudioPacket, controllers],
   );
 
   // Drop in-progress edits and revert the reducer to the active preset.
@@ -847,7 +966,12 @@ export default function PacketViewer({
     // key even before the body arrives, so it must share as `preset=<key>` —
     // NOT psdl-encode the stale fallback packet currently on screen (Codex P2).
     const isUnloadedBuiltIn = !builtInPsdl && packetKey in PRESET_INDEX;
-    const customSource = builtInPsdl ? undefined : customPresets[packetKey];
+    // The lossless source PSDL for a non-built-in: a custom preset's stored
+    // PSDL, or an imported packet's retained source. Either lets the share lift
+    // merge instances onto the original rather than reconstruct lossily.
+    const customSource = builtInPsdl
+      ? undefined
+      : (customPresets[packetKey] ?? importedSources[packetKey]);
     // Custom preset edits live in `renderedPresets` (see
     // `replaceActivePacket` custom arm) and the source PSDL in
     // `customPresets[packetKey]` stays untouched. Decide which one to
@@ -868,6 +992,22 @@ export default function PacketViewer({
     //  - imported → no source PSDL available, lift from renderer.
     const hasCustomRendererOverride =
       !builtInPsdl && renderedPresets[packetKey] !== undefined;
+    // A built-in can be edited (TLV/chain instances) via the OverridePanel
+    // WITHOUT entering editMode — those edits land on the renderer mirror
+    // (`packet`), not the pristine preset. Outside editMode the share path used
+    // to emit the raw preset and silently drop them (override-audit D1). Detect
+    // the override by shape-preserving-merging the mirror's instances back onto
+    // the preset and comparing; share the merged PSDL when they differ.
+    const builtInMerged = builtInPsdl
+      ? mergeInstancesIntoPsdl(builtInPsdl, packet)
+      : undefined;
+    const builtInHasOverride =
+      builtInPsdl !== undefined &&
+      builtInMerged !== undefined &&
+      !samePsdlPacket(builtInMerged, builtInPsdl);
+    // Mark `hasCustomRendererOverride` consumed (kept for readability of the
+    // branch logic above); the actual share lift always merges onto a source.
+    void hasCustomRendererOverride;
     const sharePacket = editMode
       ? // In editMode the diagram draws from studioState.packet but TLV /
         // chain edits only land on the renderer mirror — without the
@@ -876,10 +1016,17 @@ export default function PacketViewer({
         // memo so we don't walk the body twice per share click.
         mergedStudioPacket
       : builtInPsdl
-        ? builtInPsdl
-        : hasCustomRendererOverride
-          ? rendererToPsdl(packet)
-          : (customSource ?? rendererToPsdl(packet));
+        ? builtInHasOverride && builtInMerged
+          ? builtInMerged
+          : builtInPsdl
+        : // Custom OR imported: always merge the mirror's edits onto the
+          // lossless source PSDL (preserves Switch / Encrypted / variable
+          // payloads AND captures any diagram edit). Merge is a no-op when
+          // unedited. Only a genuinely source-less packet falls back to the
+          // lossy reconstruction.
+          customSource
+          ? mergeInstancesIntoPsdl(customSource, packet)
+          : rendererToPsdl(packet);
     const defaultControllers = builtInPsdl
       ? initialState(psdlToRenderer(builtInPsdl))
       : undefined;
@@ -898,21 +1045,55 @@ export default function PacketViewer({
       baseUrl: window.location.href,
       packetKey,
       packet: sharePacket,
-      controllers,
+      // While a freshly-switched built-in is still lazy-loading, its body (and
+      // thus `defaultControllers`) isn't available, so the stale controllers
+      // from the PREVIOUS preset would leak into the URL as
+      // `controllers.<prev>=…` under the new key. Drop them — they self-correct
+      // once the body loads and resets controllers (override-audit D3).
+      controllers: isUnloadedBuiltIn ? {} : controllers,
       builtInKeys: BUILT_IN_PRESET_KEYS,
       defaultControllers,
       // An unloaded built-in still shares as a clean preset URL (its controllers
       // self-correct once the body loads and resets them).
-      forcePsdl: editHasDiff || (!builtInPsdl && !isUnloadedBuiltIn),
+      forcePsdl:
+        editHasDiff ||
+        builtInHasOverride ||
+        (!builtInPsdl && !isUnloadedBuiltIn),
     });
   }, [
     controllers,
     customPresets,
+    importedSources,
     editMode,
     mergedStudioPacket,
     packet,
     packetKey,
     renderedPresets,
+  ]);
+
+  // Lift the active packet to PSDL for export — losslessly. The renderer mirror
+  // throws away constructs (variable-length payloads, enum labels, switch `_`
+  // arms, plain repeats), so reconstructing via `rendererToPsdl` yields PSDL the
+  // app itself rejects on re-import (override-audit C1/C2/C3/C5/A3). Instead,
+  // shape-preserving-merge the mirror's instances back onto the *source* PSDL
+  // whenever one exists (built-in body / custom source / studio draft); only a
+  // genuinely imported renderer packet (no source) falls back to the lossy lift.
+  const liftActivePacketToPsdl = useCallback((): PsdlPacket => {
+    if (editMode) return mergedStudioPacket;
+    const builtIn = getLoadedPreset(packetKey);
+    if (builtIn) return mergeInstancesIntoPsdl(builtIn, packet);
+    const custom = customPresets[packetKey];
+    if (custom) return mergeInstancesIntoPsdl(custom, packet);
+    const importedSource = importedSources[packetKey];
+    if (importedSource) return mergeInstancesIntoPsdl(importedSource, packet);
+    return rendererToPsdl(packet);
+  }, [
+    editMode,
+    mergedStudioPacket,
+    packet,
+    packetKey,
+    customPresets,
+    importedSources,
   ]);
 
   useEffect(() => {
@@ -1105,63 +1286,472 @@ export default function PacketViewer({
     // editMode (Custom Packet Studio が開いている) なら studio reducer
     // の packet が真値。 GUI / source どちらのビューで編集していても
     // 同じ reducer を経由するので、 上の diagram は常にここを映す。
+    // An imported packet sits in `importedSources`, never in `customPresets`,
+    // so without consulting it the non-editMode diagram would fall back to the
+    // LOSSY `rendererToPsdl(packet)` (which drops every variable-length field —
+    // `to-psdl.ts` returns [] for `field.variable`). Mirror `activePsdlPacket`:
+    // lift the retained source losslessly before the lossy reconstruction so a
+    // user-imported PSDL renders all of its cells.
+    const importedSource = importedSources[packetKey];
     const base = editMode
       ? studioState.packet
       : (getLoadedPreset(packetKey) ??
         activeCustomPreset ??
-        rendererToPsdl(packet));
+        (importedSource
+          ? mergeInstancesIntoPsdl(importedSource, packet)
+          : rendererToPsdl(packet)));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
     // are attached yet) or a trailing "remaining" placeholder after the
     // instance Groups.
-    return applyTlvInstances(base, packet, tlvSlotBytes);
+    // Materialise TLV slots, then the IPv6 ext-header chain (the chain's eos
+    // repeat renders nothing on its own — see applyChainInstances), then stamp
+    // any diagram-driven byteOrder flips (`mirror.byteOrderOverrides`) onto the
+    // PSDL fields so a flip on a Switch-case-/Repeat-nested cell actually moves
+    // the diagram's `[LE]`/`[BE]` marker — those fields never reach
+    // `mirror.fields`, so the base PSDL is the only place the flip can land.
+    return applyByteOrderOverrides(
+      applyChainInstances(
+        applyTlvInstances(base, packet, tlvSlotBytes),
+        packet,
+      ),
+      packet,
+    );
   }, [
     editMode,
     studioState.packet,
     packetKey,
     activeCustomPreset,
+    importedSources,
     packet,
     tlvSlotBytes,
   ]);
+
+  // The PSDL actually fed to `resolveLayout`. Identical to `targetPsdl` except
+  // that any PLAIN literal repeat count / fixed-size `bytes`/`bits` literal is
+  // clamped to MAX_DERIVED_RECORDS. Those literals never reach an override
+  // surface (no freeRepeat / boundedRepeat / length-controller), so the
+  // product-aware env guard below cannot bound them: a user-authored
+  // `repeat{ count: 50000 }` or `bytes(50000)` would otherwise expand ~one
+  // un-virtualized SVG cell per record/byte and freeze / OOM the diagram for a
+  // perfectly valid PSDL. Layout-only — `targetPsdl` (export / source / studio)
+  // keeps the authored literal, so it round-trips losslessly; only the rendered
+  // cell count is capped. Shape-preserving, so the common (nothing-too-large)
+  // case returns `targetPsdl` unchanged.
+  const renderPsdl: PsdlPacket = useMemo(
+    () => clampStaticLayoutCounts(targetPsdl, MAX_DERIVED_RECORDS),
+    [targetPsdl],
+  );
 
   // Set of ref-names that the active packet expects in `env`. Cached against
   // `targetPsdl` so slider drag (which mutates `controllers` every frame but
   // leaves the body untouched) does not re-walk the AST 60×/sec.
   const psdlRefs = useMemo(() => collectPsdlRefs(targetPsdl), [targetPsdl]);
 
-  const layout = useMemo(() => {
-    // Every preset is PSDL now — route the diagram through resolveLayout so
-    // Encrypted-container decoration and viewMode toggling are uniform.
-    // For imported packets the renderer mirror is the source of truth and we
-    // lift it back to PSDL on demand (lossy for variable-length payloads
-    // without TLV metadata, which is acceptable for layout purposes).
-    const env = new Map(
-      Object.entries(controllers).map(([k, v]) => [k, Number(v)] as const),
+  // Env keys that DIRECTLY size a `bytes(ref X)` payload (a `lengthController`
+  // surface or a `controlsLength`-stamped cell). resolveLayout emits ~1 cell per
+  // payload byte for these, so the layout memo caps `env[id]` to
+  // MAX_LENGTH_CONTROLLER_BYTES to keep a maxed slider from freezing/OOM-ing the
+  // diagram (see MAX_LENGTH_CONTROLLER_BYTES). boundedRepeat `lengthKey`s are
+  // EXCLUDED — those drive a budget-DERIVED record count that is already capped in
+  // the boundedRepeats loop below, and shrinking their budget here would wrongly
+  // truncate that scope. Cached against the mirror so slider drag (which mutates
+  // `controllers` 60×/sec but leaves the mirror untouched) does not re-walk it.
+  const directLengthControllerIds = useMemo(() => {
+    const boundedKeys = new Set(
+      (packet.boundedRepeats ?? []).map((br) => br.lengthKey),
     );
-    setupDerivedCounts(env);
-    // Default value seed: packet が宣言する Field.defaultValue を env に
-    // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
-    // 入力を上書きしない)。 これを fallback seed より先にやらないと、
-    // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
-    // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
-    // 既存 preset の variable-length field が zero-length に描かれる
-    // regression を起こす (Codex P1 指摘)。
-    const packetDefaults = initialEnv(targetPsdl);
-    for (const [k, v] of packetDefaults) {
-      if (!env.has(k)) env.set(k, v);
+    const ids = new Set<string>();
+    for (const lc of packet.lengthControllers ?? []) {
+      if (lc.controlsLength && !boundedKeys.has(lc.controlsLength)) {
+        ids.add(lc.controlsLength);
+      }
     }
-    // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
-    // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
-    // PacketViewer 側が手動で seed しない限り `resolveLayout` が
-    // MissingRefError で throw → React render が落ちて "Application error"
-    // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
-    // と命名が一致しない ref をまとめて吸収する。
-    for (const r of psdlRefs) {
-      if (!env.has(r)) env.set(r, 0);
+    for (const f of packet.fields) {
+      if (f.controlsLength && !boundedKeys.has(f.controlsLength)) {
+        ids.add(f.controlsLength);
+      }
     }
-    return resolveLayout(targetPsdl, { env, viewMode });
-  }, [targetPsdl, psdlRefs, controllers, viewMode]);
+    return ids;
+  }, [packet.lengthControllers, packet.fields, packet.boundedRepeats]);
+
+  // DUAL-ROLE length keys: a boundedRepeat `lengthKey` that ALSO directly sizes a
+  // `bytes(ref X)` payload OUTSIDE the bounded scope it budgets (http3Frame's
+  // `http3PayloadLength` → `bounded` in SETTINGS/PUSH_PROMISE arms AND
+  // `data = bytes(ref http3PayloadLength)` in the DATA arm; dnssecRecords'
+  // `rrRdLength` → the `_` raw-rdata arm). `directLengthControllerIds` EXCLUDES
+  // every boundedRepeat lengthKey, so the direct-payload arm of these keys
+  // escapes the cap: resolveLayout emits ~1 SVG cell per payload byte, and the
+  // 16-bit slider (max 65535) generates tens of thousands of un-virtualized cells
+  // → the page FREEZES (the very freeze MAX_LENGTH_CONTROLLER_BYTES prevents).
+  // Detect them from the source AST and clamp env[X] to MAX_LENGTH_CONTROLLER_BYTES
+  // BELOW (before the bounded-count derive, so the budget and the derived count
+  // stay consistent — clamping AFTER would leave a maxed-budget record count
+  // against a 1024-byte budget and core's normalize throws `bounded over-consumed`).
+  // A PURE bounded length (no direct payload arm) is NOT returned, so its slider
+  // keeps full range and the record-display UX is unaffected.
+  const boundedDirectPayloadKeys = useMemo(
+    () =>
+      boundedKeysWithDirectPayload(
+        targetPsdl,
+        (packet.boundedRepeats ?? []).map((br) => br.lengthKey),
+      ),
+    [targetPsdl, packet.boundedRepeats],
+  );
+
+  // Last successfully-resolved layout, kept so a normalize throw can degrade to
+  // the previous frame instead of white-screening (see the try/catch below).
+  const lastGoodLayoutRef = useRef<ReturnType<typeof resolveLayout> | null>(
+    null,
+  );
+
+  // Build the fully-seeded, freeze-guarded layout env from a controllers map.
+  // Extracted so the layout memo AND the inert-length-controller probe below
+  // (which re-resolves with a single length value perturbed) share the EXACT
+  // same env-derivation pipeline — otherwise the probe could disagree with the
+  // diagram about whether a slider moves anything.
+  const buildLayoutEnv = useCallback(
+    (controllerValues: ControllerState): Map<string, number> => {
+      const env = new Map(
+        Object.entries(controllerValues).map(
+          ([k, v]) => [k, Number(v)] as const,
+        ),
+      );
+      // Default value seed: packet が宣言する Field.defaultValue を env に
+      // 入れる (controllers が既に値を持っていれば優先 — UI スライダーの
+      // 入力を上書きしない)。 これを fallback seed より先にやらないと、
+      // 後段の `if (!env.has(r)) env.set(r, 0)` が defaultValue を 0 で
+      // 潰してしまい (例: quicLong の dcidLength / scidLength = 8 → 0)、
+      // 既存 preset の variable-length field が zero-length に描かれる
+      // regression を起こす (Codex P1 指摘)。
+      const packetDefaults = initialEnv(targetPsdl);
+      for (const [k, v] of packetDefaults) {
+        if (!env.has(k)) env.set(k, v);
+      }
+      // Fallback seed: packet が使う ref のうち env に未登録のものは 0 で
+      // 埋める。 これがないと、 preset 切り替え時に packet が要求する ref を
+      // PacketViewer 側が手動で seed しない限り `resolveLayout` が
+      // MissingRefError で throw → React render が落ちて "Application error"
+      // 画面になる。 issue #91 で追加した 8 個の preset を含め、 controllers
+      // と命名が一致しない ref をまとめて吸収する。
+      for (const r of psdlRefs) {
+        if (!env.has(r)) env.set(r, 0);
+      }
+      // Give varint / delimited-bytes fields a visible default width (a user width
+      // still wins — seed only fills unset/0).
+      seedDynamicWidthDefaults(targetPsdl, env);
+      // DUAL-ROLE direct-payload cap (BEFORE the bounded derive). A boundedRepeat
+      // lengthKey that also directly sizes a `bytes(ref X)` payload in another arm
+      // (http3Frame `http3PayloadLength`, dnssecRecords `rrRdLength`) escapes
+      // `directLengthControllerIds` (which excludes all bounded keys). Clamp it to
+      // MAX_LENGTH_CONTROLLER_BYTES HERE so the SAME value bounds BOTH the direct
+      // payload's cell count AND the bounded budget (and the count derived from it),
+      // keeping the two consistent — clamping after the derive would over-consume the
+      // scope. The length CELL stays user-editable; only the layout env is clamped.
+      for (const id of boundedDirectPayloadKeys) {
+        const v = env.get(id);
+        if (typeof v === "number" && v > MAX_LENGTH_CONTROLLER_BYTES) {
+          env.set(id, MAX_LENGTH_CONTROLLER_BYTES);
+        }
+      }
+      // PRODUCT-AWARE freeze guard. Each control below (a bounded-derived count, a
+      // freeRepeat count, a direct length byte-count) is bounded individually to
+      // MAX_DERIVED_RECORDS, but the layout MULTIPLIES nested / sibling controls
+      // together (a repeat inside a repeat, or a repeat × a per-record length), so
+      // the PRODUCT — not any single value — is what explodes the cell count and
+      // freezes the un-virtualized diagram. We walk every layout-multiplying driver
+      // against a single shrinking budget: each driver gets `min(its own per-key
+      // cap, remaining budget)`, then divides the remaining budget by the value it
+      // actually took. The first drivers keep their full 1024 cap; later ones drop
+      // only as far as the running product forces, so the resolved cell count can
+      // never exceed the already-accepted single-maxed-control ceiling. The
+      // underlying controller VALUES stay user-editable (this is layout-env-only);
+      // OverridePanel's per-key SOFT_MAX still caps each input independently.
+      let productBudget = MAX_DERIVED_PRODUCT;
+      // `factor` consumes the shared budget: returns the value clamped to both the
+      // per-key cap and what the running product can still afford, then shrinks the
+      // budget by that value (>=1, so a 0/empty control never zeroes the budget for
+      // the controls after it).
+      const factor = (value: number, perKeyCap: number): number => {
+        const capped = Math.max(0, Math.min(value, perKeyCap, productBudget));
+        productBudget = Math.max(
+          1,
+          Math.floor(productBudget / Math.max(1, capped)),
+        );
+        return capped;
+      };
+      // Derive the iteration count of each bounded eos/until repeat from its
+      // scope's length budget, so raising the length slider fills the scope with
+      // records (core reads the eos count from env[countKey], not the budget).
+      // The user controls the length; the count follows — one intuitive control.
+      for (const br of packet.boundedRepeats ?? []) {
+        // Seed each PER-RECORD inner-scope length (tlsClientHello's `extLen`) so
+        // the representative record fits its own nested bounded — without this the
+        // budget-derived record over-consumes the empty inner scope. Only fills
+        // unset/0 so a user-set inner length still wins.
+        for (const seed of br.innerScopeSeeds ?? []) {
+          if (!env.get(seed.key)) env.set(seed.key, seed.value);
+        }
+        // Grow each PER-RECORD inner bounded BUDGET so it always fits its OWN
+        // value. A TLV-extension arm carries a value sized by a sibling length
+        // (tlsClientHello SNI `serverName = bytes(ref nameLen)`, ocspRequest
+        // `hashAlgData = bytes(ref hashAlgLength)`) INSIDE a nested bounded whose
+        // budget is a different length field (`extLen` / `certIdLength`). The
+        // budget is seeded for the EMPTY value; the instant nameLen is raised (or
+        // an imported / shared / round-tripped packet carries a real name) the
+        // value overruns the inner scope and core throws `bounded over-consumed`
+        // → the diagram FREEZES on the last good layout. Compute the budget the
+        // live value length REQUIRES (its representative seed plus the live
+        // overage above the value's own seed) and lift the budget field up to it
+        // when short. Take the MAX with the current value so a user/import budget
+        // that is already large enough is never shrunk, and so the seed (which is
+        // set above) is never lowered.
+        // Base size the budget grows ABOVE. For an INNER budget that is itself an
+        // innerScopeSeed (tlsClientHello `extLen`, ocspRequest `requestSeqLength`)
+        // the base is that seed's representative value. For the OUTER budget
+        // (bgpUpdateFull's `bgpTotalPathAttributeLength`, which is the repeat's own
+        // `lengthKey`, NOT a seed) there is no seed entry, so grow above its LIVE
+        // value — the per-attribute length is itself the budget of a nested
+        // AS_PATH / COMMUNITIES repeat, and raising it must enlarge the enclosing
+        // total so the whole attribute record stays present instead of collapsing.
+        const budgetBaseOf = (key: string): number => {
+          const seed = (br.innerScopeSeeds ?? []).find(
+            (s) => s.key === key && !s.derivesBudgetKey,
+          );
+          if (seed) return seed.value;
+          if (key === br.lengthKey) return Number(env.get(key) ?? 0);
+          return 0;
+        };
+        for (const seed of br.innerScopeSeeds ?? []) {
+          if (!seed.derivesBudgetKey) continue;
+          const overage =
+            Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+            (seed.bytesPerUnit ?? 1);
+          if (overage <= 0) continue;
+          const budgetKey = seed.derivesBudgetKey;
+          const required = budgetBaseOf(budgetKey) + overage;
+          if (required > Number(env.get(budgetKey) ?? 0)) {
+            env.set(budgetKey, required);
+          }
+        }
+        // The budget is the bounded.bytes expr (ref, or `field*k - c`) evaluated
+        // against the live env — not the raw slider value.
+        const budget = evalExprOr(br.bytesExpr, env, 0);
+        const forRecords = Math.max(0, budget - br.prefixBytes);
+        // A flat-TLV bounded repeat's per-record VALUE is sized by a per-record
+        // length field surfaced as its OWN length controller (stun stunAttrLen,
+        // bgpOpen parmLen, …). `perRecordBytes` was estimated with that length at
+        // its seeded value, so raising the controller makes each record consume
+        // MORE than `perRecordBytes` and the static count below would over-consume
+        // the scope (normalize throws → diagram freezes on the last good layout).
+        // Charge the live overage of each inner length above its seed so the
+        // derived count SHRINKS to fit: raising a record's value-length trims how
+        // many records the budget holds, the natural budget behaviour. Exact for
+        // the dominant `bytes(ref X)` shape (+1 byte/unit); a scaled length is
+        // approximated, with the graceful over-consume fallback as a backstop.
+        const innerOverage = (br.innerScopeSeeds ?? []).reduce(
+          (sum, seed) =>
+            // A `derivesBudgetKey` value length (nameLen) feeds an INNER BUDGET
+            // (tlsClientHello `extLen`) grown just above; its cost reaches the
+            // outer count through that grown inner budget field's OWN overage
+            // entry, so counting it here too would DOUBLE-charge the outer record
+            // count. EXCEPTION: a per-record length that derives the OUTER budget
+            // itself (bgpUpdateFull's `bgpAttrLength8` → `bgpTotalPathAttribute
+            // Length`, the repeat's own `lengthKey`) has NO inner-seed overage
+            // entry to carry its cost — the target is not a seed — so it must be
+            // charged HERE, sizing the grown record (its enlarged AS_PATH /
+            // COMMUNITIES list) so the budget grown just above holds exactly the
+            // record rather than over-consuming the scope.
+            seed.derivesBudgetKey && seed.derivesBudgetKey !== br.lengthKey
+              ? sum
+              : sum +
+                Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *
+                  (seed.bytesPerUnit ?? 1),
+          0,
+        );
+        const livePerRecordBytes = br.perRecordBytes + innerOverage;
+        // Clamp to MAX_DERIVED_RECORDS AND the shared product budget: a maxed
+        // length slider would otherwise derive tens of thousands of records, and
+        // even a capped count can multiply with an inner repeat/length below. The
+        // length CELL stays user-editable; only the DERIVED count is capped.
+        env.set(
+          br.countKey,
+          factor(
+            Math.floor(forRecords / livePerRecordBytes),
+            MAX_DERIVED_RECORDS,
+          ),
+        );
+      }
+      // Cap each freeRepeat's DERIVED record count. Unlike boundedRepeats (count
+      // derived from a byte budget) and direct length controllers, a freeRepeat's
+      // record count is driven STRAIGHT by env[countKey] (via the affine
+      // transform), so an uncapped value — reachable not only through
+      // RepeatCountStepper but, crucially, BYPASSING it via share-URL hydration /
+      // JSON import (freeRepeat countKeys ride in `controllers` → env) — feeds e.g.
+      // 65535 directly into resolveLayout. Clamp the DERIVED record count to both
+      // the per-key cap and the shared product budget (so a repeat nested in
+      // another repeat — dnsResponse's dnsQuestions ⊃ dnsQNameLabels — cannot
+      // multiply two maxed steppers into a million-cell freeze), then invert
+      // through the transform back to the env value so the displayed count and the
+      // layout agree. Layout-only: the underlying controller value stays
+      // user-editable (OverridePanel's stepper SOFT_MAX caps each input).
+      for (const fr of packet.freeRepeats ?? []) {
+        const v = env.get(fr.countKey);
+        if (typeof v !== "number") continue;
+        const mul = fr.transform?.mul ?? 1;
+        const add = fr.transform?.add ?? 0;
+        const recordCount = v * mul + add;
+        const allowed = factor(recordCount, MAX_DERIVED_RECORDS);
+        if (allowed !== recordCount) {
+          // Invert recordCount = env * mul + add → env = (allowed - add) / mul.
+          // `mul` is always non-zero for a surfaced transform (the adapter rejects
+          // `*0`); clamp >= 0 so the unsigned wire field never goes negative.
+          const capped = Math.max(0, Math.floor((allowed - add) / mul));
+          env.set(fr.countKey, capped);
+        }
+      }
+      // Cap each DIRECT length-controller byte count (a `bytes(ref X)` payload sized
+      // straight by env[X], not via a budget-derived repeat). resolveLayout emits
+      // ~1 cell per payload byte, so an uncapped slider maxed to the field's full
+      // int range (16/24/32-bit) would generate millions-to-billions of cells in
+      // the un-virtualized diagram → freeze / OOM. Cap each to its per-key ceiling
+      // AND whatever the repeats LEFT in the shared product budget — a per-record
+      // length controller multiplies with its enclosing repeat's count (diameter
+      // avpLength × diameterAvps; dhcpv6 optionLen × options), so when the repeats
+      // have consumed the budget the per-record length must shrink with it. We read
+      // the LEFTOVER budget without each length draining it for the next, because
+      // sibling top-level length payloads (oncRpc credLength + verfLength) are
+      // ADDITIVE, not multiplicative — they must each keep their full per-key cap.
+      // The length CELL value stays user-editable in `controllers`; only the layout
+      // env is clamped (OverridePanel lowers the slider max to the per-key ceiling).
+      const directLengthCap = Math.min(
+        MAX_LENGTH_CONTROLLER_BYTES,
+        productBudget,
+      );
+      for (const id of directLengthControllerIds) {
+        const v = env.get(id);
+        if (typeof v === "number" && v > directLengthCap) {
+          env.set(id, directLengthCap);
+        }
+      }
+      return env;
+    },
+    [
+      targetPsdl,
+      psdlRefs,
+      packet.boundedRepeats,
+      packet.freeRepeats,
+      directLengthControllerIds,
+      boundedDirectPayloadKeys,
+    ],
+  );
+
+  const layout = useMemo(() => {
+    const env = buildLayoutEnv(controllers);
+    // 0-fill above only absorbs MissingRefError. Other normalize throws —
+    // notably a `bounded` scope being over-consumed when an override stepper
+    // bumps a repeat count past its byte budget — must not crash React render
+    // into the "Application error" screen. Fall back to the last good layout
+    // (or an empty one on first paint) so the diagram freezes gracefully.
+    try {
+      const next = resolveLayout(renderPsdl, { env, viewMode });
+      lastGoodLayoutRef.current = next;
+      return next;
+    } catch {
+      return lastGoodLayoutRef.current ?? { cells: [], totalBits: 0 };
+    }
+  }, [buildLayoutEnv, controllers, renderPsdl, viewMode]);
+
+  // Length controllers whose slider is INERT in the current diagram: the
+  // controlled field renders, but perturbing its value changes ZERO cell widths
+  // because the active switch/refSwitch arm sizes its value FIXED (dnsResponse's
+  // dnsRdLength sizes RDATA only for the CNAME/NS/PTR/MX/TXT/SRV/RAW arms — at
+  // the seeded dnsRrType=1 A-record arm the value is a fixed 32-bit address, so
+  // the RDLENGTH slider moves nothing). `fieldRendered` alone can't see this (the
+  // RDLENGTH header octet is ALWAYS drawn), so OverridePanel would show a
+  // live-looking but inert control. We probe each controller by re-resolving with
+  // its value bumped through the SAME env pipeline and comparing total bits; an
+  // unchanged layout means the slider is inert and the panel gates it with a hint
+  // pointing at the RDATA-variant picker. Cheap: presets carry 0-4 length
+  // controllers, and this re-runs only when the layout inputs change.
+  const inertLengthControllers = useMemo(() => {
+    const inert = new Set<string>();
+    // The largest value each controller can take (mirrors the OverrideSlider
+    // clamp: 2**bits-1, falling back to a generous default) so the probe never
+    // samples beyond what the user could actually pick.
+    const keyMax = new Map<string, number>();
+    const note = (key: string | undefined, bits: number | undefined) => {
+      if (!key) return;
+      const cap = typeof bits === "number" && bits > 0 ? 2 ** bits - 1 : 65535;
+      keyMax.set(key, Math.max(keyMax.get(key) ?? 0, cap));
+    };
+    for (const lc of packet.lengthControllers ?? []) {
+      note(lc.controlsLength, lc.bits);
+    }
+    for (const f of packet.fields) {
+      note(f.controlsLength, f.bits);
+    }
+    if (keyMax.size === 0) return inert;
+    const baseBits = layout.totalBits;
+    for (const [key, cap] of keyMax) {
+      // Only meaningful when the controlled field is actually in the diagram —
+      // an absent field is gated by the separate `fieldRendered` check, and a
+      // bumped value there can legitimately materialise a cell (NOT inert).
+      if (!fieldRendered(layout.cells, key)) continue;
+      const current = Number(controllers[key] ?? 0);
+      // AFFINE-OFFSET FIX: a length field that sizes a payload through `value - K`
+      // (sctp data_userData = bytes(chunkLength - 16), pcep bytes(len - 4), …)
+      // stays width-0 until the slider clears K, so a SINGLE small probe below K
+      // looks inert even though larger values clearly grow the diagram. Sweep a
+      // handful of UPWARD samples and call the controller inert only when NONE of
+      // them change the layout — this keeps genuinely fixed-width arms (diameter
+      // avpLength, lwm2mRegister tlvLength16/24, ipinip innerIhl) disabled while
+      // re-enabling the affine-offset sliders.
+      const probeValues = [
+        current + 1,
+        current + 8,
+        current + 32,
+        current + 64,
+        current + 128,
+      ]
+        .map((v) => Math.min(v, cap))
+        .filter((v) => v > current);
+      if (probeValues.length === 0) continue;
+      let changed = false;
+      for (const probeValue of probeValues) {
+        const probedEnv = buildLayoutEnv({
+          ...controllers,
+          [key]: probeValue,
+        });
+        try {
+          const probed = resolveLayout(renderPsdl, {
+            env: probedEnv,
+            viewMode,
+          });
+          if (probed.totalBits !== baseBits) {
+            changed = true;
+            break;
+          }
+        } catch {
+          // A throw means the perturbation DID change the structure (e.g. an
+          // over-consumed bounded scope) — treat as live, not inert.
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) inert.add(key);
+    }
+    return inert;
+  }, [
+    buildLayoutEnv,
+    controllers,
+    renderPsdl,
+    viewMode,
+    layout,
+    packet.lengthControllers,
+    packet.fields,
+  ]);
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
@@ -1304,6 +1894,7 @@ export default function PacketViewer({
               packet={packet}
               selectedFieldId={selectedFieldId}
               controllers={controllers}
+              cells={layout.cells}
             />
           </section>
 
@@ -1327,6 +1918,9 @@ export default function PacketViewer({
               onControllerChange={handleControllerChange}
               onByteOrderChange={handleByteOrderChange}
               tlvSlotBytes={tlvSlotBytes}
+              cells={layout.cells}
+              inertLengthControllers={inertLengthControllers}
+              boundedDirectPayloadKeys={boundedDirectPayloadKeys}
             />
           </section>
         </div>
@@ -1348,6 +1942,7 @@ export default function PacketViewer({
         open={drawerMode !== null}
         mode={drawerMode ?? "export"}
         packet={exportPacket}
+        liftToPsdl={liftActivePacketToPsdl}
         buildShareUrl={buildCurrentShareUrl}
         controllers={controllers}
         layout={layout}
