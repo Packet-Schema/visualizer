@@ -83,6 +83,33 @@ export function fieldRendered(
   return false;
 }
 
+type RefSwitch = NonNullable<Packet["refSwitches"]>[number];
+
+/** The disabled-hint for a gated refSwitch picker whose discriminator isn't yet
+ *  a rendered cell. It must name the discriminator the user CAN set to reach the
+ *  arm — never one already at its required value (a dead no-op).
+ *
+ *  A case-nested refSwitch can sit several discriminators deep (oncRpc's
+ *  `rejectStat` lives in `rpcMsgType=1`'s REPLY arm AND its nested `replyStat=1`
+ *  MSG_DENIED arm). `gate` records only the OUTERMOST link — which `initialState`
+ *  already SEEDS (rpcMsgType=1) — so hinting it ("Set rpcMsgType …") points at an
+ *  already-satisfied discriminator and the picker stays dead. `gateChain` carries
+ *  the full ancestry; walk it for the FIRST link not yet at its required value
+ *  (replyStat=1 for rejectStat) and name THAT. Falls back to `gate`, then the
+ *  refKey itself, for pickers with no chain (pgm's single-level AFI pickers,
+ *  plain-repeat A2 pickers). (#11/#12 misleading-hint.) */
+export function refSwitchDisabledHint(
+  r: RefSwitch,
+  controllers: ControllerState,
+): string {
+  const unmet = (r.gateChain ?? (r.gate ? [r.gate] : [])).find(
+    (g) => controllers[g.key] !== g.value,
+  );
+  if (unmet) return `Set ${unmet.key} to the matching variant to edit`;
+  if (r.gate) return `Set ${r.gate.key} to the matching variant to edit`;
+  return `Set ${r.refKey} (select its parent variant / add a record) to edit`;
+}
+
 /** Whether a length-controller slider's FIELD is present-and-consuming in the
  *  current diagram (stage 1 of the live gate; stage 2 — inert-but-rendered — is
  *  the PacketViewer `inertLengthControllers` probe).
@@ -256,16 +283,7 @@ function EmptyState({
                 disabledHint={
                   fieldRendered(cells, r.refKey)
                     ? undefined
-                    : // When the picker carries an enclosing-case gate (pgm's NLA
-                      // AFI pickers under pgmType's SPM/NAK/NCF arms), the inner
-                      // `refKey` (pgmSpmNlaAfi) is NOT a field the user can set
-                      // directly — it only exists once the gate discriminator
-                      // (pgmType) selects that arm. Point the hint at the gate key
-                      // the user CAN set, instead of naming the unreachable inner
-                      // field (#11/#12 panel-vs-diagram contradiction).
-                      r.gate
-                      ? `Set ${r.gate.key} to the matching variant to edit`
-                      : `Set ${r.refKey} (select its parent variant / add a record) to edit`
+                    : refSwitchDisabledHint(r, controllers)
                 }
               />
             ))}

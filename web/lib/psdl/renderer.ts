@@ -364,6 +364,19 @@ export type Packet = {
      *  FIRST gated refSwitch for a given key wins; only fills an unset key, so a
      *  user / saved-env value still wins and it stays out of the share URL. */
     gate?: { key: string; value: number };
+    /** FULL ordered chain of every case discriminator this refSwitch's field is
+     *  declared inside, outermost → innermost (oncRpc's `rejectStat` lives in
+     *  `rpcMsgType=1`'s REPLY arm AND its nested `replyStat=1` MSG_DENIED arm →
+     *  `[{rpcMsgType:1},{replyStat:1}]`). `gate` records only the OUTERMOST entry
+     *  (for the load-seed). The disabled-hint must instead point at the FIRST
+     *  link in this chain not yet at its required value: `initialState` already
+     *  satisfies the outermost gate (rpcMsgType=1), so hinting "Set rpcMsgType …"
+     *  would name an already-satisfied discriminator and be a dead no-op — the
+     *  real unmet step is `replyStat=1` (rejectStat's nearer arm). OverridePanel
+     *  walks this chain against the live `controllers` to name the next unmet
+     *  discriminator (#11/#12 misleading-hint). Absent for an ungated (plain-
+     *  repeat A2) refSwitch; a single-link chain equals `gate`. */
+    gateChain?: { key: string; value: number }[];
   }[];
   /** Length-controller sliders for `bounded.bytes` scopes whose driving field
    *  is NOT a top-level cell (e.g. nested in a Group, like babel's

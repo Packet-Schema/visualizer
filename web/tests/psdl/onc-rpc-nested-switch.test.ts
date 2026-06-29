@@ -25,6 +25,7 @@ import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { initialState } from "@/lib/psdl/renderer-helpers";
+import { refSwitchDisabledHint } from "@/components/field-details/OverridePanel";
 import { isField } from "@/lib/psdl/utils";
 import type { Container, Packet as PsdlPacket } from "@/lib/psdl/types";
 
@@ -162,6 +163,49 @@ describe("oncRpc nested switch discriminators", () => {
     expect(seededIds).toContain("acceptStat");
     // The diagram does NOT fall back to the CALL header (rpcMsgType=0).
     expect(seededIds).not.toContain("rpcvers");
+  });
+
+  it("records the FULL discriminator chain so the rejectStat hint names the unmet replyStat, not the already-seeded rpcMsgType", () => {
+    // `rejectStat` lives TWO discriminators deep: under `rpcMsgType=1`'s REPLY arm
+    // AND its nested `replyStat=1` MSG_DENIED arm. `gate` (for the load-seed) only
+    // records the OUTERMOST link {rpcMsgType:1}, which `initialState` already
+    // satisfies — so a hint built from `gate` would say "Set rpcMsgType …", a dead
+    // no-op (rpcMsgType is ALREADY 1). `gateChain` carries the full ancestry so the
+    // disabled-hint can name the real unmet step, replyStat=1.
+    const mirror = psdlToRenderer(PRESETS.oncRpc!);
+
+    const reject = (mirror.refSwitches ?? []).find(
+      (r) => r.refKey === "rejectStat",
+    );
+    expect(reject?.gateChain).toEqual([
+      { key: "rpcMsgType", value: 1 },
+      { key: "replyStat", value: 1 },
+    ]);
+    // acceptStat's nearer arm IS the seeded default (replyStat=0), so its chain
+    // is already fully satisfied at load (it renders) — distinct from rejectStat.
+    const accept = (mirror.refSwitches ?? []).find(
+      (r) => r.refKey === "acceptStat",
+    );
+    expect(accept?.gateChain).toEqual([
+      { key: "rpcMsgType", value: 1 },
+      { key: "replyStat", value: 0 },
+    ]);
+
+    // At the seeded load env {rpcMsgType:1, replyStat:0} rejectStat is disabled,
+    // and the hint names the FIRST unmet discriminator — replyStat, NOT the
+    // already-satisfied rpcMsgType.
+    const seed = initialState(mirror);
+    const controllers = Object.fromEntries(
+      Object.entries(seed).map(([k, v]) => [k, Number(v)]),
+    );
+    const hint = refSwitchDisabledHint(reject!, controllers);
+    expect(hint).toContain("replyStat");
+    expect(hint).not.toContain("rpcMsgType");
+
+    // Following that hint (set replyStat=1) renders rejectStat's cell, so the
+    // picker becomes live — proof the hint points at the real unblocking control.
+    const live = cellIds(PRESETS.oncRpc!, { rpcMsgType: 1, replyStat: 1 });
+    expect(live).toContain("rejectStat");
   });
 
   it("the rpcMsgType seed stays a default — a user CALL override still wins", () => {

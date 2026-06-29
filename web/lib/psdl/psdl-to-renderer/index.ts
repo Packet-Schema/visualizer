@@ -3610,6 +3610,16 @@ function collectRefSwitches(
     // wants replyStat=1, the refKey seed sets replyStat=0). Used only for
     // SEEDING; OverridePanel keeps the per-picker `fieldRendered` live gate.
     enclosingCaseGate: { key: string; value: number } | null,
+    // FULL ordered chain of EVERY top-level / intermediate ref-discriminated
+    // case this scope is nested inside, outermost → innermost. Unlike
+    // `enclosingCaseGate` (frozen at the outermost link, for the load-seed), this
+    // grows by one entry at each deeper case so a refSwitch surfaced several arms
+    // down records its real ancestry: rejectStat → [{rpcMsgType:1},{replyStat:1}]
+    // while acceptStat → [{rpcMsgType:1},{replyStat:0}]. OverridePanel walks it to
+    // hint the FIRST link not yet satisfied — `initialState` already seeds the
+    // outermost rpcMsgType=1, so naming it would be a dead no-op; replyStat=1 is
+    // the actual unmet step for rejectStat (#11/#12 misleading-hint).
+    caseGateChain: { key: string; value: number }[],
   ): void => {
     const { items, release } = flattenForMirrorGuarded(
       containers,
@@ -3689,6 +3699,7 @@ function collectRefSwitches(
               cases: cases.map(({ value, label }) => ({ value, label })),
               refKey: disc.refKey,
               ...(enclosingCaseGate ? { gate: enclosingCaseGate } : {}),
+              ...(caseGateChain.length > 0 ? { gateChain: caseGateChain } : {}),
             });
           }
         }
@@ -3701,6 +3712,7 @@ function collectRefSwitches(
           plain ? c : enclosingPlainRepeat,
           true,
           enclosingCaseGate,
+          caseGateChain,
         );
         continue;
       }
@@ -4121,6 +4133,10 @@ function collectRefSwitches(
               // arm — hence the pickers' real cells — renders on load instead of
               // the unrelated CALL arm (#11/#12). The plain-repeat A2 path has no
               // top-level case (enclosingCaseGate is null) so it stays ungated.
+              // `gateChain` carries the FULL ancestry (outermost → innermost) so
+              // OverridePanel can hint the FIRST unmet link instead of the
+              // already-seeded outermost gate — rejectStat's real unmet step is
+              // replyStat=1, not the satisfied rpcMsgType=1 (#11/#12).
               out.push({
                 id: c.id,
                 name: c.name ?? refKey,
@@ -4128,6 +4144,9 @@ function collectRefSwitches(
                 refKey,
                 ...(lengthSeeds ? { lengthSeeds } : {}),
                 ...(enclosingCaseGate ? { gate: enclosingCaseGate } : {}),
+                ...(caseGateChain.length > 0
+                  ? { gateChain: caseGateChain }
+                  : {}),
               });
             }
           }
@@ -4141,19 +4160,27 @@ function collectRefSwitches(
           // surfaced several levels down (acceptStat/rejectStat) is gated on the
           // top-level discriminator the diagram must render, not its nearer arm.
           const caseValue = firstCaseKeyValue(key);
-          const nextCaseGate =
-            enclosingCaseGate ??
-            (!enclosingPlainRepeat &&
+          // A top-level / intermediate (not repeat-nested) ref-discriminated case
+          // with a single integer key. `enclosingCaseGate` freezes the OUTERMOST
+          // such link (for the load-seed); `thisCaseLink` is THIS case's own
+          // gate, captured at every depth so the chain records the full ancestry.
+          const thisCaseLink =
+            !enclosingPlainRepeat &&
             !insideRepeat &&
             c.on.kind === "ref" &&
             caseValue !== null
               ? { key: c.on.field, value: caseValue }
-              : null);
+              : null;
+          const nextCaseGate = enclosingCaseGate ?? thisCaseLink;
+          const nextCaseGateChain = thisCaseLink
+            ? [...caseGateChain, thisCaseLink]
+            : caseGateChain;
           visit(
             struct.fields,
             enclosingPlainRepeat,
             insideRepeat,
             nextCaseGate,
+            nextCaseGateChain,
           );
         }
         continue;
@@ -4164,6 +4191,7 @@ function collectRefSwitches(
           enclosingPlainRepeat,
           insideRepeat,
           enclosingCaseGate,
+          caseGateChain,
         );
         continue;
       }
@@ -4173,6 +4201,7 @@ function collectRefSwitches(
           enclosingPlainRepeat,
           insideRepeat,
           enclosingCaseGate,
+          caseGateChain,
         );
         continue;
       }
@@ -4182,13 +4211,14 @@ function collectRefSwitches(
           enclosingPlainRepeat,
           insideRepeat,
           enclosingCaseGate,
+          caseGateChain,
         );
         continue;
       }
     }
     release();
   };
-  visit(body, null, false, null);
+  visit(body, null, false, null, []);
   return out;
 }
 
