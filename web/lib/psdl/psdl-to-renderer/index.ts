@@ -1074,11 +1074,17 @@ function collectPlainRepeatLengthControllers(
         // single inner peek-Switch to find it. Mirrors the `surfacedNestedTlv`
         // guard in collectFreeRepeats so only that same set of repeats qualifies,
         // and only when instantiable (a count control exists).
+        // A DIRECT repeat-of-repeat TLV repeat (`repeat lit N { repeat eos {
+        // switch on peek } }`, no intervening switch case/optional) is surfaced as
+        // a freeRepeat + peek picker by collectFreeRepeats too, gated there on the
+        // enclosing repeat being instantiable. It has the same ownerless per-record
+        // length cell, so descend its inner Switch here as well. The
+        // `instantiableRepeatIds.has(c.id)` gate below already confirms the inner
+        // repeat earned a count control, so `insideRepeat` alone qualifies.
         const surfacedNestedTlv =
           isTlvRepeat(c) &&
-          (insideSwitch || insideOptional) &&
-          !insideRepeat &&
-          !insideBounded;
+          !insideBounded &&
+          (insideSwitch || insideOptional || insideRepeat);
         if (
           (plain || surfacedNestedTlv) &&
           !insideBounded &&
@@ -4621,10 +4627,28 @@ function collectFreeRepeats(
         // bare discriminator key, never a `#i`-qualified one), so a single shared
         // control is the correct, non-inert surface. No built-in preset nests this
         // deep, so only the arbitrary-PSDL gap is newly filled.
+        // DIRECT repeat-of-repeat (arbitrary PSDL): the TLV-shaped repeat can
+        // also be a DIRECT child of an OUTER repeat's element with NO intervening
+        // switch case or optional — `repeat lit N { repeat eos { switch on peek
+        // } }`. Here insideSwitch=insideOptional=false (the inner repeat is reached
+        // straight through the outer repeat's element descent), so the
+        // switch/optional branch never fires and the inner option records render
+        // per outer instance (`ikd#i_j`) with NO count stepper or peek picker
+        // (see-but-cannot-edit). Allow `insideRepeat && enclosingInstantiable` as
+        // an INDEPENDENT qualifying branch: when the enclosing repeat is itself
+        // instantiable its records are on screen, so the inner repeat's records are
+        // too. Same A7 tradeoff as the deeper switch-nested case — the surfaced
+        // stepper is keyed on the repeat's bare id (`env[repeat.id]`), which core's
+        // eos-count injection reads for EVERY outer instance, so one shared control
+        // drives them all and the peek discriminator (bare key) is likewise shared.
+        // No built-in preset hits this exact shape (rtcpSdesItems / lispRecLocators
+        // carry a discriminator FIELD before the switch, so isTlvRepeat is false),
+        // so only the arbitrary-PSDL gap is filled.
         const surfacedNestedTlv =
           isTlvRepeat(c) &&
-          (insideSwitch || insideOptional) &&
-          (!insideRepeat || enclosingInstantiable);
+          (insideSwitch || insideOptional
+            ? !insideRepeat || enclosingInstantiable
+            : insideRepeat && enclosingInstantiable);
         if (!isLikelyChainRepeat(c) && (!isTlvRepeat(c) || surfacedNestedTlv)) {
           let countKey: string | null = null;
           let label = c.name ?? c.id;
@@ -6567,11 +6591,16 @@ function collectPeekSwitches(
         // INSIDE another repeat, descend only if that enclosing repeat is
         // instantiable (its records render), mirroring collectFreeRepeats'
         // enclosingInstantiable relaxation so the peek picker pairs with the
-        // surfaced count stepper one level deeper.
+        // surfaced count stepper one level deeper. A DIRECT repeat-of-repeat TLV
+        // repeat (no intervening switch case/optional) reaches here with
+        // insideSwitch=insideOptional=false and insideRepeat=true; descend it too
+        // (gated on enclosingInstantiable) so its peek picker pairs with the
+        // count stepper collectFreeRepeats now surfaces for that shape.
         const surfacedNestedTlv =
           isTlvRepeat(c) &&
-          (insideSwitch || insideOptional) &&
-          (!insideRepeat || enclosingInstantiable);
+          (insideSwitch || insideOptional
+            ? !insideRepeat || enclosingInstantiable
+            : insideRepeat && enclosingInstantiable);
         if ((!isTlvRepeat(c) && !isLikelyChainRepeat(c)) || surfacedNestedTlv)
           visit(
             c.element.fields,
