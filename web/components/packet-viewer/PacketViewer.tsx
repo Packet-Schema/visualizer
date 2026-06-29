@@ -1458,10 +1458,22 @@ export default function PacketViewer({
         // when short. Take the MAX with the current value so a user/import budget
         // that is already large enough is never shrunk, and so the seed (which is
         // set above) is never lowered.
-        const budgetSeedOf = (key: string): number =>
-          (br.innerScopeSeeds ?? []).find(
+        // Base size the budget grows ABOVE. For an INNER budget that is itself an
+        // innerScopeSeed (tlsClientHello `extLen`, ocspRequest `requestSeqLength`)
+        // the base is that seed's representative value. For the OUTER budget
+        // (bgpUpdateFull's `bgpTotalPathAttributeLength`, which is the repeat's own
+        // `lengthKey`, NOT a seed) there is no seed entry, so grow above its LIVE
+        // value — the per-attribute length is itself the budget of a nested
+        // AS_PATH / COMMUNITIES repeat, and raising it must enlarge the enclosing
+        // total so the whole attribute record stays present instead of collapsing.
+        const budgetBaseOf = (key: string): number => {
+          const seed = (br.innerScopeSeeds ?? []).find(
             (s) => s.key === key && !s.derivesBudgetKey,
-          )?.value ?? 0;
+          );
+          if (seed) return seed.value;
+          if (key === br.lengthKey) return Number(env.get(key) ?? 0);
+          return 0;
+        };
         for (const seed of br.innerScopeSeeds ?? []) {
           if (!seed.derivesBudgetKey) continue;
           const overage =
@@ -1469,7 +1481,7 @@ export default function PacketViewer({
             (seed.bytesPerUnit ?? 1);
           if (overage <= 0) continue;
           const budgetKey = seed.derivesBudgetKey;
-          const required = budgetSeedOf(budgetKey) + overage;
+          const required = budgetBaseOf(budgetKey) + overage;
           if (required > Number(env.get(budgetKey) ?? 0)) {
             env.set(budgetKey, required);
           }
@@ -1491,11 +1503,18 @@ export default function PacketViewer({
         // approximated, with the graceful over-consume fallback as a backstop.
         const innerOverage = (br.innerScopeSeeds ?? []).reduce(
           (sum, seed) =>
-            // A `derivesBudgetKey` value length (nameLen) feeds the inner BUDGET
-            // grown just above; its cost reaches the outer count through that
-            // grown budget field's own overage entry, so counting it here too
-            // would DOUBLE-charge the outer record count.
-            seed.derivesBudgetKey
+            // A `derivesBudgetKey` value length (nameLen) feeds an INNER BUDGET
+            // (tlsClientHello `extLen`) grown just above; its cost reaches the
+            // outer count through that grown inner budget field's OWN overage
+            // entry, so counting it here too would DOUBLE-charge the outer record
+            // count. EXCEPTION: a per-record length that derives the OUTER budget
+            // itself (bgpUpdateFull's `bgpAttrLength8` → `bgpTotalPathAttribute
+            // Length`, the repeat's own `lengthKey`) has NO inner-seed overage
+            // entry to carry its cost — the target is not a seed — so it must be
+            // charged HERE, sizing the grown record (its enlarged AS_PATH /
+            // COMMUNITIES list) so the budget grown just above holds exactly the
+            // record rather than over-consuming the scope.
+            seed.derivesBudgetKey && seed.derivesBudgetKey !== br.lengthKey
               ? sum
               : sum +
                 Math.max(0, Number(env.get(seed.key) ?? 0) - seed.value) *

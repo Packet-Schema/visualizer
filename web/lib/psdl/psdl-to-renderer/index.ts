@@ -5474,11 +5474,67 @@ function collectFreeRepeats(
     }
   };
   visit(body, null, false, false, true, false, null, null, false, null, null);
+  linkBudgetDrivingInnerLengths(boundedOut);
   return {
     freeRepeats: out,
     boundedRepeats: boundedOut,
     instantiableRepeatIds,
   };
+}
+
+/**
+ * A per-record TLV-extension length (bgpUpdateFull's per-Path-Attribute
+ * `bgpAttrLength8` / `bgpAttrLength16`) seeded on an OUTER bounded repeat
+ * (`bgpPathAttributes`, budget `bgpTotalPathAttributeLength`) is normally treated
+ * as outer-record overage: raising it shrinks `floor((budget - prefix) /
+ * livePerRecordBytes)`, so the natural edit (grow the AS_PATH / COMMUNITIES list)
+ * instead drops the outer count to 0 and the WHOLE attribute record (flags, type
+ * code, the length cell, every AS-segment / community) VANISHES from the diagram
+ * — a panel-vs-diagram contradiction on the defining payload of a BGP UPDATE. The
+ * length is recoverable only by ALSO raising `bgpTotalPathAttributeLength` far
+ * beyond what a user would expect.
+ *
+ * That inner length is special: it is itself the BUDGET of a nested bounded
+ * repeat (`bgpAsPathSegments` / `bgpCommunities`, whose `bytesExpr` is the
+ * `cond ? bgpAttrLength16 : bgpAttrLength8` Extended-Length selector). So raising
+ * it is meant to GROW a nested list, which legitimately needs the enclosing
+ * budget to grow with it — exactly the `derivesBudgetKey` contract that
+ * tlsClientHello / ocspRequest already use for per-record VALUE lengths. Tag each
+ * such outer budget-length seed with `derivesBudgetKey` pointing at its own outer
+ * budget so PacketViewer grows `env[outerBudget]` by the live overage (keeping the
+ * record present) and excludes it from the outer count's overage (no
+ * double-charge that re-collapses it).
+ *
+ * Gated on the inner length being a nested repeat's budget so it fires ONLY for
+ * the BGP path-attribute idiom: a plain TLV-extension length whose value merely
+ * flexes within its own inner scope (tlsClientHello `extLen`, isisLsp `tlvLength`,
+ * bgpFlowSpec / tlsCertificate length seeds) is NOT a nested-repeat budget and
+ * stays outer overage, preserving its existing budget-consuming behaviour.
+ */
+function linkBudgetDrivingInnerLengths(
+  boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>,
+): void {
+  // Every length field that sizes some bounded repeat's budget (its `bytesExpr`,
+  // including both branches of an Extended-Length `cond`). An OUTER seed whose key
+  // is in this set drives a nested list rather than flexing in place.
+  const nestedBudgetRefs = new Set<string>();
+  for (const br of boundedRepeats) {
+    for (const r of exprRefs(br.bytesExpr)) nestedBudgetRefs.add(r);
+  }
+  for (const br of boundedRepeats) {
+    const seeds = br.innerScopeSeeds;
+    if (!seeds) continue;
+    for (const seed of seeds) {
+      // Only re-tag an UNTAGGED budget-length seed (a value-length seed already
+      // carries its own derivesBudgetKey). It must size a nested repeat's budget
+      // AND differ from this repeat's own budget (a self-reference can't grow).
+      if (seed.derivesBudgetKey) continue;
+      if (seed.key === br.lengthKey) continue;
+      if (nestedBudgetRefs.has(seed.key)) {
+        seed.derivesBudgetKey = br.lengthKey;
+      }
+    }
+  }
 }
 
 // A variable-length leaf (bytes with a dynamic `n`, varint, berLength) has no
