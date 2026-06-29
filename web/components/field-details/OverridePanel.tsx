@@ -587,11 +587,19 @@ export default function OverridePanel({
   // byte-count length slider writes, so a Varint width picker would alias and
   // fight the slider (selecting 32 sets a 32-BYTE token). Wire width is implied
   // by its value, so only the byte-count slider should drive the key.
+  //
+  // This covers two shapes: (1) the controller sits in packet.lengthControllers
+  // (quicLong tokenLength), and (2) the varint is its OWN top-level length
+  // controller (`field.controlsLength === field.id`, e.g. http3Frame
+  // http3PayloadLength sizing a sibling `bytes(ref http3PayloadLength)`), where
+  // packet.lengthControllers is empty but the OverrideSlider below still drives
+  // the same env key.
   const varintIsLengthController =
     !!field.varintEncoding &&
-    (packet.lengthControllers ?? []).some(
-      (lc) => lc.controlsLength === stripRepeatTag(field.id),
-    );
+    (field.controlsLength === stripRepeatTag(field.id) ||
+      (packet.lengthControllers ?? []).some(
+        (lc) => lc.controlsLength === stripRepeatTag(field.id),
+      ));
   if (
     ((field.varintEncoding && !varintIsLengthController) ||
       (field.isBerLength && !berLengthWidthLocked) ||

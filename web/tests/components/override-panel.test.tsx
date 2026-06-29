@@ -763,6 +763,43 @@ describe("OverridePanel widgets", () => {
     expect(container.textContent ?? "").not.toMatch(/Varint width/i);
   });
 
+  it("suppresses the varint width picker for a varint that is its OWN top-level length controller (http3Frame http3PayloadLength) (#width)", async () => {
+    const src = PRESETS.http3Frame!;
+    const packet = psdlToRenderer(src);
+    // http3PayloadLength is a QUIC varint sizing a sibling `bytes(ref
+    // http3PayloadLength)`, so it is its own length controller — but unlike
+    // quicLong tokenLength it does NOT appear in packet.lengthControllers (it is
+    // a top-level controlsLength cell). The byte-count length slider writes
+    // env[http3PayloadLength]; a Varint width picker keyed on the same bare id
+    // would alias and fight the slider, so it must be suppressed.
+    const field = packet.fields.find((f) => f.id === "http3PayloadLength");
+    expect(field?.varintEncoding).toBe("quic");
+    expect(field?.controlsLength).toBe("http3PayloadLength");
+    expect(
+      (packet.lengthControllers ?? []).some(
+        (l) => l.controlsLength === "http3PayloadLength",
+      ),
+      "http3PayloadLength must NOT be in packet.lengthControllers — it is its own top-level controlsLength cell",
+    ).toBe(false);
+
+    const { cells } = resolveLayout(src, { env: packetViewerEnv(src) });
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="http3PayloadLength"
+        controllers={{ http3PayloadLength: 4 }}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    // The length slider IS the sole surface; no Varint width picker fights it.
+    expect(container.textContent ?? "").not.toMatch(/Varint width/i);
+    expect(container.textContent ?? "").toMatch(/Length/i);
+    expect(container.textContent ?? "").not.toMatch(/no runtime override/i);
+  });
+
   it("surfaces a BER length width picker for a repeat-nested leaf (kerberosAsReq padataCtxLength) (#width)", async () => {
     const src = PRESETS.kerberosAsReq!;
     const packet = psdlToRenderer(src);
