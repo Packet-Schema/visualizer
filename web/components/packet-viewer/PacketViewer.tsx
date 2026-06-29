@@ -20,6 +20,7 @@ import { resolveLayout } from "@/lib/psdl/layout";
 import { initialEnv } from "@/lib/psdl/normalize";
 import { collectPsdlRefs } from "@/lib/psdl/collect-refs";
 import { seedDynamicWidthDefaults } from "@/lib/psdl/dynamic-width-defaults";
+import { clampStaticLayoutCounts } from "@/lib/psdl/clamp-static-layout";
 import { evalExprOr } from "@/lib/psdl/expr";
 import {
   controllersFromEnv,
@@ -1316,6 +1317,22 @@ export default function PacketViewer({
     tlvSlotBytes,
   ]);
 
+  // The PSDL actually fed to `resolveLayout`. Identical to `targetPsdl` except
+  // that any PLAIN literal repeat count / fixed-size `bytes`/`bits` literal is
+  // clamped to MAX_DERIVED_RECORDS. Those literals never reach an override
+  // surface (no freeRepeat / boundedRepeat / length-controller), so the
+  // product-aware env guard below cannot bound them: a user-authored
+  // `repeat{ count: 50000 }` or `bytes(50000)` would otherwise expand ~one
+  // un-virtualized SVG cell per record/byte and freeze / OOM the diagram for a
+  // perfectly valid PSDL. Layout-only — `targetPsdl` (export / source / studio)
+  // keeps the authored literal, so it round-trips losslessly; only the rendered
+  // cell count is capped. Shape-preserving, so the common (nothing-too-large)
+  // case returns `targetPsdl` unchanged.
+  const renderPsdl: PsdlPacket = useMemo(
+    () => clampStaticLayoutCounts(targetPsdl, MAX_DERIVED_RECORDS),
+    [targetPsdl],
+  );
+
   // Set of ref-names that the active packet expects in `env`. Cached against
   // `targetPsdl` so slider drag (which mutates `controllers` every frame but
   // leaves the body untouched) does not re-walk the AST 60×/sec.
@@ -1569,13 +1586,13 @@ export default function PacketViewer({
     // into the "Application error" screen. Fall back to the last good layout
     // (or an empty one on first paint) so the diagram freezes gracefully.
     try {
-      const next = resolveLayout(targetPsdl, { env, viewMode });
+      const next = resolveLayout(renderPsdl, { env, viewMode });
       lastGoodLayoutRef.current = next;
       return next;
     } catch {
       return lastGoodLayoutRef.current ?? { cells: [], totalBits: 0 };
     }
-  }, [buildLayoutEnv, controllers, targetPsdl, viewMode]);
+  }, [buildLayoutEnv, controllers, renderPsdl, viewMode]);
 
   // Length controllers whose slider is INERT in the current diagram: the
   // controlled field renders, but perturbing its value changes ZERO cell widths
@@ -1639,7 +1656,7 @@ export default function PacketViewer({
           [key]: probeValue,
         });
         try {
-          const probed = resolveLayout(targetPsdl, {
+          const probed = resolveLayout(renderPsdl, {
             env: probedEnv,
             viewMode,
           });
@@ -1660,7 +1677,7 @@ export default function PacketViewer({
   }, [
     buildLayoutEnv,
     controllers,
-    targetPsdl,
+    renderPsdl,
     viewMode,
     layout,
     packet.lengthControllers,
