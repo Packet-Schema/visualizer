@@ -686,21 +686,29 @@ describe("OverridePanel widgets", () => {
     return env;
   }
 
-  it("surfaces a varint width picker for a switch-case-nested leaf (quicLong tokenLength) (#width)", async () => {
+  it("surfaces a varint width picker for a switch-case-nested leaf (quicLong length) (#width)", async () => {
     const src = PRESETS.quicLong!;
     const packet = psdlToRenderer(src);
     // No mirror field exists for the switch-nested leaf...
-    expect(packet.fields.some((f) => f.id === "tokenLength")).toBe(false);
+    expect(packet.fields.some((f) => f.id === "length")).toBe(false);
+    // ...and `length` is NOT itself a length-controller (so the varint width
+    // picker is its only width control — see the suppression test below for the
+    // tokenLength case that IS a controller).
+    expect(
+      (packet.lengthControllers ?? []).some(
+        (l) => l.controlsLength === "length",
+      ),
+    ).toBe(false);
     // ...but the seeded env makes it a visible diagram cell.
     const { cells } = resolveLayout(src, { env: packetViewerEnv(src) });
-    expect(cells.some((c) => c.field.id === "tokenLength")).toBe(true);
+    expect(cells.some((c) => c.field.id === "length")).toBe(true);
 
     const onChange = vi.fn();
     const { container } = await mount(
       <OverridePanel
         packet={packet}
-        selectedFieldId="tokenLength"
-        controllers={{ tokenLength: 8 }}
+        selectedFieldId="length"
+        controllers={{ length: 8 }}
         onControllerChange={onChange}
         cells={cells}
       />,
@@ -721,7 +729,38 @@ describe("OverridePanel widgets", () => {
     await act(async () => {
       thirtyTwo.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(onChange).toHaveBeenCalledWith("tokenLength", 32);
+    expect(onChange).toHaveBeenCalledWith("length", 32);
+  });
+
+  it("suppresses the varint width picker for a length-controller varint (quicLong tokenLength) (#width)", async () => {
+    const src = PRESETS.quicLong!;
+    const packet = psdlToRenderer(src);
+    // tokenLength is a QUIC varint that is ALSO a length controller (its bare id
+    // is a controlsLength target). The varint widthEnvKey aliases the byte-count
+    // length slider's key, so a Varint width picker would fight the slider — it
+    // must be suppressed.
+    expect(
+      (packet.lengthControllers ?? []).some(
+        (l) => l.controlsLength === "tokenLength",
+      ),
+    ).toBe(true);
+    const { cells } = resolveLayout(src, { env: packetViewerEnv(src) });
+    const cell = cells.find((c) => c.field.id === "tokenLength");
+    expect(cell?.field.varintEncoding).toBe("quic");
+
+    const onChange = vi.fn();
+    const { container } = await mount(
+      <OverridePanel
+        packet={packet}
+        selectedFieldId="tokenLength"
+        controllers={{ tokenLength: 8 }}
+        onControllerChange={onChange}
+        cells={cells}
+      />,
+    );
+    // No Varint width radiogroup — the byte-count length slider is the sole
+    // control on this key.
+    expect(container.textContent ?? "").not.toMatch(/Varint width/i);
   });
 
   it("surfaces a BER length width picker for a repeat-nested leaf (kerberosAsReq padataCtxLength) (#width)", async () => {

@@ -581,8 +581,19 @@ export default function OverridePanel({
   const berLengthWidthLocked = field.isBerLength
     ? (packet.berLengthWidthLocked ?? []).includes(stripRepeatTag(field.id))
     : false;
+  // Suppress the varint width picker when this varint's VALUE is itself a length
+  // ref (a controlsLength target driving a sibling bytes(ref id), e.g. quicLong
+  // tokenLength). The varint widthEnvKey is the BARE id, the same key the
+  // byte-count length slider writes, so a Varint width picker would alias and
+  // fight the slider (selecting 32 sets a 32-BYTE token). Wire width is implied
+  // by its value, so only the byte-count slider should drive the key.
+  const varintIsLengthController =
+    !!field.varintEncoding &&
+    (packet.lengthControllers ?? []).some(
+      (lc) => lc.controlsLength === stripRepeatTag(field.id),
+    );
   if (
-    (field.varintEncoding ||
+    ((field.varintEncoding && !varintIsLengthController) ||
       (field.isBerLength && !berLengthWidthLocked) ||
       field.isDelimited ||
       field.isRemaining) &&
