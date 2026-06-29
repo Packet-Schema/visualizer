@@ -1285,11 +1285,20 @@ export default function PacketViewer({
     // editMode (Custom Packet Studio が開いている) なら studio reducer
     // の packet が真値。 GUI / source どちらのビューで編集していても
     // 同じ reducer を経由するので、 上の diagram は常にここを映す。
+    // An imported packet sits in `importedSources`, never in `customPresets`,
+    // so without consulting it the non-editMode diagram would fall back to the
+    // LOSSY `rendererToPsdl(packet)` (which drops every variable-length field —
+    // `to-psdl.ts` returns [] for `field.variable`). Mirror `activePsdlPacket`:
+    // lift the retained source losslessly before the lossy reconstruction so a
+    // user-imported PSDL renders all of its cells.
+    const importedSource = importedSources[packetKey];
     const base = editMode
       ? studioState.packet
       : (getLoadedPreset(packetKey) ??
         activeCustomPreset ??
-        rendererToPsdl(packet));
+        (importedSource
+          ? mergeInstancesIntoPsdl(importedSource, packet)
+          : rendererToPsdl(packet)));
     // Per-TLV slot sizes derived from the upstream length controller (e.g.
     // IPv4 IHL → 8-byte Options slot for IHL=7). `applyTlvInstances`
     // either emits an empty placeholder of this size (when no instances
@@ -1313,6 +1322,7 @@ export default function PacketViewer({
     studioState.packet,
     packetKey,
     activeCustomPreset,
+    importedSources,
     packet,
     tlvSlotBytes,
   ]);
