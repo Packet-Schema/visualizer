@@ -3672,11 +3672,23 @@ function collectRefSwitches(
               return a.value - b.value;
             });
             seen.add(disc.refKey);
+            // A lookup-based AFI picker declared inside a top-level message-type
+            // switch case (pgm's pgmSpmNlaAfi/pgmNak*/pgmNcf* under pgmType's
+            // SPM/NAK/NCF arms) lives in an arm the diagram only renders at one
+            // discriminator value. Carry that OUTERMOST case gate exactly as the
+            // Switch path below does, so `initialState` seeds the discriminator
+            // (pgmType=SPM) and the arm — hence the AFI field's real cell —
+            // renders on load instead of the default ODATA arm, which has no NLA
+            // field. Without the gate all such pickers load disabled and their
+            // disable hint names a field the user cannot directly set (#11/#12).
+            // The per-picker `fieldRendered` gate still keeps the other arms'
+            // pickers (NAK/NCF) correctly disabled until their case is chosen.
             out.push({
               id: `${disc.refKey}_byAfi`,
               name: fieldNames.get(disc.refKey) ?? disc.refKey,
               cases: cases.map(({ value, label }) => ({ value, label })),
               refKey: disc.refKey,
+              ...(enclosingCaseGate ? { gate: enclosingCaseGate } : {}),
             });
           }
         }

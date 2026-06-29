@@ -130,4 +130,49 @@ describe("lookup-discriminator AFI pickers (lispMapRequest / pgm)", () => {
       expect(keys.has(refKey), `refSwitch for ${refKey}`).toBe(true);
     }
   });
+
+  // pgm's NLA AFI pickers live inside the `pgmBody` switch's SPM/NAK/NCF arms
+  // (`bytes(lookup(ref <afi>, {1:4, 2:16}))`). Unlike the real-Switch refSwitch
+  // path, the lookup-picker path used to drop the enclosing `pgmType` case gate,
+  // so `initialState` left pgmType at its first author-declared case (ODATA — a
+  // case with NO NLA field) and ALL five AFI pickers loaded disabled, their
+  // disable hint naming an inner field (pgmSpmNlaAfi) the user cannot set
+  // directly (#11/#12). Each lookup picker now carries its arm's gate.
+  it("pgm lookup AFI pickers carry their enclosing pgmType case gate", () => {
+    const mirror = psdlToRenderer(PRESETS["pgm"]!);
+    const byKey = new Map(
+      (mirror.refSwitches ?? []).map((rs) => [rs.refKey, rs]),
+    );
+    // SPM=0, NAK=8, NCF=9 — each AFI picker gated on the arm it is declared in.
+    const expected: Record<string, number> = {
+      pgmSpmNlaAfi: 0,
+      pgmNakSrcNlaAfi: 8,
+      pgmNakGrpNlaAfi: 8,
+      pgmNcfSrcNlaAfi: 9,
+      pgmNcfGrpNlaAfi: 9,
+    };
+    for (const [refKey, caseValue] of Object.entries(expected)) {
+      expect(byKey.get(refKey)?.gate, `gate for ${refKey}`).toEqual({
+        key: "pgmType",
+        value: caseValue,
+      });
+    }
+  });
+
+  it("the gated SPM AFI picker drives the pgmSpmNla address width", () => {
+    const pkt = PRESETS["pgm"]!;
+    const spmGate = (psdlToRenderer(pkt).refSwitches ?? []).find(
+      (rs) => rs.refKey === "pgmSpmNlaAfi",
+    )?.gate;
+    expect(spmGate).toEqual({ key: "pgmType", value: 0 });
+    // Selecting the SPM arm (pgmType = gate value) makes the lookup-keyed NLA a
+    // real cell, and the AFI picker then drives its width: AFI=1 (IPv4) → 4-byte
+    // (32-bit) address, AFI=2 (IPv6) → 16-byte (128-bit) address. Picking SPM is
+    // exactly what the live pgmBody refSwitch picker (refKey=pgmType) does, so
+    // the editing path the gate hint now points the user at is reachable.
+    const spmEnv = (afi: number) =>
+      loadEnv(pkt, { pgmType: spmGate!.value, pgmSpmNlaAfi: afi });
+    expect(fieldBits(pkt, spmEnv(1), "pgmSpmNla")).toBe(32);
+    expect(fieldBits(pkt, spmEnv(2), "pgmSpmNla")).toBe(128);
+  });
 });

@@ -256,7 +256,16 @@ function EmptyState({
                 disabledHint={
                   fieldRendered(cells, r.refKey)
                     ? undefined
-                    : `Set ${r.refKey} (select its parent variant / add a record) to edit`
+                    : // When the picker carries an enclosing-case gate (pgm's NLA
+                      // AFI pickers under pgmType's SPM/NAK/NCF arms), the inner
+                      // `refKey` (pgmSpmNlaAfi) is NOT a field the user can set
+                      // directly — it only exists once the gate discriminator
+                      // (pgmType) selects that arm. Point the hint at the gate key
+                      // the user CAN set, instead of naming the unreachable inner
+                      // field (#11/#12 panel-vs-diagram contradiction).
+                      r.gate
+                      ? `Set ${r.gate.key} to the matching variant to edit`
+                      : `Set ${r.refKey} (select its parent variant / add a record) to edit`
                 }
               />
             ))}

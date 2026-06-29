@@ -196,6 +196,22 @@ describe("refSwitch 'Record variants' live gating", () => {
         `${refKey} must be disabled on load`,
       ).toBe(true);
     }
+    // Each AFI picker now carries its enclosing pgmType case gate, so the
+    // disable hint points the user at the discriminator they CAN set (pgmType,
+    // via the live pgmBody picker) instead of naming the inner field (e.g.
+    // pgmSpmNlaAfi) that only EXISTS once the SPM arm is chosen — the #11/#12
+    // panel-vs-diagram contradiction the gate fix removes.
+    {
+      const spmField = (packet.refSwitches ?? []).find(
+        (r) => r.refKey === "pgmSpmNlaAfi",
+      );
+      expect(spmField?.gate).toEqual({ key: "pgmType", value: 0 });
+      // The disable hint is the <p> sibling rendered after the disabled select.
+      const sel = refSwitchSelect(container, "pgmSpmNlaAfi")!;
+      const hint = sel.nextElementSibling?.textContent ?? "";
+      expect(hint).toContain("pgmType");
+      expect(hint).not.toContain("pgmSpmNlaAfi");
+    }
 
     // Find the pgmType value that materialises pgmSpmNlaAfi (the discriminator
     // is a group subfield, not a top-level switchCases field — scan the type
