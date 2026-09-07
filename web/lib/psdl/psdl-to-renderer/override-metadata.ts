@@ -22,6 +22,23 @@ import {
 } from "./switch-arms";
 
 /**
+ * The renderer mirror BEFORE `attachOverrideMetadata` has run.
+ *
+ * `switchCases` and `optionalGateFor` are stamped by that pass and by nothing
+ * else, so upstream stages cannot meaningfully read them — a guard like
+ * `!target.switchCases` in a collector that runs earlier is always true and
+ * silently protects nothing. Omitting the two keys here turns that class of
+ * mistake into a compile error instead of a comment nobody can check.
+ *
+ * Every stage that runs before `attachOverrideMetadata` should take
+ * `PreMetadataField[]`; everything after it takes `RendererField[]`.
+ */
+export type PreMetadataField = Omit<
+  RendererField,
+  "switchCases" | "optionalGateFor"
+>;
+
+/**
  * Recursively walk PSDL containers and attach override metadata to the
  * renderer mirror fields (or to a Group's subfields when the target lives
  * inside a Group). Handles:
@@ -40,9 +57,9 @@ import {
  */
 export function attachOverrideMetadata(
   body: PsdlPacket["body"],
-  fields: RendererField[],
+  fields: PreMetadataField[],
   defs: Record<string, NamedStruct> | undefined,
-): void {
+): RendererField[] {
   const findTarget = (
     id: string,
   ):
@@ -464,4 +481,8 @@ export function attachOverrideMetadata(
   };
 
   visit(body);
+  // Same array, now carrying the metadata this pass stamps (and any fields it
+  // pushed). Handing it back is what lets the caller switch from
+  // `PreMetadataField[]` to `RendererField[]` at exactly this point.
+  return fields as RendererField[];
 }

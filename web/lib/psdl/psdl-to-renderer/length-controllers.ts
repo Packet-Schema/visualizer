@@ -22,6 +22,7 @@ import { typeBits } from "./shared";
 import { singleRefController } from "./psdl-queries";
 import { flattenForMirror, flattenForMirrorGuarded } from "./mirror-flatten";
 import { containsBounded } from "./repeats-and-budgets";
+import type { PreMetadataField } from "./override-metadata";
 
 /**
  * Inspect a Constraint of the form `ref(fieldA) * lit(N) == ref(fieldB)`
@@ -279,7 +280,7 @@ function collectBytesSizers(
  */
 export function collectOptionalLengthGates(
   body: PsdlPacket["body"],
-  fields: RendererField[],
+  fields: PreMetadataField[],
   defs: Record<string, NamedStruct> | undefined,
 ): RendererField[] {
   const sizers = new Set<string>();
@@ -661,7 +662,7 @@ export function collectSiblingLengthControllers(
  */
 export function collectPlainRepeatLengthControllers(
   body: PsdlPacket["body"],
-  fields: RendererField[],
+  fields: PreMetadataField[],
   instantiableRepeatIds: Set<string>,
   defs: Record<string, NamedStruct> | undefined,
 ): RendererField[] {
@@ -1048,7 +1049,7 @@ function collectAllFieldsById(
  */
 export function collectFlatTlvInnerLengthControllers(
   body: PsdlPacket["body"],
-  fields: RendererField[],
+  fields: PreMetadataField[],
   boundedRepeats: NonNullable<RendererPacket["boundedRepeats"]>,
   defs: Record<string, NamedStruct> | undefined,
 ): RendererField[] {
@@ -1157,7 +1158,7 @@ export function collectFlatTlvInnerLengthControllers(
  */
 export function collectGroupNestedLengthControllers(
   body: PsdlPacket["body"],
-  fields: RendererField[],
+  fields: PreMetadataField[],
   defs: Record<string, NamedStruct> | undefined,
 ): RendererField[] {
   // Every id REFERENCED by a non-delimited `bytes` length expr anywhere in the
@@ -1568,7 +1569,7 @@ export function collectRepeatCountRefs(
  */
 export function collectOptionalGateLengthControllers(
   body: PsdlPacket["body"],
-  fields: RendererField[],
+  fields: PreMetadataField[],
   defs: Record<string, NamedStruct> | undefined,
 ): string[] {
   const countRefs = new Set<string>();
@@ -1584,11 +1585,19 @@ export function collectOptionalGateLengthControllers(
         if (refs.size === 1) {
           const x = [...refs][0];
           const target = fields.find((f) => f.id === x);
+          // Two terms used to sit in this condition and neither could ever
+          // affect it:
+          //   `|| target.controlsLength === x` — reachable only when
+          //     `controlsLength` is set, which the very next term rejects.
+          //   `&& !target.switchCases` — this stage runs BEFORE
+          //     `attachOverrideMetadata`, so the property is always undefined
+          //     (`PreMetadataField` now makes writing it here a compile error).
+          // The discriminator collision the second term was reaching for is
+          // handled once, after the metadata exists, in `psdlToRenderer`.
           if (
             target &&
-            (target.category === "length" || target.controlsLength === x) &&
+            target.category === "length" &&
             !target.controlsLength &&
-            !target.switchCases &&
             !target.enumVariants
           ) {
             target.controlsLength = x;

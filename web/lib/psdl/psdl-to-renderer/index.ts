@@ -42,7 +42,10 @@ import {
   collectBerLengthWidthLocked,
   collectBerLengthWidthLockedByProbe,
 } from "./dynamic-width";
-import { attachOverrideMetadata } from "./override-metadata";
+import {
+  attachOverrideMetadata,
+  type PreMetadataField,
+} from "./override-metadata";
 import { collectPeekSwitches } from "./peek-switches";
 import { collectFreeRepeats } from "./repeats-and-budgets";
 import { collectRefSwitches } from "./ref-switches";
@@ -77,10 +80,12 @@ export { mergeInstancesIntoPsdl } from "./merge-instances";
  * cells via `resolveLayout`, not editor metadata.
  */
 export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
-  const fields: RendererField[] = [];
+  // `mirror` until `attachOverrideMetadata` stamps the metadata onto it; see
+  // `PreMetadataField` for why the two names are different types.
+  const mirror: PreMetadataField[] = [];
   for (const c of flattenForMirrorQualified(packet.body, packet.defs, "")) {
     if (isField(c)) {
-      fields.push(plainFieldToRenderer(c));
+      mirror.push(plainFieldToRenderer(c));
       continue;
     }
     if (c.kind === "group") {
@@ -93,7 +98,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       // so nested-group leaves stay reachable as flat subfields; the lift path
       // is unaffected because merge-based lift walks the SOURCE tree.
       const flat = groupToSubfieldField(c) ?? groupToSubfieldFieldDeep(c);
-      if (flat) fields.push(flat);
+      if (flat) mirror.push(flat);
       continue;
     }
     if (c.kind === "repeat") {
@@ -108,7 +113,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
         const baseId = chainField.id.replace(/_chain$/, "");
         const baseField =
           baseId !== chainField.id
-            ? fields.find((f) => f.id === baseId)
+            ? mirror.find((f) => f.id === baseId)
             : undefined;
         if (baseField) {
           baseField.chainCatalog = chainField.chainCatalog;
@@ -121,10 +126,10 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
             baseField.chainFinalProto = chainField.chainFinalProto;
           }
         } else {
-          fields.push(chainField);
+          mirror.push(chainField);
         }
       } else if (isTlvRepeat(c)) {
-        fields.push(repeatToTlvField(c));
+        mirror.push(repeatToTlvField(c));
       }
       continue;
     }
@@ -133,7 +138,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       // DetailPanel can surface the description, mirroring the Encrypted branch.
       const fld: RendererField = { id: c.id, name: c.name ?? c.id, bits: 0 };
       if (c.doc) fld.description = c.doc;
-      fields.push(fld);
+      mirror.push(fld);
       continue;
     }
     if (c.kind === "encrypted") {
@@ -147,7 +152,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
       };
       if (c.category) fld.category = c.category;
       if (c.doc) fld.description = c.doc;
-      fields.push(fld);
+      mirror.push(fld);
       continue;
     }
   }
@@ -160,7 +165,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     for (const c of packet.constraints) {
       const fromId = constraintToController(c);
       if (!fromId) continue;
-      const target = fields.find((f) => f.id === fromId);
+      const target = mirror.find((f) => f.id === fromId);
       if (target && !target.controlsLength) {
         target.controlsLength = fromId;
         if (target.bits != null) {
@@ -193,7 +198,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   const lengthControllers: RendererField[] = [];
   for (const fromId of boundedControllers) {
     if (tlvOwnedControllers.has(fromId)) continue;
-    const target = fields.find((f) => f.id === fromId);
+    const target = mirror.find((f) => f.id === fromId);
     if (target && !target.controlsLength) {
       target.controlsLength = fromId;
       if (target.bits != null) {
@@ -206,7 +211,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     // subfield). It can't host its own slider, so surface a packet-level length
     // controller; raising it grows the bounded budget so the enclosed repeat
     // becomes editable instead of stuck empty (override-design-audit A3).
-    for (const f of fields) {
+    for (const f of mirror) {
       const sub = f.subfields?.find((s) => s.id === fromId);
       if (!sub) continue;
       lengthControllers.push({
@@ -226,7 +231,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // length controllers (deduped against the bounded ones above).
   for (const lc of collectOptionalLengthGates(
     packet.body,
-    fields,
+    mirror,
     packet.defs,
   )) {
     if (!lengthControllers.some((existing) => existing.id === lc.id)) {
@@ -284,16 +289,17 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
     // Stamp `controlsLength` onto that existing cell so OverridePanel renders
     // the same length slider IHL / Data Offset get, mirroring how the
     // constraint-driven and bounded-controller paths stamp an existing target.
-    const target = fields.find((f) => f.id === id);
+    const target = mirror.find((f) => f.id === id);
     if (target) {
-      // Don't steal a cell that already drives the diagram another way: a
-      // discriminator (switchCases / enumVariants) or an already-stamped
-      // length controller keeps its existing widget.
-      if (
-        !target.controlsLength &&
-        !target.switchCases &&
-        !target.enumVariants
-      ) {
+      // Don't steal a cell that already drives the diagram another way: an
+      // `enumVariants` discriminator or an already-stamped length controller
+      // keeps its existing widget.
+      //
+      // The `switchCases` half of that intent cannot be expressed here —
+      // `attachOverrideMetadata` has not run yet, so the property is always
+      // undefined at this point and the term was silently inert. It is
+      // enforced once, after the metadata exists, further down this function.
+      if (!target.controlsLength && !target.enumVariants) {
         target.controlsLength = id;
         if (target.bits != null) {
           target.max = Math.max(target.max ?? 0, 2 ** target.bits - 1);
@@ -332,7 +338,7 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // sees becomes drivable (deduped against the controllers emitted above).
   for (const lc of collectGroupNestedLengthControllers(
     packet.body,
-    fields,
+    mirror,
     packet.defs,
   )) {
     if (!controllerIds.has(lc.id)) {
@@ -370,12 +376,15 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // its `fieldRendered` live gate keeps the slider live.
   for (const id of collectOptionalGateLengthControllers(
     packet.body,
-    fields,
+    mirror,
     packet.defs,
   )) {
     controllerIds.add(id);
   }
-  attachOverrideMetadata(packet.body, fields, packet.defs);
+  // Everything above this line sees `mirror` as `PreMetadataField[]`: the
+  // stage boundary is what stops an upstream guard from reading metadata that
+  // has not been stamped yet. From here on the mirror is a full RendererField.
+  const fields = attachOverrideMetadata(packet.body, mirror, packet.defs);
   // A chain's base field carries a chainCatalog (the chain editor's surface);
   // attachOverrideMetadata ALSO stamps switchCases on it from the same Switch.
   // OverridePanel dispatches chainCatalog first, so the switchCases are dead
@@ -383,6 +392,22 @@ export function psdlToRenderer(packet: PsdlPacket): RendererPacket {
   // discriminator (override-design-audit).
   for (const f of fields) {
     if (f.chainCatalog && f.switchCases) delete f.switchCases;
+  }
+  // Same collision, one stage later: a cell stamped as a sibling length
+  // controller upstream may ALSO be a Switch discriminator, and
+  // attachOverrideMetadata has only just given it `switchCases`. Two
+  // independent widgets on one env key is the failure this adapter keeps
+  // chasing, so the discriminator — which actually selects what the diagram
+  // renders — keeps the cell and the slider stands down.
+  //
+  // The upstream stages used to try to express this themselves with a
+  // `!target.switchCases` term, but at that point the property is always
+  // undefined, so the term was inert; `PreMetadataField` now makes writing it
+  // there a compile error. Across all 184 built-in presets this pass changes
+  // nothing (measured: zero fields carry both), so it exists for arbitrary
+  // user PSDL.
+  for (const f of fields) {
+    if (f.controlsLength && f.switchCases) delete f.controlsLength;
   }
   const { freeRepeats, boundedRepeats, instantiableRepeatIds } =
     collectFreeRepeats(packet, fields);
