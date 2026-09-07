@@ -1,11 +1,11 @@
-// Dedicated vitest config for the CI-EXCLUDED override-invariants diagnostic.
+// Dedicated vitest config for the override-invariants harness.
 //
-// The committed CI run (`npx vitest run`, driven by vitest.config.ts) includes
-// ONLY `tests/**/*.test.ts(x)`, so `scripts/override-invariants.ts` never runs
-// in CI and cannot redden it. This config exists solely to run the diagnostic
-// on demand:
+// The main run (`npx vitest run`, driven by vitest.config.ts) includes ONLY
+// `tests/**/*.test.ts(x)`, so `scripts/override-invariants.ts` needs its own
+// config. It is NOT excluded from CI: the `invariants` job in
+// .github/workflows/test.yml runs it on every push and PR via
 //
-//     cd web && npx vitest run --config vitest.diag.config.ts
+//     cd web && npm run test:diag
 //
 // It reuses the SAME resolver settings (the `@` alias and the `server-only`
 // no-op stub) as vitest.config.ts so the harness mirrors the app's real module

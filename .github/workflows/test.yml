@@ -74,6 +74,33 @@ jobs:
 
       - run: npm run test:coverage
 
+  invariants:
+    # Exhaustive override / round-trip sweep over all 184 presets plus a
+    # synthetic corpus (I1 RENDER_OK, I2 NO_FREEZE, I3 ROUNDTRIP). It ran
+    # outside CI while the override overhaul was mid-flight; it now reports
+    # zero violations and finishes in ~17s, so it gates like any other suite.
+    name: Override Invariants
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run test:diag
+
   integration-tests:
     name: Integration Tests
     needs: setup

@@ -2,12 +2,15 @@
  * override-invariants.ts — DETERMINISTIC, EXHAUSTIVE invariant harness for the
  * OVERRIDE subsystem and arbitrary-PSDL round-trips.
  *
- * THIS IS A CI-EXCLUDED DIAGNOSTIC. It lives under `scripts/`, and the committed
- * CI vitest `include` is `tests/**\/*.test.ts` (see vitest.config.ts), so this
- * file never runs in the CI suite and its intermediate failures can't turn CI
- * red. Run it standalone via its dedicated vitest config:
+ * IT RUNS IN CI. The file lives under `scripts/` and the main vitest `include`
+ * is `tests/**\/*.test.ts` (see vitest.config.ts), so it needs its own config —
+ * but the `invariants` job in .github/workflows/test.yml runs it on every push
+ * and PR. It was CI-excluded while the override overhaul was mid-flight, when
+ * intermediate failures would have kept CI permanently red; the corpus now
+ * reports zero violations (184 presets + 25 synthetic packets in ~17s), so the
+ * harness is a gate rather than a scratchpad. Run it locally with:
  *
- *     cd web && npx vitest run --config vitest.diag.config.ts
+ *     cd web && npm run test:diag
  *
  * (vitest is used rather than `tsx` because the app's lib graph statically
  * imports `@packet-schema/core`, whose package.json exposes ONLY the ESM
