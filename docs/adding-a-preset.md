@@ -26,7 +26,7 @@ body:
 
 ### 2. PSDL 仕様に従って `body` を書く
 
-- 1 ページ要約: [`psdl-cheatsheet.md`](./psdl-cheatsheet.md)
+- 仕様の正典: `@packet-schema/core` の `spec/psdl-0.5.md`
 - 完全仕様: [`psdl-0.4.md`](./psdl-0.4.md)
 
 困ったら既存 preset (`data/presets/udp.psdl.yaml` が最小、`tcp.psdl.yaml` /
@@ -81,12 +81,12 @@ body:
   - { id: seq, name: Seq,     type: { kind: int, bits: 16 }, category: identifier }
   - id: payload
     name: Payload
-    type: { kind: bytes, bits: { ref: len, scale: 8 } }
-    category: payload
+    type: { kind: bytes, n: { kind: ref, field: len } }
+    category: variable
 ```
 
 ## ヒント
 
-- variable-length には `cond` / `ref` / `peek` を使う。詳細は cheatsheet 参照。
+- variable-length には `cond` / `ref` / `peek` を使う。詳細は core の `spec/psdl-0.5.md` を参照。
 - TLV 系 (TCP Options 等) は `Repeat` + `Switch` の組合せで書ける。
 - 編集後は `npm run dev` で即座に UI に反映されます (`build:presets` が前段で走るため)。

@@ -6,7 +6,7 @@
 
 ## 環境構築
 
-Node.js 20 系を想定しています。
+Node.js 24 系を想定しています（`web/package.json` の `engines` と CI の `node-version` に一致）。
 
 ```sh
 cd web
@@ -66,6 +66,6 @@ PR テンプレが自動で挿入されるので、関連 issue・変更点・�
 
 ## 困ったら
 
-- PSDL の書き方 → [`docs/psdl-cheatsheet.md`](./docs/psdl-cheatsheet.md) (1 ページ要約) → 詳しくは [`docs/psdl-0.4.md`](./docs/psdl-0.4.md)
+- PSDL の書き方 → 正典は `@packet-schema/core` の `spec/psdl-0.5.md`。手を動かすなら `@packet-schema/presets` の `presets/udp.psdl.yaml` など実物が早い
 - どこに何があるか → [`docs/architecture.md`](./docs/architecture.md)
 - テストの書き方 → [`docs/testing.md`](./docs/testing.md)

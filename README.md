@@ -28,7 +28,6 @@ Useful starting points:
 
 - [Architecture](./docs/architecture.md)
 - [PSDL specification](./docs/psdl-0.4.md)
-- [PSDL cheatsheet](./docs/psdl-cheatsheet.md)
 - [Adding a preset](./docs/adding-a-preset.md)
 - [Testing](./docs/testing.md)
 

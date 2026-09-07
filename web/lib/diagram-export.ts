@@ -1,9 +1,11 @@
 // Image-export pipeline for the live diagram. Three primitives at a glance:
 //
-// - `buildDiagramSvg(packet, layout, opts)` — emits a standalone SVG string
-//   (no <style>, no external assets, all colors resolved to attributes) so
-//   it round-trips through `dangerouslySetInnerHTML` previews, file
-//   downloads, and the rasterizer below without picking up app CSS.
+// - SVG generation itself lives NEXT DOOR, in `./diagram-satori`'s
+//   `renderToSvgString(component, w, h)` (Satori renders the React diagram to
+//   a standalone SVG string — no <style>, no external assets — so it
+//   round-trips through previews, file downloads, and the rasterizer below
+//   without picking up app CSS). This module supplies the theme, geometry and
+//   per-cell visuals that component is built from.
 // - `readDiagramTheme(mode)` — derives the palette from the running
 //   stylesheets (`:root` / `[data-theme="dark"]`) without mutating
 //   `document.documentElement`, so exporting "Light" while the UI is in
