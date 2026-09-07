@@ -61,6 +61,6 @@
 
 ## 参照ドキュメント
 
-- PSDL の概要や詳細は `docs/psdl-cheatsheet.md` と `docs/psdl-0.4.md` を参照する。
+- PSDL の仕様は `@packet-schema/core` の `spec/psdl-0.5.md` が正典。実データの例は `@packet-schema/presets` の `presets/*.psdl.yaml` を見る。
 - リポジトリ構成や実装場所の把握には `docs/architecture.md` を参照する。
 - テストの書き方や方針は `docs/testing.md` を参照する。
