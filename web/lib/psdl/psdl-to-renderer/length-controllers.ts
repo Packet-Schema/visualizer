@@ -875,9 +875,18 @@ export function collectPlainRepeatLengthControllers(
         // NO per-record list editor, so its per-record length cell (icmpv6Ndp
         // `ndpOptLength`, sizing the VISIBLE `ndpOptValue` in the option's `_`
         // arm) is owned by nobody — surface it too, descending the element's
-        // single inner peek-Switch to find it. Mirrors the `surfacedNestedTlv`
-        // guard in collectFreeRepeats so only that same set of repeats qualifies,
-        // and only when instantiable (a count control exists).
+        // single inner peek-Switch to find it.
+        //
+        // This predicate is NOT `surfacedNestedTlvRepeat` (psdl-queries), the
+        // one collectFreeRepeats and collectPeekSwitches share, even though it
+        // is reaching for the same set. It has no `enclosingInstantiable` term
+        // and adds `!insideBounded`; what actually aligns the two sets is the
+        // `instantiableRepeatIds.has(c.id)` gate below, which is populated by
+        // collectFreeRepeats earlier in the pipeline. So the agreement is a
+        // property of the call ORDER, not of the expression — and the boolean
+        // is also passed to `surfaceElement` to pick the descent mode, so the
+        // two are not interchangeable. Changing either one needs the
+        // surfaced-set test in tests/psdl to be re-read, not just tsc.
         // A DIRECT repeat-of-repeat TLV repeat (`repeat lit N { repeat eos {
         // switch on peek } }`, no intervening switch case/optional) is surfaced as
         // a freeRepeat + peek picker by collectFreeRepeats too, gated there on the

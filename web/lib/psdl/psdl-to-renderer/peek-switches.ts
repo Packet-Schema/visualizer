@@ -7,9 +7,10 @@ import { isLikelyChainRepeat } from "./chain";
 import { isTlvRepeat } from "./tlv";
 import { firstCaseKeyValue, prettifyId } from "./shared";
 import {
-  firstInnerFieldId,
   findArmByCaseValue,
+  firstInnerFieldId,
   matchPeekGate,
+  surfacedNestedTlvRepeat,
 } from "./psdl-queries";
 import { flattenForMirrorGuarded } from "./mirror-flatten";
 import {
@@ -272,11 +273,13 @@ export function collectPeekSwitches(
         // insideSwitch=insideOptional=false and insideRepeat=true; descend it too
         // (gated on enclosingInstantiable) so its peek picker pairs with the
         // count stepper collectFreeRepeats now surfaces for that shape.
-        const surfacedNestedTlv =
-          isTlvRepeat(c) &&
-          (insideSwitch || insideOptional
-            ? !insideRepeat || enclosingInstantiable
-            : insideRepeat && enclosingInstantiable);
+        const surfacedNestedTlv = surfacedNestedTlvRepeat({
+          isTlvRepeat: isTlvRepeat(c),
+          insideSwitch,
+          insideOptional,
+          insideRepeat,
+          enclosingInstantiable,
+        });
         if ((!isTlvRepeat(c) && !isLikelyChainRepeat(c)) || surfacedNestedTlv)
           visit(
             c.element.fields,

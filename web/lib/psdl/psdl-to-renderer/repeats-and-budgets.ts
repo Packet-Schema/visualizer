@@ -16,13 +16,14 @@ import { resolveLayout } from "../layout";
 import { initialEnv } from "../normalize";
 import { collectPsdlRefs } from "../collect-refs";
 import {
-  refsIn,
   collectEnumVariants,
   collectFieldNames,
-  collectVirtualIds,
   collectSelfRefVirtualIds,
+  collectVirtualIds,
   firstInnerFieldId,
   matchPeekGate,
+  refsIn,
+  surfacedNestedTlvRepeat,
 } from "./psdl-queries";
 import { switchCaseLabel } from "./switch-arms";
 
@@ -442,11 +443,13 @@ export function collectFreeRepeats(
         // No built-in preset hits this exact shape (rtcpSdesItems / lispRecLocators
         // carry a discriminator FIELD before the switch, so isTlvRepeat is false),
         // so only the arbitrary-PSDL gap is filled.
-        const surfacedNestedTlv =
-          isTlvRepeat(c) &&
-          (insideSwitch || insideOptional
-            ? !insideRepeat || enclosingInstantiable
-            : insideRepeat && enclosingInstantiable);
+        const surfacedNestedTlv = surfacedNestedTlvRepeat({
+          isTlvRepeat: isTlvRepeat(c),
+          insideSwitch,
+          insideOptional,
+          insideRepeat,
+          enclosingInstantiable,
+        });
         if (!isLikelyChainRepeat(c) && (!isTlvRepeat(c) || surfacedNestedTlv)) {
           let countKey: string | null = null;
           let label = c.name ?? c.id;
@@ -2069,8 +2072,14 @@ function flatTlvInnerSeeds(element: { fields: Container[] }): {
 
 /** Conservative (over-)estimate of a repeat element's byte size. Sums
  *  fixed-width leaf fields, a generous allowance for variable-length ones, and
- *  for a Switch takes the LARGEST case. Floors at 1 byte. */
-function estimateElementBytes(struct: { fields: Container[] }): number {
+ *  for a Switch takes the LARGEST case. Floors at 1 byte.
+ *
+ *  Exported for tests: its return value feeds
+ *  `floor((budget - prefix) / perRecordBytes)`, so the two allowance constants
+ *  decide how many records a budget-driven repeat renders. That arithmetic had
+ *  no direct coverage — only whole-pipeline assertions that would keep passing
+ *  if an allowance drifted. */
+export function estimateElementBytes(struct: { fields: Container[] }): number {
   // Ids of every field in this record, so a value sized by a sibling length
   // (`bytes(ref tlvLength)`) gets a small structural charge instead of the full
   // unbounded allowance — see REF_SIZED_FIELD_BYTE_ALLOWANCE.

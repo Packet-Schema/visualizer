@@ -456,3 +456,41 @@ export function matchPeekGate(
   }
   return null;
 }
+
+/**
+ * Is this TLV repeat one that the override surfaces reach *through* its
+ * enclosing container — i.e. does it get a count stepper and a peek picker of
+ * its own?
+ *
+ * `collectFreeRepeats` and `collectPeekSwitches` must agree on this exactly:
+ * the first surfaces the count stepper, the second the peek picker that pairs
+ * with it, and a repeat that gets one without the other is precisely the
+ * see-but-cannot-edit / inert-control shape this adapter exists to avoid. They
+ * carried byte-identical copies of the predicate; sharing it makes the
+ * agreement structural instead of a thing to re-check by eye.
+ *
+ * NOTE: `collectPlainRepeatLengthControllers` has a THIRD, similar-looking
+ * predicate that is deliberately NOT this one — see the comment there.
+ */
+export function surfacedNestedTlvRepeat(ctx: {
+  isTlvRepeat: boolean;
+  insideSwitch: boolean;
+  insideOptional: boolean;
+  insideRepeat: boolean;
+  enclosingInstantiable: boolean;
+}): boolean {
+  const {
+    isTlvRepeat,
+    insideSwitch,
+    insideOptional,
+    insideRepeat,
+    enclosingInstantiable,
+  } = ctx;
+  if (!isTlvRepeat) return false;
+  // Reached through a switch arm / optional: fine at the top level, and one
+  // level deeper only when the enclosing repeat earned a count control.
+  if (insideSwitch || insideOptional)
+    return !insideRepeat || enclosingInstantiable;
+  // Direct repeat-of-repeat: only when the enclosing repeat is instantiable.
+  return insideRepeat && enclosingInstantiable;
+}
