@@ -2062,6 +2062,17 @@ describe("toKsy — env-driven repeat counts (audit MEDIUM #2)", () => {
     expect(obj.seq[0]["repeat-expr"]).toBe("3");
   });
 
+  it("an eos repeat stays `repeat: eos` when env holds nothing usable for its id", () => {
+    // Populated env that simply doesn't mention this repeat.
+    const missing = yamlParse(toKsy(eosPacket, new Map([["unrelated", 3]])));
+    expect(missing.seq[0].repeat).toBe("eos");
+    expect(missing.seq[0]["repeat-expr"]).toBeUndefined();
+    // Present but not a finite number — fall back rather than emit NaN.
+    const nan = yamlParse(toKsy(eosPacket, new Map([["items", Number.NaN]])));
+    expect(nan.seq[0].repeat).toBe("eos");
+    expect(nan.seq[0]["repeat-expr"]).toBeUndefined();
+  });
+
   it("a ref count resolves to a literal when env supplies the discriminator", () => {
     const packet = {
       name: "DnsLike",
@@ -2096,5 +2107,36 @@ describe("toKsy — env-driven repeat counts (audit MEDIUM #2)", () => {
     const resolved = yamlParse(toKsy(packet, new Map([["anCount", 3]])));
     expect(resolved.seq[1].repeat).toBe("expr");
     expect(resolved.seq[1]["repeat-expr"]).toBe("3");
+    // Populated env that lacks the ref → the symbolic name survives rather
+    // than the ref silently evaluating to 0 and pinning the count there.
+    const unrelated = yamlParse(toKsy(packet, new Map([["somethingElse", 3]])));
+    expect(unrelated.seq[1]["repeat-expr"]).toBe("anCount");
+  });
+
+  it("a non-ref count expression is left to the static lowering even with a populated env", () => {
+    // `resolveRepeatCount` only claims eos/until (keyed by repeat id) and `ref`
+    // counts. A `lit` (or any other Expr kind) has nothing to look up, so it
+    // must decline and let `exprToString` emit the count — otherwise a
+    // populated env would silently rewrite a fixed-size repeat.
+    const packet = {
+      name: "T",
+      rowBits: 8,
+      body: [
+        {
+          kind: "repeat" as const,
+          id: "words",
+          element: {
+            id: "word",
+            fields: [
+              { id: "x", name: "X", type: { kind: "int" as const, bits: 8 } },
+            ],
+          },
+          count: { kind: "lit" as const, value: 3 },
+        },
+      ],
+    };
+    const obj = yamlParse(toKsy(packet, new Map([["words", 9]])));
+    expect(obj.seq[0].repeat).toBe("expr");
+    expect(obj.seq[0]["repeat-expr"]).toBe("3");
   });
 });

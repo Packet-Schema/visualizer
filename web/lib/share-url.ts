@@ -292,6 +292,20 @@ export function normalizeShareQuery(
 }
 
 /**
+ * Wire keys `toJson` gained when the share-URL format became lossless. A blob
+ * minted before that change can never carry any of them, which is what lets
+ * the legacy fallback in `findPresetKeyForPacket` stay narrowly scoped.
+ */
+const LOSSLESS_ONLY_WIRE_KEYS = [
+  "abbrev",
+  "rendererHints",
+  "meta",
+  "imports",
+  "packetVersion",
+  "defs",
+] as const;
+
+/**
  * Returns the preset key whose packet matches the given packet, or null if none matches.
  * Uses key-order-independent structural comparison so packets decoded from external
  * JSON (where property insertion order may differ) still match built-in presets.
@@ -300,19 +314,55 @@ export function findPresetKeyForPacket(
   packet: PsdlPacket,
   presets: Record<string, PsdlPacket>,
 ): string | null {
-  // Compare canonical WIRE forms, not the raw packets. The share-URL wire
-  // format (`toJson`) pins a fixed `version` string and orders keys
-  // canonically, so a packet decoded from `?psdl=` may differ from the
-  // built-in preset only in incidental ways (key order, `version`).
-  // Normalising BOTH sides through `toJson` (which now preserves
-  // `meta`/`rendererHints`/`abbrev`/`imports` symmetrically) cancels those
-  // differences out, so a shared packet still matches the built-in preset it
-  // was derived from (and the homepage can redirect `?psdl=…` → `?preset=<key>`).
-  const wireForm = (p: PsdlPacket): string =>
-    stableStringify(JSON.parse(toJson(p, new Map())));
-  const target = wireForm(packet);
+  // Compare canonical WIRE forms, not the raw packets: `toJson` pins the format
+  // `version` and orders keys canonically, so a packet decoded from `?psdl=`
+  // differs from the built-in preset only in incidental ways (key order).
+  const wire = (p: PsdlPacket): Record<string, unknown> =>
+    JSON.parse(toJson(p, new Map())) as Record<string, unknown>;
+
+  // `toJson` per preset is not free and both passes below need the same
+  // values, so resolve each at most once while keeping the loops early-exit.
+  const wireCache = new Map<string, Record<string, unknown>>();
+  const presetWire = (key: string, p: PsdlPacket): Record<string, unknown> => {
+    let w = wireCache.get(key);
+    if (w === undefined) {
+      w = wire(p);
+      wireCache.set(key, w);
+    }
+    return w;
+  };
+
+  const targetWire = wire(packet);
+  const target = stableStringify(targetWire);
   for (const [key, presetPacket] of Object.entries(presets)) {
-    if (wireForm(presetPacket) === target) return key;
+    if (stableStringify(presetWire(key, presetPacket)) === target) return key;
+  }
+
+  // Back-compat. Share URLs minted before `toJson` became lossless carry none
+  // of the descriptive 0.5 keys, while today's presets do — so the strict pass
+  // above can never match them and the homepage would stop canonicalising
+  // every link already in the wild (they still render; they just stay as long
+  // `?psdl=…` URLs instead of collapsing to `?preset=<key>`).
+  //
+  // Retry with those keys dropped, but ONLY when the incoming packet lacks
+  // them ALL. A packet carrying *different* metadata is genuinely a different
+  // document: collapsing it onto a preset would silently discard the author's
+  // own `meta` / `rendererHints` / `defs`.
+  const isLegacyBlob = LOSSLESS_ONLY_WIRE_KEYS.every(
+    (k) => targetWire[k] === undefined,
+  );
+  if (!isLegacyBlob) return null;
+
+  const withoutLosslessKeys = (w: Record<string, unknown>): string => {
+    const copy = { ...w };
+    for (const k of LOSSLESS_ONLY_WIRE_KEYS) delete copy[k];
+    return stableStringify(copy);
+  };
+  const legacyTarget = withoutLosslessKeys(targetWire);
+  for (const [key, presetPacket] of Object.entries(presets)) {
+    if (withoutLosslessKeys(presetWire(key, presetPacket)) === legacyTarget) {
+      return key;
+    }
   }
   return null;
 }
