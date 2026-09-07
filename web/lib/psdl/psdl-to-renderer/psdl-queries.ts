@@ -1,7 +1,7 @@
 // Extracted from `index.ts` (PSDL → renderer adapter) — no logic changes.
 
 import { isField } from "../utils";
-import { peekEnvKey } from "../expr";
+import { exprRefs, peekEnvKey } from "../expr";
 import type {
   Container,
   Expr,
@@ -10,6 +10,22 @@ import type {
   Struct,
 } from "../types";
 import { caseKeyCoversValue } from "./shared";
+
+/**
+ * Return the sole field-ref id in `expr`, or `null` if the expression
+ * mentions zero or more than one distinct field. This is the
+ * `bounded.bytes` analogue of `constraintToController`: a length scope
+ * whose byte budget is `ihl*4 - 20` nominates `ihl` as its controller.
+ *
+ * Distinctness is computed via core's `exprRefs`, which walks every 0.5 Expr
+ * shape (lookup keys, peek offsets, cond branches, …). A length expression
+ * like `lookup(ref("lenCode"), …)` therefore correctly nominates `lenCode`
+ * — the old hand-rolled walk only descended `op`/`cond`/`peek` and missed it.
+ */
+export function singleRefController(expr: Expr): string | null {
+  const refs = new Set(exprRefs(expr));
+  return refs.size === 1 ? [...refs][0] : null;
+}
 
 /** Collect every `ref` field id reachable inside an arbitrary value (Expr tree,
  *  type node, …). Generic so it doesn't need to enumerate the Expr union. */
