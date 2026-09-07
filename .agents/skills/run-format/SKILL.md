@@ -1,6 +1,6 @@
 ---
 name: run-format
-description: web フロントエンドのコード整形を実行したいときに使う。packet-view リポジトリで Prettier によるフォーマットを走らせ、必要なら変更内容を確認したい場合にこのスキルを使う。
+description: web フロントエンドのコード整形を実行したいときに使う。Packet Schema Visualizer リポジトリで Prettier によるフォーマットを走らせ、必要なら変更内容を確認したい場合にこのスキルを使う。
 ---
 
 # フォーマット実行

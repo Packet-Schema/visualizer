@@ -1,6 +1,6 @@
 ---
 name: run-dev
-description: packet-view リポジトリで開発サーバーを起動したいときに使う。web ディレクトリで npm run dev を実行し、起動確認や接続先の共有を行いたい場合にこのスキルを使う。
+description: Packet Schema Visualizer リポジトリで開発サーバーを起動したいときに使う。web ディレクトリで npm run dev を実行し、起動確認や接続先の共有を行いたい場合にこのスキルを使う。
 ---
 
 # 開発サーバー起動

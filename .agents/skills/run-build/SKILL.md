@@ -1,6 +1,6 @@
 ---
 name: run-build
-description: packet-view リポジトリで本番ビルドを実行したいときに使う。web ディレクトリで npm run build を実行し、ビルド成功確認や失敗内容の要約を行いたい場合にこのスキルを使う。
+description: Packet Schema Visualizer リポジトリで本番ビルドを実行したいときに使う。web ディレクトリで npm run build を実行し、ビルド成功確認や失敗内容の要約を行いたい場合にこのスキルを使う。
 ---
 
 # 本番ビルド実行

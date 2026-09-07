@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: packet-view リポジトリで Git 操作、ブランチ作成、コミット、PR 準備を行うときに使う。既存差分の確認、ブランチ命名、コミットメッセージ、PR テンプレートに沿った説明整理を扱う。
+description: Packet Schema Visualizer リポジトリで Git 操作、ブランチ作成、コミット、PR 準備を行うときに使う。既存差分の確認、ブランチ命名、コミットメッセージ、PR テンプレートに沿った説明整理を扱う。
 ---
 
 # Git ワークフロー

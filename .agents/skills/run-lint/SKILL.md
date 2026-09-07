@@ -1,6 +1,6 @@
 ---
 name: run-lint
-description: packet-view リポジトリで Lint を実行したいときに使う。web ディレクトリの ESLint を実行し、失敗時は主なエラー箇所を要約して共有したい場合にこのスキルを使う。
+description: Packet Schema Visualizer リポジトリで Lint を実行したいときに使う。web ディレクトリの ESLint を実行し、失敗時は主なエラー箇所を要約して共有したい場合にこのスキルを使う。
 ---
 
 # Lint 実行
