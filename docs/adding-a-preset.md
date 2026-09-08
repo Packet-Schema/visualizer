@@ -1,92 +1,60 @@
 # preset を追加する
 
-組み込み preset は `data/presets/*.psdl.yaml` に YAML として置くだけで、
-TypeScript の編集なしに登録されます。本書は最短手順 + 注意点をまとめたものです。
+preset の YAML 本体は **[`Packet-Schema/presets`](https://github.com/Packet-Schema/presets) にあります** — visualizer には置きません。ここは npm 経由で `@packet-schema/presets` を取り込むだけの consumer です。
 
-関連: 機能要望は [issue #91](https://github.com/Packet-Schema/visualizer/issues/91)
-に preset 追加リクエストがまとまっています。
+なので作業は 2 つのリポジトリに分かれます。
 
-## 手順
+関連: 機能要望は [issue #91](https://github.com/Packet-Schema/visualizer/issues/91) に preset 追加リクエストがまとまっています。
 
-### 1. YAML ファイルを作る
+---
 
-`data/presets/<key>.psdl.yaml` を作成し、先頭に schema 関連付けコメントを入れます。
-`<key>` は camelCase の英数字 (例: `tcp`, `quicShort`, `http2FrameHeader`)。
+## 1. presets リポジトリ側 — YAML を書く
 
-```yaml
-# yaml-language-server: $schema=../../schemas/psdl.schema.json
-name: My Protocol Header
-rowBits: 32
-byteOrder: BE
-description: 例: 32-bit/行で書くシンプルなヘッダ。
-body:
-  - { id: kind, name: Kind, type: { kind: int, bits: 8 } }
-  # ... フィールド定義 ...
-```
+`presets/<key>.psdl.yaml` を作って 4 段ゲート(`npm run check`)を通す。`<key>` は camelCase の英数字(`tcp`、`quicShort`、`http2FrameHeader` など)で、そのまま `PRESETS` のキーになります。
 
-### 2. PSDL 仕様に従って `body` を書く
+手順は [presets の README](https://github.com/Packet-Schema/presets#プリセットを追加する) にあります。`meta.family` / `meta.tags` の語彙登録が要ることだけ注意。
 
-- 仕様の正典: `@packet-schema/core` の `spec/psdl-0.5.md`
-- 完全仕様: [`psdl-0.4.md`](./psdl-0.4.md)
+書き方の正典は [core の `spec/psdl-0.5.md`](https://github.com/Packet-Schema/core/blob/main/spec/psdl-0.5.md) ですが、手を動かすなら既存の実ファイルを読むのが早いです。
 
-困ったら既存 preset (`data/presets/udp.psdl.yaml` が最小、`tcp.psdl.yaml` /
-`ipv4.psdl.yaml` が options 付きの代表例) を参考にしてください。
+publish されたら、visualizer 側で `npm update @packet-schema/presets` します。
 
-### 3. `PRESET_GROUPS` に追加
+---
 
-`web/lib/constants.ts` の `PRESET_GROUPS` に key を加えて、UI のプロトコルピッカに
-出るようにします。OSI レイヤーごとにグループ化されています。
+## 2. visualizer 側 — key を登録する
 
-### 4. 期待 totalBits を fixtures に書く
+YAML は自動で取り込まれますが、**UI に出すには key の登録が要ります。**
 
-`web/tests/fixtures/preset-bit-sizes.ts` に key と (最小条件での) `totalBits`
-を足します。これが preset 追加時の安全網になります。
+### 2-1. プロトコルピッカに出す
 
-### 5. layout-parity の網羅確認
+`web/lib/constants.ts` の `PRESET_GROUPS` に key を加えます。OSI レイヤーごとにグループ化されています。
 
-`web/tests/psdl/layout-parity.test.ts` を一読し、key が
-`PRESET_KEYS` 経由で網羅されているか確認してください。
-通常はテスト側の編集は不要です。
+### 2-2. 期待 totalBits を fixtures に書く
 
-### 6. ローカル検証
+`web/tests/fixtures/preset-bit-sizes.ts` に key と(最小条件での)`totalBits` を足します。これが preset 追加時の安全網になります。
+
+### 2-3. layout-parity の網羅確認
+
+`web/tests/psdl/layout-parity.test.ts` を一読し、key が `PRESET_KEYS` 経由で網羅されているか確認してください。通常はテスト側の編集は不要です。
+
+### 2-4. ローカル検証
 
 ```sh
 cd web
-npm run build:presets   # schema 検証 + codegen
-npm test                # 全テスト
-npm run lint            # ESLint
+npm run build:presets   # JSON / 索引の再生成
+npm test
+npm run lint
+npm run test:diag       # override invariants (184 preset 全件のスイープ)
 ```
 
-YAML が schema 違反だと build:presets が
-`Schema validation failed for data/presets/<file>: ...`
-の形で具体的なエラー位置を返します。
+`test:diag` は新しい preset が override サブシステムのどの不変条件も破らないことを確認します — レンダリングが通るか、図が固まらないか、往復で情報が落ちないか。
 
-### 7. PR を出す
+### 2-5. PR を出す
 
-ブランチ命名は `feat/preset-<key>` 推奨。PR テンプレに沿って関連 issue
-(あれば #91 を Closes ではなく Refs で参照) を書いてください。
+ブランチ命名は `feat/preset-<key>` 推奨。PR テンプレに沿って関連 issue(あれば #91 を Closes ではなく Refs で参照)を書いてください。
 
-## YAML サンプル (架空のミニプロトコル)
+---
 
-```yaml
-# yaml-language-server: $schema=../../schemas/psdl.schema.json
-name: Mini Frame
-rowBits: 32
-byteOrder: BE
-description: 学習用のごく小さなフレーム例。
-body:
-  - { id: ver, name: Version, type: { kind: int, bits: 4 } }
-  - { id: typ, name: Type,    type: { kind: int, bits: 4 }, category: identifier }
-  - { id: len, name: Length,  type: { kind: int, bits: 8 }, category: length }
-  - { id: seq, name: Seq,     type: { kind: int, bits: 16 }, category: identifier }
-  - id: payload
-    name: Payload
-    type: { kind: bytes, n: { kind: ref, field: len } }
-    category: variable
-```
+## 関連
 
-## ヒント
-
-- variable-length には `cond` / `ref` / `peek` を使う。詳細は core の `spec/psdl-0.5.md` を参照。
-- TLV 系 (TCP Options 等) は `Repeat` + `Switch` の組合せで書ける。
-- 編集後は `npm run dev` で即座に UI に反映されます (`build:presets` が前段で走るため)。
+- [レンダラ規約](./renderer-contract.md) — 書いた PSDL が図と編集 UI にどう解釈されるか
+- [Architecture](./architecture.md) — リポジトリ構成とデータフロー

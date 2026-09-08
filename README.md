@@ -20,14 +20,14 @@ imports, exports, and layout resolution.
 The repository is organized around a few stable areas:
 
 - `web/` — the Next.js application
-- `data/presets/` — built-in PSDL presets
 - `schemas/` — JSON Schema for PSDL documents
-- `docs/` — architecture, testing, and PSDL authoring references
+- `docs/` — architecture, the renderer contract, testing, and preset authoring
 
 Useful starting points:
 
 - [Architecture](./docs/architecture.md)
-- [PSDL specification](./docs/psdl-0.4.md)
+- [PSDL specification](https://github.com/Packet-Schema/core/blob/main/spec/psdl-0.5.md) (in `@packet-schema/core`)
+- [Renderer contract](./docs/renderer-contract.md)
 - [Adding a preset](./docs/adding-a-preset.md)
 - [Testing](./docs/testing.md)
 
@@ -67,7 +67,8 @@ npm run deploy
 
 ## Presets and supported formats
 
-Built-in packet presets live in [`data/presets/`](./data/presets/). The preset
+The 184 built-in packet presets ship as
+[`@packet-schema/presets`](https://github.com/Packet-Schema/presets); the preset
 picker in the app is the source of truth for what is currently bundled.
 
 Packet Schema Visualizer uses PSDL as its format hub and provides import/export bridges for
@@ -76,16 +77,10 @@ for the up-to-date format notes and limitations.
 
 ### Adding a preset
 
-Preset files are YAML documents under [`data/presets/`](./data/presets/).
-They are validated against [`schemas/psdl.schema.json`](./schemas/psdl.schema.json)
-and compiled into the web app during the normal npm workflows.
-
-```sh
-cd web
-npm run build:presets
-```
-
-For the authoring workflow and schema guidance, see
+The YAML itself lives in the
+[`presets`](https://github.com/Packet-Schema/presets) repository, where it is
+validated against the PSDL 0.5 JSON Schema shipped by `@packet-schema/core`.
+On this side, adding a preset means registering its key. See
 [Adding a preset](./docs/adding-a-preset.md).
 
 ## Tests

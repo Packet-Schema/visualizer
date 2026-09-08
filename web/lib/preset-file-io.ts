@@ -15,7 +15,10 @@ import type { PsdlPacket } from "./psdl/types";
 export { extToFormat } from "./formats/registry";
 export type { FormatKey } from "./formats/registry";
 
-export const MY_PRESETS_FILE_FORMAT_VERSION = "psdl-0.4" as const;
+// バンドルに書き出す schemaVersion。中身は PSDL 0.5 のパケットなので 0.5。
+// 読み手 (`isMyPresetsBundle`) は意図的に任意の文字列を受理するので、この値を
+// 上げても以前に書き出したファイルは読めるまま。
+export const MY_PRESETS_FILE_FORMAT_VERSION = "psdl-0.5" as const;
 
 export type MyPresetsBundle = {
   schemaVersion: typeof MY_PRESETS_FILE_FORMAT_VERSION;
