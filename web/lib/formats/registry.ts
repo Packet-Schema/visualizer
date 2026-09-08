@@ -18,13 +18,7 @@ import type { PacketEnv, Packet as PsdlPacket } from "../psdl/types";
 import { validatePsdlPacket } from "../psdl/validate";
 
 export type FormatKey =
-  | "json"
-  | "rfc-ascii"
-  | "aug-ascii"
-  | "ksy"
-  | "svg"
-  | "png"
-  | "iframe";
+  "json" | "rfc-ascii" | "aug-ascii" | "ksy" | "svg" | "png" | "iframe";
 
 export type ImportResult = {
   packet: PsdlPacket;
