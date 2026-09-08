@@ -86,8 +86,7 @@ export function applyPresetPatches(key: string, preset: JsonObj): JsonObj {
  */
 export function adaptPreset(key: string, preset: JsonObj): JsonObj {
   const rendererHints = preset.rendererHints as
-    | { rowBits?: number }
-    | undefined;
+    { rowBits?: number } | undefined;
   const rowBits =
     (preset.rowBits as number | undefined) ?? rendererHints?.rowBits ?? 32;
   return applyPresetPatches(key, { ...preset, rowBits });

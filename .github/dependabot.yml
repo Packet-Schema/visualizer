@@ -9,11 +9,29 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # @types/node は engines.node (>=24.0.0) に合わせて ^24 に固定する。
+      # 26 系は Node 25/26 で入った API を型として生やすので、scripts/ や
+      # tests/ が「型は通るが Node 24 の実行時には無い」API を使えてしまう。
+      # このリポジトリは @types/node をビルドスクリプトとテスト配線にしか
+      # 使っておらず、新しい API を必要としていないので、上げる実利が無い。
+      # マイナー / パッチは minor-and-patch 群で上がるので追従は止まらない。
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # 依存が多いので、ルーチンのバンプはまとめて 1 本にする。メジャーは
-      # 引き続き個別に上がるので、破壊的変更が他のバンプに紛れることはない。
+      # 引き続き個別に上がる。
+      #
+      # ただし 0.x のパッケージでは semver 上 0.32 → 0.33 が「minor」に
+      # 分類されるため、実質メジャー相当の破壊的変更がまとめ PR に紛れ込む。
+      # 実際 satori 0.33 が harfbuzzjs を依存に加え、それが `fs` を要求して
+      # client bundle のビルドを壊した (24 件のまとめの中で原因を切り分ける
+      # のは高くつく)。0.x のまま出荷されている 2 つは個別 PR に出す。
       minor-and-patch:
         update-types: ["minor", "patch"]
+        exclude-patterns:
+          - "satori"
+          - "sharp"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

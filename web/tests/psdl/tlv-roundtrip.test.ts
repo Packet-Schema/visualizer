@@ -143,8 +143,7 @@ function findRepeat(
     const kids = (c?.fields ??
       c?.children ??
       (c?.element as Record<string, unknown> | undefined)?.fields) as
-      | unknown[]
-      | undefined;
+      unknown[] | undefined;
     if (Array.isArray(kids)) {
       const hit = findRepeat(kids, id);
       if (hit) return hit;
@@ -152,8 +151,7 @@ function findRepeat(
     if (c?.cases) {
       for (const arm of Object.values(c.cases as Record<string, unknown>)) {
         const armFields = (arm as Record<string, unknown>)?.fields as
-          | unknown[]
-          | undefined;
+          unknown[] | undefined;
         if (Array.isArray(armFields)) {
           const hit = findRepeat(armFields, id);
           if (hit) return hit;

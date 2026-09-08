@@ -163,8 +163,7 @@ export default function FieldRow({ field, path, dispatch, rfcUrl }: Props) {
         onChange={(e) =>
           update({
             category: (e.target.value || undefined) as
-              | CategoryToken
-              | undefined,
+              CategoryToken | undefined,
           })
         }
         className="text-sm px-2 py-1 rounded border"
