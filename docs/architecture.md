@@ -1,21 +1,22 @@
 # Architecture
 
 Packet Schema Visualizer は「PSDL を中央 hub にした N+M 設計」のパケット可視化アプリです。
-本ドキュメントはハイレベルなフォルダ構成とデータフローを示します。詳しい
-仕様は [`psdl-0.4.md`](./psdl-0.4.md) を参照してください。
+本ドキュメントはハイレベルなフォルダ構成とデータフローを示します。
+
+PSDL 言語そのものの正典は
+[core の `spec/psdl-0.5.md`](https://github.com/Packet-Schema/core/blob/main/spec/psdl-0.5.md)
+にあります。visualizer が PSDL をどう「描く」かは
+[`renderer-contract.md`](./renderer-contract.md) を参照してください。
 
 ## リポジトリ構成
 
 ```
 visualizer/
-├── docs/                 仕様・ガイド (本ファイル含む)
-│   ├── psdl-0.4.md       PSDL 仕様 (canonical)
+├── docs/                 ガイド (本ファイル含む)
+│   ├── renderer-contract.md PSDL → 図・編集 UI の解釈規約
 │   ├── adding-a-preset.md preset 追加 step-by-step
 │   ├── testing.md         テスト戦略
 │   └── architecture.md    本ファイル
-├── schemas/              JSON Schema (PSDL 0.4)
-│   └── psdl.schema.json
-├── data/presets/         組み込み preset (*.psdl.yaml)
 └── web/                  Next.js アプリ本体
     ├── app/              ルーティング / page.tsx
     ├── components/       React コンポーネント (HybridDiagram など)
@@ -26,18 +27,24 @@ visualizer/
     │   ├── render-tokens.ts category → CSS 変数のマップ
     │   └── ...
     ├── scripts/
-    │   └── build-presets.ts  YAML → presets.generated.ts の codegen
+    │   └── build-presets.ts  npm パッケージ → JSON / index の codegen
     └── tests/            Vitest (components / formats / lib / psdl)
 ```
 
 ## データフロー
 
+PSDL の言語定義 (型・スキーマ・normalize / layout / 制約ソルバ) と 184 個の
+組み込み preset は、それぞれ npm パッケージとして別リポジトリにあります —
+[`@packet-schema/core`](https://github.com/Packet-Schema/core) と
+[`@packet-schema/presets`](https://github.com/Packet-Schema/presets)。
+visualizer はその **consumer** です。
+
 ```
-data/presets/*.psdl.yaml
+@packet-schema/presets  (184 preset)
         │
-        │  (1) build:presets が Ajv で schema 検証 + コード生成
+        │  (1) build:presets が public/presets/<key>.json と索引を生成
         ▼
-web/lib/psdl/presets.generated.ts   (PRESETS: Record<string, PsdlPacket>)
+web/lib/psdl/preset-index.generated.ts  +  public/presets/*.json
         │
         │  (2) lib/psdl/normalize.ts が静的解析 (ID 解決 / 型整合)
         ▼
@@ -75,12 +82,12 @@ import / export は `lib/formats/` 経由で双方向に PSDL へ変換します
 | `web/lib/formats/rfc-ascii.ts` | RFC ASCII art 出力 |
 | `web/lib/formats/aug-ascii.ts` | AAD (Augmented ASCII Diagrams) 入力 |
 | `web/lib/formats/ksy.ts` | Kaitai Struct (.ksy) 取り込み |
-| `web/scripts/build-presets.ts` | YAML preset の codegen + schema 検証 |
+| `web/scripts/build-presets.ts` | preset パッケージ → JSON / 索引 + core のスキーマ取り込み |
 | `web/components/HybridDiagram.tsx` | クリック / ホバー対応の SVG ビュー |
 
 ## 補足
 
-- `presets.generated.ts` は **gitignore**。`prebuild` / `pretest` から自動再生成されます。
+- `preset-index.generated.ts` / `psdl.schema.generated.ts` / `public/presets/*.json` は **gitignore**。`prebuild` / `pretest` から自動再生成されます。
 - カテゴリ (`addressing` / `length` / `checksum` 等) は意味タグであり、
   表示色は `render-tokens.ts` で CSS 変数にマップされます。
   preset 側に色情報は持たせません。

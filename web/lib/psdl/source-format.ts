@@ -17,7 +17,7 @@ import type { PsdlPacket } from "./types";
 /**
  * PsdlPacket → YAML テキスト。
  *
- * `data/presets/*.psdl.yaml` と同じ shape にして、 preset 編集と直編集が
+ * `@packet-schema/presets` の `*.psdl.yaml` と同じ shape にして、 preset 編集と直編集が
  * そのまま行き来できるようにする。 `format` / `version` などの wire JSON
  * 用マーカーは付けない。
  *

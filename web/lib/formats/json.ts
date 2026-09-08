@@ -1,9 +1,11 @@
-// PSDL 0.2 — JSON format.
+// PSDL — JSON format.
 //
 // Reads and writes the canonical PSDL JSON wire format. This is the central
 // hub: every format converts to/from PSDL once, and the renderer consumes
-// PSDL via `web/lib/psdl/psdl-to-renderer.ts`. The schema lives at
-// `schemas/psdl.schema.json` (repo root) — keep this file in lock-step.
+// PSDL via `web/lib/psdl/psdl-to-renderer.ts`. The schema is the PSDL 0.5 JSON
+// Schema shipped by `@packet-schema/core` (`schemas/psdl-0.5.yaml`), baked into
+// `lib/psdl/psdl.schema.generated.ts` by `scripts/build-presets.ts` — keep this
+// file in lock-step with that.
 //
 // Wire shape:
 //   {

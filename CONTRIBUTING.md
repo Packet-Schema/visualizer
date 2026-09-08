@@ -1,8 +1,10 @@
 # Contributing — Packet Schema Visualizer
 
 ようこそ! このドキュメントは「最初に読む」前提で書かれています。長く読む必要はなく、
-詰まった所だけ拾い読みしてください。深い仕様は [`docs/psdl-0.4.md`](./docs/psdl-0.4.md)
-と [`docs/architecture.md`](./docs/architecture.md) にあります。
+詰まった所だけ拾い読みしてください。PSDL 言語そのものの仕様は
+[core の `spec/psdl-0.5.md`](https://github.com/Packet-Schema/core/blob/main/spec/psdl-0.5.md)、
+visualizer 側の構成と描画規約は [`docs/architecture.md`](./docs/architecture.md) と
+[`docs/renderer-contract.md`](./docs/renderer-contract.md) にあります。
 
 ## 環境構築
 
@@ -15,7 +17,7 @@ npm run dev          # http://localhost:3000
 ```
 
 `npm run dev` は内部で `npm run build:presets` を先に走らせるので、
-`data/presets/*.psdl.yaml` を編集した直後でも追加コマンドは不要です。
+`@packet-schema/presets` を更新した直後でも追加コマンドは不要です。
 
 ## 主要コマンド (すべて `web/` で実行)
 
@@ -23,8 +25,8 @@ npm run dev          # http://localhost:3000
 | --- | --- |
 | `npm run dev` | 開発サーバ (Next.js) を起動 |
 | `npm run build` | 本番ビルド (Cloudflare Workers 向け静的出力) |
-| `npm run build:presets` | `data/presets/*.psdl.yaml` → `web/lib/psdl/presets.generated.ts` を再生成 |
-| `npm test` | Vitest スイート (約 265 ケース) |
+| `npm run build:presets` | `@packet-schema/presets` → `public/presets/*.json` と索引を再生成 |
+| `npm test` | Vitest スイート |
 | `npm run test:watch` | Watch モード |
 | `npm run test:coverage` | カバレッジレポート |
 | `npm run test:format` | `tests/formats/` だけを実行 |
@@ -32,9 +34,10 @@ npm run dev          # http://localhost:3000
 
 ## preset の追加
 
-ワンライナーで言うと「`data/presets/<key>.psdl.yaml` を作って `npm run build:presets`」
-だけです。step-by-step の手順は [`docs/adding-a-preset.md`](./docs/adding-a-preset.md)
-にあります。
+preset の YAML 本体は別リポジトリ
+([`Packet-Schema/presets`](https://github.com/Packet-Schema/presets)) にあります。
+visualizer 側でやることは key の登録だけです。手順は
+[`docs/adding-a-preset.md`](./docs/adding-a-preset.md) にあります。
 
 ## バグ報告 / 機能提案
 

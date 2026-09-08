@@ -17,7 +17,7 @@ Vitest を使った単一スイートです。すべてのコマンドは `web/`
 
 ```sh
 cd web
-npm test                # 全テスト (約 265 件)
+npm test                # 全テスト
 npm run test:watch      # watch モード
 npm run test:coverage   # カバレッジレポート (lib/formats/ 100% を確認)
 npm run test:format     # tests/formats/ のみ (formats イテレーション時)
