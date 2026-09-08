@@ -91,7 +91,10 @@ export function switchToTlvCatalog(sw: Switch): TlvCatalogEntry[] {
   const defaultArm = sw.cases["_"];
   if (defaultArm) {
     const sentinel = defaultArmSentinel(listedKeys);
-    out.push(buildCatalogEntry(sentinel, defaultArm));
+    // No sentinel exists (the listed cases cover the whole scanned range), so
+    // there is no kind that would decode through `_` — skip the synthetic entry
+    // rather than mint one that collides with a listed case.
+    if (sentinel !== null) out.push(buildCatalogEntry(sentinel, defaultArm));
   }
   return out;
 }

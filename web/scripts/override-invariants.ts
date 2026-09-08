@@ -301,17 +301,27 @@ function mayLegitimatelyRenderEmpty(src: PsdlPacket): boolean {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Resolved-layout structural signature for I3 equality. Two layouts are
-// "identical" if their cell sequence (id, bits, label) and totalBits match.
+// "identical" if their cell sequence (id, width, name, position) and totalBits
+// match.
+//
+// This used to read `c.id` / `c.bits` / `c.name` through a
+// `Record<string, unknown>` cast. `Cell` (lib/psdl/renderer.ts) has none of
+// those — its keys are `field`, `bitsTotal`, `row`, `startBit`, `endBit`, … —
+// so every cell collapsed to `{null,null,null}` and I3 degenerated into a
+// comparison of `(totalBits, cells.length)`. The cast is what let it past
+// typecheck; the fields are read off the typed shape now, so the same mistake
+// would no longer compile.
 // ─────────────────────────────────────────────────────────────────────────────
 function layoutSignature(layout: Resolved): string {
-  const cells = layout.cells.map((c) => {
-    const anyCell = c as Record<string, unknown>;
-    return {
-      id: anyCell.id ?? anyCell.fieldId ?? null,
-      bits: anyCell.bits ?? null,
-      name: anyCell.name ?? anyCell.label ?? null,
-    };
-  });
+  const cells = layout.cells.map((c) => ({
+    id: c.field.id,
+    name: c.field.name ?? null,
+    bits: c.bitsTotal,
+    row: c.row,
+    startBit: c.startBit,
+    endBit: c.endBit,
+    subs: c.subCells?.map((s) => [s.id, s.startBit, s.endBit]) ?? null,
+  }));
   return JSON.stringify({ totalBits: layout.totalBits ?? null, cells });
 }
 
@@ -1050,20 +1060,27 @@ function syntheticCorpus(): Record<string, PsdlPacket> {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────────────────────────────────────
-function runCorpus(corpus: Record<string, PsdlPacket>, validateFirst: boolean) {
+function runCorpus(
+  corpus: Record<string, PsdlPacket>,
+  validateFirst: boolean,
+): number {
+  let checked = 0;
   for (const [key, src] of Object.entries(corpus)) {
     if (validateFirst) {
-      // Synthetic packets must be valid PSDL or they're a harness bug, not an
-      // app violation. Skip (with a stderr note) any that don't validate.
+      // A packet that doesn't validate can't be checked, so skipping it is the
+      // only option — but the skip is NOT silent. The caller asserts that every
+      // corpus entry was actually checked, because a harness bug that quietly
+      // disables the whole corpus is worse than a red build.
       try {
         validatePsdlPacket(src as never);
       } catch (e) {
         process.stderr.write(
-          `[harness] skipping invalid synthetic '${key}': ${(e as Error).message}\n`,
+          `[harness] skipping invalid '${key}': ${(e as Error).message}\n`,
         );
         continue;
       }
     }
+    checked += 1;
     let mirror: RendererPacket;
     try {
       mirror = psdlToRenderer(src);
@@ -1080,23 +1097,36 @@ function runCorpus(corpus: Record<string, PsdlPacket>, validateFirst: boolean) {
     checkI2(key, src, mirror);
     checkI3(key, src, mirror);
   }
+  return checked;
 }
 
 // Run the whole corpus once; vitest asserts ZERO violations and prints the
 // concrete JSON list so a non-empty run is both red AND legible.
 describe("override-invariants (CI-excluded diagnostic)", () => {
   it("emits zero I1/I2/I3 violations across presets + synthetic corpus", () => {
-    runCorpus(PRESETS as Record<string, PsdlPacket>, false);
-    runCorpus(syntheticCorpus(), true);
-
+    // Presets are validated too. `preset-patches` rewrites bodies at load time,
+    // so "the shipped preset was valid" is no longer the same claim as "what the
+    // app renders is valid".
     const synthetic = syntheticCorpus();
+    const presetCount = Object.keys(PRESETS).length;
+    const syntheticCount = Object.keys(synthetic).length;
+    const presetsChecked = runCorpus(
+      PRESETS as Record<string, PsdlPacket>,
+      true,
+    );
+    const syntheticChecked = runCorpus(synthetic, true);
+
     process.stdout.write(
-      `\n[harness] presets=${Object.keys(PRESETS).length} ` +
-        `synthetic=${Object.keys(synthetic).length} ` +
+      `\n[harness] presets=${presetsChecked}/${presetCount} ` +
+        `synthetic=${syntheticChecked}/${syntheticCount} ` +
         `violations=${violations.length}\n`,
     );
     process.stdout.write(JSON.stringify(violations, null, 2) + "\n");
 
     expect(violations).toEqual([]);
+    // A gate that silently checks nothing is worse than no gate: assert the
+    // corpus was actually walked, not merely iterated past.
+    expect(presetsChecked).toBe(presetCount);
+    expect(syntheticChecked).toBe(syntheticCount);
   });
 });

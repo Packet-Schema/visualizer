@@ -11,7 +11,11 @@ import { describe, expect, it } from "vitest";
 import { parse as yamlParse } from "yaml";
 
 import { fromKsy, toKsy } from "../../lib/formats/ksy";
+import { lit, ref } from "../../lib/psdl/expr";
 import { initialEnv, normalize } from "../../lib/psdl/normalize";
+import { PRESETS } from "../../lib/psdl/presets.server";
+import { psdlToRenderer } from "../../lib/psdl/psdl-to-renderer";
+import { initialState } from "../../lib/psdl/renderer-helpers";
 
 const here = path.resolve(__dirname, "../..");
 const KSY_DIR = path.join(here, "data", "ksy-examples");
@@ -2073,7 +2077,7 @@ describe("toKsy — env-driven repeat counts (audit MEDIUM #2)", () => {
     expect(nan.seq[0]["repeat-expr"]).toBeUndefined();
   });
 
-  it("a ref count resolves to a literal when env supplies the discriminator", () => {
+  it("a ref count keeps its symbolic field name even when env supplies it", () => {
     const packet = {
       name: "DnsLike",
       rowBits: 8,
@@ -2100,24 +2104,95 @@ describe("toKsy — env-driven repeat counts (audit MEDIUM #2)", () => {
         },
       ],
     };
-    // No env → symbolic ref name survives (valid Kaitai expression).
+    // `repeat-expr: anCount` already reads the count off the wire, so it is
+    // both round-trippable AND correct for any real packet. Literalising it to
+    // the slider's current value would make the generated parser read exactly
+    // that many records from every packet — strictly worse on both counts.
     const bare = yamlParse(toKsy(packet));
     expect(bare.seq[1]["repeat-expr"]).toBe("anCount");
-    // With env → resolved to a literal count.
-    const resolved = yamlParse(toKsy(packet, new Map([["anCount", 3]])));
-    expect(resolved.seq[1].repeat).toBe("expr");
-    expect(resolved.seq[1]["repeat-expr"]).toBe("3");
-    // Populated env that lacks the ref → the symbolic name survives rather
-    // than the ref silently evaluating to 0 and pinning the count there.
+    const withEnv = yamlParse(toKsy(packet, new Map([["anCount", 3]])));
+    expect(withEnv.seq[1].repeat).toBe("expr");
+    expect(withEnv.seq[1]["repeat-expr"]).toBe("anCount");
     const unrelated = yamlParse(toKsy(packet, new Map([["somethingElse", 3]])));
     expect(unrelated.seq[1]["repeat-expr"]).toBe("anCount");
   });
 
+  it("an `until` repeat keeps repeat-until under a populated env", () => {
+    // Regression: `resolveRepeatCount` used to swallow `until` alongside `eos`
+    // and emit `repeat: expr` + a literal, deleting `repeat-until`. The
+    // condition is the format's STRUCTURAL terminator (LLDP End-Of-LLDPDU,
+    // CoAP's 0xFF marker), not a display count, so it must survive. The env
+    // here is non-empty and keyed by the repeat id — exactly what
+    // ImportExportDrawer passes, and what `initialState` seeds with no user
+    // edit at all.
+    const untilPacket = {
+      name: "T",
+      rowBits: 8,
+      body: [
+        {
+          kind: "repeat" as const,
+          id: "items",
+          element: {
+            id: "item",
+            fields: [
+              { id: "t", name: "T", type: { kind: "int" as const, bits: 8 } },
+            ],
+          },
+          count: {
+            until: {
+              kind: "op" as const,
+              op: "==" as const,
+              a: ref("t"),
+              b: lit(0),
+            },
+          },
+        },
+      ],
+    };
+    const bare = yamlParse(toKsy(untilPacket));
+    expect(bare.seq[0].repeat).toBe("until");
+    expect(bare.seq[0]["repeat-until"]).toBe("(t == 0)");
+
+    const withEnv = yamlParse(toKsy(untilPacket, new Map([["items", 1]])));
+    expect(withEnv.seq[0].repeat).toBe("until");
+    expect(withEnv.seq[0]["repeat-until"]).toBe("(t == 0)");
+    expect(withEnv.seq[0]["repeat-expr"]).toBeUndefined();
+  });
+
+  it("no built-in preset loses repeat-until under its own seeded env", () => {
+    // The trigger needs no user edit: opening the export drawer and picking
+    // Kaitai is enough, because `initialState` seeds the controller map.
+    const lost: string[] = [];
+    for (const [key, src] of Object.entries(PRESETS)) {
+      let bare: string;
+      try {
+        bare = toKsy(src);
+      } catch {
+        continue;
+      }
+      if (!bare.includes("repeat-until")) continue;
+      let withEnv: string;
+      try {
+        const state = initialState(psdlToRenderer(src)) as unknown as Record<
+          string,
+          number
+        >;
+        withEnv = toKsy(src, new Map<string, number>(Object.entries(state)));
+      } catch {
+        continue;
+      }
+      const before = (bare.match(/repeat-until/g) ?? []).length;
+      const after = (withEnv.match(/repeat-until/g) ?? []).length;
+      if (after < before) lost.push(`${key} (${before} → ${after})`);
+    }
+    expect(lost).toEqual([]);
+  });
+
   it("a non-ref count expression is left to the static lowering even with a populated env", () => {
-    // `resolveRepeatCount` only claims eos/until (keyed by repeat id) and `ref`
-    // counts. A `lit` (or any other Expr kind) has nothing to look up, so it
-    // must decline and let `exprToString` emit the count — otherwise a
-    // populated env would silently rewrite a fixed-size repeat.
+    // `resolveRepeatCount` only claims `eos` (keyed by repeat id). A `lit` (or
+    // any other Expr kind) has nothing to look up, so it must decline and let
+    // `exprToString` emit the count — otherwise a populated env would silently
+    // rewrite a fixed-size repeat.
     const packet = {
       name: "T",
       rowBits: 8,

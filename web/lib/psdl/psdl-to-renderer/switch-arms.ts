@@ -10,7 +10,12 @@ import type {
   Struct,
   Switch,
 } from "../types";
-import { defaultArmSentinel, firstCaseKeyValue, prettifyId } from "./shared";
+import {
+  DEFAULT_ARM_SENTINEL_MAX,
+  defaultArmSentinel,
+  firstCaseKeyValue,
+  prettifyId,
+} from "./shared";
 import { flattenForMirrorGuarded } from "./mirror-flatten";
 
 /**
@@ -451,6 +456,9 @@ export function defaultArmSyntheticCase(
   );
   if (!differsFromAll) return null;
   const value = defaultArmSentinel(listed.map(([key]) => key));
+  // Listed cases cover every value we are willing to scan: there is no value the
+  // picker could offer that reaches the `_` arm, so offer none.
+  if (value === null) return null;
   return {
     value,
     label: defaultArm.name ?? prettifyId(defaultArm.id) ?? "Other (default)",
@@ -937,8 +945,12 @@ function caseKeyValues(key: string): Set<number> {
     if (range) {
       const lo = Number(range[1]);
       const hi = Number(range[2]);
+      // Clamp the expansion: the only consumer scans up to
+      // DEFAULT_ARM_SENTINEL_MAX, so values beyond it can't change the answer.
+      // Without this, the legal key "0-4294967295" allocates a 4.29e9 Set.
       if (Number.isInteger(lo) && Number.isInteger(hi) && lo <= hi)
-        for (let v = lo; v <= hi; v++) out.add(v);
+        for (let v = lo; v <= Math.min(hi, DEFAULT_ARM_SENTINEL_MAX); v++)
+          out.add(v);
       continue;
     }
     const n = Number(t);

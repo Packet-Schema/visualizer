@@ -10,7 +10,6 @@ import { stringify as yamlStringify } from "yaml";
 import { sanitizeId } from "../common";
 import { isField } from "../../psdl/utils";
 import { isBytesDelimited } from "../../psdl/normalize";
-import { evalExprOr } from "../../psdl/expr";
 import type {
   Container,
   Expr,
@@ -140,9 +139,6 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
       if (resolvedCount !== null) {
         entry.repeat = "expr";
         entry["repeat-expr"] = resolvedCount;
-        // Drop a `repeat-until` left over from the `Object.assign(entry, proxy)`
-        // hoist — it can't have been set yet, but keep the shape explicit.
-        delete entry["repeat-until"];
       } else if (
         typeof c.count === "object" &&
         c.count !== null &&
@@ -450,35 +446,39 @@ function exprToKaitaiIf(e: Expr): string | null {
 }
 
 /**
- * Resolve a Repeat's iteration count to a concrete Kaitai `repeat-expr`
- * literal using the live env, or null when env supplies nothing for it (so
- * the caller keeps the existing symbolic / eos lowering).
+ * Resolve an `eos` Repeat's iteration count to a concrete Kaitai `repeat-expr`
+ * literal using the live env, or null when env supplies nothing for it (so the
+ * caller keeps `repeat: eos`).
  *
- * Two env shapes are honoured, matching how `collectFreeRepeats`
- * (psdl-to-renderer) keys them:
- *   - eos / until repeats → the count lives under the repeat id (`c.id`).
- *   - `ref` count expressions → resolved against the named discriminator /
- *     length controller in env (e.g. `dnsAnCount`).
+ * ONLY `eos` is resolved here, and that is the whole point. A `.ksy` file is a
+ * parser spec, not a packet instance, so rewriting a count as a literal is
+ * always a loss of generality — it is justified only where the faithful
+ * lowering carries no count at all:
+ *
+ *   - `eos`         → `repeat: eos` has nowhere to put a count, so the user's
+ *                     chosen iteration count is materialised here or lost.
+ *                     This is what audit MEDIUM #2 asked for.
+ *   - `until{...}`  → already lowers to `repeat-until: <condition>`, the
+ *                     STRUCTURAL terminator of the format (LLDP's
+ *                     End-Of-LLDPDU, CoAP's 0xFF payload marker). Replacing it
+ *                     with a literal makes the generated parser read exactly N
+ *                     records from every real packet.
+ *   - `ref X`       → already lowers to `repeat-expr: X`, a valid Kaitai
+ *                     expression that reads the count off the wire. A literal
+ *                     is strictly worse: it loses both the round-trip and the
+ *                     parse correctness.
+ *
  * Returns the count as a string (Kaitai `repeat-expr` is an expression slot),
  * clamped to a non-negative integer. A resolved count of 0 is still emitted so
  * the empty-list semantics survive rather than reverting to `eos`.
  */
 function resolveRepeatCount(c: Repeat, env: PacketEnv): string | null {
   if (env.size === 0) return null;
-  // eos / until: free repeats expose the user count under the repeat id.
-  if (
-    c.count === "eos" ||
-    (typeof c.count === "object" && "until" in c.count)
-  ) {
+  // eos: a free repeat exposes the user count under the repeat id.
+  if (c.count === "eos") {
     const raw = env.get(c.id);
     if (raw === undefined || !Number.isFinite(raw)) return null;
     return String(Math.max(0, Math.floor(raw)));
-  }
-  // A `ref` count is resolvable only when env actually carries the ref; a
-  // missing ref leaves the symbolic field name (still valid Kaitai).
-  if (typeof c.count === "object" && c.count.kind === "ref") {
-    if (!env.has(c.count.field)) return null;
-    return String(Math.max(0, Math.floor(evalExprOr(c.count, env, 0))));
   }
   return null;
 }

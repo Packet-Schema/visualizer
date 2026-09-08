@@ -59,15 +59,31 @@ export function caseKeyCoversValue(key: string, value: number): boolean {
 }
 
 /**
- * Smallest non-negative integer not covered by any of the given LISTED
- * (non-`_`) case keys. Setting a Switch discriminator to this value forces
- * core's `selectArm` to fall through to the `_` arm, so it is a safe sentinel
- * for a synthetic "default" picker option that reaches the default-arm layout.
+ * Upper bound on the sentinel search below. A Switch whose listed cases cover
+ * every value up to this bound has no usable default-arm sentinel as far as the
+ * override pickers are concerned, and we stop rather than scan.
+ *
+ * The bound is not a nicety: PSDL 0.5 case keys accept ranges, core's
+ * `SWITCH_KEY_RE` accepts `"0-4294967295"`, and `validatePsdlPacket` passes such
+ * a document. Scanning that linearly is ~62 minutes of synchronous work on the
+ * main thread — `psdlToRenderer` runs in the browser, so the tab simply stops.
+ * 1 << 16 matches the cap `representativeDefaultArmValue` already used, so the
+ * two default-arm paths agree instead of diverging.
  */
-export function defaultArmSentinel(caseKeys: readonly string[]): number {
-  let v = 0;
-  while (caseKeys.some((k) => caseKeyCoversValue(k, v))) v += 1;
-  return v;
+export const DEFAULT_ARM_SENTINEL_MAX = 1 << 16;
+
+/**
+ * Smallest non-negative integer not covered by any of the given LISTED
+ * (non-`_`) case keys, or null when the listed keys cover everything below
+ * `DEFAULT_ARM_SENTINEL_MAX`. Setting a Switch discriminator to this value
+ * forces core's `selectArm` to fall through to the `_` arm, so it is a safe
+ * sentinel for a synthetic "default" picker option that reaches the default-arm
+ * layout.
+ */
+export function defaultArmSentinel(caseKeys: readonly string[]): number | null {
+  for (let v = 0; v < DEFAULT_ARM_SENTINEL_MAX; v++)
+    if (!caseKeys.some((k) => caseKeyCoversValue(k, v))) return v;
+  return null;
 }
 
 /**

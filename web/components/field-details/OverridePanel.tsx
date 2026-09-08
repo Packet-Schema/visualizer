@@ -878,10 +878,29 @@ function OverrideSlider({
   const key = field.controlsLength!;
   const value = controllers[key] ?? field.defaultValue ?? 0;
   const min = field.min ?? 0;
-  const fullMax =
-    field.max ?? (typeof field.bits === "number" ? 2 ** field.bits - 1 : 255);
-  const max =
-    typeof maxBytes === "number" ? Math.min(fullMax, maxBytes) : fullMax;
+  // `bits` is 0 for a length field whose WIDTH is data-dependent (varint,
+  // berLength, delimited bytes) — the width isn't known until the value is. The
+  // old `typeof field.bits === "number"` test treated that 0 as a real width and
+  // computed `2**0 - 1 = 0`, so the whole control collapsed to min=0/max=0: a
+  // slider that looks enabled but cannot move, and an `apply()` that clamps every
+  // typed number to 0. That silently destroyed a seeded length (http3Frame's
+  // payload went 8 → 0 on the first touch, with no way back). Treat 0 as
+  // "unknown" and fall back to the byte cap this panel already enforces.
+  const declaredMax =
+    field.max ??
+    (typeof field.bits === "number" && field.bits > 0
+      ? 2 ** field.bits - 1
+      : MAX_LENGTH_CONTROLLER_BYTES);
+  const capped =
+    typeof maxBytes === "number"
+      ? Math.min(declaredMax, maxBytes)
+      : declaredMax;
+  // Never render a range that excludes the CURRENT value. The number input below
+  // shows `value` unclamped, so a lower `max` made the two inputs disagree about
+  // the same state (websocketFrame loads at range=1024 / number=65536) and left
+  // no way to drag the value back down. Admitting the current value costs
+  // nothing: it is where the diagram already is.
+  const max = Math.max(capped, value);
   const sliderId = `detail-ctrl-${field.id}-slider`;
   const numberId = `detail-ctrl-${field.id}-number`;
   const labelId = `detail-ctrl-${field.id}-label`;

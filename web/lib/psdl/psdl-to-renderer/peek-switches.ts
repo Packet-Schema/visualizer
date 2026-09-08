@@ -156,8 +156,17 @@ export function collectPeekSwitches(
         // with no surface to reveal any real PDU (see-but-cannot-edit). When the
         // listed arms differ only by name we still surface the picker so the
         // user can name the PDU and, critically, escape the stub.
-        const defaultCase = defaultArmSyntheticCase(c.cases);
-        const armsLook = !switchArmsRenderIdentical(c.cases);
+        // Gate on the discriminator kind BEFORE doing any case-key work: all of
+        // it is peek-only, and `defaultArmSyntheticCase` scans for a default-arm
+        // sentinel, so running it for ref/plain switches was pure waste. NB the
+        // gate must not `continue` — the recursion into `c.cases` below still
+        // has to run, or a peek switch nested inside a ref switch's arm is never
+        // visited.
+        // (The `if` repeats the kind test rather than reusing `isPeek` so TS
+        // still narrows `c.on` to the peek variant inside the block.)
+        const isPeek = c.on.kind === "peek";
+        const defaultCase = isPeek ? defaultArmSyntheticCase(c.cases) : null;
+        const armsLook = isPeek && !switchArmsRenderIdentical(c.cases);
         if (c.on.kind === "peek" && (armsLook || defaultCase)) {
           const cases: { value: number; label: string }[] = [];
           for (const [key, struct] of Object.entries(c.cases)) {
