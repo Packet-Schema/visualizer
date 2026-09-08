@@ -1,0 +1,20 @@
+# core / presets には 2026-09 に dependabot を入れたが、visualizer は依存が
+# 一番多い (web/ に 39 パッケージ) にもかかわらず取り残されていた。
+#
+# npm は `web/` を見る — ルートには package.json が無い。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/web"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # 依存が多いので、ルーチンのバンプはまとめて 1 本にする。メジャーは
+      # 引き続き個別に上がるので、破壊的変更が他のバンプに紛れることはない。
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
