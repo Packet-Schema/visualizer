@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 
 import { parse as parseYaml } from "yaml";
 
-import { applyPresetPatches } from "../lib/psdl/preset-patches";
+import { adaptPreset } from "../lib/psdl/preset-patches";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -57,22 +57,6 @@ const INDEX_OUT_PATH = join(
   "psdl",
   "preset-index.generated.ts",
 );
-
-/**
- * Fill the visualizer's `rowBits` invariant from `rendererHints.rowBits` (or a
- * 32-bit default) and apply visualizer-owned preset patches. MUST stay in sync
- * with `adaptPreset` in `lib/psdl/presets.server.ts` so the JSON served to the
- * client matches what the server computes.
- */
-function adaptPreset(
-  key: string,
-  p: Record<string, unknown>,
-): Record<string, unknown> {
-  const rendererHints = p.rendererHints as { rowBits?: number } | undefined;
-  const rowBits =
-    (p.rowBits as number | undefined) ?? rendererHints?.rowBits ?? 32;
-  return applyPresetPatches(key, { ...p, rowBits });
-}
 
 function writeSchema(): void {
   const schema = parseYaml(readFileSync(SCHEMA_PATH, "utf8"));
