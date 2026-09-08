@@ -1,10 +1,16 @@
-// Visualizer-owned preset adaptations applied at the @packet-schema/presets
-// ingestion boundary. These are SMALL, surgical rewrites the visualizer needs
-// but cannot push upstream into the (read-only) `@packet-schema/presets`
-// package. Applied by BOTH ingestion paths so server-computed and
+// The @packet-schema/presets ingestion boundary: `adaptPreset` (below) is the
+// ONE way a upstream preset becomes a visualizer `Packet`, and the patches it
+// applies are SMALL, surgical rewrites the visualizer needs but cannot push
+// upstream into the (read-only) `@packet-schema/presets` package.
+//
+// Every ingestion path goes through `adaptPreset` so server-computed and
 // client-fetched packets stay byte-identical:
 //   * `scripts/build-presets.ts`  — bakes `public/presets/<key>.json`
 //   * `lib/psdl/presets.server.ts` — eager server registry
+//
+// This module deliberately does NOT import `server-only`: the build script runs
+// outside Next, so anything both paths share has to live somewhere the script
+// can import.
 // Each patch must be idempotent and a no-op for every preset it does not name.
 //
 // The patches operate on the loosely-typed preset record (a plain JSON object)
@@ -62,4 +68,27 @@ export function applyPresetPatches(key: string, preset: JsonObj): JsonObj {
     return patchKerberosAsReqPadataCount(preset);
   }
   return preset;
+}
+
+/**
+ * Adapt one upstream preset into a visualizer packet: fill the `rowBits`
+ * invariant from `rendererHints.rowBits` (or a 32-bit default), then apply the
+ * patches above.
+ *
+ * This existed as three byte-identical copies — `presets.server.ts`,
+ * `scripts/build-presets.ts` and one test — each carrying a "MUST stay in sync
+ * with" comment. They were in sync, but nothing enforced it, and a drift would
+ * have desynchronised the server registry from the JSON the client fetches:
+ * the same preset rendering differently depending on which path loaded it.
+ *
+ * Kept on the loosely-typed record (a plain JSON object) so the build script,
+ * which has no PSDL types, can call it too; typed callers cast the result.
+ */
+export function adaptPreset(key: string, preset: JsonObj): JsonObj {
+  const rendererHints = preset.rendererHints as
+    | { rowBits?: number }
+    | undefined;
+  const rowBits =
+    (preset.rowBits as number | undefined) ?? rendererHints?.rowBits ?? 32;
+  return applyPresetPatches(key, { ...preset, rowBits });
 }

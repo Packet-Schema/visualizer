@@ -9,16 +9,11 @@ import { describe, expect, it } from "vitest";
 
 import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import { PRESETS as CORE_PRESETS } from "@packet-schema/presets";
-import { applyPresetPatches } from "@/lib/psdl/preset-patches";
+import { adaptPreset } from "@/lib/psdl/preset-patches";
 import type { Packet } from "@/lib/psdl/types";
 
-function adaptPreset(key: string, p: (typeof CORE_PRESETS)[string]): Packet {
-  const rowBits = p.rowBits ?? p.rendererHints?.rowBits ?? 32;
-  return applyPresetPatches(key, {
-    ...p,
-    rowBits,
-  } as Record<string, unknown>) as Packet;
-}
+const adapt = (key: string, p: (typeof CORE_PRESETS)[string]): Packet =>
+  adaptPreset(key, p as unknown as Record<string, unknown>) as Packet;
 
 describe("length controller vs switch discriminator", () => {
   it("a discriminator keeps its cell and the length slider stands down", () => {
@@ -90,7 +85,7 @@ describe("length controller vs switch discriminator", () => {
     // post-pass that enforces the rule walks the same list.
     const offenders: string[] = [];
     for (const [key, raw] of Object.entries(CORE_PRESETS)) {
-      const rp = psdlToRenderer(adaptPreset(key, raw));
+      const rp = psdlToRenderer(adapt(key, raw));
       for (const f of rp.fields) {
         if (f.controlsLength && f.switchCases) offenders.push(`${key}:${f.id}`);
       }
