@@ -41,6 +41,7 @@ import {
 } from "@/lib/psdl/psdl-to-renderer";
 import type { TlvSlotBytes } from "@/lib/psdl/psdl-to-renderer/apply-tlv";
 import { updatePacketField } from "@/lib/psdl/packet-update";
+import { collectInertLengthControllers } from "./inert-length-controllers";
 import { DEFAULT_BYTE_ORDER } from "@/lib/constants";
 import { editReducer, makeInitialState } from "@/lib/psdl/edit-reducer";
 import {
@@ -73,9 +74,7 @@ import type {
 import type { PsdlPacket } from "@/lib/psdl/types";
 import { EnrichedText } from "@/components/common/EnrichedText";
 import DetailPanel from "@/components/field-details/DetailPanel";
-import OverridePanel, {
-  fieldRendered,
-} from "@/components/field-details/OverridePanel";
+import OverridePanel from "@/components/field-details/OverridePanel";
 import DiagramRuler from "@/components/diagram/DiagramRuler";
 import FieldPopover from "@/components/diagram/FieldPopover";
 import HexStrip from "@/components/diagram/HexStrip";
@@ -1675,83 +1674,26 @@ export default function PacketViewer({
   // unchanged layout means the slider is inert and the panel gates it with a hint
   // pointing at the RDATA-variant picker. Cheap: presets carry 0-4 length
   // controllers, and this re-runs only when the layout inputs change.
-  const inertLengthControllers = useMemo(() => {
-    const inert = new Set<string>();
-    // The largest value each controller can take (mirrors the OverrideSlider
-    // clamp: 2**bits-1, falling back to a generous default) so the probe never
-    // samples beyond what the user could actually pick.
-    const keyMax = new Map<string, number>();
-    const note = (key: string | undefined, bits: number | undefined) => {
-      if (!key) return;
-      const cap = typeof bits === "number" && bits > 0 ? 2 ** bits - 1 : 65535;
-      keyMax.set(key, Math.max(keyMax.get(key) ?? 0, cap));
-    };
-    for (const lc of packet.lengthControllers ?? []) {
-      note(lc.controlsLength, lc.bits);
-    }
-    for (const f of packet.fields) {
-      note(f.controlsLength, f.bits);
-    }
-    if (keyMax.size === 0) return inert;
-    const baseBits = layout.totalBits;
-    for (const [key, cap] of keyMax) {
-      // Only meaningful when the controlled field is actually in the diagram —
-      // an absent field is gated by the separate `fieldRendered` check, and a
-      // bumped value there can legitimately materialise a cell (NOT inert).
-      if (!fieldRendered(layout.cells, key)) continue;
-      const current = Number(controllers[key] ?? 0);
-      // AFFINE-OFFSET FIX: a length field that sizes a payload through `value - K`
-      // (sctp data_userData = bytes(chunkLength - 16), pcep bytes(len - 4), …)
-      // stays width-0 until the slider clears K, so a SINGLE small probe below K
-      // looks inert even though larger values clearly grow the diagram. Sweep a
-      // handful of UPWARD samples and call the controller inert only when NONE of
-      // them change the layout — this keeps genuinely fixed-width arms (diameter
-      // avpLength, lwm2mRegister tlvLength16/24, ipinip innerIhl) disabled while
-      // re-enabling the affine-offset sliders.
-      const probeValues = [
-        current + 1,
-        current + 8,
-        current + 32,
-        current + 64,
-        current + 128,
-      ]
-        .map((v) => Math.min(v, cap))
-        .filter((v) => v > current);
-      if (probeValues.length === 0) continue;
-      let changed = false;
-      for (const probeValue of probeValues) {
-        const probedEnv = buildLayoutEnv({
-          ...controllers,
-          [key]: probeValue,
-        });
-        try {
-          const probed = resolveLayout(renderPsdl, {
-            env: probedEnv,
-            viewMode,
-          });
-          if (probed.totalBits !== baseBits) {
-            changed = true;
-            break;
-          }
-        } catch {
-          // A throw means the perturbation DID change the structure (e.g. an
-          // over-consumed bounded scope) — treat as live, not inert.
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) inert.add(key);
-    }
-    return inert;
-  }, [
-    buildLayoutEnv,
-    controllers,
-    renderPsdl,
-    viewMode,
-    layout,
-    packet.lengthControllers,
-    packet.fields,
-  ]);
+  const inertLengthControllers = useMemo(
+    () =>
+      collectInertLengthControllers({
+        lengthControllers: packet.lengthControllers ?? [],
+        fields: packet.fields,
+        base: layout,
+        controllers,
+        buildEnv: buildLayoutEnv,
+        resolve: (env) => resolveLayout(renderPsdl, { env, viewMode }),
+      }),
+    [
+      buildLayoutEnv,
+      controllers,
+      renderPsdl,
+      viewMode,
+      layout,
+      packet.lengthControllers,
+      packet.fields,
+    ],
+  );
 
   const categories = useMemo(() => packetCategories(packet), [packet]);
 
