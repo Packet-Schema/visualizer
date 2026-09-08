@@ -107,7 +107,7 @@ export const FORMATS: ReadonlyArray<FormatAdapter> = [
       const { packet, warnings } = fromKsy(text);
       return validated({ packet, warnings });
     },
-    render: (packet) => toKsy(packet),
+    render: (packet, env) => toKsy(packet, env),
   },
   {
     id: "svg",

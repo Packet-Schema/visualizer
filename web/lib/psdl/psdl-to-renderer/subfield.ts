@@ -5,10 +5,22 @@
 // can draw e.g. IPv4 flag bits R/DF/MF as sub-cells inside one Field).
 
 import { isField } from "../utils";
+import { isBytesDelimited } from "../normalize";
+import { isRemainingSizedBytes } from "../dynamic-width-defaults";
 import type { EnumVariant, Field as PsdlField, Group } from "../types";
 import type { Field as RendererField, SubField } from "../renderer";
 
 import { typeBits } from "./shared";
+
+/** True when a PSDL leaf's type is sized off `remaining` — a bare
+ *  `bytes(remaining)` OR an op/cond wrapping it (`bytes(remaining - k)`, ppp
+ *  `information` / quicLong `retryToken`). The variable tail of the packet /
+ *  switch arm; tagged onto the renderer field so OverridePanel surfaces a
+ *  byte-count WidthPicker (driving the `__remainingBytes__<id>` budget key).
+ *  See `Field.isRemaining` / `isRemainingSizedBytes`. */
+function isBytesRemaining(type: PsdlField["type"]): boolean {
+  return isRemainingSizedBytes(type);
+}
 
 /**
  * Flatten 0.5 enum variants (`string | { label; … }`) down to the renderer's
@@ -37,18 +49,74 @@ export function groupToSubfieldField(g: Group): RendererField | null {
   let category: RendererField["category"];
   for (const child of g.children) {
     if (!isField(child)) return null;
-    const bits = typeBits(child.type);
-    const sf: SubField = { id: child.id, name: child.name, bits };
-    if (child.doc) sf.description = child.doc;
-    if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
-    if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
-    if (child.type.kind === "berLength") sf.isBerLength = true;
-    if (child.type.kind === "enum")
-      sf.enumVariants = enumLabels(child.type.variants);
+    const sf = leafToSubField(child);
     subs.push(sf);
-    total += bits;
+    total += sf.bits;
     if (child.category && !category) category = child.category;
   }
+  if (subs.length === 0) return null;
+  const out: RendererField = {
+    id: g.id,
+    name: g.name ?? g.id,
+    bits: total,
+    subfields: subs,
+  };
+  if (category) out.category = category;
+  return out;
+}
+
+/** Lower a single PSDL leaf Field to a renderer SubField, carrying the same
+ *  dynamic-width / enum hints `groupToSubfieldField` stamps. Shared by the
+ *  flat and deep collapses. */
+function leafToSubField(child: PsdlField): SubField {
+  const bits = typeBits(child.type);
+  const sf: SubField = { id: child.id, name: child.name, bits };
+  if (child.doc) sf.description = child.doc;
+  if (child.defaultValue !== undefined) sf.defaultValue = child.defaultValue;
+  if (child.type.kind === "varint") sf.varintEncoding = child.type.encoding;
+  if (child.type.kind === "berLength") sf.isBerLength = true;
+  if (child.type.kind === "bytes" && isBytesDelimited(child.type.n))
+    sf.isDelimited = true;
+  if (isBytesRemaining(child.type)) sf.isRemaining = true;
+  if (child.type.kind === "enum")
+    sf.enumVariants = enumLabels(child.type.variants);
+  return sf;
+}
+
+/**
+ * Collapse a Group into one renderer Field even when it nests further Groups,
+ * flattening every leaf field it (transitively) contains into a flat
+ * `subfields[]` list. `groupToSubfieldField` bails on compound children, so a
+ * flags Group with a nested Spare sub-group (gtpv2c's `gtpv2Flags`, with the
+ * `gtpv2SpareGroup` child) never reaches the mirror — and a bit leaf it gates
+ * an Optional on (gtpv2c's `gtpv2T` → the optional 32-bit TEID) has no override
+ * surface at all. This deep collapse keeps those bit leaves reachable so
+ * `attachOverrideMetadata` can stamp `optionalGateFor` on the gating subfield.
+ *
+ * Used ONLY as a lazy fallback for groups whose bits drive overrides — it is
+ * not part of the default mirror shape, so the merge-based lift (which walks
+ * the SOURCE tree and looks up mirror fields by id) is unaffected. Returns
+ * `null` when the group contributes no leaf subfields.
+ */
+export function groupToSubfieldFieldDeep(g: Group): RendererField | null {
+  const subs: SubField[] = [];
+  let total = 0;
+  let category: RendererField["category"];
+  const walk = (children: Group["children"]): void => {
+    for (const child of children) {
+      if (isField(child)) {
+        const sf = leafToSubField(child);
+        subs.push(sf);
+        total += sf.bits;
+        if (child.category && !category) category = child.category;
+      } else if (child.kind === "group") {
+        walk(child.children);
+      }
+      // Any non-field, non-group child (unexpected inside a flags group) is
+      // dropped — it has no flat subfield representation.
+    }
+  };
+  walk(g.children);
   if (subs.length === 0) return null;
   const out: RendererField = {
     id: g.id,
@@ -73,9 +141,29 @@ export function plainFieldToRenderer(f: PsdlField): RendererField {
   // Data-dependent type widths get an env-override widget in OverridePanel.
   if (f.type.kind === "varint") out.varintEncoding = f.type.encoding;
   if (f.type.kind === "berLength") out.isBerLength = true;
+  if (f.type.kind === "bytes" && isBytesDelimited(f.type.n)) {
+    out.isDelimited = true;
+    // Carry the delimiter bytes so a source-less lift can re-emit the same
+    // `bytes({ delimiter })` shape rather than dropping the field.
+    out.delimiterBytes = [...f.type.n.delimiter];
+  }
+  if (isBytesRemaining(f.type)) out.isRemaining = true;
   if (f.type.kind === "enum") out.enumVariants = enumLabels(f.type.variants);
   if (f.byteOrder) out.byteOrder = f.byteOrder;
   return out;
+}
+
+/** Reconstruct a subfield's PSDL type from the renderer-carried flags. Returns
+ *  null for a width-0 subfield with no dynamic-type flag (so the caller drops
+ *  it rather than emitting an invalid {kind:"bits", n:0}). */
+function subFieldType(sf: SubField): PsdlField["type"] | null {
+  if (sf.isBerLength) return { kind: "berLength" };
+  if (sf.varintEncoding) return { kind: "varint", encoding: sf.varintEncoding };
+  if (sf.enumVariants && sf.bits > 0) {
+    return { kind: "enum", bits: sf.bits, variants: sf.enumVariants };
+  }
+  if (sf.bits > 0) return { kind: "bits", n: sf.bits };
+  return null;
 }
 
 /** Inverse of `groupToSubfieldField` — round-trips renderer subfields
@@ -95,12 +183,23 @@ export function rendererSubfieldsToGroup(field: RendererField): Group {
     kind: "group",
     id: field.id,
     name: field.name,
-    children: subs.map((sf) => ({
-      id: sf.id,
-      name: sf.name,
-      type: { kind: "bits", n: sf.bits },
-      ...(field.category ? { category: field.category } : {}),
-      ...(sf.description ? { doc: sf.description } : {}),
-    })),
+    // Reconstruct each child's PSDL type from the carried flags instead of
+    // forcing `bits` — a berLength / varint / dynamic subfield collapses to
+    // bits=0, and emitting {kind:"bits", n:0} produces PSDL the validator
+    // rejects (override-design-audit). Drop any width-0 subfield that has no
+    // dynamic-type flag to recover from (mirrors the plain-field guard).
+    children: subs
+      .map((sf) => {
+        const type = subFieldType(sf);
+        if (!type) return null;
+        return {
+          id: sf.id,
+          name: sf.name,
+          type,
+          ...(field.category ? { category: field.category } : {}),
+          ...(sf.description ? { doc: sf.description } : {}),
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null),
   };
 }

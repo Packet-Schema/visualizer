@@ -12,11 +12,20 @@ import type {
   Field,
   Packet,
   ResolvedTlv,
+  SubField,
   TlvBlock,
   TlvCatalogEntry,
   TlvCatalogField,
   TlvInstance,
 } from "./renderer";
+import {
+  BER_LENGTH_DEFAULT_BITS,
+  DELIMITED_DEFAULT_BYTES,
+  REMAINING_DEFAULT_BYTES,
+  remainingBytesEnvKey,
+  VARINT_DEFAULT_BITS,
+} from "./dynamic-width-defaults";
+import { berLenEnvKey } from "./normalize";
 
 /**
  * Validate renderer-Packet structural invariants:
@@ -174,7 +183,220 @@ export function initialState(packet: Packet): ControllerState {
   const state: ControllerState = {};
   for (const field of packet.fields) {
     if (field.controlsLength) {
-      state[field.controlsLength] = field.defaultValue ?? 0;
+      // A field that controls ITS OWN length and is itself a DYNAMIC-WIDTH
+      // varint (http3Frame's `http3PayloadLength` — a QUIC varint Length whose
+      // single env key drives both the wire width AND the payload byte count)
+      // would otherwise seed to 0: the payload renders empty AND the OverridePanel
+      // length control would show 0 while `seedDynamicWidthDefaults` paints the
+      // diagram cell at the varint default. Seed it to the varint default so a
+      // representative non-empty payload shows on load and the panel agrees with
+      // the diagram. (A normal length controller for a SIBLING `bytes(ref X)`
+      // keeps its declared default — only the self-controlling varint case is
+      // promoted, since for it the same key is the cell's own seeded width.)
+      const selfVarint =
+        field.controlsLength === field.id &&
+        field.varintEncoding !== undefined &&
+        (field.defaultValue ?? 0) === 0;
+      state[field.controlsLength] = selfVarint
+        ? VARINT_DEFAULT_BITS
+        : (field.defaultValue ?? 0);
+    }
+  }
+  // Seed the SAME dynamic-width default the diagram layout seeds
+  // (`seedDynamicWidthDefaults`) into the bootstrap `controllers` state, so the
+  // OverridePanel WidthPicker's active option matches the rendered cell on load.
+  // Without this the picker falls back to `pickerWidths(target)[0]` — 1 byte for
+  // a delimiter-terminated `bytes` field — while the diagram already shows the
+  // seeded 4-byte cell, an inert-looking control that contradicts the diagram
+  // until the user clicks (syslog's pri/version/… delimited fields). A field
+  // that is ALSO a switch discriminator (`switchCases`) overloads env[id] for
+  // the case value, so it is skipped here exactly as `collectSwitchOnRefIds`
+  // carves it out in the layout seed. Only fills an unset key, so a user /
+  // saved-env width still wins, and (via `nonDefaultControllerEnv`) it stays out
+  // of the share URL.
+  const seedDynamicWidth = (f: Field | SubField): void => {
+    if (f.switchCases) return;
+    // A berLength's wire width lives on the DEDICATED `__berLen__<id>` key (its
+    // bare key can carry the length VALUE that sizes a sibling `bytes(ref id)`);
+    // the WidthPicker drives the same key, so seed there to keep the picker's
+    // active option in step with the seeded octet cell. Mirrors the dedicated-key
+    // seed in `seedDynamicWidthDefaults`.
+    if (f.isBerLength) {
+      const key = berLenEnvKey(f.id);
+      if (state[key] === undefined) state[key] = BER_LENGTH_DEFAULT_BITS;
+      return;
+    }
+    // A `bytes(remaining)` payload's width rides on the dedicated
+    // `__remainingBytes__<id>` budget key (the WidthPicker drives the same key);
+    // seed there so the picker's active option matches the seeded diagram tail.
+    if (f.isRemaining) {
+      const key = remainingBytesEnvKey(f.id);
+      if (state[key] === undefined) state[key] = REMAINING_DEFAULT_BYTES;
+      return;
+    }
+    if (state[f.id] !== undefined) return;
+    if (f.isDelimited) state[f.id] = DELIMITED_DEFAULT_BYTES;
+    else if (f.varintEncoding) state[f.id] = VARINT_DEFAULT_BITS;
+  };
+  for (const field of packet.fields) {
+    seedDynamicWidth(field);
+    for (const sub of field.subfields ?? []) seedDynamicWidth(sub);
+  }
+  // Dynamic-width leaves nested inside a Switch case / Repeat element / Group
+  // never reach `packet.fields`, so the loop above can't seed them. The diagram
+  // layout DOES seed them (`seedDynamicWidthDefaults`), so without this the
+  // WidthPicker's active option (`controllers[id] ?? widths[0]` -> 1B for
+  // delimited) would contradict the seeded ~4-byte diagram cell on load (tftp's
+  // rrqFilename/rrqMode/wrqFilename/wrqMode/errMsg). `psdlToRenderer` collected
+  // these ids (switch-`on:ref` discriminators already carved out). Only fills an
+  // unset key, so a user / saved-env width still wins and it stays out of the
+  // share URL (via `nonDefaultControllerEnv`).
+  for (const leaf of packet.dynamicWidthLeaves ?? []) {
+    // berLength seeds its DEDICATED `__berLen__<id>` width key; `remaining`
+    // seeds its DEDICATED `__remainingBytes__<id>` budget key (both also driven
+    // by the WidthPicker); varint/delimited seed their bare value key (bridged
+    // in layout.ts).
+    const key =
+      leaf.kind === "berLength"
+        ? berLenEnvKey(leaf.id)
+        : leaf.kind === "remaining"
+          ? remainingBytesEnvKey(leaf.id)
+          : leaf.id;
+    if (state[key] !== undefined) continue;
+    state[key] =
+      leaf.kind === "berLength"
+        ? BER_LENGTH_DEFAULT_BITS
+        : leaf.kind === "remaining"
+          ? REMAINING_DEFAULT_BYTES
+          : leaf.kind === "delimited"
+            ? DELIMITED_DEFAULT_BYTES
+            : VARINT_DEFAULT_BITS;
+  }
+  // Packet-level length controllers (bounded scopes whose length field is
+  // group-nested) seed the same way as top-level controlsLength fields.
+  for (const lc of packet.lengthControllers ?? []) {
+    if (lc.controlsLength) {
+      state[lc.controlsLength] = lc.defaultValue ?? 0;
+    }
+  }
+  // Seed a default iteration count for plain (non-TLV/non-chain) repeats that
+  // declare one, so the diagram shows a representative record on load instead
+  // of an empty section (e.g. lldp's body is a single until-repeat → otherwise
+  // a blank diagram). Seeded via initialState, which feeds BOTH the active
+  // controllers and the share-url default set, so it stays out of the URL.
+  for (const fr of packet.freeRepeats ?? []) {
+    if (fr.defaultCount !== undefined && state[fr.countKey] === undefined) {
+      state[fr.countKey] = fr.defaultCount;
+    }
+    // Seed the present value of a count-driven repeat's enclosing PEEK-gated
+    // optional (rohcUncompressed's rohcPadding `__peek__0__8`=224 / rohcFeedback
+    // `__peek__0__5`=30) so the region is ENTERED on load. Without it the gate
+    // peek (a no-byte expr with no dedicated widget) 0-fills, the optional is
+    // never entered, the repeat's records are absent, and OverridePanel disables
+    // the stepper with a hint pointing at a field the user has no surfaced
+    // control to set — a permanently-inert see-but-cannot-edit gap. The entry
+    // peek picker is suppressed for this case (the stepper is the live control),
+    // so this seed is the only way to enter the region. Only fills an unset key
+    // (a user / saved-env value still wins) and is share-url-safe (same default-
+    // set reasoning as the gate / lengthSeed seeds above).
+    if (fr.peekGate && state[fr.peekGate.key] === undefined) {
+      state[fr.peekGate.key] = fr.peekGate.value;
+    }
+  }
+  // Seed the discriminator for record-variant / peek pickers to their first
+  // case, so the picker label agrees with the diagram on load. Without this the
+  // discriminator 0-fills to 0 (often the `_` default arm or an absent variant)
+  // while the picker shows cases[0] — a label/diagram contradiction
+  // (override-design-audit). Also share-url-safe (same default-set reasoning).
+  for (const rs of packet.refSwitches ?? []) {
+    if (state[rs.refKey] === undefined && rs.cases[0]) {
+      state[rs.refKey] = rs.cases[0].value;
+    }
+    // Seed a representative PER-RECORD length (isisLsp's `tlvLength`) so the
+    // picked record-variant arm's `bytes(ref length)` Value renders non-empty
+    // instead of width 0. Without this the picker would be inert — selecting any
+    // tlvType yields a byte-identical (empty) record. Only fills unset/0 so a
+    // user width still wins; share-url-safe (same default-set reasoning).
+    for (const seed of rs.lengthSeeds ?? []) {
+      if (!state[seed.key]) state[seed.key] = seed.value;
+    }
+  }
+  for (const ps of packet.peekSwitches ?? []) {
+    if (state[ps.peekKey] === undefined && ps.cases[0]) {
+      state[ps.peekKey] = ps.cases[0].value;
+    }
+  }
+  // Seed the top-level message-type discriminator a case-nested refSwitch is
+  // gated on (oncRpc's `rpcMsgType`) to its owning case value, so the diagram
+  // renders the REPLY arm the surfaced reply pickers (replyStat/acceptStat/
+  // rejectStat) govern. Without this `rpcMsgType` 0-fills to 0=CALL, the diagram
+  // shows only the CALL header, and all three reply pickers sit disabled-with-
+  // hint contradicting the diagram on load (#11/#12, the same discoverability
+  // class as the freeRepeat switch-case gate seed below). Runs AFTER the
+  // refSwitch refKey loop so a refKey seed (replyStat=0) wins over a deeper
+  // arm's gate value — but the gates here always name the TOP-LEVEL message type
+  // (never a sibling refKey), so they only ever fill rpcMsgType. The FIRST gated
+  // refSwitch for a given key wins. Only fills an unset key (a user / saved-env
+  // value still wins) and is share-url-safe (same default-set reasoning).
+  for (const rs of packet.refSwitches ?? []) {
+    if (rs.gate && state[rs.gate.key] === undefined) {
+      state[rs.gate.key] = rs.gate.value;
+    }
+  }
+  // Seed the message-type discriminator a switch-case-nested freeRepeat is gated
+  // on (icmpv6Ndp's `type`) to its owning case value, so the chosen arm — and
+  // ONLY that arm — is rendered and its surfaced "Type=N → Options" stepper
+  // agrees with the diagram on load. Without this `type` 0-fills to 0, the
+  // ndpBody switch takes its `_` default arm, NONE of the per-case Options
+  // repeats instantiate, and every surfaced stepper (plus the peek picker) reads
+  // as live over a diagram with ZERO option records (a panel-vs-diagram
+  // contradiction). OverridePanel surfaces only the gated steppers whose
+  // discriminator matches, so the surfaced count always agrees with the rendered
+  // records. Runs AFTER the refSwitch / peekSwitch loops so when a discriminator
+  // ALSO has its own picker (dnsResponse's `dnsRrType`) the picker's cases[0]
+  // seed wins and the gated SOA steppers stay hidden until that record type is
+  // picked — only an unset discriminator (icmpv6Ndp's pickerless `type`) takes
+  // the gate seed. The FIRST gated repeat for a given key wins. Only fills an
+  // unset discriminator (a user / saved-env value still wins) and is
+  // share-url-safe (same default-set reasoning as the seeds above).
+  for (const fr of packet.freeRepeats ?? []) {
+    if (fr.gate && state[fr.gate.key] === undefined) {
+      state[fr.gate.key] = fr.gate.value;
+    }
+  }
+  // Seed the PER-RECORD inner-scope length of a TLV-extension boundedRepeat
+  // (tlsClientHello's `extLen`) so the representative record fits its own nested
+  // bounded. Without this the inner length 0-fills to 0 and the budget-derived
+  // record over-consumes the empty inner scope (a frozen diagram). Seeded only
+  // when unset/0 — a user width still wins — and share-url-safe (same
+  // default-set reasoning as the discriminator seeds above).
+  for (const br of packet.boundedRepeats ?? []) {
+    for (const seed of br.innerScopeSeeds ?? []) {
+      if (!state[seed.key]) state[seed.key] = seed.value;
+    }
+    // Seed the OUTER boundedRepeat budget so ONE representative record renders
+    // at load. Without this the outer length (tlsClientHello's `extensionsLen`)
+    // 0-fills → `floor(0/perRecord)=0` records → the surfaced refSwitch variant
+    // picker (extType) is INERT and contradicts an empty diagram (#11/#12).
+    // RAISE the length to `defaultLength` whenever the current default is too
+    // SMALL to yield a record — not just when it is unset/0. Most boundedRepeat
+    // length fields default to 0 (so this matches the old `!state` gate exactly),
+    // but a few are length-octet `controlsLength` fields seeded to a protocol
+    // minimum that is itself below the parameter-list threshold: hip's
+    // `hipHeaderLength` defaults to 4 (RFC-minimum for a header with NO
+    // parameters → budget `4*8-32 = 0`), so the WHOLE hipParameters TLV section
+    // (type, length, contents) renders nothing at load and the user has no cue
+    // it exists. `defaultLength` is by construction the smallest value yielding
+    // one record, so raising to it never shrinks a larger user/preset value and
+    // shows a representative record. A user / saved-env value still wins (it is
+    // merged ON TOP of initialState) and a deliberate sub-threshold choice stays
+    // share-url-encoded via `nonDefaultControllerEnv` (it now differs from the
+    // seeded default).
+    if (
+      br.defaultLength !== undefined &&
+      (state[br.lengthKey] ?? 0) < br.defaultLength
+    ) {
+      state[br.lengthKey] = br.defaultLength;
     }
   }
   syncTlvControllers(packet, state);
@@ -182,6 +404,49 @@ export function initialState(packet: Packet): ControllerState {
   // depend on reference equality see the update; for the bootstrap
   // path we still want a single state — chain it through.
   return syncChainControllers(packet, state);
+}
+
+/**
+ * The non-default subset of `controllers` relative to a renderer Packet's
+ * seeded defaults — the same delta Share embeds in its URL (see
+ * `buildShareUrl`'s `defaultControllers` skip). Used by "Save as preset" to
+ * bake only the user's actual edits into the persisted packet's `env`, so a
+ * reload restores e.g. `dnsAnCount=3` without freezing every default value.
+ * Returns `undefined` when nothing differs from defaults (so callers can omit
+ * an empty `env` block entirely).
+ */
+export function nonDefaultControllerEnv(
+  packet: Packet,
+  controllers: ControllerState,
+): Record<string, number> | undefined {
+  const defaults = initialState(packet);
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(controllers)) {
+    if (!Number.isFinite(value)) continue;
+    if (defaults[key] === value) continue;
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Merge a persisted packet `env` block back onto a renderer Packet's seeded
+ * defaults, producing the controller state to hydrate on load. Mirrors the
+ * Share path's `{ ...initialState(...), ...parsed.controllers }` precedence:
+ * saved env values win over defaults, and keys that `initialState` does not
+ * seed (freeRepeat counts, refSwitch / peek discriminator picks) are still
+ * carried so the user's choices come back.
+ */
+export function controllersFromEnv(
+  packet: Packet,
+  env: Record<string, number> | undefined,
+): ControllerState {
+  const state = initialState(packet);
+  if (!env) return state;
+  for (const [key, value] of Object.entries(env)) {
+    if (Number.isFinite(value)) state[key] = value;
+  }
+  return state;
 }
 
 /** Recompute every TLV-driven controller against the current instances. */

@@ -12,16 +12,28 @@ import { isField } from "../../psdl/utils";
 import { isBytesDelimited } from "../../psdl/normalize";
 import type {
   Container,
-  Encrypted,
   Expr,
+  Encrypted,
   Field,
   Packet,
+  PacketEnv,
+  Repeat,
 } from "../../psdl/types";
 
 import type { KsyRoot, KsySeqEntry, KsyType } from "./types";
 
-/** Serialise a PSDL packet to Kaitai .ksy YAML (best-effort, lossy). */
-export function toKsy(packet: Packet): string {
+/**
+ * Serialise a PSDL packet to Kaitai .ksy YAML (best-effort, lossy).
+ *
+ * `env` carries the live controller / discriminator picks (the same Map the
+ * JSON and RFC-ASCII adapters receive). Without it the exporter emitted
+ * `repeat: eos` for every dynamic-count repeat, silently dropping the user's
+ * chosen iteration count (audit MEDIUM #2). When env pins a concrete count
+ * for a repeat — either keyed by the repeat id (eos / until) or via a `ref`
+ * count expression — we emit `repeat: expr` with the resolved literal so the
+ * count survives, matching `toJson` / `toAscii`.
+ */
+export function toKsy(packet: Packet, env?: PacketEnv): string {
   const ksy: KsyRoot = {
     meta: {
       id: toKsyId(packet.name),
@@ -39,7 +51,7 @@ export function toKsy(packet: Packet): string {
 
   const seq: KsySeqEntry[] = [];
   for (const c of packet.body) {
-    seq.push(...containerToKsy(c, { types, psdlOnly }));
+    seq.push(...containerToKsy(c, { types, psdlOnly, env: env ?? new Map() }));
   }
   ksy.seq = seq;
   if (Object.keys(types).length > 0) ksy.types = types;
@@ -65,6 +77,10 @@ export function toKsy(packet: Packet): string {
 type ToCtx = {
   types: Record<string, KsyType>;
   psdlOnly: string[];
+  /** Live controller / discriminator env, used to resolve dynamic repeat
+   *  counts to concrete `repeat-expr` literals. Empty when no env is
+   *  supplied (the legacy call shape). */
+  env: PacketEnv;
 };
 
 function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
@@ -116,7 +132,14 @@ function containerToKsy(c: Container, ctx: ToCtx): KsySeqEntry[] {
         };
         entry.type = typeName;
       }
-      if (
+      // Prefer a concrete count resolved from the live env — the user's
+      // chosen iteration count round-trips as `repeat: expr` with a literal
+      // instead of collapsing to `repeat: eos` (audit MEDIUM #2).
+      const resolvedCount = resolveRepeatCount(c, ctx.env);
+      if (resolvedCount !== null) {
+        entry.repeat = "expr";
+        entry["repeat-expr"] = resolvedCount;
+      } else if (
         typeof c.count === "object" &&
         c.count !== null &&
         "kind" in c.count
@@ -420,6 +443,44 @@ function exprToKaitaiIf(e: Expr): string | null {
       // have no Kaitai `if:` equivalent — fall back to a psdl-only comment.
       return null;
   }
+}
+
+/**
+ * Resolve an `eos` Repeat's iteration count to a concrete Kaitai `repeat-expr`
+ * literal using the live env, or null when env supplies nothing for it (so the
+ * caller keeps `repeat: eos`).
+ *
+ * ONLY `eos` is resolved here, and that is the whole point. A `.ksy` file is a
+ * parser spec, not a packet instance, so rewriting a count as a literal is
+ * always a loss of generality — it is justified only where the faithful
+ * lowering carries no count at all:
+ *
+ *   - `eos`         → `repeat: eos` has nowhere to put a count, so the user's
+ *                     chosen iteration count is materialised here or lost.
+ *                     This is what audit MEDIUM #2 asked for.
+ *   - `until{...}`  → already lowers to `repeat-until: <condition>`, the
+ *                     STRUCTURAL terminator of the format (LLDP's
+ *                     End-Of-LLDPDU, CoAP's 0xFF payload marker). Replacing it
+ *                     with a literal makes the generated parser read exactly N
+ *                     records from every real packet.
+ *   - `ref X`       → already lowers to `repeat-expr: X`, a valid Kaitai
+ *                     expression that reads the count off the wire. A literal
+ *                     is strictly worse: it loses both the round-trip and the
+ *                     parse correctness.
+ *
+ * Returns the count as a string (Kaitai `repeat-expr` is an expression slot),
+ * clamped to a non-negative integer. A resolved count of 0 is still emitted so
+ * the empty-list semantics survive rather than reverting to `eos`.
+ */
+function resolveRepeatCount(c: Repeat, env: PacketEnv): string | null {
+  if (env.size === 0) return null;
+  // eos: a free repeat exposes the user count under the repeat id.
+  if (c.count === "eos") {
+    const raw = env.get(c.id);
+    if (raw === undefined || !Number.isFinite(raw)) return null;
+    return String(Math.max(0, Math.floor(raw)));
+  }
+  return null;
 }
 
 function exprToKsySize(e: Expr): number | string {

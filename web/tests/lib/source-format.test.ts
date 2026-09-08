@@ -4,6 +4,7 @@ import { PRESETS } from "@/lib/psdl/presets.server";
 import {
   decodeSource,
   encodeSource,
+  lintSource,
   SourceParseError,
 } from "@/lib/psdl/source-format";
 import type { PsdlPacket } from "@/lib/psdl/types";
@@ -89,6 +90,61 @@ describe("source-format", () => {
       const out = encodeSource(sample);
       expect(out.includes("format:")).toBe(false);
       expect(out.includes("version:")).toBe(false);
+    });
+
+    // Regression: "Save as preset" / KSY / save-as bake a non-default `env`
+    // block directly onto the PsdlPacket. `env` is NOT a top-level PSDL schema
+    // property and the schema uses `unevaluatedProperties: false`, so emitting
+    // it into the YAML made the source pane fail to re-parse (= uneditable) the
+    // moment the user typed a character. `env` is controller state, not
+    // authored PSDL, so it must be omitted (mirrors `toJson`, which never
+    // spreads packet.env).
+    it("omits a baked controller `env` block", () => {
+      const withEnv: PsdlPacket = { ...sample, env: { someCount: 3 } };
+      const out = encodeSource(withEnv);
+      expect(out.includes("env:")).toBe(false);
+    });
+  });
+
+  describe("baked controller `env` does not break the YAML edit round-trip", () => {
+    // `decodeSource(encodeSource(packetWithEnv))` must succeed — previously it
+    // threw `PSDL schema validation failed: (root): must NOT have unevaluated
+    // properties`.
+    it("re-parses a packet that carries a baked env without a schema error", () => {
+      const withEnv: PsdlPacket = { ...sample, env: { someCount: 3 } };
+      const back = decodeSource(encodeSource(withEnv));
+      expect(back.name).toBe(sample.name);
+      // env is dropped on the authoring round-trip (controller state, not PSDL).
+      expect(back.env).toBeUndefined();
+    });
+
+    it("re-parses an env-carrying preset (dnsResponse) without a schema error", () => {
+      const withEnv: PsdlPacket = {
+        ...PRESETS.dnsResponse,
+        env: { dnsAnCount: 3 },
+      };
+      expect(() => decodeSource(encodeSource(withEnv))).not.toThrow();
+    });
+
+    // Defensive: even if a stale/hand-pasted YAML still contains an `env`
+    // block (e.g. a user pasted an env-baked packet), decodeSource must strip
+    // it before schema validation instead of rejecting the document.
+    it("strips an env block present in raw pasted YAML", () => {
+      const text =
+        "name: Bare\nrowBits: 8\n" +
+        "body:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n" +
+        "env:\n  someCount: 2\n";
+      const back = decodeSource(text);
+      expect(back.name).toBe("Bare");
+      expect(back.env).toBeUndefined();
+    });
+
+    it("does not flag an env block as a lint issue", () => {
+      const text =
+        "name: Bare\nrowBits: 8\n" +
+        "body:\n  - { id: x, name: X, type: { kind: bits, n: 8 } }\n" +
+        "env:\n  someCount: 2\n";
+      expect(lintSource(text)).toEqual([]);
     });
   });
 });

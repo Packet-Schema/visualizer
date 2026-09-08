@@ -11,21 +11,27 @@
 
 import "server-only";
 import { PRESETS as CORE_PRESETS } from "@packet-schema/presets";
+import { applyPresetPatches } from "./preset-patches";
 import type { Packet } from "./types";
 
 /**
  * Fill the visualizer's `rowBits` invariant from `rendererHints.rowBits` (or a
- * 32-bit default) at the ingestion boundary. MUST stay in sync with the same
- * logic in `scripts/build-presets.ts`, which bakes the per-preset JSON the
- * client fetches — so server-computed and client-fetched packets match.
+ * 32-bit default) and apply visualizer-owned preset patches at the ingestion
+ * boundary. MUST stay in sync with the same logic in
+ * `scripts/build-presets.ts`, which bakes the per-preset JSON the client
+ * fetches — so server-computed and client-fetched packets match.
  */
-function adaptPreset(p: (typeof CORE_PRESETS)[string]): Packet {
+function adaptPreset(key: string, p: (typeof CORE_PRESETS)[string]): Packet {
   const rowBits = p.rowBits ?? p.rendererHints?.rowBits ?? 32;
-  return { ...p, rowBits } as Packet;
+  const patched = applyPresetPatches(key, {
+    ...p,
+    rowBits,
+  } as Record<string, unknown>);
+  return patched as Packet;
 }
 
 export const PRESETS: Record<string, Packet> = Object.fromEntries(
-  Object.entries(CORE_PRESETS).map(([key, p]) => [key, adaptPreset(p)]),
+  Object.entries(CORE_PRESETS).map(([key, p]) => [key, adaptPreset(key, p)]),
 );
 
 export const PRESET_KEYS: string[] = Object.keys(PRESETS);

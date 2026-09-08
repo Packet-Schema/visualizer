@@ -119,6 +119,23 @@ export default function TlvEditor({
     });
   };
 
+  const handleVariableBytesChange = (
+    idx: number,
+    key: string,
+    min: number,
+    max: number,
+    raw: string,
+  ) => {
+    const v = Math.max(min, Math.min(max, Math.floor(Number(raw) || min)));
+    update((list) => {
+      list[idx] = {
+        ...list[idx],
+        extras: { ...(list[idx].extras || {}), [key]: v },
+      };
+      return list;
+    });
+  };
+
   const handleKindChange = (idx: number, raw: string) => {
     const newKind = Number(raw);
     if (!Number.isFinite(newKind)) return;
@@ -145,10 +162,6 @@ export default function TlvEditor({
   };
 
   const totalBytesUsed = Math.ceil(summary.totalBits / 8);
-  const overshootBy =
-    slotBytes !== undefined && totalBytesUsed > slotBytes
-      ? totalBytesUsed - slotBytes
-      : 0;
 
   return (
     <div>
@@ -157,22 +170,10 @@ export default function TlvEditor({
         Recursive TLV container. Add typed records below; the total length
         drives <code className="font-mono">{tlv.drivesController || ""}</code>.
       </p>
-      {overshootBy > 0 ? (
-        <p
-          role="alert"
-          className="text-xs m-0 mb-2 px-2 py-1.5 rounded border"
-          style={{
-            borderColor: "var(--field-rose)",
-            background:
-              "color-mix(in oklch, var(--field-rose) 12%, transparent)",
-            color: "var(--fg)",
-          }}
-        >
-          ⚠ Records total {totalBytesUsed} B but the slot is only {slotBytes} B
-          ({overshootBy} B over). Grow the upstream length controller or remove
-          records to keep the wire format valid.
-        </p>
-      ) : null}
+      <SlotOvershootWarning
+        totalBytesUsed={totalBytesUsed}
+        slotBytes={slotBytes}
+      />
 
       <div
         className="rounded-md border divide-y"
@@ -281,6 +282,42 @@ export default function TlvEditor({
                     </label>
                   </div>
                 ) : null}
+                {/* Per-record byte-count knob(s) for a variable-LENGTH value
+                    member (e.g. dhcpv4 Code=3 Router Addresses =
+                    bytes(ref optionLength)). Without this the value renders a
+                    permanently zero-width, uneditable cell (the "see-but-
+                    cannot-edit" bug). */}
+                {entry.variableBytes?.map((vb) => (
+                  <div
+                    key={vb.key}
+                    className="mt-1.5 text-xs flex items-center gap-2"
+                  >
+                    <label className="flex items-center gap-1.5 text-fg-muted">
+                      {vb.label || vb.fieldId}:
+                      <input
+                        type="number"
+                        min={vb.min}
+                        max={vb.max}
+                        value={Number(extras[vb.key] ?? vb.min)}
+                        onChange={(e) =>
+                          handleVariableBytesChange(
+                            i,
+                            vb.key,
+                            vb.min,
+                            vb.max,
+                            e.target.value,
+                          )
+                        }
+                        className="w-16 px-1.5 py-0.5 rounded border font-mono tabular-nums text-xs"
+                        style={{
+                          borderColor: "var(--border-strong)",
+                          background: "var(--bg-elevated)",
+                          color: "var(--fg)",
+                        }}
+                      />
+                    </label>
+                  </div>
+                ))}
                 {entry.description ? (
                   <p className="m-0 mt-1 text-3xs text-fg-faint">
                     {entry.description}
@@ -398,5 +435,37 @@ function IconBtn({
     >
       {children}
     </button>
+  );
+}
+
+/** Shared slot-overshoot banner. Rendered by both the full TlvEditor and the
+ *  inline variant dropdown so a size-increasing edit on EITHER surface flags
+ *  the same "records exceed the slot" warning (override-audit D2). */
+export function SlotOvershootWarning({
+  totalBytesUsed,
+  slotBytes,
+}: {
+  totalBytesUsed: number;
+  slotBytes: number | undefined;
+}) {
+  const overshootBy =
+    slotBytes !== undefined && totalBytesUsed > slotBytes
+      ? totalBytesUsed - slotBytes
+      : 0;
+  if (overshootBy <= 0) return null;
+  return (
+    <p
+      role="alert"
+      className="text-xs m-0 mb-2 px-2 py-1.5 rounded border"
+      style={{
+        borderColor: "var(--field-rose)",
+        background: "color-mix(in oklch, var(--field-rose) 12%, transparent)",
+        color: "var(--fg)",
+      }}
+    >
+      ⚠ Records total {totalBytesUsed} B but the slot is only {slotBytes} B (
+      {overshootBy} B over). Grow the upstream length controller or remove
+      records to keep the wire format valid.
+    </p>
   );
 }

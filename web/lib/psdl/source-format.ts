@@ -20,9 +20,20 @@ import type { PsdlPacket } from "./types";
  * `data/presets/*.psdl.yaml` と同じ shape にして、 preset 編集と直編集が
  * そのまま行き来できるようにする。 `format` / `version` などの wire JSON
  * 用マーカーは付けない。
+ *
+ * `env` (controller / freeRepeat / discriminator のピック状態) は authored
+ * PSDL ではなく controller state なので **出力しない**。 "Save as preset" や
+ * KSY/save-as は env を packet に焼き込むことがあるが、 これを YAML に出すと
+ * PSDL の top-level schema (`unevaluatedProperties: false`、 `env` は未定義)
+ * に弾かれ、 ユーザーが 1 文字編集した瞬間 re-parse が "must NOT have
+ * unevaluated properties" で失敗して source pane が編集不能になる。 wire JSON
+ * 経路 (`toJson`) も packet.env を spread せず別引数の env からのみ出力するので、
+ * ここで env を落とすのが両経路で一貫する。
  */
 export function encodeSource(packet: PsdlPacket): string {
-  return stringifyYaml(packet, {
+  const { env: _env, ...authored } = packet;
+  void _env;
+  return stringifyYaml(authored, {
     indent: 2,
     lineWidth: 100,
     defaultStringType: "QUOTE_DOUBLE",
@@ -170,16 +181,27 @@ export function lintSource(text: string): SourceLintIssue[] {
  *   - `format` がある → wire envelope なので `format` / `version` を剥がす。
  *   - `format` が無い → 素の PSDL source。 `version` は packet metadata
  *     として残す (round-trip で落とさない)。
+ *
+ * `env` (controller state) は PSDL の top-level schema に無いプロパティで、
+ * `unevaluatedProperties: false` に弾かれる。 `encodeSource` は env を出さない
+ * ので素の source pane には現れないが、 env を焼き込んだ packet を直接貼り付け
+ * たり、 旧 source を読み込んだ場合に備えて parse 時に剥がす (envelope の有無に
+ * 関係なく)。 こうすれば schema validation を通り source pane が編集不能に
+ * ならない。
  */
 function stripWireMarkers(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (!("format" in obj)) {
+  // `env` は controller state であって authored PSDL ではない。 schema 検証
+  // 前に必ず取り除く (wire envelope かどうかに依らない)。
+  const { env: _env, ...withoutEnv } = obj;
+  void _env;
+  if (!("format" in withoutEnv)) {
     // 素の PSDL source — wire envelope ではない。 `version` は packet
     // metadata なので保持する。
-    return obj;
+    return withoutEnv;
   }
-  const { format: _f, version: _v, ...rest } = obj;
+  const { format: _f, version: _v, ...rest } = withoutEnv;
   void _f;
   void _v;
   return rest;

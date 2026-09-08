@@ -25,6 +25,8 @@ import { fileURLToPath } from "node:url";
 
 import { parse as parseYaml } from "yaml";
 
+import { applyPresetPatches } from "../lib/psdl/preset-patches";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -58,15 +60,18 @@ const INDEX_OUT_PATH = join(
 
 /**
  * Fill the visualizer's `rowBits` invariant from `rendererHints.rowBits` (or a
- * 32-bit default). MUST stay in sync with `adaptPreset` in
- * `lib/psdl/presets.server.ts` so the JSON served to the client matches what
- * the server computes.
+ * 32-bit default) and apply visualizer-owned preset patches. MUST stay in sync
+ * with `adaptPreset` in `lib/psdl/presets.server.ts` so the JSON served to the
+ * client matches what the server computes.
  */
-function adaptPreset(p: Record<string, unknown>): Record<string, unknown> {
+function adaptPreset(
+  key: string,
+  p: Record<string, unknown>,
+): Record<string, unknown> {
   const rendererHints = p.rendererHints as { rowBits?: number } | undefined;
   const rowBits =
     (p.rowBits as number | undefined) ?? rendererHints?.rowBits ?? 32;
-  return { ...p, rowBits };
+  return applyPresetPatches(key, { ...p, rowBits });
 }
 
 function writeSchema(): void {
@@ -100,7 +105,7 @@ async function writePresetArtifacts(): Promise<void> {
   const index: Record<string, { name: string }> = {};
   let count = 0;
   for (const [key, preset] of Object.entries(PRESETS)) {
-    const adapted = adaptPreset(preset);
+    const adapted = adaptPreset(key, preset);
     writeFileSync(
       join(PRESETS_OUT_DIR, `${key}.json`),
       JSON.stringify(adapted),

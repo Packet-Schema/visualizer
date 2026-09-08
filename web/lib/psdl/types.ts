@@ -216,6 +216,13 @@ export type Packet = Omit<
   body: Container[];
   constraints?: Constraint[];
   defs?: Record<string, Core.NamedStruct>;
+  /** Persisted packet env (controller / freeRepeat / discriminator picks).
+   *  Mirrors the JSON wire format's `env` block (see `lib/formats/json.ts`):
+   *  the non-default subset of the live `controllers` map baked onto the
+   *  packet so "Save as preset" round-trips the same env state that Share
+   *  preserves. Ignored by `@packet-schema/core`; consumed when re-loading
+   *  a custom preset to seed `controllers`. */
+  env?: Record<string, number>;
 };
 
 /** Convenience aliases used by callers that prefer Psdl-prefixed names. */

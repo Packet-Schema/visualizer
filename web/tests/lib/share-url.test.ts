@@ -5,6 +5,7 @@ import {
   buildShareQueryFromParams,
   decodePsdlParam,
   encodePsdlParam,
+  findPresetKeyForPacket,
   isShareQueryLengthValid,
   normalizeShareQuery,
   parseShareParams,
@@ -207,5 +208,57 @@ describe("normalizeShareQuery", () => {
     const params = new URLSearchParams(q);
     expect(params.get("preset")).toBe("tcp");
     expect(params.get("controllers.dataOffset")).toBe("7");
+  });
+});
+
+describe("findPresetKeyForPacket", () => {
+  // Packet-level fields whose wire counterparts `toJson` only started emitting
+  // once the share-URL format became lossless.
+  const LOSSLESS_ONLY_PACKET_KEYS = [
+    "abbrev",
+    "rendererHints",
+    "meta",
+    "imports",
+    "version",
+    "defs",
+  ];
+
+  /** A packet shaped like a share blob minted by the pre-lossless encoder. */
+  function asLegacyBlob(p: Packet): Packet {
+    const out = { ...p } as Record<string, unknown>;
+    for (const k of LOSSLESS_ONLY_PACKET_KEYS) delete out[k];
+    return out as Packet;
+  }
+
+  it("組み込み preset は自分自身にマッチする", () => {
+    expect(findPresetKeyForPacket(PRESETS["ipv4"], PRESETS)).toBe("ipv4");
+  });
+
+  it("lossless 化より前に作られた共有 URL も引き続き preset に正規化される", () => {
+    // Guards the homepage `?psdl=…` → `?preset=<key>` redirect for every link
+    // already in the wild: those blobs carry none of the 0.5 metadata keys,
+    // while today's presets do, so a strict wire comparison can never match.
+    expect(findPresetKeyForPacket(asLegacyBlob(PRESETS["ipv4"]), PRESETS)).toBe(
+      "ipv4",
+    );
+  });
+
+  it("メタデータが異なるパケットは preset に畳み込まない", () => {
+    // Collapsing this onto `?preset=ipv4` would silently discard the author's
+    // own metadata, so it must stay a `?psdl=` document.
+    const edited = {
+      ...PRESETS["ipv4"],
+      meta: { family: "custom-family" },
+    } as Packet;
+    expect(findPresetKeyForPacket(edited, PRESETS)).toBeNull();
+  });
+
+  it("body が異なる legacy blob は fallback でもマッチしない", () => {
+    const legacy = asLegacyBlob(PRESETS["ipv4"]);
+    const mutated = {
+      ...legacy,
+      body: [{ id: "zzz", name: "ZZZ", type: { kind: "bits", n: 8 } }],
+    } as Packet;
+    expect(findPresetKeyForPacket(mutated, PRESETS)).toBeNull();
   });
 });

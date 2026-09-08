@@ -9,10 +9,12 @@
 
 import type {
   Container,
+  EnumVariant,
   Normalized,
   NormalizedField,
   PacketEnv,
   Packet as PsdlPacket,
+  VarintEncoding,
   ViewMode,
 } from "./types";
 import {
@@ -24,6 +26,12 @@ import {
   varintBitsEnvKey,
 } from "./normalize";
 import { isField } from "./utils";
+import {
+  collectRemainingFieldTypes,
+  collectSwitchOnRefIds,
+  isRemainingSizedBytes,
+  remainingBytesEnvKey,
+} from "./dynamic-width-defaults";
 import type {
   Cell,
   Field as RendererField,
@@ -80,7 +88,64 @@ export function resolveLayout(
   // id; this is the single boundary where they become core's env contract.
   bridgeDynamicWidthKeys(packet, env);
   const viewMode: ViewMode = options.viewMode ?? "wire";
-  const norm = normalizeWithBudget(packet, env, viewMode, options.totalBits);
+  // A top-level / switch-arm `bytes(remaining)` payload has no wire-width env key
+  // in core (its size is the leftover budget), so the user-chosen byte count
+  // rides on the visualizer-only `__remainingBytes__<id>` key. Read the largest
+  // requested width (only one such tail renders per layout — they live in
+  // mutually-exclusive switch arms — and any spare budget is absorbed by that one
+  // tail) and hand it to `normalizeWithBudget`, which sizes the packet budget to
+  // `fixedPrefix + bytes*8`. The key is never forwarded to core's normalize.
+  const remainingBytesOverride = readRemainingBytesOverride(packet, env);
+  // Calibrate the variable-region byte count so the user's chosen width lands on
+  // the FIELD. A bare `bytes(remaining)` renders at exactly the region (offset
+  // 0), but a `bytes(remaining - k)` — or one with a fixed trailing sibling —
+  // renders a constant `C` bytes away from the raw region. The region→field map
+  // has slope 1, so one corrective pass (region := desired - C) is exact.
+  let regionBytes = remainingBytesOverride?.bytes;
+  if (remainingBytesOverride && options.totalBits === undefined) {
+    const probe = normalizeWithBudget(
+      packet,
+      env,
+      viewMode,
+      undefined,
+      remainingBytesOverride.bytes,
+    );
+    const renderedBits = renderedRemainingBits(
+      probe,
+      remainingBytesOverride.targetIds,
+    );
+    if (renderedBits !== undefined) {
+      const renderedBytes = Math.ceil(renderedBits / 8);
+      const correction = renderedBytes - remainingBytesOverride.bytes;
+      if (correction !== 0) {
+        regionBytes = Math.max(0, remainingBytesOverride.bytes - correction);
+      }
+    }
+  }
+  let norm = normalizeWithBudget(
+    packet,
+    env,
+    viewMode,
+    options.totalBits,
+    regionBytes,
+  );
+  // A delimiter-terminated `bytes` field expanded inside a repeat / ref is read
+  // by core's emit() under the FULLY-QUALIFIED instance key
+  // `__bytesDelimLen__<prefix>.<id>#<n>` — not the bare `__bytesDelimLen__<id>`
+  // that bridgeDynamicWidthKeys / seedDynamicWidthDefaults write (varint/ber are
+  // read via the bare field.id in typeBits, hence work nested; delimited bytes
+  // do not). Fan the bare value out onto every emitted instance key so the field
+  // renders and its WidthPicker drives every cell. Re-normalize once if it added
+  // any keys (the new widths shift the layout).
+  if (qualifyDelimitedWidthKeys(packet, env, norm)) {
+    norm = normalizeWithBudget(
+      packet,
+      env,
+      viewMode,
+      options.totalBits,
+      regionBytes,
+    );
+  }
   const cells: Cell[] = [];
   let bitPos = 0;
   // Renderer interpretation pass (see PSDL design principles —
@@ -92,6 +157,25 @@ export function resolveLayout(
   // additive — `NormalizedField[]` itself is unchanged, so RFC ASCII /
   // JSON / other consumers keep the flat structure.
   const groups = groupConsecutiveByContainer(norm.fields);
+  // Dynamic-width metadata for leaves that live inside switch cases / optionals
+  // / repeats — `psdlToRenderer` never reaches them, so without stamping these
+  // flags onto the synthetic cell field a click resolves (via resolveFromCells)
+  // to a field with no width hint and OverridePanel shows no WidthPicker even
+  // though `env[fieldId]` genuinely drives the cell width.
+  const dynWidth = collectDynamicWidthFlags(packet);
+  // Enum metadata for leaves that live inside switch cases / optionals /
+  // repeats — same rationale as `dynWidth`: `psdlToRenderer` never reaches them,
+  // so without stamping `enumVariants` onto the synthetic cell field a click
+  // resolves (via resolveFromCells) to a field with no enum hint and
+  // OverridePanel shows no EnumDropdown even though `env[fieldId]` genuinely
+  // drives the cell value (see-but-cannot-edit).
+  const enumFlags = collectEnumFlags(packet);
+  // Authored `defaultValue` for leaves that live inside switch cases / optionals
+  // / repeats / non-collapsing Groups — `NormalizedField` does not carry the
+  // value dictionary's default, so the collapsed-group subfield path (which has
+  // no renderer mirror field to copy from) needs it sourced from the PSDL packet
+  // for the WidthPicker / EnumDropdown to seed their selected value correctly.
+  const defaultValues = collectDefaultValues(packet);
   for (const g of groups) {
     if (g.kind === "flat") {
       const nf = g.field;
@@ -101,6 +185,8 @@ export function resolveLayout(
         bits: nf.bits,
         ...(nf.category ? { category: nf.category } : {}),
         ...(nf.doc ? { description: nf.doc } : {}),
+        ...(dynWidth.get(stripRepeatTag(nf.id)) ?? {}),
+        ...(enumFlags.get(stripRepeatTag(nf.id)) ?? {}),
       };
       bitPos = emitField(synthetic, nf, bitPos, packet.rowBits, cells);
       continue;
@@ -117,12 +203,29 @@ export function resolveLayout(
       id: g.parentId,
       name: g.parentName,
       bits: totalBits,
-      subfields: g.children.map((c) => ({
-        id: c.id.replace(/#\d+$/, ""), // strip repeatIndex for stable subfield id
-        name: c.name,
-        bits: c.bits,
-        ...(c.doc ? { description: c.doc } : {}),
-      })),
+      subfields: g.children.map((c) => {
+        // Look up the dynamic-width / enum / default metadata by the authored
+        // PSDL id (repeat-iteration tag stripped). Without these spreads a
+        // varint / berLength / delimited / enum leaf inside a Group that does
+        // NOT collapse via `groupToSubfieldField` (i.e. the Group has a
+        // compound child, so it reaches the layout collapsed-group path
+        // instead of the renderer mirror) would resolve to a SubCell carrying
+        // no dynamic-width / enum hint, and OverridePanel would render the
+        // dead-end "select the parent cell" message even though `env[fieldId]`
+        // genuinely drives the cell's wire width / value (see-but-cannot-edit:
+        // snmpv3 BER lengths, ipinip outerProtocol enum, pppoe code enum).
+        const authoredId = stripRepeatTag(c.id);
+        const def = defaultValues.get(authoredId);
+        return {
+          id: c.id.replace(/#\d+$/, ""), // strip repeatIndex for stable subfield id
+          name: c.name,
+          bits: c.bits,
+          ...(c.doc ? { description: c.doc } : {}),
+          ...(dynWidth.get(authoredId) ?? {}),
+          ...(enumFlags.get(authoredId) ?? {}),
+          ...(def !== undefined ? { defaultValue: def } : {}),
+        };
+      }),
       ...(g.children.find((c) => c.category)?.category
         ? { category: g.children.find((c) => c.category)!.category! }
         : {}),
@@ -183,6 +286,7 @@ function normalizeWithBudget(
   env: PacketEnv,
   viewMode: ViewMode,
   totalBits?: number,
+  variableRegionBytes?: number,
 ): Normalized {
   if (totalBits !== undefined) {
     return normalize(packet, env, { viewMode, totalBits });
@@ -196,13 +300,120 @@ function normalizeWithBudget(
     ) {
       throw e;
     }
-    const fixed = normalize(packet, new Map(env), { viewMode, totalBits: 0 });
-    const budget =
-      fixed.totalBits +
-      Math.max(packet.rowBits, DEFAULT_VARIABLE_REGION_BITS_FALLBACK);
+    const fixedBits = measureFixedPrefixBits(packet, env, viewMode);
+    // The variable tail gets the user-chosen byte count when one rode in on a
+    // `__remainingBytes__<id>` key (the OverridePanel WidthPicker / share-URL),
+    // else one default row so it paints a representative cell. `remaining` then
+    // resolves to exactly `variableRegionBits` because core derives it from this
+    // budget minus the fixed prefix.
+    const variableRegionBits =
+      typeof variableRegionBytes === "number"
+        ? variableRegionBytes * 8
+        : Math.max(packet.rowBits, DEFAULT_VARIABLE_REGION_BITS_FALLBACK);
+    const budget = fixedBits + variableRegionBits;
     return normalize(packet, env, { viewMode, totalBits: budget });
   }
 }
+
+/**
+ * Measure a packet's fixed-prefix bit count (everything outside its top-level
+ * `remaining`/`enclosingBits` variable region) by normalizing with the smallest
+ * total-size budget that core accepts. Normally that budget is 0 (`remaining`
+ * clamps to 0). But a packet whose ENCRYPTED scope declares `wireBits` in terms
+ * of `remaining` — ipsecEsp's `espEncrypted` = `(remaining - icvLen) * 8` — over-
+ * consumes at budget 0: the scope width collapses to 0 bits while the plaintext
+ * minimum (padLength + nextHeader = 16 bits) still has to fit, so core throws
+ * `encrypted scope over-consumed` and the whole layout used to fall back to an
+ * EMPTY diagram on first paint (every field invisible & uneditable). We grow the
+ * trial budget by one row at a time until normalize succeeds, then report that
+ * minimal budget's total bits as the fixed prefix; the caller adds the variable
+ * region on top. The growth is capped so a genuinely-broken packet still throws
+ * rather than looping. (Core is untouched — this is a visualizer-only fallback.)
+ */
+function measureFixedPrefixBits(
+  packet: PsdlPacket,
+  env: PacketEnv,
+  viewMode: ViewMode,
+): number {
+  let trial = 0;
+  // The scope only needs a few extra bytes to satisfy its plaintext minimum, so
+  // one row per step converges in a handful of iterations; the cap is a generous
+  // backstop (a full un-virtualized diagram is bounded well under this anyway).
+  const step = Math.max(packet.rowBits, 8);
+  const maxTrial = step * 4096;
+  for (;;) {
+    try {
+      return normalize(packet, new Map(env), { viewMode, totalBits: trial })
+        .totalBits;
+    } catch (e) {
+      // Only an over-consume (the scope width is briefly too small for its
+      // plaintext minimum) is recoverable by handing core more budget; anything
+      // else is a real schema error and must surface.
+      if (
+        !(e instanceof Error) ||
+        !e.message.includes("over-consumed") ||
+        trial >= maxTrial
+      ) {
+        throw e;
+      }
+      trial += step;
+    }
+  }
+}
+
+/**
+ * The active `bytes(remaining)` override: the largest requested byte count and
+ * the ids of every rendered (top-level / switch-arm, non-repeat) remaining-sized
+ * payload it could apply to. Only one such tail renders per layout (they live in
+ * mutually-exclusive switch arms), and any spare budget is absorbed by it, so
+ * taking the max keeps the active arm's tail at least its requested width. The
+ * ids drive budget CALIBRATION: a `bytes(remaining - k)` (or a field with a
+ * fixed trailing sibling) renders some constant `C` bytes off the raw region, so
+ * the region is corrected by `C` to land the user's chosen byte count on the
+ * FIELD — see the calibration pass in `resolveLayout`.
+ */
+function readRemainingBytesOverride(
+  packet: PsdlPacket,
+  env: PacketEnv,
+): { bytes: number; targetIds: Set<string> } | undefined {
+  let best: number | undefined;
+  const targetIds = new Set<string>();
+  for (const id of collectRemainingFieldTypes(packet).keys()) {
+    const v = env.get(remainingBytesEnvKey(id));
+    if (typeof v !== "number" || v < 0) continue;
+    targetIds.add(id);
+    if (best === undefined || v > best) best = v;
+  }
+  if (best === undefined) return undefined;
+  // Clamp the budget byte count so an oversized value (a hand-edited share URL /
+  // imported env) can't size the variable tail into millions of cells and freeze
+  // the un-virtualized diagram. resolveLayout emits ~1 cell per payload byte, so
+  // this mirrors the direct length-controller cap (MAX_LENGTH_CONTROLLER_BYTES in
+  // PacketViewer). The picker's own ladder tops out well under this.
+  return { bytes: Math.min(best, MAX_REMAINING_BYTES), targetIds };
+}
+
+/**
+ * Resolved wire bits of the active remaining-sized leaf in a normalized packet,
+ * or `undefined` when none of `targetIds` rendered (e.g. its switch arm isn't
+ * selected). A field wider than a row is emitted as several segment fields that
+ * all carry the SAME full `bits`, so the first match is the full width.
+ */
+function renderedRemainingBits(
+  norm: Normalized,
+  targetIds: Set<string>,
+): number | undefined {
+  for (const f of norm.fields) {
+    if (targetIds.has(stripRepeatTag(f.id))) return f.bits;
+  }
+  return undefined;
+}
+
+/** Renderable byte ceiling for a `bytes(remaining)` payload sized via the
+ *  `__remainingBytes__<id>` override. Mirrors PacketViewer's
+ *  `MAX_LENGTH_CONTROLLER_BYTES` (= MAX_DERIVED_RECORDS) so a maxed / hostile
+ *  value can't explode the un-virtualized diagram. */
+const MAX_REMAINING_BYTES = 1024;
 
 /**
  * Copy field-id-keyed dynamic-width overrides into the synthetic env keys
@@ -214,11 +425,20 @@ function normalizeWithBudget(
  * (synthetic) keys win, so an explicit width key is never clobbered.
  */
 function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
+  // A dynamic-width field that is ALSO a `switch ... on: ref(field)`
+  // discriminator overloads `env[id]`: core reads it as the discriminator VALUE
+  // (which case to select), so we must NOT also copy it into the wire-width key
+  // — that would force the varint's bit-width to equal the chosen frame type and
+  // misalign the cursor (http3Frame's `http3FrameType`). Its width lives on the
+  // dedicated `__varintBits__<id>` key, seeded by `seedDynamicWidthDefaults`.
+  const discriminators = collectSwitchOnRefIds(packet);
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>(); // guard recursive defs.
   const visit = (containers: Container[]): void => {
     for (const c of containers) {
       if (isField(c)) {
         const v = env.get(c.id);
-        if (v !== undefined) {
+        if (v !== undefined && !discriminators.has(c.id)) {
           let key: string | null = null;
           if (c.type.kind === "varint") key = varintBitsEnvKey(c.id);
           else if (c.type.kind === "berLength") key = berLenEnvKey(c.id);
@@ -247,11 +467,339 @@ function bridgeDynamicWidthKeys(packet: PsdlPacket, env: PacketEnv): void {
         case "bounded":
           visit(c.fields);
           break;
-        // virtual / align / ref expose no dynamic-width leaf to bridge.
+        case "ref": {
+          // A varint / berLength leaf inside a `ref`-expanded def is read by
+          // core's typeBits under the BARE leaf id (`__varintBits__<leaf>` /
+          // `__berLen__<leaf>`), so the field-id-keyed override the controller /
+          // seed wrote under `env[leaf]` has to be bridged here too — otherwise
+          // it stays 0 bits and renders no cell. (Delimited bytes inside a ref
+          // are bridged separately by qualifyDelimitedWidthKeys onto the
+          // per-instance qualified key.) Guard recursive defs.
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+        // virtual / align expose no dynamic-width leaf to bridge.
       }
     }
   };
   visit(packet.body);
+}
+
+/**
+ * Collect the authored ids of every delimiter-terminated `bytes` field anywhere
+ * in the packet body (including inside repeats / refs / switches / optionals).
+ * These are the fields whose wire width core reads under a per-instance
+ * qualified key, so the bridge has to fan the bare value onto every instance.
+ */
+function collectDelimitedFieldIds(packet: PsdlPacket): Set<string> {
+  const ids = new Set<string>();
+  const defs = packet.defs ?? {};
+  const seenRefs = new Set<string>(); // guard recursive defs.
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
+          ids.add(c.id);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        case "ref": {
+          // A `ref` expands a named struct; delimited leaves inside it get the
+          // ref id as an env-key prefix (`__bytesDelimLen__<refId>.<leaf>#<n>`),
+          // so they must be collected too. Their authored id is the BARE leaf id.
+          const def = defs[c.ref];
+          if (def && !seenRefs.has(c.ref)) {
+            seenRefs.add(c.ref);
+            visit(def.fields);
+            seenRefs.delete(c.ref);
+          }
+          break;
+        }
+        // virtual / align expose no delimited leaf to collect.
+      }
+    }
+  };
+  visit(packet.body);
+  return ids;
+}
+
+/**
+ * Map a normalized field id back to its authored PSDL id: strip the
+ * `#a(_b)*` repeat-iteration tag, then drop any `ref` id prefix (`outer.inner.id`
+ * → `id`). Field ids never contain `.` (PSDL grammar), so the last dotted
+ * segment is the authored leaf id.
+ */
+function authoredIdOf(normalizedId: string): string {
+  const noTag = stripRepeatTag(normalizedId);
+  const lastDot = noTag.lastIndexOf(".");
+  return lastDot >= 0 ? noTag.slice(lastDot + 1) : noTag;
+}
+
+/**
+ * Bridge the bare `__bytesDelimLen__<id>` width (written by the WidthPicker /
+ * seedDynamicWidthDefaults / share-URL under the authored id) onto every
+ * per-instance qualified key core's emit() actually reads
+ * (`__bytesDelimLen__<prefix>.<id>#<n>`). For a top-level delimited field the
+ * qualified key equals the bare key, so this is a no-op there — it only matters
+ * for delimited bytes expanded inside a repeat / ref.
+ *
+ * Runs after a first normalize pass so the emitted instance ids (which depend on
+ * the resolved repeat counts) are known. Returns true if it set any new key, in
+ * which case the caller re-normalizes to pick up the widened cells.
+ */
+function qualifyDelimitedWidthKeys(
+  packet: PsdlPacket,
+  env: PacketEnv,
+  norm: Normalized,
+): boolean {
+  const delimitedIds = collectDelimitedFieldIds(packet);
+  if (delimitedIds.size === 0) return false;
+  // A delimited field that is ALSO a switch discriminator overloads `env[id]`
+  // with the discriminator VALUE, so its width lives ONLY on the bare delim key
+  // (seeded by seedDynamicWidthDefaults); never read its value slot as a width.
+  const discriminators = collectSwitchOnRefIds(packet);
+  let changed = false;
+  for (const nf of norm.fields) {
+    const authored = authoredIdOf(nf.id);
+    if (!delimitedIds.has(authored)) continue;
+    const qualifiedKey = bytesDelimLenEnvKey(nf.id);
+    if (env.has(qualifiedKey)) continue; // explicit per-instance width wins.
+    const bareKey = bytesDelimLenEnvKey(authored);
+    const bareValue = discriminators.has(authored)
+      ? env.get(bareKey)
+      : (env.get(bareKey) ?? env.get(authored));
+    if (bareValue === undefined) continue;
+    env.set(qualifiedKey, bareValue);
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Dynamic-width metadata for a single leaf field, mirroring the
+ * `varintEncoding` / `isBerLength` / `isDelimited` flags that
+ * `plainFieldToRenderer` stamps onto top-level renderer mirror fields.
+ */
+type DynamicWidthFlags = {
+  varintEncoding?: VarintEncoding;
+  isBerLength?: boolean;
+  isDelimited?: boolean;
+  isRemaining?: boolean;
+};
+
+/**
+ * Precompute a `fieldId -> DynamicWidthFlags` map by walking EVERY container in
+ * the source PSDL packet — including switch cases, optionals and repeats that
+ * `flattenForMirror` (and therefore `psdlToRenderer`) never descends into.
+ *
+ * Why this exists: a varint / berLength / delimited leaf that lives inside a
+ * switch case (quicLong `tokenLength` / `length`), an optional or a repeat
+ * (kerberosAsReq BER lengths) is a visible, genuinely-editable cell — its wire
+ * width is overridable via `env[fieldId]` (bridged to the `__varintBits__<id>`
+ * etc. key by `bridgeDynamicWidthKeys`). But it never becomes a renderer mirror
+ * field, so a click resolves through `resolveFromCells` to the synthetic cell
+ * field, which — unless we stamp these flags — carries no dynamic-width hint and
+ * OverridePanel renders no WidthPicker (see-but-cannot-edit).
+ *
+ * `NormalizedField` does not carry the PSDL type, so the flags have to be
+ * derived from the PSDL packet and looked up by (repeat-tag-stripped) id when
+ * the synthetic layout field is built in `emitField`'s caller.
+ */
+function collectDynamicWidthFlags(
+  packet: PsdlPacket,
+): Map<string, DynamicWidthFlags> {
+  const map = new Map<string, DynamicWidthFlags>();
+  // `insideRepeat` gates the `bytes(remaining)` tag: a top-level / switch-arm
+  // remaining payload's size is the leftover packet budget (driven by the
+  // `__remainingBytes__<id>` width override), but a remaining leaf INSIDE a
+  // repeat is sized by its repeat / bounded budget, so it is NOT tagged here
+  // (its WidthPicker would drive a key the layout doesn't read for it). Matches
+  // `collectRemainingFieldIds`.
+  const visit = (containers: Container[], insideRepeat: boolean): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        let flags: DynamicWidthFlags | null = null;
+        if (c.type.kind === "varint")
+          flags = { varintEncoding: c.type.encoding };
+        else if (c.type.kind === "berLength") flags = { isBerLength: true };
+        else if (c.type.kind === "bytes" && isBytesDelimited(c.type.n))
+          flags = { isDelimited: true };
+        else if (!insideRepeat && isRemainingSizedBytes(c.type))
+          flags = { isRemaining: true };
+        if (flags) map.set(c.id, flags);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children, insideRepeat);
+          break;
+        case "repeat":
+          visit(c.element.fields, true);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields, insideRepeat);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields, insideRepeat);
+          break;
+        case "optional":
+          visit([c.container], insideRepeat);
+          break;
+        case "bounded":
+          visit(c.fields, insideRepeat);
+          break;
+        // virtual / align / ref expose no dynamic-width leaf to flag.
+      }
+    }
+  };
+  visit(packet.body, false);
+  return map;
+}
+
+/** Enum metadata for a single leaf field, mirroring the `enumVariants` label
+ *  map that `plainFieldToRenderer` stamps onto top-level renderer mirror fields. */
+type EnumFlags = {
+  enumVariants: Record<number, string>;
+};
+
+/**
+ * Flatten 0.5 enum variants (`string | { label; … }`) down to the renderer's
+ * `Record<number, string>` label map — mirror of `subfield.ts`'s `enumLabels`.
+ */
+function enumLabels(
+  variants: Record<number, EnumVariant>,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const [k, v] of Object.entries(variants)) {
+    out[Number(k)] = typeof v === "string" ? v : v.label;
+  }
+  return out;
+}
+
+/**
+ * Precompute a `fieldId -> EnumFlags` map by walking EVERY container in the
+ * source PSDL packet — including switch cases, optionals and repeats that
+ * `flattenForMirror` (and therefore `psdlToRenderer`) never descends into.
+ *
+ * Why this exists (mirror of `collectDynamicWidthFlags`): a plain enum leaf that
+ * lives inside a repeat record (dnsResponse `dnsQType`) or a switch case is a
+ * visible, genuinely-editable cell — the engine reads its value from
+ * `env[fieldId]`, so an EnumDropdown WOULD change the diagram exactly as it does
+ * for a top-level enum (arp `oper`, dhcpv4 `op`). But it never becomes a
+ * renderer mirror field, so a click resolves through `resolveFromCells` to the
+ * synthetic cell field, which — unless we stamp `enumVariants` here — carries no
+ * enum hint and OverridePanel renders no EnumDropdown (see-but-cannot-edit).
+ *
+ * These are plain enum *values*, not switch discriminators, so they are not
+ * covered by refSwitches / peekSwitches.
+ */
+function collectEnumFlags(packet: PsdlPacket): Map<string, EnumFlags> {
+  const map = new Map<string, EnumFlags>();
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.type.kind === "enum") {
+          map.set(c.id, { enumVariants: enumLabels(c.type.variants) });
+        }
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        // virtual / align / ref expose no enum leaf to flag.
+      }
+    }
+  };
+  visit(packet.body);
+  return map;
+}
+
+/**
+ * Precompute a `fieldId -> defaultValue` map by walking EVERY container in the
+ * source PSDL packet. `NormalizedField` does not carry a field's authored
+ * `defaultValue`, but the collapsed-group subfield path (which has no renderer
+ * mirror field to copy from) needs it so the WidthPicker / EnumDropdown seed
+ * their selected value from the same default the flat path gets via
+ * `plainFieldToRenderer`. Same walk shape as `collectEnumFlags`.
+ */
+function collectDefaultValues(packet: PsdlPacket): Map<string, number> {
+  const map = new Map<string, number>();
+  const visit = (containers: Container[]): void => {
+    for (const c of containers) {
+      if (isField(c)) {
+        if (c.defaultValue !== undefined) map.set(c.id, c.defaultValue);
+        continue;
+      }
+      switch (c.kind) {
+        case "group":
+          visit(c.children);
+          break;
+        case "repeat":
+          visit(c.element.fields);
+          break;
+        case "switch":
+          for (const s of Object.values(c.cases)) visit(s.fields);
+          break;
+        case "encrypted":
+          visit(c.plaintext.fields);
+          break;
+        case "optional":
+          visit([c.container]);
+          break;
+        case "bounded":
+          visit(c.fields);
+          break;
+        // virtual / align / ref expose no leaf with a default to flag.
+      }
+    }
+  };
+  visit(packet.body);
+  return map;
+}
+
+/** Strip the `#a(_b)*` Repeat-iteration decoration so a normalized field id
+ *  maps back to its authored PSDL id (mirrors selection-resolver's tag). */
+function stripRepeatTag(id: string): string {
+  return id.replace(/#\d+(?:_\d+)*$/, "");
 }
 
 type GroupedRun =

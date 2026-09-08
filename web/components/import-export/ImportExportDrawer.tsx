@@ -27,12 +27,13 @@ import {
   readFileAsText,
   slugify,
 } from "@/lib/preset-file-io";
-import { psdlToRenderer, rendererToPsdl } from "@/lib/psdl/psdl-to-renderer";
+import { psdlToRenderer } from "@/lib/psdl/psdl-to-renderer";
 import type {
   ControllerState,
   Packet,
   ResolvedLayout,
 } from "@/lib/psdl/renderer";
+import type { Packet as PsdlPacket } from "@/lib/psdl/types";
 
 import { useFocusTrap } from "@/components/common/hooks/useFocusTrap";
 import { useDropzone } from "./hooks/useDropzone";
@@ -43,8 +44,11 @@ export type { FormatKey } from "@/lib/formats/registry";
 type Props = {
   open: boolean;
   mode: DrawerMode;
-  /** Current packet (used to seed Export). */
+  /** Current packet (used to seed Export diagrams + filename). */
   packet: Packet;
+  /** Lift the active packet to PSDL losslessly (prefers the source PSDL +
+   *  instance merge over the lossy renderer→PSDL reconstruction). */
+  liftToPsdl: () => PsdlPacket;
   /** Lossless URL for the current packet/controller state (used by iframe export). */
   buildShareUrl: () => string;
   /** Current controller state (used to seed Export). */
@@ -52,7 +56,11 @@ type Props = {
   /** Current resolved layout (used to export the live diagram). */
   layout: ResolvedLayout;
   onClose: () => void;
-  onImport: (packet: Packet, controllers: ControllerState) => void;
+  onImport: (
+    packet: Packet,
+    controllers: ControllerState,
+    sourcePsdl: PsdlPacket,
+  ) => void;
 };
 
 type StatusKind = "ok" | "warn" | "error";
@@ -83,6 +91,7 @@ export default function ImportExportDrawer({
   open,
   mode,
   packet,
+  liftToPsdl,
   buildShareUrl,
   controllers,
   layout,
@@ -166,9 +175,12 @@ export default function ImportExportDrawer({
         setStatus(null);
         return;
       }
-      // Lower the runtime packet to PSDL for the format hub. controllers is a
-      // plain object keyed by controller id; PSDL's PacketEnv is a Map.
-      const psdl = rendererToPsdl(packet);
+      // Lift the active packet to PSDL for the format hub — losslessly via the
+      // source PSDL + instance merge (rendererToPsdl drops variable-length
+      // payloads / enum labels / switch `_` arms and emits PSDL the app rejects
+      // on re-import). controllers is a plain object keyed by controller id;
+      // PSDL's PacketEnv is a Map.
+      const psdl = liftToPsdl();
       const env = new Map<string, number>(Object.entries(controllers));
       const adapter = getFormat(format);
       if (!adapter.render) {
@@ -184,7 +196,16 @@ export default function ImportExportDrawer({
         kind: "error",
       });
     }
-  }, [open, currentMode, format, packet, buildShareUrl, controllers, layout]);
+  }, [
+    open,
+    currentMode,
+    format,
+    packet,
+    liftToPsdl,
+    buildShareUrl,
+    controllers,
+    layout,
+  ]);
 
   const handleModeChange = useCallback(
     (next: DrawerMode) => {
@@ -208,7 +229,11 @@ export default function ImportExportDrawer({
       const runtime = psdlToRenderer(psdl);
       const controllers: ControllerState = {};
       if (env) for (const [k, v] of env) controllers[k] = v;
-      onImport(runtime, controllers);
+      // Pass the parsed PSDL as the lossless source so the viewer can lift
+      // edits via mergeInstancesIntoPsdl(source, mirror) instead of the lossy
+      // rendererToPsdl — letting ANY imported PSDL (Switch/Encrypted/variable
+      // payloads) round-trip faithfully on share/export.
+      onImport(runtime, controllers, psdl);
       if (warnings && warnings.length) {
         const prefix =
           format === "ksy"

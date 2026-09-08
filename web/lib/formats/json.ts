@@ -11,8 +11,14 @@
 //     "version": "0.2",
 //     "name": string,
 //     "rowBits": integer,
+//     "abbrev"?: string,
+//     "packetVersion"?: string,        // the PSDL packet's own version metadata
+//                                      // (distinct from the wire "version" tag)
 //     "byteOrder"?: string,
 //     "description"?: string,
+//     "rendererHints"?: { rowBits?, sections? },  // render-affecting; see core layout
+//     "meta"?: PacketMeta,            // rfc / section / aliases / tags / family
+//     "imports"?: ImportEntry[],
 //     "body": Container[],            // Field | Group | Repeat | Switch | Encrypted
 //     "constraints"?: Constraint[],
 //     "env"?: { [key]: integer }      // optional packet env (controllers etc.)
@@ -68,8 +74,29 @@ export type JsonPsdlPacket = {
   byteOrder?: string;
   description?: string;
   body: Container[];
+  /** Named structs referenced by `ref` containers (PSDL 0.5 §). Must round-trip
+   *  or any packet using ref/defs silently loses its referenced fields. */
+  defs?: Packet["defs"];
   constraints?: Constraint[];
   env?: Record<string, number>;
+  /** Optional top-level metadata the PSDL schema permits (psdl.schema §60-79)
+   *  and that `Core.Packet` legitimately carries. These MUST round-trip:
+   *  `rendererHints` is render-affecting (core layout reads
+   *  `rendererHints?.rowBits ?? rowBits` and `rendererHints.sections`), and
+   *  `meta`/`abbrev`/`imports` are authored content. Dropping them on the
+   *  JSON / share-URL path makes arbitrary PSDL non-lossless (bar #2). */
+  abbrev?: Packet["abbrev"];
+  rendererHints?: Packet["rendererHints"];
+  meta?: Packet["meta"];
+  imports?: Packet["imports"];
+  /** The PSDL packet's OWN `version` metadata (e.g. all runtime presets carry
+   *  `"0.5"`). This is distinct from the wire-envelope `version` above (which
+   *  always tags the JSON FORMAT_VERSION). Emitted under the non-colliding
+   *  `packetVersion` key so the two never overwrite each other; dropping it
+   *  makes arbitrary PSDL non-lossless on the JSON / share-URL path (bar #2).
+   *  Mirrors `source-format.ts`, which already keeps packet `version` as
+   *  metadata. */
+  packetVersion?: string;
 };
 
 /** Convert a PacketEnv (Map) to a plain JSON object. */
@@ -99,9 +126,17 @@ export function toJson(packet: Packet, env?: PacketEnv): string {
     version: FORMAT_VERSION,
     name: packet.name,
     rowBits: packet.rowBits,
+    ...(packet.abbrev ? { abbrev: packet.abbrev } : {}),
     ...(packet.byteOrder ? { byteOrder: packet.byteOrder } : {}),
     ...(packet.description ? { description: packet.description } : {}),
+    ...(packet.rendererHints ? { rendererHints: packet.rendererHints } : {}),
+    ...(packet.meta ? { meta: packet.meta } : {}),
+    ...(packet.imports ? { imports: packet.imports } : {}),
+    ...(packet.version ? { packetVersion: packet.version } : {}),
     body: packet.body,
+    ...(packet.defs && Object.keys(packet.defs).length > 0
+      ? { defs: packet.defs }
+      : {}),
     ...(packet.constraints && packet.constraints.length > 0
       ? { constraints: packet.constraints }
       : {}),
@@ -153,6 +188,24 @@ export function fromJson(text: string): { packet: Packet; env: PacketEnv } {
       : {}),
     ...(typeof r.description === "string"
       ? { description: r.description }
+      : {}),
+    ...(typeof r.abbrev === "string" ? { abbrev: r.abbrev } : {}),
+    ...(r.rendererHints &&
+    typeof r.rendererHints === "object" &&
+    !Array.isArray(r.rendererHints)
+      ? { rendererHints: r.rendererHints as Packet["rendererHints"] }
+      : {}),
+    ...(r.meta && typeof r.meta === "object" && !Array.isArray(r.meta)
+      ? { meta: r.meta as Packet["meta"] }
+      : {}),
+    ...(Array.isArray(r.imports)
+      ? { imports: r.imports as Packet["imports"] }
+      : {}),
+    ...(typeof r.packetVersion === "string"
+      ? { version: r.packetVersion }
+      : {}),
+    ...(r.defs && typeof r.defs === "object" && !Array.isArray(r.defs)
+      ? { defs: r.defs as Packet["defs"] }
       : {}),
     ...(Array.isArray(r.constraints)
       ? { constraints: r.constraints as Packet["constraints"] }
